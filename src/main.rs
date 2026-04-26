@@ -88,6 +88,9 @@ async fn main() -> std::io::Result<()> {
         payment_engine.set_default_processor("simulator");
     }
 
+    // Initialize Ledger Service
+    let ledger = std::sync::Arc::new(crate::engine::services::ledger::LedgerService::new(pool.clone()));
+
     // Prepare App State
     let pool_for_handler = pool.clone();
     let state = AppState {
@@ -96,6 +99,7 @@ async fn main() -> std::io::Result<()> {
         config: config.clone(),
         payment_engine: std::sync::Arc::new(tokio::sync::RwLock::new(payment_engine)),
         vault: std::sync::Arc::new(vault),
+        ledger,
     };
 
     let bind_addr = format!("{}:{}", config.host, config.port);

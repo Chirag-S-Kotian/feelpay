@@ -5,6 +5,8 @@ use crate::config::AppConfig;
 use crate::engine::payment::PaymentEngine;
 use crate::vault::CardVaultService;
 
+use crate::engine::services::ledger::LedgerService;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: sqlx::PgPool,
@@ -12,4 +14,5 @@ pub struct AppState {
     pub config: AppConfig,
     pub payment_engine: Arc<RwLock<PaymentEngine>>,
     pub vault: Arc<CardVaultService>,
+    pub ledger: Arc<LedgerService>,
 }

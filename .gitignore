@@ -3,3 +3,6 @@
 /dashboard/node_modules
 /dashboard/.next
 /graphify-out/cache
+admin/node_modules
+
+/admin/server/target

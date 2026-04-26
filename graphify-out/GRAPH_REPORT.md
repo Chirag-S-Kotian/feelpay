@@ -1,7 +1,7 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-04-26)
 
 ## Corpus Check
-- 59 files · ~38,548 words
+- 59 files · ~39,151 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
