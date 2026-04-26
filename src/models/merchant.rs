@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Merchant {
     pub id: Uuid,
+    pub tenant_id: Option<Uuid>,
     pub name: String,
     pub email: String,
     #[serde(skip_serializing)]
@@ -26,6 +27,7 @@ pub struct Merchant {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMerchantRequest {
+    pub tenant_id: Option<Uuid>,
     pub name: String,
     pub email: String,
     pub password: String,
@@ -51,6 +53,7 @@ pub struct LoginResponse {
 #[derive(Debug, Serialize)]
 pub struct MerchantPublic {
     pub id: Uuid,
+    pub tenant_id: Option<Uuid>,
     pub name: String,
     pub email: String,
     pub api_key: String,
@@ -60,10 +63,12 @@ pub struct MerchantPublic {
     pub created_at: DateTime<Utc>,
 }
 
+
 impl From<Merchant> for MerchantPublic {
     fn from(m: Merchant) -> Self {
         Self {
             id: m.id,
+            tenant_id: m.tenant_id,
             name: m.name,
             email: m.email,
             api_key: m.api_key,

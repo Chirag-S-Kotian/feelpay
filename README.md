@@ -1,6 +1,6 @@
 # FeelPay - Payment Gateway
 
-## Quick Start (No Docker)
+## Quick Start
 
 ```bash
 # Guided startup with runtime options
@@ -13,22 +13,16 @@ cd .. && cargo run
 
 ## Runtime Modes
 
-- `./run.sh` asks all options interactively:
+- `./run.sh` asks options interactively:
 - target (`backend` / `frontend` / `both`)
 - payment mode (`test` / `live`)
-- DB provider (`neon` / `docker` / `auto`)
 - backend build (`dev` / `release`)
-- If `neon` selected, `DATABASE_URL_NEON` must be set.
-- If `docker` selected, `DATABASE_URL_DOCKER` must be set.
 
 ## Environment
 
 ```bash
-# .env - choose provider: auto | neon | docker
-DATABASE_PROVIDER=auto
-DATABASE_URL=postgresql://user:password@localhost:5432/feelpay
-DATABASE_URL_NEON=postgresql://user:password@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
-DATABASE_URL_DOCKER=postgresql://feelpay:feelpay123@localhost:5432/feelpay
+# .env
+DATABASE_URL=postgresql://user:password@ep-xxx.ap-south-1.aws.neon.tech/neondb?sslmode=require
 JWT_SECRET=your_secure_secret_256_bits_minimum
 WEBHOOK_SIGNING_SECRET=replace_with_real_secret
 VAULT_ENCRYPTION_KEY=64_hex_chars_required_for_aes256
@@ -41,7 +35,7 @@ TENANT_ISOLATION_MODE=shared_table
 
 - Frontend: React 19, Vite, TypeScript
 - Backend: Rust, Actix Web, sqlx
-- DB: PostgreSQL (Neon or Docker/local)
+- DB: PostgreSQL (Neon) - Mumbai (`ap-south-1`)
 
 ## Commands
 
@@ -58,10 +52,6 @@ cargo build --release
 # Lint
 pnpm lint         # tsc --noEmit
 cargo check      # rustc
-
-# Docker cleanup
-./scripts/docker_cleanup.sh         # cleanup project-only feelpay/payment artifacts
-./scripts/docker_cleanup.sh --all   # global docker prune (dangerous)
 ```
 
 ## API Smoke Routes
@@ -70,8 +60,8 @@ cargo check      # rustc
 # health
 curl http://127.0.0.1:8080/v1/health
 
-# merchant login (dashboard JWT)
-curl -X POST http://127.0.0.1:8080/v1/merchants/login \
+# auth login (dashboard JWT)
+curl -X POST http://127.0.0.1:8080/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@shop.com","password":"secure123"}'
 

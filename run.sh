@@ -63,33 +63,6 @@ load_env() {
 }
 
 resolve_db_url() {
-  local provider="$1"
-  if [[ "$provider" == "neon" && -n "${DATABASE_URL_NEON:-}" ]]; then
-    echo "$DATABASE_URL_NEON"
-    return
-  fi
-  if [[ "$provider" == "neon" ]]; then
-    echo ""
-    return
-  fi
-  if [[ "$provider" == "docker" && -n "${DATABASE_URL_DOCKER:-}" ]]; then
-    echo "$DATABASE_URL_DOCKER"
-    return
-  fi
-  if [[ "$provider" == "docker" ]]; then
-    echo ""
-    return
-  fi
-  if [[ "$provider" == "auto" ]]; then
-    if [[ -n "${DATABASE_URL_NEON:-}" ]]; then
-      echo "$DATABASE_URL_NEON"
-      return
-    fi
-    if [[ -n "${DATABASE_URL_DOCKER:-}" ]]; then
-      echo "$DATABASE_URL_DOCKER"
-      return
-    fi
-  fi
   echo "${DATABASE_URL:-}"
 }
 
@@ -124,35 +97,21 @@ check_dep pnpm
 
 RUN_TARGET="$(choose "What to run?" "backend" "frontend" "both")"
 PAYMENT_MODE="$(choose "Choose payment mode" "test" "live")"
-DB_PROVIDER_CHOICE="$(choose "Choose database provider" "neon" "docker" "auto")"
 BUILD_PROFILE="$(choose "Choose backend profile" "dev" "release")"
 
-DB_URL="$(resolve_db_url "$DB_PROVIDER_CHOICE")"
+DB_URL="$(resolve_db_url)"
 if [[ -z "$DB_URL" ]]; then
-  echo -e "${RED}Selected provider URL missing.${RESET}"
-  if [[ "$DB_PROVIDER_CHOICE" == "neon" ]]; then
-    echo -e "${YELLOW}Set DATABASE_URL_NEON in .env${RESET}"
-  elif [[ "$DB_PROVIDER_CHOICE" == "docker" ]]; then
-    echo -e "${YELLOW}Set DATABASE_URL_DOCKER in .env${RESET}"
-  else
-    echo -e "${YELLOW}Set DATABASE_URL or provider-specific URLs in .env${RESET}"
-  fi
+  echo -e "${RED}DATABASE_URL missing in .env.${RESET}"
   exit 1
 fi
 
-if [[ "$DB_PROVIDER_CHOICE" == "neon" ]] && [[ "$DB_URL" == *"localhost"* || "$DB_URL" == *"127.0.0.1"* ]]; then
-  echo -e "${YELLOW}Warning:${RESET} Neon selected but URL points to local host. Check DATABASE_URL_NEON."
-fi
-
 export PAYMENT_MODE="$PAYMENT_MODE"
-export DATABASE_PROVIDER="$DB_PROVIDER_CHOICE"
 export DATABASE_URL="$DB_URL"
 
 line
 echo -e "${BOLD}Execution Plan${RESET}"
 echo "  target        : $RUN_TARGET"
 echo "  payment_mode  : $PAYMENT_MODE"
-echo "  db_provider   : $DB_PROVIDER_CHOICE"
 echo "  backend_build : $BUILD_PROFILE"
 echo "  db_url_host   : $(echo "$DB_URL" | sed -E 's#(postgres(ql)?://)[^@]*@#\1***@#')"
 line

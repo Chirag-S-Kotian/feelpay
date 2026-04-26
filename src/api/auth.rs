@@ -1,197 +1,131 @@
-use actix_web::{
-    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    web, Error, HttpMessage,
-};
-use futures_util::future::LocalBoxFuture;
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use serde::Deserialize;
-use std::future::{ready, Ready};
-use std::rc::Rc;
+use actix_web::{post, web, HttpResponse, Responder};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::password_hash::{rand_core::OsRng, SaltString};
+use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::models::user::{User, Claims};
+use sqlx::PgPool;
 
-/// Middleware to validate API Keys for Server-to-Server requests
-pub struct ApiKeyMiddleware;
-
-impl<S, B> Transform<S, ServiceRequest> for ApiKeyMiddleware
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-    B: 'static,
-{
-    type Response = ServiceResponse<B>;
-    type Error = Error;
-    type InitError = ();
-    type Transform = ApiKeyMiddlewareService<S>;
-    type Future = Ready<Result<Self::Transform, Self::InitError>>;
-
-    fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(ApiKeyMiddlewareService {
-            service: Rc::new(service),
-        }))
-    }
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/auth")
+            .service(login)
+            .service(register)
+    );
 }
 
-pub struct ApiKeyMiddlewareService<S> {
-    service: Rc<S>,
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
 }
 
-impl<S, B> Service<ServiceRequest> for ApiKeyMiddlewareService<S>
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-    B: 'static,
-{
-    type Response = ServiceResponse<B>;
-    type Error = Error;
-    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    forward_ready!(service);
-
-    fn call(&self, req: ServiceRequest) -> Self::Future {
-        let service = self.service.clone();
-
-        Box::pin(async move {
-            let api_key = req
-                .headers()
-                .get("x-api-key")
-                .and_then(|v| v.to_str().ok())
-                .map(str::trim)
-                .filter(|v| !v.is_empty());
-
-            let Some(api_key) = api_key else {
-                return Err(actix_web::error::ErrorUnauthorized(
-                    "Missing x-api-key header",
-                ));
-            };
-
-            let Some(pool) = req.app_data::<web::Data<sqlx::PgPool>>() else {
-                return Err(actix_web::error::ErrorInternalServerError(
-                    "Database pool unavailable",
-                ));
-            };
-
-            let merchant = sqlx::query_as::<_, (Uuid,)>(
-                "SELECT id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
-            )
-            .bind(api_key)
-            .fetch_optional(pool.get_ref())
-            .await
-            .map_err(|_| {
-                actix_web::error::ErrorInternalServerError("Failed to validate api key")
-            })?;
-
-            let Some((merchant_id,)) = merchant else {
-                return Err(actix_web::error::ErrorUnauthorized("Invalid API key"));
-            };
-
-            req.extensions_mut().insert(merchant_id);
-
-            service.call(req).await
-        })
-    }
+#[derive(Serialize)]
+pub struct AuthResponse {
+    pub token: String,
+    pub user_id: Uuid,
+    pub tenant_id: Option<Uuid>,
+    pub merchant_id: Option<Uuid>,
+    pub role: String,
 }
 
-/// Middleware to validate JWT for Dashboard requests
-pub struct JwtMiddleware;
+#[post("/login")]
+async fn login(
+    pool: web::Data<PgPool>,
+    req: web::Json<LoginRequest>,
+) -> impl Responder {
+    let user = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE email = $1 AND status = 'active'"
+    )
+    .bind(&req.email)
+    .fetch_optional(pool.get_ref())
+    .await;
 
-impl<S, B> Transform<S, ServiceRequest> for JwtMiddleware
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-    B: 'static,
-{
-    type Response = ServiceResponse<B>;
-    type Error = Error;
-    type InitError = ();
-    type Transform = JwtMiddlewareService<S>;
-    type Future = Ready<Result<Self::Transform, Self::InitError>>;
+    match user {
+        Ok(Some(u)) => {
+            let parsed_hash = PasswordHash::new(&u.password_hash).unwrap();
+            if Argon2::default().verify_password(req.password.as_bytes(), &parsed_hash).is_ok() {
+                // Fetch roles
+                let role: (String,) = sqlx::query_as(
+                    "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1 LIMIT 1"
+                )
+                .bind(u.id)
+                .fetch_one(pool.get_ref())
+                .await
+                .unwrap_or(("user".to_string(),));
 
-    fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(JwtMiddlewareService { service }))
-    }
-}
-
-pub struct JwtMiddlewareService<S> {
-    service: S,
-}
-
-#[derive(Debug, Deserialize)]
-struct Claims {
-    sub: String,
-    exp: usize,
-    iat: usize,
-}
-
-impl<S, B> Service<ServiceRequest> for JwtMiddlewareService<S>
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-    B: 'static,
-{
-    type Response = ServiceResponse<B>;
-    type Error = Error;
-    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    forward_ready!(service);
-
-    fn call(&self, req: ServiceRequest) -> Self::Future {
-        let auth_header = req
-            .headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
-
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .or_else(|| auth_header.strip_prefix("bearer "))
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .map(str::to_string);
-
-        let Some(token) = token else {
-            return Box::pin(async {
-                Err(actix_web::error::ErrorUnauthorized(
-                    "Missing Authorization bearer token",
-                ))
-            });
-        };
-
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
-        let decoded = decode::<Claims>(
-            &token,
-            &DecodingKey::from_secret(secret.as_bytes()),
-            &Validation::default(),
-        );
-
-        let claims = match decoded {
-            Ok(v) => v.claims,
-            Err(_) => {
-                return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized("Invalid or expired token"))
-                });
+                let token = generate_jwt(&u, &role.0);
+                HttpResponse::Ok().json(AuthResponse {
+                    token,
+                    user_id: u.id,
+                    tenant_id: u.tenant_id,
+                    merchant_id: u.merchant_id,
+                    role: role.0,
+                })
+            } else {
+                HttpResponse::Unauthorized().body("Invalid credentials")
             }
-        };
-
-        let merchant_id = match Uuid::parse_str(&claims.sub) {
-            Ok(id) => id,
-            Err(_) => {
-                return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized("Invalid merchant identity in token"))
-                });
-            }
-        };
-
-        // touch claims fields to keep validation context explicit
-        let _ = (claims.exp, claims.iat);
-
-        req.extensions_mut().insert(merchant_id);
-        let fut = self.service.call(req);
-
-        Box::pin(async move {
-            let res = fut.await?;
-            Ok(res)
-        })
+        }
+        Ok(None) => HttpResponse::Unauthorized().body("Invalid credentials"),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
+}
+
+#[derive(Deserialize)]
+pub struct RegisterRequest {
+    pub email: String,
+    pub password: String,
+    pub full_name: String,
+    pub tenant_id: Option<Uuid>,
+    pub merchant_id: Option<Uuid>,
+}
+
+#[post("/register")]
+async fn register(
+    pool: web::Data<PgPool>,
+    req: web::Json<RegisterRequest>,
+) -> impl Responder {
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(req.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
+    let user = sqlx::query_as::<_, User>(
+        "INSERT INTO users (tenant_id, merchant_id, email, password_hash, full_name, status) 
+         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING *"
+    )
+    .bind(req.tenant_id)
+    .bind(req.merchant_id)
+    .bind(&req.email)
+    .bind(&password_hash)
+    .bind(&req.full_name)
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match user {
+        Ok(u) => HttpResponse::Created().json(u),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+fn generate_jwt(user: &User, role: &str) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = Claims {
+        sub: user.id.to_string(),
+        tenant_id: user.tenant_id,
+        merchant_id: user.merchant_id,
+        role: role.to_string(),
+        exp: now + 86400, // 24 hours
+        iat: now,
+    };
+
+    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .unwrap()
 }
