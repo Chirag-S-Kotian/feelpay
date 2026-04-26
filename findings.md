@@ -156,3 +156,31 @@ Failed      Voided     Refunded   Refunded
 - UPI AutoPay supports recurring mandates with category-specific caps
 - Baseline cap publicly documented at ₹15,000 and higher cap for specific MCCs
 - Source: NPCI AutoPay product overview
+
+## 9. 2026-04-26 Primary-Source Delta (Design Inputs)
+
+### India compliance anchors
+- RBI PA/PG direction still baseline control set for online aggregators (escrow, due diligence, risk controls):  
+  https://www.rbi.org.in/scripts/RTGS_Notification.aspx?Id=11822
+- RBI KYC Master Direction currently updated as of June 12, 2025. Merchant onboarding/KYC workflows must stay configurable for latest amendments:  
+  https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=11566.
+- RBI CoFT (card tokenization) direction confirms no raw card credential storage by merchants/PAs in normal model:  
+  https://www.rbi.org.in/scripts/BS_CircularIndexDisplay.aspx?Id=12159
+
+### UPI recurring / mandate product behavior
+- NPCI UPI AutoPay public product constraints (mandate lifecycle + cap semantics):  
+  https://www.npci.org.in/what-we-do/autopay/product-overview
+- Latest public NPCI circular artifact shows mandate portability and stricter operation constraints (2025-10 circular reference):  
+  https://www.npci.org.in/uploads/UPI_OC_223_Enhancement_of_UPI_Autopay_3e6a1cdb33.pdf
+
+### Neon + SQLx + prepared statement failures (root-cause references)
+- SQLx docs explicitly note prepared statement cache issues with PgBouncer/proxy protocol speakers; mitigation is non-persistent statements (`.persistent(false)` where needed):  
+  https://docs.rs/sqlx-build-trust/latest/sqlx_build_trust/fn.query.html
+- PgBouncer docs describe transaction pooling caveats and prepared statement behavior (`max_prepared_statements`, migration-time plan invalidation):  
+  https://www.pgbouncer.org/config  
+  https://www.pgbouncer.org/faq.html
+
+### Implementation decisions from above
+- Keep pure custom gateway naming and rails in product surface.
+- Prefer direct Neon connection for migration-sensitive operations; if pooled/proxied path used, avoid persistent prepared statements on unstable query paths.
+- Keep dispute lifecycle first-class (`needs_response`, evidence upload, accept/win/lost transitions) with webhook upsert path.

@@ -2,3 +2,4 @@
 .env
 /dashboard/node_modules
 /dashboard/.next
+/graphify-out/cache

@@ -11,6 +11,16 @@ cd dashboard && pnpm install && pnpm dev
 cd .. && cargo run
 ```
 
+## Runtime Modes
+
+- `./run.sh` asks all options interactively:
+- target (`backend` / `frontend` / `both`)
+- payment mode (`test` / `live`)
+- DB provider (`neon` / `docker` / `auto`)
+- backend build (`dev` / `release`)
+- If `neon` selected, `DATABASE_URL_NEON` must be set.
+- If `docker` selected, `DATABASE_URL_DOCKER` must be set.
+
 ## Environment
 
 ```bash
@@ -33,7 +43,7 @@ WEBHOOK_SIGNING_SECRET=replace_with_real_secret
 
 ```bash
 # Dev
-pnpm dev           # frontend :5173
+pnpm dev           # frontend :3000
 cargo run         # backend  :8080
 
 # Build
@@ -43,4 +53,8 @@ cargo build      # backend
 # Lint
 pnpm lint         # tsc --noEmit
 cargo check      # rustc
+
+# Docker cleanup
+./scripts/docker_cleanup.sh         # cleanup project-only feelpay/payment artifacts
+./scripts/docker_cleanup.sh --all   # global docker prune (dangerous)
 ```

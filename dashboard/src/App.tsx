@@ -6,6 +6,7 @@ import {
   Wallet,
   BarChart3,
   Code2,
+  ShieldAlert,
   Settings as SettingsIcon,
   Building2,
   Menu,
@@ -16,6 +17,7 @@ import Payments from './pages/Payments';
 import Settlements from './pages/Settlements';
 import Analytics from './pages/Analytics';
 import Developers from './pages/Developers';
+import Disputes from './pages/Disputes';
 import Settings from './pages/Settings';
 import Onboarding from './pages/Onboarding';
 import Login from './pages/Login';
@@ -25,6 +27,7 @@ const NAV = [
   { path: '/payments', label: 'Payments', icon: CreditCard },
   { path: '/settlements', label: 'Settlements', icon: Wallet },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { path: '/disputes', label: 'Disputes', icon: ShieldAlert },
   { path: '/developers', label: 'Developers', icon: Code2 },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
   { path: '/onboarding', label: 'Onboarding', icon: Building2 },
@@ -87,6 +90,7 @@ function Layout() {
           <Route path="/payments" element={<Payments />} />
           <Route path="/settlements" element={<Settlements />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/disputes" element={<Disputes />} />
           <Route path="/developers" element={<Developers />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/onboarding" element={<Onboarding />} />
