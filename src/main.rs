@@ -137,6 +137,8 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/merchants")
                     .route("/register", web::post().to(api::merchants::create_merchant))
                     .route("/login", web::post().to(api::merchants::login_merchant))
+                    .route("/forgot-password", web::post().to(api::merchants::forgot_password))
+                    .route("/reset-password", web::post().to(api::merchants::reset_password))
                     // Protected merchant routes
                     .service(
                         web::scope("")

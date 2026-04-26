@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { apiRequest } from '../hooks/useApi';
 
 export default function Login() {
@@ -80,9 +80,9 @@ export default function Login() {
         </form>
 
         <div className="login-footer">
-          <a href="#">Forgot password?</a>
+          <Link to="/forgot-password">Forgot password?</Link>
           <span>•</span>
-          <a href="#">Create account</a>
+          <Link to="/signup">Create account</Link>
         </div>
       </div>
     </div>

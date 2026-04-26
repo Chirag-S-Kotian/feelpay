@@ -12,6 +12,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/merchants")
             .route("", web::post().to(create_merchant))
             .route("/login", web::post().to(login_merchant))
+            .route("/forgot-password", web::post().to(forgot_password))
+            .route("/reset-password", web::post().to(reset_password))
             .route("/profile", web::get().to(get_profile))
             .route("/profile", web::put().to(update_profile))
             .route("/keys", web::get().to(get_keys))
@@ -275,5 +277,80 @@ pub async fn roll_keys(
         "api_key": api_key,
         "api_secret": api_secret,
         "message": "Store your new API secret safely. It will not be shown again."
+    })))
+}
+
+pub async fn forgot_password(
+    state: web::Data<AppState>,
+    body: web::Json<crate::models::merchant::ForgotPasswordRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let pool = state.db.clone();
+    let row: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM merchants WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+
+    let Some((merchant_id,)) = row else {
+        // Return success even if not found to avoid email enumeration
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "message": "If an account exists with that email, a password reset link has been sent."
+        })));
+    };
+
+    let token = Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
+
+    sqlx::query("INSERT INTO password_reset_tokens (token, merchant_id, expires_at) VALUES ($1, $2, $3)")
+        .bind(&token)
+        .bind(&merchant_id)
+        .bind(&expires_at)
+        .execute(&pool)
+        .await
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+
+    // In production, send email here. For simulation, we log it and return it in dev mode if needed.
+    println!("PASSWORD RESET TOKEN FOR {}: {}", body.email, token);
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "If an account exists with that email, a password reset link has been sent.",
+        "debug_token": token // Remove in real production
+    })))
+}
+
+pub async fn reset_password(
+    state: web::Data<AppState>,
+    body: web::Json<crate::models::merchant::ResetPasswordRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let pool = state.db.clone();
+    
+    let row: Option<(Uuid,)> = sqlx::query_as(
+        "DELETE FROM password_reset_tokens WHERE token = $1 AND expires_at > NOW() RETURNING merchant_id"
+    )
+    .bind(&body.token)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+
+    let Some((merchant_id,)) = row else {
+        return Err(FeelPayError::BadRequest("Invalid or expired token".into()));
+    };
+
+    let argon2 = Argon2::default();
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = argon2
+        .hash_password(body.new_password.as_bytes(), &salt)
+        .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
+        .to_string();
+
+    sqlx::query("UPDATE merchants SET password_hash = $2, updated_at = NOW() WHERE id = $1")
+        .bind(&merchant_id)
+        .bind(&password_hash)
+        .execute(&pool)
+        .await
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Password successfully reset."
     })))
 }

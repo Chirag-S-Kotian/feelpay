@@ -88,3 +88,14 @@ pub struct ApiKeyResponse {
     pub api_key: String,
     pub api_secret: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub new_password: String,
+}
