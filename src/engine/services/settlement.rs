@@ -106,7 +106,7 @@ impl SettlementService {
     pub async fn get_balance(&self, merchant_id: Uuid) -> Result<(i64, i64), FeelPayError> {
         let available: (i64,) = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(po.amount), 0)
+            SELECT COALESCE(SUM(po.amount), 0)::BIGINT
             FROM payment_orders po
             WHERE po.merchant_id = $1 AND po.status = 'captured'
             "#,
@@ -118,7 +118,7 @@ impl SettlementService {
 
         let pending: (i64,) = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(po.amount), 0)
+            SELECT COALESCE(SUM(po.amount), 0)::BIGINT
             FROM payment_orders po
             WHERE po.merchant_id = $1 AND po.status = 'authorized'
             "#,

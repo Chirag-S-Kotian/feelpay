@@ -601,6 +601,35 @@ table tr:hover td {
   padding: 10px 12px;
 }
 
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--fp-text-dim);
+  cursor: pointer;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  transition: var(--fp-transition);
+}
+
+.password-toggle:hover {
+  color: var(--fp-text);
+  background: var(--fp-bg-hover);
+}
+
 .charts-grid {
   display: grid;
   grid-template-columns: 2fr 1.1fr;

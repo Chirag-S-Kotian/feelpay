@@ -179,7 +179,19 @@ pub async fn get_profile(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
-    let Some((id, name, email, api_key, business_name, webhook_url, status, onboarding_status, daily_limit, monthly_limit)) = row else {
+    let Some((
+        id,
+        name,
+        email,
+        api_key,
+        business_name,
+        webhook_url,
+        status,
+        onboarding_status,
+        daily_limit,
+        monthly_limit,
+    )) = row
+    else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
@@ -301,13 +313,15 @@ pub async fn forgot_password(
     let token = Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
 
-    sqlx::query("INSERT INTO password_reset_tokens (token, merchant_id, expires_at) VALUES ($1, $2, $3)")
-        .bind(&token)
-        .bind(&merchant_id)
-        .bind(&expires_at)
-        .execute(&pool)
-        .await
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO password_reset_tokens (token, merchant_id, expires_at) VALUES ($1, $2, $3)",
+    )
+    .bind(&token)
+    .bind(&merchant_id)
+    .bind(&expires_at)
+    .execute(&pool)
+    .await
+    .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
 
     // In production, send email here. For simulation, we log it and return it in dev mode if needed.
     println!("PASSWORD RESET TOKEN FOR {}: {}", body.email, token);
@@ -323,7 +337,7 @@ pub async fn reset_password(
     body: web::Json<crate::models::merchant::ResetPasswordRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let pool = state.db.clone();
-    
+
     let row: Option<(Uuid,)> = sqlx::query_as(
         "DELETE FROM password_reset_tokens WHERE token = $1 AND expires_at > NOW() RETURNING merchant_id"
     )

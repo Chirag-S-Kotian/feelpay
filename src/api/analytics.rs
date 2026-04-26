@@ -39,7 +39,7 @@ pub async fn get_summary(
         r#"
         SELECT
             COUNT(*)::BIGINT                                     AS total_transactions,
-            COALESCE(SUM(amount)::BIGINT, 0)                     AS total_volume,
+            COALESCE(SUM(amount), 0)::BIGINT                      AS total_volume,
             COUNT(*) FILTER (WHERE status = 'captured')::BIGINT  AS successful,
             COUNT(*) FILTER (WHERE status = 'failed')::BIGINT    AS failed,
             CASE WHEN COUNT(*) > 0

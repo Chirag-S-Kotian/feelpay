@@ -107,13 +107,15 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         let mut cors = Cors::default()
+            .supports_credentials()
             .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
             .allowed_headers(vec![
                 header::AUTHORIZATION,
                 header::CONTENT_TYPE,
                 header::HeaderName::from_static("x-api-key"),
                 header::HeaderName::from_static("idempotency-key"),
-            ]);
+            ])
+            .max_age(3600);
 
         if cors_allowed_origins.iter().any(|o| o == "*") {
             cors = cors.allow_any_origin();
