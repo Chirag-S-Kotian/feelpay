@@ -30,6 +30,7 @@ pub struct AppConfig {
     // Rate limiting
     pub rate_limit_per_minute: u32,
     pub tenant_isolation_mode: String,
+    pub cors_allowed_origins: Vec<String>,
 
     // Mode
     pub payment_mode: String,
@@ -87,6 +88,13 @@ impl AppConfig {
                 .parse()?,
             tenant_isolation_mode: std::env::var("TENANT_ISOLATION_MODE")
                 .unwrap_or_else(|_| "shared_table".into()),
+            cors_allowed_origins: std::env::var("CORS_ALLOWED_ORIGINS")
+                .unwrap_or_else(|_| "http://localhost:5173,http://127.0.0.1:5173".into())
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
 
             payment_mode: std::env::var("PAYMENT_MODE").unwrap_or_else(|_| "test".into()),
             database_provider: std::env::var("DATABASE_PROVIDER").unwrap_or_else(|_| "auto".into()),

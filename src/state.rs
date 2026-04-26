@@ -3,7 +3,7 @@ use tokio::sync::RwLock;
 
 use crate::config::AppConfig;
 use crate::engine::payment::PaymentEngine;
-use crate::engine::vault::CardVaultService;
+use crate::vault::CardVaultService;
 
 #[derive(Clone)]
 pub struct AppState {

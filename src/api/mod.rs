@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod auth;
 pub mod disputes;
 pub mod health;
@@ -18,6 +19,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(disputes::configure)
             .configure(onboarding::configure)
             .configure(settlements::configure)
-            .configure(webhooks::configure),
+            .configure(webhooks::configure)
+            .configure(analytics::configure),
     );
 }

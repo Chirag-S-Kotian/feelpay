@@ -1,5 +1,6 @@
 use actix_cors::Cors;
-use actix_web::{middleware, web, App, HttpServer};
+use actix_web::{web, App, HttpServer};
+use actix_web::http::header;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod api;
@@ -7,12 +8,14 @@ pub mod config;
 pub mod db;
 pub mod engine;
 pub mod error;
+pub mod middleware;
 pub mod models;
 pub mod state;
+pub mod vault;
 
 use config::AppConfig;
 use engine::payment::PaymentEngine;
-use engine::vault::CardVaultService;
+use vault::CardVaultService;
 use state::AppState;
 
 #[actix_web::main]
@@ -99,15 +102,33 @@ async fn main() -> std::io::Result<()> {
     tracing::info!("FeelPay Gateway API listening on {}", bind_addr);
 
     let worker_count = num_cpus::get() * 2;
+    let rate_limiter = crate::middleware::rate_limit::RateLimiter::new(config.rate_limit_per_minute);
+    let cors_allowed_origins = config.cors_allowed_origins.clone();
 
     HttpServer::new(move || {
-        let cors = Cors::permissive();
+        let mut cors = Cors::default()
+            .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+            .allowed_headers(vec![
+                header::AUTHORIZATION,
+                header::CONTENT_TYPE,
+                header::HeaderName::from_static("x-api-key"),
+                header::HeaderName::from_static("idempotency-key"),
+            ]);
+
+        if cors_allowed_origins.iter().any(|o| o == "*") {
+            cors = cors.allow_any_origin();
+        } else {
+            for origin in &cors_allowed_origins {
+                cors = cors.allowed_origin(origin);
+            }
+        }
 
         App::new()
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(pool_for_handler.clone()))
-            .wrap(middleware::Logger::default())
+            .wrap(actix_web::middleware::Logger::default())
             .wrap(cors)
+            .wrap(rate_limiter.clone())
             // Healthcheck
             .route("/health", web::get().to(api::health::health_check))
             .route("/v1/health", web::get().to(api::health::health_check))
@@ -176,6 +197,21 @@ async fn main() -> std::io::Result<()> {
                         "/bank-account",
                         web::post().to(api::onboarding::submit_bank_account),
                     ),
+            )
+            // Analytics API
+            .service(
+                web::scope("/v1/analytics")
+                    .wrap(api::auth::ApiKeyMiddleware)
+                    .route("/summary", web::get().to(api::analytics::get_summary))
+                    .route("/volume", web::get().to(api::analytics::get_volume_chart))
+                    .route("/top-customers", web::get().to(api::analytics::get_top_customers)),
+            )
+            // Developers API (API key info)
+            .service(
+                web::scope("/v1/developers")
+                    .wrap(api::auth::JwtMiddleware)
+                    .route("/keys", web::get().to(api::merchants::get_keys))
+                    .route("/webhooks", web::get().to(api::analytics::get_webhook_events)),
             )
     })
     .workers(worker_count)
