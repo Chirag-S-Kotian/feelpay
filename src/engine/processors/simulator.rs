@@ -3,7 +3,7 @@ use rand::Rng;
 use uuid::Uuid;
 
 use crate::engine::processor::{
-    MethodData, PaymentMethodProcessor, ProcessorResponse, TransactionContext, PaymentMethod,
+    MethodData, PaymentMethod, PaymentMethodProcessor, ProcessorResponse, TransactionContext,
 };
 use crate::error::FeelPayError;
 use crate::models::payment_order::PaymentStatus;
@@ -76,7 +76,10 @@ impl PaymentMethodProcessor for SimulatorProcessor {
             }
             MethodData::NetBanking { .. } => (
                 PaymentStatus::Processing,
-                Some(format!("https://sim.feelpay.in/netbanking/{}", txn.payment_id)),
+                Some(format!(
+                    "https://sim.feelpay.in/netbanking/{}",
+                    txn.payment_id
+                )),
             ),
             MethodData::Wallet { .. } => (PaymentStatus::Captured, None),
             MethodData::Simulator { .. } => (PaymentStatus::Captured, None),
@@ -115,10 +118,7 @@ impl PaymentMethodProcessor for SimulatorProcessor {
         })
     }
 
-    async fn void(
-        &self,
-        _txn: &TransactionContext,
-    ) -> Result<ProcessorResponse, FeelPayError> {
+    async fn void(&self, _txn: &TransactionContext) -> Result<ProcessorResponse, FeelPayError> {
         Ok(ProcessorResponse {
             status: PaymentStatus::Voided,
             gateway_reference: Some(self.generate_ref("void")),
@@ -147,5 +147,4 @@ impl PaymentMethodProcessor for SimulatorProcessor {
             metadata: None,
         })
     }
-
 }

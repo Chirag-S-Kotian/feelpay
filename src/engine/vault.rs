@@ -71,7 +71,7 @@ impl CardVaultService {
         // Encrypt PAN
         let cipher = Aes256Gcm::new(&self.encryption_key);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-        
+
         let encrypted_pan = cipher
             .encrypt(&nonce, pan.as_bytes())
             .map_err(|_| FeelPayError::InternalError("Failed to encrypt PAN".into()))?;
@@ -116,7 +116,11 @@ impl CardVaultService {
     }
 
     /// Retrieve and decrypt a PAN (Restricted use)
-    pub async fn retrieve_pan(&self, token: &str, merchant_id: Uuid) -> Result<String, FeelPayError> {
+    pub async fn retrieve_pan(
+        &self,
+        token: &str,
+        merchant_id: Uuid,
+    ) -> Result<String, FeelPayError> {
         let record = sqlx::query_as::<_, VaultLookupRow>(
             r#"
             SELECT encrypted_pan, nonce, encryption_key_id
@@ -137,12 +141,12 @@ impl CardVaultService {
             ));
         }
 
-        let encrypted_pan = B64.decode(record.encrypted_pan).map_err(|_| {
-            FeelPayError::InternalError("Corrupt encrypted PAN payload".into())
-        })?;
-        let nonce_bytes = B64.decode(record.nonce).map_err(|_| {
-            FeelPayError::InternalError("Corrupt nonce payload".into())
-        })?;
+        let encrypted_pan = B64
+            .decode(record.encrypted_pan)
+            .map_err(|_| FeelPayError::InternalError("Corrupt encrypted PAN payload".into()))?;
+        let nonce_bytes = B64
+            .decode(record.nonce)
+            .map_err(|_| FeelPayError::InternalError("Corrupt nonce payload".into()))?;
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let cipher = Aes256Gcm::new(&self.encryption_key);

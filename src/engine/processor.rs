@@ -67,8 +67,20 @@ pub struct ProcessorResponse {
 #[async_trait]
 pub trait PaymentMethodProcessor: Send + Sync {
     fn method_type(&self) -> PaymentMethod;
-    async fn authorize(&self, txn: &TransactionContext, method_data: &MethodData) -> Result<ProcessorResponse, FeelPayError>;
-    async fn capture(&self, txn: &TransactionContext, amount: i64) -> Result<ProcessorResponse, FeelPayError>;
+    async fn authorize(
+        &self,
+        txn: &TransactionContext,
+        method_data: &MethodData,
+    ) -> Result<ProcessorResponse, FeelPayError>;
+    async fn capture(
+        &self,
+        txn: &TransactionContext,
+        amount: i64,
+    ) -> Result<ProcessorResponse, FeelPayError>;
     async fn void(&self, txn: &TransactionContext) -> Result<ProcessorResponse, FeelPayError>;
-    async fn refund(&self, txn: &TransactionContext, amount: i64) -> Result<ProcessorResponse, FeelPayError>;
+    async fn refund(
+        &self,
+        txn: &TransactionContext,
+        amount: i64,
+    ) -> Result<ProcessorResponse, FeelPayError>;
 }

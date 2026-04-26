@@ -1,6 +1,6 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use argon2::password_hash::{rand_core::OsRng, PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use argon2::password_hash::{SaltString, rand_core::OsRng, PasswordHash};
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
@@ -12,7 +12,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/merchants")
             .route("", web::post().to(create_merchant))
             .route("/login", web::post().to(login_merchant))
-            .route("/{merchant_id}", web::get().to(get_merchant))
+            .route("/profile", web::get().to(get_profile))
+            .route("/profile", web::put().to(update_profile))
+            .route("/keys", web::get().to(get_keys))
+            .route("/keys/roll", web::post().to(roll_keys))
+            .route("/{merchant_id}", web::get().to(get_merchant)),
     );
 }
 
@@ -72,12 +76,13 @@ pub async fn login_merchant(
     ).bind(&body.email).fetch_optional(&pool).await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    let (id, name, pw_hash, api_key) = row
-        .ok_or_else(|| FeelPayError::NotFound("Merchant not found".into()))?;
+    let (id, name, pw_hash, api_key) =
+        row.ok_or_else(|| FeelPayError::NotFound("Merchant not found".into()))?;
 
-    let parsed = PasswordHash::new(&pw_hash)
-        .map_err(|e| FeelPayError::Internal(format!("{}", e)))?;
-    Argon2::default().verify_password(body.password.as_bytes(), &parsed)
+    let parsed =
+        PasswordHash::new(&pw_hash).map_err(|e| FeelPayError::Internal(format!("{}", e)))?;
+    Argon2::default()
+        .verify_password(body.password.as_bytes(), &parsed)
         .map_err(|_| FeelPayError::Unauthorized("Invalid credentials".into()))?;
 
     let token = generate_jwt(&id.to_string(), &name)?;
@@ -94,8 +99,11 @@ pub async fn get_merchant(
     let id = path.into_inner();
     let pool = state.db.clone();
     let row: Option<(Uuid, String, String, String, Option<String>, String)> = sqlx::query_as(
-        "SELECT id, name, email, api_key, business_name, status FROM merchants WHERE id = $1"
-    ).bind(&id).fetch_optional(&pool).await
+        "SELECT id, name, email, api_key, business_name, status FROM merchants WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match row {
@@ -112,22 +120,160 @@ pub async fn get_merchant(
 fn generate_jwt(merchant_id: &str, name: &str) -> Result<String, FeelPayError> {
     use jsonwebtoken::{encode, EncodingKey, Header};
     #[derive(serde::Serialize)]
-    struct Claims { sub: String, name: String, exp: usize, iat: usize }
+    struct Claims {
+        sub: String,
+        name: String,
+        exp: usize,
+        iat: usize,
+    }
     let now = chrono::Utc::now().timestamp() as usize;
-    let claims = Claims { sub: merchant_id.into(), name: name.into(), exp: now + 86400, iat: now };
+    let claims = Claims {
+        sub: merchant_id.into(),
+        name: name.into(),
+        exp: now + 86400,
+        iat: now,
+    };
     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(|e| FeelPayError::Internal(format!("JWT: {}", e)))
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| FeelPayError::Internal(format!("JWT: {}", e)))
 }
 
-pub async fn get_profile() -> Result<HttpResponse, FeelPayError> {
-    Ok(HttpResponse::Ok().finish())
+fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
+    req.extensions()
+        .get::<Uuid>()
+        .copied()
+        .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
-pub async fn get_keys() -> Result<HttpResponse, FeelPayError> {
-    Ok(HttpResponse::Ok().finish())
+pub async fn get_profile(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let row: Option<(
+        Uuid,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        i64,
+        i64,
+    )> = sqlx::query_as(
+        r#"
+        SELECT id, name, email, api_key, business_name, webhook_url, status, onboarding_status, daily_limit, monthly_limit
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+
+    let Some((id, name, email, api_key, business_name, webhook_url, status, onboarding_status, daily_limit, monthly_limit)) = row else {
+        return Err(FeelPayError::NotFound("Merchant not found".into()));
+    };
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": id,
+        "name": name,
+        "email": email,
+        "api_key": api_key,
+        "business_name": business_name,
+        "webhook_url": webhook_url,
+        "status": status,
+        "onboarding_status": onboarding_status,
+        "daily_limit": daily_limit,
+        "monthly_limit": monthly_limit
+    })))
 }
 
-pub async fn roll_keys() -> Result<HttpResponse, FeelPayError> {
-    Ok(HttpResponse::Ok().finish())
+pub async fn update_profile(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<crate::models::merchant::UpdateMerchantRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    sqlx::query(
+        r#"
+        UPDATE merchants
+        SET
+            name = COALESCE($2, name),
+            business_name = COALESCE($3, business_name),
+            webhook_url = COALESCE($4, webhook_url),
+            settlement_account = COALESCE($5, settlement_account),
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(&body.name)
+    .bind(&body.business_name)
+    .bind(&body.webhook_url)
+    .bind(&body.settlement_account)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+
+    get_profile(req, state).await
+}
+
+pub async fn get_keys(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT api_key FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+
+    let Some((api_key,)) = row else {
+        return Err(FeelPayError::NotFound("Merchant not found".into()));
+    };
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "api_key": api_key
+    })))
+}
+
+pub async fn roll_keys(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let api_key = format!("fp_live_{}", Uuid::new_v4().simple());
+    let api_secret = format!("fp_secret_{}", Uuid::new_v4().simple());
+
+    let argon2 = Argon2::default();
+    let secret_salt = SaltString::generate(&mut OsRng);
+    let api_secret_hash = argon2
+        .hash_password(api_secret.as_bytes(), &secret_salt)
+        .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
+        .to_string();
+
+    sqlx::query(
+        "UPDATE merchants SET api_key = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .bind(&api_key)
+    .bind(&api_secret_hash)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "api_key": api_key,
+        "api_secret": api_secret,
+        "message": "Store your new API secret safely. It will not be shown again."
+    })))
 }

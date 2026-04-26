@@ -110,6 +110,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             // Healthcheck
             .route("/health", web::get().to(api::health::health_check))
+            .route("/v1/health", web::get().to(api::health::health_check))
             // Merchants API
             .service(
                 web::scope("/v1/merchants")
@@ -120,6 +121,7 @@ async fn main() -> std::io::Result<()> {
                         web::scope("")
                             .wrap(api::auth::JwtMiddleware)
                             .route("/profile", web::get().to(api::merchants::get_profile))
+                            .route("/profile", web::put().to(api::merchants::update_profile))
                             .route("/keys", web::get().to(api::merchants::get_keys))
                             .route("/keys/roll", web::post().to(api::merchants::roll_keys)),
                     ),
@@ -130,9 +132,50 @@ async fn main() -> std::io::Result<()> {
                     // Authenticated via API keys (not JWT)
                     .wrap(api::auth::ApiKeyMiddleware)
                     .route("", web::post().to(api::payments::create_payment))
+                    .route("", web::get().to(api::payments::list_payments))
                     .route("/{id}", web::get().to(api::payments::get_payment))
-                    .route("/{id}/capture", web::post().to(api::payments::capture_payment))
-                    .route("/{id}/refund", web::post().to(api::payments::refund_payment)),
+                    .route(
+                        "/{id}/capture",
+                        web::post().to(api::payments::capture_payment),
+                    )
+                    .route(
+                        "/{id}/refund",
+                        web::post().to(api::payments::refund_payment),
+                    ),
+            )
+            // Disputes API
+            .service(
+                web::scope("/v1/disputes")
+                    .wrap(api::auth::ApiKeyMiddleware)
+                    .route("", web::get().to(api::disputes::list_disputes))
+                    .route("/{id}", web::get().to(api::disputes::get_dispute))
+                    .route(
+                        "/{id}/evidence",
+                        web::post().to(api::disputes::submit_evidence),
+                    )
+                    .route(
+                        "/{id}/accept",
+                        web::post().to(api::disputes::accept_dispute),
+                    ),
+            )
+            // Settlements API
+            .service(
+                web::scope("/v1/settlements")
+                    .wrap(api::auth::ApiKeyMiddleware)
+                    .route("", web::get().to(api::settlements::list_settlements))
+                    .route("/balance", web::get().to(api::settlements::get_balance))
+                    .route("/{id}", web::get().to(api::settlements::get_settlement)),
+            )
+            // Merchant onboarding API (dashboard JWT auth)
+            .service(
+                web::scope("/v1/onboarding")
+                    .wrap(api::auth::JwtMiddleware)
+                    .route("/kyc", web::post().to(api::onboarding::submit_kyc))
+                    .route("/status", web::get().to(api::onboarding::onboarding_status))
+                    .route(
+                        "/bank-account",
+                        web::post().to(api::onboarding::submit_bank_account),
+                    ),
             )
     })
     .workers(worker_count)

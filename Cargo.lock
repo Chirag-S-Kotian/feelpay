@@ -972,6 +972,7 @@ dependencies = [
  "num_cpus",
  "rand 0.8.6",
  "redis",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

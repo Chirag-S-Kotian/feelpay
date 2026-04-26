@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '../hooks/useApi';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -13,22 +14,31 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    // Simulated login - in production this would call the API
-    setTimeout(() => {
-      if (email && password) {
-        localStorage.setItem('feelpay_token', 'mock_jwt_token');
-        localStorage.setItem('feelpay_merchant', JSON.stringify({
-          id: 'merch_001',
-          name: 'Demo Merchant',
-          email: email,
-          tier: 'growth'
-        }));
-        navigate('/');
-      } else {
-        setError('Invalid credentials');
-        setLoading(false);
-      }
-    }, 1000);
+    try {
+      const res = await apiRequest<{
+        token: string;
+        merchant_id: string;
+        name: string;
+        api_key: string;
+      }>('POST', '/v1/merchants/login', { email, password });
+
+      localStorage.setItem('feelpay_token', res.token);
+      localStorage.setItem(
+        'feelpay_merchant',
+        JSON.stringify({
+          id: res.merchant_id,
+          name: res.name,
+          email,
+          api_key: res.api_key,
+        }),
+      );
+
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

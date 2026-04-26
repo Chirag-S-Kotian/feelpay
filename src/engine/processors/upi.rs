@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::engine::processor::{
-    MethodData, PaymentMethodProcessor, ProcessorResponse, TransactionContext, PaymentMethod,
+    MethodData, PaymentMethod, PaymentMethodProcessor, ProcessorResponse, TransactionContext,
 };
 use crate::error::FeelPayError;
 use crate::models::payment_order::PaymentStatus;
@@ -34,7 +34,9 @@ impl UpiProcessor {
             && !handle.is_empty()
             && username.len() <= 50
             && handle.len() <= 50
-            && username.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '_')
+            && username
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '.' || c == '_')
             && handle.chars().all(|c| c.is_alphanumeric())
     }
 
@@ -156,10 +158,7 @@ impl PaymentMethodProcessor for UpiProcessor {
         })
     }
 
-    async fn void(
-        &self,
-        _txn: &TransactionContext,
-    ) -> Result<ProcessorResponse, FeelPayError> {
+    async fn void(&self, _txn: &TransactionContext) -> Result<ProcessorResponse, FeelPayError> {
         Err(FeelPayError::PaymentError(
             "UPI payments cannot be voided. Use refund instead.".into(),
         ))
@@ -184,5 +183,4 @@ impl PaymentMethodProcessor for UpiProcessor {
             metadata: None,
         })
     }
-
 }

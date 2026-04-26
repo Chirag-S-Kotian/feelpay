@@ -29,6 +29,7 @@ pub struct AppConfig {
 
     // Rate limiting
     pub rate_limit_per_minute: u32,
+    pub tenant_isolation_mode: String,
 
     // Mode
     pub payment_mode: String,
@@ -47,17 +48,19 @@ impl AppConfig {
                 .unwrap_or_else(|_| "8080".into())
                 .parse()?,
             database_url: std::env::var("DATABASE_URL")?,
-            redis_url: std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".into()),
+            redis_url: std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://localhost:6379".into()),
             jwt_secret: std::env::var("JWT_SECRET")?,
             jwt_expiry_hours: std::env::var("JWT_EXPIRY_HOURS")
                 .unwrap_or_else(|_| "24".into())
                 .parse()?,
-            master_api_key: std::env::var("MASTER_API_KEY").unwrap_or_else(|_| "fp_master_key".into()),
+            master_api_key: std::env::var("MASTER_API_KEY")
+                .unwrap_or_else(|_| "fp_master_key".into()),
 
-            vault_encryption_key: std::env::var("VAULT_ENCRYPTION_KEY")
-                .unwrap_or_else(|_| "0000000000000000000000000000000000000000000000000000000000000000".into()),
-            vault_key_id: std::env::var("VAULT_KEY_ID")
-                .unwrap_or_else(|_| "key_v1".into()),
+            vault_encryption_key: std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| {
+                "0000000000000000000000000000000000000000000000000000000000000000".into()
+            }),
+            vault_key_id: std::env::var("VAULT_KEY_ID").unwrap_or_else(|_| "key_v1".into()),
 
             upi_psp_id: std::env::var("UPI_PSP_ID").unwrap_or_else(|_| "FEELPAY".into()),
             upi_merchant_vpa: std::env::var("UPI_MERCHANT_VPA")
@@ -82,6 +85,8 @@ impl AppConfig {
             rate_limit_per_minute: std::env::var("RATE_LIMIT_PER_MINUTE")
                 .unwrap_or_else(|_| "60".into())
                 .parse()?,
+            tenant_isolation_mode: std::env::var("TENANT_ISOLATION_MODE")
+                .unwrap_or_else(|_| "shared_table".into()),
 
             payment_mode: std::env::var("PAYMENT_MODE").unwrap_or_else(|_| "test".into()),
             database_provider: std::env::var("DATABASE_PROVIDER").unwrap_or_else(|_| "auto".into()),

@@ -1,7 +1,7 @@
-use sqlx::PgPool;
-use uuid::Uuid;
 use crate::error::FeelPayError;
 use crate::models::ledger::{LedgerAccount, LedgerEntry};
+use sqlx::PgPool;
+use uuid::Uuid;
 
 pub struct LedgerService {
     db: PgPool,
@@ -12,13 +12,17 @@ impl LedgerService {
         Self { db }
     }
 
-    pub async fn get_account(&self, owner_id: Uuid, account_type: &str) -> Result<LedgerAccount, FeelPayError> {
+    pub async fn get_account(
+        &self,
+        owner_id: Uuid,
+        account_type: &str,
+    ) -> Result<LedgerAccount, FeelPayError> {
         sqlx::query_as::<_, LedgerAccount>(
             r#"
             SELECT id, name, account_type, owner_id, currency, balance, is_active, created_at
             FROM ledger_accounts
             WHERE owner_id = $1 AND account_type = $2
-            "#
+            "#,
         )
         .bind(owner_id)
         .bind(account_type)
@@ -27,9 +31,14 @@ impl LedgerService {
         .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))
     }
 
-    pub async fn get_or_create_account(&self, owner_id: Uuid, account_type: &str, name: &str) -> Result<LedgerAccount, FeelPayError> {
+    pub async fn get_or_create_account(
+        &self,
+        owner_id: Uuid,
+        account_type: &str,
+        name: &str,
+    ) -> Result<LedgerAccount, FeelPayError> {
         let existing = self.get_account(owner_id, account_type).await;
-        
+
         if let Ok(account) = existing {
             return Ok(account);
         }
@@ -57,7 +66,11 @@ impl LedgerService {
         fee_amount: i64,
         tx_type: &str,
     ) -> Result<(), FeelPayError> {
-        let mut tx = self.db.begin().await.map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        let mut tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
         // Debit merchant ledger (money owed TO merchant from escrow)
         let merchant_account = sqlx::query_as::<_, LedgerAccount>(
@@ -65,7 +78,7 @@ impl LedgerService {
             SELECT id, name, account_type, owner_id, currency, balance, is_active, created_at
             FROM ledger_accounts
             WHERE owner_id = $1 AND account_type = 'merchant'
-            "#
+            "#,
         )
         .bind(merchant_id)
         .fetch_optional(&mut *tx)
@@ -115,7 +128,9 @@ impl LedgerService {
             .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
         }
 
-        tx.commit().await.map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }

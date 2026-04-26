@@ -101,12 +101,20 @@ function Layout() {
   );
 }
 
+function ProtectedLayout() {
+  const token = localStorage.getItem('feelpay_token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <Layout />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/*" element={<Layout />} />
+        <Route path="/*" element={<ProtectedLayout />} />
       </Routes>
     </BrowserRouter>
   );

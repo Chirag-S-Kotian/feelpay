@@ -62,19 +62,33 @@ impl ResponseError for FeelPayError {
             Self::NotFound(_) => (actix_web::http::StatusCode::NOT_FOUND, "NOT_FOUND"),
             Self::BadRequest(_) => (actix_web::http::StatusCode::BAD_REQUEST, "BAD_REQUEST"),
             Self::Conflict(_) => (actix_web::http::StatusCode::CONFLICT, "CONFLICT"),
-            Self::RateLimited => (actix_web::http::StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
-            Self::PaymentError(_) => (actix_web::http::StatusCode::UNPROCESSABLE_ENTITY, "PAYMENT_ERROR"),
-            Self::ConnectorError(_) => (actix_web::http::StatusCode::BAD_GATEWAY, "CONNECTOR_ERROR"),
-            Self::InvalidStateTransition { .. } => {
-                (actix_web::http::StatusCode::CONFLICT, "INVALID_STATE_TRANSITION")
+            Self::RateLimited => (
+                actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMITED",
+            ),
+            Self::PaymentError(_) => (
+                actix_web::http::StatusCode::UNPROCESSABLE_ENTITY,
+                "PAYMENT_ERROR",
+            ),
+            Self::ConnectorError(_) => {
+                (actix_web::http::StatusCode::BAD_GATEWAY, "CONNECTOR_ERROR")
             }
-            Self::DatabaseError(_) | Self::Database(_) => {
-                (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR")
-            }
-            Self::InternalError(_) | Self::Internal(_) => {
-                (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
-            }
-            Self::IdempotencyConflict => (actix_web::http::StatusCode::CONFLICT, "IDEMPOTENCY_CONFLICT"),
+            Self::InvalidStateTransition { .. } => (
+                actix_web::http::StatusCode::CONFLICT,
+                "INVALID_STATE_TRANSITION",
+            ),
+            Self::DatabaseError(_) | Self::Database(_) => (
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+            ),
+            Self::InternalError(_) | Self::Internal(_) => (
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+            ),
+            Self::IdempotencyConflict => (
+                actix_web::http::StatusCode::CONFLICT,
+                "IDEMPOTENCY_CONFLICT",
+            ),
         };
 
         HttpResponse::build(status).json(ApiError {

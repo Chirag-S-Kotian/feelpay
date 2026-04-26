@@ -1,7 +1,7 @@
-use sqlx::PgPool;
-use uuid::Uuid;
 use crate::error::FeelPayError;
 use crate::models::settlement::Settlement;
+use sqlx::PgPool;
+use uuid::Uuid;
 
 pub struct SettlementService {
     db: PgPool,
@@ -30,7 +30,7 @@ impl SettlementService {
                 WHERE si.transaction_id = po.id
                 AND s.status IN ('pending', 'processing', 'completed')
             )
-            "#
+            "#,
         )
         .bind(merchant_id)
         .fetch_one(&self.db)
@@ -49,7 +49,7 @@ impl SettlementService {
                 id, merchant_id, settlement_date AS "settlement_date!", status, 
                 amount, fee_amount, net_amount, utr_number AS "utr_number?", 
                 transaction_count, processed_at AS "processed_at?", created_at
-            "#
+            "#,
         )
         .bind(merchant_id)
         .bind(settlement_date)
@@ -63,7 +63,10 @@ impl SettlementService {
         Ok(settlement)
     }
 
-    pub async fn get_settlements(&self, merchant_id: Uuid) -> Result<Vec<Settlement>, FeelPayError> {
+    pub async fn get_settlements(
+        &self,
+        merchant_id: Uuid,
+    ) -> Result<Vec<Settlement>, FeelPayError> {
         let settlements = sqlx::query_as::<_, Settlement>(
             r#"
             SELECT 
@@ -73,7 +76,7 @@ impl SettlementService {
             FROM settlements 
             WHERE merchant_id = $1 
             ORDER BY settlement_date DESC
-            "#
+            "#,
         )
         .bind(merchant_id)
         .fetch_all(&self.db)
@@ -91,7 +94,7 @@ impl SettlementService {
                 transaction_count, processed_at AS "processed_at?", created_at
             FROM settlements 
             WHERE id = $1
-            "#
+            "#,
         )
         .bind(id)
         .fetch_optional(&self.db)
@@ -106,7 +109,7 @@ impl SettlementService {
             SELECT COALESCE(SUM(po.amount), 0)
             FROM payment_orders po
             WHERE po.merchant_id = $1 AND po.status = 'captured'
-            "#
+            "#,
         )
         .bind(merchant_id)
         .fetch_one(&self.db)
@@ -118,7 +121,7 @@ impl SettlementService {
             SELECT COALESCE(SUM(po.amount), 0)
             FROM payment_orders po
             WHERE po.merchant_id = $1 AND po.status = 'authorized'
-            "#
+            "#,
         )
         .bind(merchant_id)
         .fetch_one(&self.db)

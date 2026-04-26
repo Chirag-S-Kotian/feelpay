@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '../hooks/useApi';
 
 const steps = [
   { id: 1, name: 'Business Info', description: 'Company details' },
@@ -11,6 +12,9 @@ const steps = [
 export default function Onboarding() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [formData, setFormData] = useState({
     businessName: '',
     businessType: '',
@@ -23,9 +27,37 @@ export default function Onboarding() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    // Submit to API
-    console.log('Submitting KYC:', formData);
-    navigate('/');
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await apiRequest('POST', '/v1/onboarding/kyc', {
+        verification_type: 'pan',
+        document_number: formData.pan,
+      });
+
+      if (formData.gstin) {
+        await apiRequest('POST', '/v1/onboarding/kyc', {
+          verification_type: 'gstin',
+          document_number: formData.gstin,
+        });
+      }
+
+      await apiRequest('POST', '/v1/onboarding/bank-account', {
+        account_holder_name: formData.businessName,
+        account_number: formData.accountNumber,
+        ifsc_code: formData.ifscCode,
+        bank_name: formData.bankName,
+      });
+
+      setSuccess('Onboarding submitted and verified.');
+      setTimeout(() => navigate('/'), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Onboarding failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -49,6 +81,9 @@ export default function Onboarding() {
       </div>
 
       <form onSubmit={handleSubmit} className="form">
+        {error && <div className="error-message">{error}</div>}
+        {success && <div className="env-badge">{success}</div>}
+
         {currentStep === 1 && (
           <div className="form-step">
             <h2>Business Information</h2>
@@ -156,11 +191,13 @@ export default function Onboarding() {
             </button>
           )}
           {currentStep < 4 ? (
-            <button type="button" onClick={() => setCurrentStep(s => s + 1)} className="btn-primary">
+            <button type="button" onClick={() => setCurrentStep(s => s + 1)} className="btn-primary" disabled={loading}>
               Continue
             </button>
           ) : (
-            <button type="submit" className="btn-primary">Submit Application</button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Submitting...' : 'Submit Application'}
+            </button>
           )}
         </div>
       </form>

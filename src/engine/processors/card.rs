@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::engine::processor::{
-    MethodData, PaymentMethodProcessor, ProcessorResponse, TransactionContext, PaymentMethod,
+    MethodData, PaymentMethod, PaymentMethodProcessor, ProcessorResponse, TransactionContext,
 };
 use crate::error::FeelPayError;
 use crate::models::payment_order::PaymentStatus;
@@ -34,7 +34,11 @@ impl CardProcessor {
             .map(|(i, &d)| {
                 if i % 2 == 1 {
                     let doubled = d * 2;
-                    if doubled > 9 { doubled - 9 } else { doubled }
+                    if doubled > 9 {
+                        doubled - 9
+                    } else {
+                        doubled
+                    }
                 } else {
                     d
                 }
@@ -96,7 +100,11 @@ impl PaymentMethodProcessor for CardProcessor {
     ) -> Result<ProcessorResponse, FeelPayError> {
         let (number, token) = match method_data {
             MethodData::Card { number, token, .. } => (number.clone(), token.clone()),
-            _ => return Err(FeelPayError::BadRequest("Expected card payment data".into())),
+            _ => {
+                return Err(FeelPayError::BadRequest(
+                    "Expected card payment data".into(),
+                ))
+            }
         };
 
         // Must have either card number or token
@@ -160,10 +168,7 @@ impl PaymentMethodProcessor for CardProcessor {
         })
     }
 
-    async fn void(
-        &self,
-        _txn: &TransactionContext,
-    ) -> Result<ProcessorResponse, FeelPayError> {
+    async fn void(&self, _txn: &TransactionContext) -> Result<ProcessorResponse, FeelPayError> {
         Ok(ProcessorResponse {
             status: PaymentStatus::Voided,
             gateway_reference: Some(format!("fp_void_{}", Uuid::new_v4().simple())),
@@ -190,5 +195,4 @@ impl PaymentMethodProcessor for CardProcessor {
             metadata: None,
         })
     }
-
 }

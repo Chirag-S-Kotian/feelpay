@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Search, Download } from 'lucide-react';
+import { apiRequest } from '../hooks/useApi';
 
 interface Settlement {
   id: string;
-  date: string;
+  date: string | null;
   status: string;
   amount: number;
   fee: number;
@@ -16,24 +17,59 @@ export default function Settlements() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [balance, setBalance] = useState<{ available: number; pending: number }>({ available: 0, pending: 0 });
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    // Simulated data
-    setSettlements([
-      { id: 'set_001', date: '2026-04-25', status: 'completed', amount: 125000, fee: 2500, tax: 450, net: 122050, utr: 'UTR123456789' },
-      { id: 'set_002', date: '2026-04-23', status: 'completed', amount: 89000, fee: 1780, tax: 320, net: 86900, utr: 'UTR123456790' },
-      { id: 'set_003', date: '2026-04-21', status: 'completed', amount: 156000, fee: 3120, tax: 562, net: 152318, utr: 'UTR123456791' },
-      { id: 'set_004', date: '2026-04-26', status: 'pending', amount: 45000, fee: 900, tax: 162, net: 43938, utr: null },
-    ]);
+    const load = async () => {
+      try {
+        const [settlementRes, balanceRes] = await Promise.all([
+          apiRequest<{
+            settlements: Array<{
+              id: string;
+              settlement_date: string | null;
+              status: string;
+              amount: number;
+              fee_amount: number;
+              tax_amount: number;
+              net_amount: number;
+              utr: string | null;
+            }>;
+          }>('GET', '/v1/settlements', undefined, { useApiKey: true }),
+          apiRequest<{ available: number; pending: number }>('GET', '/v1/settlements/balance', undefined, { useApiKey: true }),
+        ]);
 
-    setBalance({ available: 245000, pending: 45000 });
+        setSettlements(
+          settlementRes.settlements.map((s) => ({
+            id: s.id,
+            date: s.settlement_date,
+            status: s.status,
+            amount: s.amount,
+            fee: s.fee_amount,
+            tax: s.tax_amount,
+            net: s.net_amount,
+            utr: s.utr,
+          })),
+        );
+        setBalance(balanceRes);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load settlements');
+      }
+    };
+    load();
   }, []);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
 
-  const filteredSettlements = filter === 'all' 
-    ? settlements 
-    : settlements.filter(s => s.status === filter);
+  const filteredSettlements = settlements.filter((s) => {
+    const statusMatch = filter === 'all' || s.status === filter;
+    const q = search.trim().toLowerCase();
+    const searchMatch =
+      !q ||
+      s.id.toLowerCase().includes(q) ||
+      (s.utr || '').toLowerCase().includes(q);
+    return statusMatch && searchMatch;
+  });
 
   return (
     <div className="page">
@@ -58,7 +94,7 @@ export default function Settlements() {
       <div className="filter-bar">
         <div className="search-box">
           <Search size={16} />
-          <input type="text" placeholder="Search by ID or UTR..." />
+          <input type="text" placeholder="Search by ID or UTR..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <select value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value="all">All Status</option>
@@ -69,6 +105,7 @@ export default function Settlements() {
       </div>
 
       <div className="table-card">
+        {error && <div className="error-message">{error}</div>}
         <table>
           <thead>
             <tr>
@@ -86,7 +123,7 @@ export default function Settlements() {
             {filteredSettlements.map((settlement) => (
               <tr key={settlement.id}>
                 <td className="mono">{settlement.id}</td>
-                <td>{settlement.date}</td>
+                <td>{settlement.date || '-'}</td>
                 <td>
                   <span className={`status-badge ${settlement.status}`}>
                     {settlement.status}

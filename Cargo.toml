@@ -74,6 +74,7 @@ num_cpus = "1"
 aes-gcm = "0.10.3"
 zeroize = "1.8.2"
 futures-util = "0.3.32"
+regex = "1"
 
 [dev-dependencies]
 actix-test = "0.1"

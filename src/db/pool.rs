@@ -1,6 +1,6 @@
-use std::str::FromStr;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::PgPool;
+use std::str::FromStr;
 
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let cleaned_url = database_url
@@ -23,9 +23,7 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .await?;
 
     // Run migrations
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
     tracing::info!("Database pool created and migrations applied");
     Ok(pool)

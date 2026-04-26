@@ -47,7 +47,10 @@ impl PaymentStatus {
             "voided" => Ok(Self::Voided),
             "refunded" => Ok(Self::Refunded),
             "partially_refunded" => Ok(Self::PartiallyRefunded),
-            _ => Err(FeelPayError::BadRequest(format!("Invalid payment status: {}", s))),
+            _ => Err(FeelPayError::BadRequest(format!(
+                "Invalid payment status: {}",
+                s
+            ))),
         }
     }
 
@@ -57,7 +60,10 @@ impl PaymentStatus {
             Self::Created => matches!(target, Self::Processing | Self::Failed),
             Self::Processing => matches!(target, Self::Authorized | Self::Captured | Self::Failed),
             Self::Authorized => matches!(target, Self::Captured | Self::Voided | Self::Failed),
-            Self::Captured => matches!(target, Self::Settled | Self::Refunded | Self::PartiallyRefunded),
+            Self::Captured => matches!(
+                target,
+                Self::Settled | Self::Refunded | Self::PartiallyRefunded
+            ),
             Self::Settled => matches!(target, Self::Refunded | Self::PartiallyRefunded),
             Self::PartiallyRefunded => matches!(target, Self::Refunded),
             // Terminal states
@@ -75,7 +81,10 @@ impl PaymentStatus {
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Failed | Self::Voided | Self::Refunded | Self::Settled)
+        matches!(
+            self,
+            Self::Failed | Self::Voided | Self::Refunded | Self::Settled
+        )
     }
 }
 
@@ -105,7 +114,10 @@ impl PaymentMethod {
             "card" => Ok(Self::Card),
             "net_banking" => Ok(Self::NetBanking),
             "wallet" => Ok(Self::Wallet),
-            _ => Err(FeelPayError::BadRequest(format!("Invalid payment method: {}", s))),
+            _ => Err(FeelPayError::BadRequest(format!(
+                "Invalid payment method: {}",
+                s
+            ))),
         }
     }
 }
@@ -134,7 +146,7 @@ pub struct PaymentOrder {
     pub id: Uuid,
     pub merchant_id: Uuid,
     pub order_id: String,
-    pub amount: i64,         // in paise
+    pub amount: i64, // in paise
     pub currency: String,
     pub status: PaymentStatus,
     pub payment_method: Option<String>,
@@ -162,7 +174,7 @@ pub struct PaymentOrder {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePaymentRequest {
-    pub amount: i64,             // in paise
+    pub amount: i64,              // in paise
     pub currency: Option<String>, // default INR
     pub payment_method: Option<String>,
     pub payment_method_data: Option<serde_json::Value>,

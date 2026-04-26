@@ -1,8 +1,11 @@
-pub mod payments;
-pub mod merchants;
-pub mod health;
-pub mod webhooks;
 pub mod auth;
+pub mod disputes;
+pub mod health;
+pub mod merchants;
+pub mod onboarding;
+pub mod payments;
+pub mod settlements;
+pub mod webhooks;
 
 use actix_web::web;
 
@@ -12,6 +15,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(health::configure)
             .configure(merchants::configure)
             .configure(payments::configure)
-            .configure(webhooks::configure)
+            .configure(disputes::configure)
+            .configure(onboarding::configure)
+            .configure(settlements::configure)
+            .configure(webhooks::configure),
     );
 }

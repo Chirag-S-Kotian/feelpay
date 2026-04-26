@@ -30,7 +30,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_payments))
             .route("/{payment_id}", web::get().to(get_payment))
             .route("/{payment_id}/capture", web::post().to(capture_payment))
-            .route("/{payment_id}/refund", web::post().to(refund_payment))
+            .route("/{payment_id}/refund", web::post().to(refund_payment)),
     );
 }
 
@@ -172,9 +172,11 @@ pub async fn create_payment(
             return Ok(HttpResponse::build(status).json(body));
         }
     }
-    
+
     if req_data.amount <= 0 {
-        return Err(FeelPayError::BadRequest("Amount must be greater than 0".into()));
+        return Err(FeelPayError::BadRequest(
+            "Amount must be greater than 0".into(),
+        ));
     }
 
     // 1. Create Order Record
@@ -224,16 +226,26 @@ pub async fn create_payment(
 
     // 2. Vault Card if requested
     if req_data.vault_card {
-        if let MethodData::Card { number: Some(num), expiry_month: Some(m), expiry_year: Some(y), holder_name, .. } = &final_method_data {
+        if let MethodData::Card {
+            number: Some(num),
+            expiry_month: Some(m),
+            expiry_year: Some(y),
+            holder_name,
+            ..
+        } = &final_method_data
+        {
             tracing::info!(merchant_id = %merchant_id, "Vaulting card for new payment");
-            let vaulted = state.vault.vault_card(
-                merchant_id,
-                None,
-                num.clone(),
-                *m as i32,
-                *y as i32,
-                holder_name.clone(),
-            ).await?;
+            let vaulted = state
+                .vault
+                .vault_card(
+                    merchant_id,
+                    None,
+                    num.clone(),
+                    *m as i32,
+                    *y as i32,
+                    holder_name.clone(),
+                )
+                .await?;
 
             // Replace raw card with tokenized card data for processing
             final_method_data = MethodData::Card {
@@ -252,7 +264,13 @@ pub async fn create_payment(
 
     // 3. Process Payment via Engine
     let engine = state.payment_engine.read().await;
-    let proc_result = engine.authorize(&txn_ctx, &final_method_data, req_data.processor_override.as_deref()).await;
+    let proc_result = engine
+        .authorize(
+            &txn_ctx,
+            &final_method_data,
+            req_data.processor_override.as_deref(),
+        )
+        .await;
 
     // 4. Update Order Status
     match proc_result {
@@ -301,8 +319,16 @@ pub async fn create_payment(
     let body = serde_json::to_value(&order)
         .map_err(|e| FeelPayError::InternalError(format!("Serialize response failed: {}", e)))?;
     if let Some(key) = idempotency_key.as_deref() {
-        store_idempotency_response(&state.db, merchant_id, key, "payment", &req_hash, 200, &body)
-            .await?;
+        store_idempotency_response(
+            &state.db,
+            merchant_id,
+            key,
+            "payment",
+            &req_hash,
+            200,
+            &body,
+        )
+        .await?;
     }
 
     Ok(HttpResponse::Ok().json(body))
@@ -407,7 +433,9 @@ pub async fn capture_payment(
     .ok_or_else(|| FeelPayError::NotFound("Payment not found".into()))?;
 
     if order.status != PaymentStatus::Authorized {
-        return Err(FeelPayError::BadRequest("Payment is not in an authorized state".into()));
+        return Err(FeelPayError::BadRequest(
+            "Payment is not in an authorized state".into(),
+        ));
     }
 
     let txn_ctx = TransactionContext {
@@ -425,19 +453,19 @@ pub async fn capture_payment(
     let engine = state.payment_engine.read().await;
     // We assume default or stored processor if we had one. In a real system, we'd store the processor name on the order.
     // For now, simulate using "simulator"
-    let proc_result = engine.capture(&txn_ctx, payload.amount, "simulator").await?;
+    let proc_result = engine
+        .capture(&txn_ctx, payload.amount, "simulator")
+        .await?;
 
     order.status = proc_result.status;
-    
-    sqlx::query(
-        r#"UPDATE payment_orders SET status = $1, updated_at = $2 WHERE id = $3"#,
-    )
-    .bind(order.status.as_str())
-    .bind(chrono::Utc::now())
-    .bind(order.id)
-    .execute(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+
+    sqlx::query(r#"UPDATE payment_orders SET status = $1, updated_at = $2 WHERE id = $3"#)
+        .bind(order.status.as_str())
+        .bind(chrono::Utc::now())
+        .bind(order.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(order))
 }
@@ -485,7 +513,10 @@ pub async fn refund_payment(
 
     if !matches!(
         order.status,
-        PaymentStatus::Captured | PaymentStatus::Settled | PaymentStatus::PartiallyRefunded | PaymentStatus::Refunded
+        PaymentStatus::Captured
+            | PaymentStatus::Settled
+            | PaymentStatus::PartiallyRefunded
+            | PaymentStatus::Refunded
     ) {
         return Err(FeelPayError::BadRequest(
             "Refund allowed only for captured/settled payments".into(),
@@ -494,7 +525,9 @@ pub async fn refund_payment(
 
     let remaining = order.amount - order.refunded_amount;
     if remaining <= 0 {
-        return Err(FeelPayError::BadRequest("Payment already fully refunded".into()));
+        return Err(FeelPayError::BadRequest(
+            "Payment already fully refunded".into(),
+        ));
     }
     let refund_amount = payload.amount.min(remaining);
     if refund_amount <= 0 {
@@ -513,7 +546,10 @@ pub async fn refund_payment(
         description: order.description.clone(),
     };
 
-    let connector = order.connector.clone().unwrap_or_else(|| "simulator".to_string());
+    let connector = order
+        .connector
+        .clone()
+        .unwrap_or_else(|| "simulator".to_string());
     let engine = state.payment_engine.read().await;
     let _ = engine.refund(&txn_ctx, refund_amount, &connector).await?;
 

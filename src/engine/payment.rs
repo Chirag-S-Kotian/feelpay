@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::engine::pipeline::TransactionPipeline;
 use crate::engine::processor::{
     MethodData, PaymentMethodProcessor, ProcessorResponse, TransactionContext,
 };
@@ -10,6 +11,7 @@ use crate::error::FeelPayError;
 pub struct PaymentEngine {
     processors: HashMap<String, Arc<dyn PaymentMethodProcessor>>,
     default_processor: String,
+    pipeline: TransactionPipeline,
 }
 
 impl PaymentEngine {
@@ -17,6 +19,7 @@ impl PaymentEngine {
         Self {
             processors: HashMap::new(),
             default_processor: "simulator".to_string(),
+            pipeline: TransactionPipeline::default(),
         }
     }
 
@@ -71,6 +74,7 @@ impl PaymentEngine {
             .unwrap_or_else(|| self.resolve_processor(method_data));
 
         let processor = self.get_processor(&proc_name)?;
+        self.pipeline.validate(txn, method_data)?;
 
         tracing::info!(
             order_id = %txn.order_id,
@@ -79,7 +83,10 @@ impl PaymentEngine {
             "Authorizing payment"
         );
 
-        let result = processor.authorize(txn, method_data).await;
+        let result = self
+            .pipeline
+            .execute_authorize(processor, txn, method_data)
+            .await;
 
         match &result {
             Ok(resp) => {
@@ -131,6 +138,4 @@ impl PaymentEngine {
         tracing::info!(order_id = %txn.order_id, amount = amount, "Processing refund");
         processor.refund(txn, amount).await
     }
-
-
 }
