@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
@@ -10,6 +10,46 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const impersonateToken = params.get('token');
+
+    if (impersonateToken) {
+      const handleImpersonate = async () => {
+        setLoading(true);
+        setError('');
+        try {
+          // Admin server already generated a token, but we need merchant metadata
+          // We can fetch profile with this token
+          const res = await apiRequest<{
+            id: string;
+            name: string;
+            email: string;
+            api_key: string;
+          }>('GET', '/v1/merchants/profile', null, impersonateToken);
+
+          localStorage.setItem('feelpay_token', impersonateToken);
+          localStorage.setItem(
+            'feelpay_merchant',
+            JSON.stringify({
+              id: res.id,
+              name: res.name,
+              email: res.email,
+              api_key: res.api_key,
+            }),
+          );
+
+          navigate('/');
+        } catch (err) {
+          setError('Impersonation failed: Session invalid or expired');
+        } finally {
+          setLoading(false);
+        }
+      };
+      handleImpersonate();
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

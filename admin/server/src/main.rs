@@ -107,9 +107,59 @@ async fn main() -> std::io::Result<()> {
                     .wrap(AdminAuthMiddleware)
                     .route("/stats", web::get().to(get_platform_stats))
                     .route("/merchants", web::get().to(list_merchants))
+                    .route("/merchants/{id}/impersonate", web::post().to(impersonate_merchant))
             )
     })
     .bind("127.0.0.1:8081")?
     .run()
     .await
+}
+
+async fn impersonate_merchant(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let merchant_id = path.into_inner();
+    let row = sqlx::query!(
+        "SELECT id, name FROM merchants WHERE id = $1",
+        merchant_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match row {
+        Ok(Some(m)) => {
+            let token = match generate_jwt(&m.id.to_string(), &m.name) {
+                Ok(t) => t,
+                Err(_) => return HttpResponse::InternalServerError().finish(),
+            };
+            HttpResponse::Ok().json(serde_json::json!({ "token": token }))
+        }
+        Ok(None) => HttpResponse::NotFound().finish(),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
+
+fn generate_jwt(merchant_id: &str, name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    use jsonwebtoken::{encode, EncodingKey, Header};
+    #[derive(serde::Serialize)]
+    struct Claims {
+        sub: String,
+        name: String,
+        exp: usize,
+        iat: usize,
+    }
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = Claims {
+        sub: merchant_id.into(),
+        name: name.into(),
+        exp: now + 86400,
+        iat: now,
+    };
+    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    ).map_err(|e| e.into())
 }

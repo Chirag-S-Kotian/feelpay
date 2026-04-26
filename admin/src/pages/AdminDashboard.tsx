@@ -20,6 +20,7 @@ export interface PlatformStats {
 import {
   Activity,
   ArrowUpRight,
+  ExternalLink,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -31,7 +32,6 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Cell,
 } from 'recharts';
 
 
@@ -40,6 +40,21 @@ export default function AdminDashboard() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [impersonating, setImpersonating] = useState<string | null>(null);
+
+  const handleImpersonate = async (merchantId: string) => {
+    setImpersonating(merchantId);
+    try {
+      const res = await apiRequest<{ token: string }>('POST', `/admin/merchants/${merchantId}/impersonate`);
+      // Open dashboard in new tab with token
+      const dashboardUrl = `http://localhost:5173/login?token=${res.token}`;
+      window.open(dashboardUrl, '_blank');
+    } catch (err) {
+      alert('Failed to impersonate merchant');
+    } finally {
+      setImpersonating(null);
+    }
+  };
 
   useEffect(() => {
     async function fetchData() {
@@ -196,7 +211,22 @@ export default function AdminDashboard() {
                 <td>{m.email}</td>
                 <td>{m.business_type || 'N/A'}</td>
                 <td>{new Date(m.created_at).toLocaleDateString()}</td>
-                <td><button className="btn-primary" style={{ padding: '4px 10px', fontSize: '12px' }}>Review</button></td>
+                <td>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }}>
+                      Review
+                    </button>
+                    <button 
+                      className="btn-primary" 
+                      style={{ padding: '4px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      onClick={() => handleImpersonate(m.id)}
+                      disabled={impersonating === m.id}
+                    >
+                      <ExternalLink size={12} />
+                      {impersonating === m.id ? 'Loading...' : 'View'}
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {merchants.length === 0 && (

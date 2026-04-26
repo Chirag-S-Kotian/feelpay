@@ -21,13 +21,14 @@ export async function apiRequest<T = unknown>(
   method: ApiMethod,
   path: string,
   body?: unknown,
+  customToken?: string | null,
   opts?: { useApiKey?: boolean; idempotencyKey?: string },
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
-  const token = getToken();
+  const token = customToken || getToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
