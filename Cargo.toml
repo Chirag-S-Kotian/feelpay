@@ -78,6 +78,7 @@ regex = "1"
 rust_decimal = { version = "1.41.0", features = ["db-postgres", "serde-float"] }
 rust_decimal_macros = "1.40.0"
 futures = "0.3.32"
+totp-rs = { version = "5.7.1", features = ["qr"] }
 
 [dev-dependencies]
 actix-test = "0.1"

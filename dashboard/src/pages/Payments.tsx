@@ -70,7 +70,7 @@ export default function Payments() {
           <tbody>
             {filtered.map(p => (
               <tr key={p.id}>
-                <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-light)' }}>{p.id}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-soft)' }}>{p.id}</td>
                 <td style={{ fontWeight: 500 }}>{p.order}</td>
                 <td style={{ color: 'var(--fp-text-muted)', fontSize: 13 }}>{p.email}</td>
                 <td style={{ fontWeight: 600 }}>₹{p.amount.toLocaleString('en-IN')}</td>

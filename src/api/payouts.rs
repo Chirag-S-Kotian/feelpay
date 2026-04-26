@@ -1,7 +1,7 @@
 use actix_web::{get, post, web, HttpResponse, Responder};
 use uuid::Uuid;
 use crate::models::payout::{Payout, BankAccount, CreatePayoutRequest, CreateBankAccountRequest};
-use crate::middleware::auth::Claims;
+use crate::models::user::Claims;
 use crate::engine::payout;
 use sqlx::PgPool;
 
@@ -33,11 +33,11 @@ async fn request_payout(
     };
 
     // Verify bank account belongs to merchant
-    let account_exists = sqlx::query!(
-        "SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2",
-        bank_account_id,
-        merchant_id
+    let account_exists = sqlx::query(
+        "SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2"
     )
+    .bind(bank_account_id)
+    .bind(merchant_id)
     .fetch_optional(pool.get_ref())
     .await;
 
@@ -163,11 +163,11 @@ async fn verify_account(
     };
 
     // Verify ownership
-    let account_exists = sqlx::query!(
-        "SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2",
-        bank_account_id,
-        merchant_id
+    let account_exists = sqlx::query(
+        "SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2"
     )
+    .bind(bank_account_id)
+    .bind(merchant_id)
     .fetch_optional(pool.get_ref())
     .await;
 

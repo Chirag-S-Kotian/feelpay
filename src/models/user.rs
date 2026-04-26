@@ -47,3 +47,33 @@ pub struct Claims {
     pub exp: usize,
     pub iat: usize,
 }
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Role {
+    pub id: Uuid,
+    pub tenant_id: Option<Uuid>,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Permission {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct RolePermission {
+    pub role_id: Uuid,
+    pub permission_id: Uuid,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserRole {
+    pub user_id: Uuid,
+    pub role_id: Uuid,
+}

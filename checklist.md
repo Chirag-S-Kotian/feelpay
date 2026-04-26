@@ -27,26 +27,26 @@
 
 > All tables: UUID primary key, created_at, updated_at, deleted_at (soft delete). All money in paise (integer, never float).
 
-- [ ] `tenants` — white-label clients
-- [x] `merchants` — businesses under a tenant
-- [x] `merchant_kyc` — KYC docs + verification status
-- [ ] `users` — all system users
-- [ ] `roles` + `permissions` + `user_roles`
-- [x] `api_keys` — hashed, live + test per merchant
-- [x] `webhooks` + `webhook_deliveries`
+- [x] `tenants` — white-label clients (L5)
+- [x] `merchants` — businesses under a tenant (L31)
+- [x] `merchant_kyc` — KYC docs + verification status (L40)
+- [x] `users` — all system users (L22)
+- [x] `roles` + `permissions` + `user_roles` (L41, L50, L57, L63)
+- [x] `api_keys` — hashed, live + test per merchant (L73)
+- [x] `webhooks` + `webhook_deliveries` (L113)
 - [ ] `payment_links`
-- [x] `transactions` — partitioned monthly
+- [x] `transactions` — partitioned monthly (L204)
 - [ ] `transaction_events` — append-only state log
-- [x] `refunds`
-- [x] `disputes`
-- [x] `settlements` + `settlement_transactions`
-- [ ] `payouts`
-- [ ] `bank_accounts` + `vpa_accounts`
-- [ ] `subscriptions` + `subscription_invoices`
+- [x] `refunds` (L231)
+- [x] `disputes` (L250)
+- [x] `settlements` + `settlement_transactions` (L270, L291)
+- [/] `payouts` (L87 - Missing updated_at)
+- [/] `bank_accounts` + `vpa_accounts` (L107 - Missing updated_at)
+- [x] `subscriptions` + `subscription_invoices` (L122, L136)
 - [ ] `customers` — tokenized vault
 - [ ] `saved_payment_methods`
-- [ ] `fee_rules`
-- [x] `audit_logs` — immutable, append-only
+- [x] `fee_rules` (L149)
+- [x] `audit_logs` — immutable, append-only (L164)
 - [ ] `notification_queue`
 - [ ] `report_jobs`
 - [x] Indexes on: merchant_id, status, created_at, gateway_reference_id

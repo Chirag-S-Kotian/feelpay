@@ -148,7 +148,7 @@ async fn main() -> std::io::Result<()> {
                     // Protected merchant routes
                     .service(
                         web::scope("")
-                            .wrap(api::auth::JwtMiddleware)
+                            .wrap(crate::middleware::auth::JwtMiddleware)
                             .route("/profile", web::get().to(api::merchants::get_profile))
                             .route("/profile", web::put().to(api::merchants::update_profile))
                             .route("/keys", web::get().to(api::merchants::get_keys))
@@ -158,8 +158,8 @@ async fn main() -> std::io::Result<()> {
             // Payments API
             .service(
                 web::scope("/v1/payments")
-                    // Authenticated via API keys (not JWT)
-                    .wrap(api::auth::ApiKeyMiddleware)
+                    // Authenticated via API keys or JWT (for dashboard)
+                    .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::post().to(api::payments::create_payment))
                     .route("", web::get().to(api::payments::list_payments))
                     .route("/{id}", web::get().to(api::payments::get_payment))
@@ -175,7 +175,7 @@ async fn main() -> std::io::Result<()> {
             // Disputes API
             .service(
                 web::scope("/v1/disputes")
-                    .wrap(api::auth::ApiKeyMiddleware)
+                    .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::get().to(api::disputes::list_disputes))
                     .route("/{id}", web::get().to(api::disputes::get_dispute))
                     .route(
@@ -190,7 +190,7 @@ async fn main() -> std::io::Result<()> {
             // Settlements API
             .service(
                 web::scope("/v1/settlements")
-                    .wrap(api::auth::ApiKeyMiddleware)
+                    .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::get().to(api::settlements::list_settlements))
                     .route("/balance", web::get().to(api::settlements::get_balance))
                     .route("/{id}", web::get().to(api::settlements::get_settlement)),
@@ -198,7 +198,7 @@ async fn main() -> std::io::Result<()> {
             // Merchant onboarding API (dashboard JWT auth)
             .service(
                 web::scope("/v1/onboarding")
-                    .wrap(api::auth::JwtMiddleware)
+                    .wrap(crate::middleware::auth::JwtMiddleware)
                     .route("/kyc", web::post().to(api::onboarding::submit_kyc))
                     .route("/status", web::get().to(api::onboarding::onboarding_status))
                     .route(
@@ -209,7 +209,7 @@ async fn main() -> std::io::Result<()> {
             // Analytics API
             .service(
                 web::scope("/v1/analytics")
-                    .wrap(api::auth::ApiKeyMiddleware)
+                    .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("/summary", web::get().to(api::analytics::get_summary))
                     .route("/volume", web::get().to(api::analytics::get_volume_chart))
                     .route("/top-customers", web::get().to(api::analytics::get_top_customers)),
@@ -217,7 +217,7 @@ async fn main() -> std::io::Result<()> {
             // Developers API (API key info)
             .service(
                 web::scope("/v1/developers")
-                    .wrap(api::auth::JwtMiddleware)
+                    .wrap(crate::middleware::auth::JwtMiddleware)
                     .route("/keys", web::get().to(api::merchants::get_keys))
                     .route("/webhooks", web::get().to(api::analytics::get_webhook_events)),
             )

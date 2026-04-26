@@ -61,8 +61,8 @@ struct IdempotencyRecord {
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
     req.extensions()
-        .get::<Uuid>()
-        .copied()
+        .get::<crate::middleware::auth::MerchantId>()
+        .map(|m| m.0)
         .or_else(|| {
             req.headers()
                 .get("x-merchant-id")

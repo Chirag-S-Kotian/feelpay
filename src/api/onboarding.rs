@@ -32,8 +32,8 @@ pub struct BankAccountRequest {
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
     req.extensions()
-        .get::<Uuid>()
-        .copied()
+        .get::<crate::middleware::auth::MerchantId>()
+        .map(|m| m.0)
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 

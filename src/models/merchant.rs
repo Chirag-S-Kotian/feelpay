@@ -21,6 +21,9 @@ pub struct Merchant {
     pub business_type: Option<String>,
     pub settlement_account: Option<serde_json::Value>,
     pub metadata: Option<serde_json::Value>,
+    pub mfa_enabled: bool,
+    pub mfa_secret: Option<String>,
+    pub last_login_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

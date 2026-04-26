@@ -4,3 +4,5 @@ pub mod pipeline;
 pub mod vault;
 pub mod fees;
 pub mod payout;
+pub mod processors;
+pub mod services;

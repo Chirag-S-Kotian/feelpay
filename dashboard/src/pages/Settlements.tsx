@@ -35,8 +35,8 @@ export default function Settlements() {
               net_amount: number;
               utr: string | null;
             }>;
-          }>('GET', '/v1/settlements', undefined, { useApiKey: true }),
-          apiRequest<{ available: number; pending: number }>('GET', '/v1/settlements/balance', undefined, { useApiKey: true }),
+          }>('GET', '/v1/settlements', undefined, null, { useApiKey: true }),
+          apiRequest<{ available: number; pending: number }>('GET', '/v1/settlements/balance', undefined, null, { useApiKey: true }),
         ]);
 
         setSettlements(

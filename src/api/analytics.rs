@@ -7,8 +7,8 @@ use rust_decimal::Decimal;
 /// Extract merchant_id from request extensions (inserted by ApiKeyMiddleware or JwtMiddleware)
 fn extract_merchant_id(req: &HttpRequest) -> Result<Uuid, HttpResponse> {
     req.extensions()
-        .get::<Uuid>()
-        .copied()
+        .get::<crate::middleware::auth::MerchantId>()
+        .map(|m| m.0)
         .ok_or_else(|| {
             HttpResponse::Unauthorized().json(serde_json::json!({
                 "error": { "code": "unauthorized", "message": "Missing merchant identity" }

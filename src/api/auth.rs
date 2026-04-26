@@ -5,6 +5,7 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::models::user::{User, Claims};
+use crate::engine::services::auth::MfaService;
 use sqlx::PgPool;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -12,6 +13,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/auth")
             .service(login)
             .service(register)
+            .service(mfa_setup)
+            .service(mfa_confirm)
+            .service(mfa_verify)
     );
 }
 
@@ -23,11 +27,38 @@ pub struct LoginRequest {
 
 #[derive(Serialize)]
 pub struct AuthResponse {
-    pub token: String,
-    pub user_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub merchant_id: Option<Uuid>,
-    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mfa_required: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mfa_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct MfaSetupRequest {
+    pub email: String,
+}
+
+#[derive(Serialize)]
+pub struct MfaSetupResponse {
+    pub secret: String,
+    pub qr_code_url: String,
+}
+
+#[derive(Deserialize)]
+pub struct MfaVerifyRequest {
+    pub code: String,
+    pub mfa_token: Option<String>, // Used for login step 2
+    pub secret: Option<String>,    // Used for initial setup
 }
 
 #[post("/login")]
@@ -55,13 +86,28 @@ async fn login(
                 .await
                 .unwrap_or(("user".to_string(),));
 
+                if u.mfa_enabled {
+                    let mfa_token = generate_jwt_with_exp(&u, "mfa_pending", 300); // 5 mins
+                    return HttpResponse::Ok().json(AuthResponse {
+                        token: None,
+                        user_id: Some(u.id),
+                        tenant_id: u.tenant_id,
+                        merchant_id: u.merchant_id,
+                        role: None,
+                        mfa_required: Some(true),
+                        mfa_token: Some(mfa_token),
+                    });
+                }
+
                 let token = generate_jwt(&u, &role.0);
                 HttpResponse::Ok().json(AuthResponse {
-                    token,
-                    user_id: u.id,
+                    token: Some(token),
+                    user_id: Some(u.id),
                     tenant_id: u.tenant_id,
                     merchant_id: u.merchant_id,
-                    role: role.0,
+                    role: Some(role.0),
+                    mfa_required: Some(false),
+                    mfa_token: None,
                 })
             } else {
                 HttpResponse::Unauthorized().body("Invalid credentials")
@@ -69,6 +115,132 @@ async fn login(
         }
         Ok(None) => HttpResponse::Unauthorized().body("Invalid credentials"),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[post("/mfa/setup")]
+async fn mfa_setup(
+    pool: web::Data<PgPool>,
+    req: web::Json<MfaSetupRequest>,
+) -> impl Responder {
+    let secret = MfaService::generate_secret();
+    match MfaService::generate_qr_code(&req.email, &secret) {
+        Ok(qr_code_url) => HttpResponse::Ok().json(MfaSetupResponse {
+            secret,
+            qr_code_url,
+        }),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[post("/mfa/confirm")]
+async fn mfa_confirm(
+    pool: web::Data<PgPool>,
+    req: web::Json<MfaVerifyRequest>,
+    // Need user_id from auth middleware or pass it in req
+) -> impl Responder {
+    // In a real app, we'd get user_id from the authenticated session
+    // For now, we'll assume the request has it or we use a temp token
+    if let (Some(secret), Some(mfa_token)) = (&req.secret, &req.mfa_token) {
+        let secret_key = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let token_data = jsonwebtoken::decode::<Claims>(
+            mfa_token,
+            &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
+            &jsonwebtoken::Validation::default(),
+        );
+
+        match token_data {
+            Ok(data) => {
+                let user_id = Uuid::parse_str(&data.claims.sub).unwrap();
+                match MfaService::verify_token(secret, &req.code) {
+                    Ok(true) => {
+                        let result = sqlx::query(
+                            "UPDATE users SET mfa_enabled = true, mfa_secret = $2 WHERE id = $1"
+                        )
+                        .bind(user_id)
+                        .bind(secret)
+                        .execute(pool.get_ref())
+                        .await;
+
+                        match result {
+                            Ok(_) => HttpResponse::Ok().body("MFA enabled successfully"),
+                            Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+                        }
+                    }
+                    Ok(false) => HttpResponse::BadRequest().body("Invalid code"),
+                    Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+                }
+            }
+            Err(_) => HttpResponse::Unauthorized().body("Invalid session token"),
+        }
+    } else {
+        HttpResponse::BadRequest().body("Missing secret or mfa_token")
+    }
+}
+#[post("/mfa/verify")]
+async fn mfa_verify(
+    pool: web::Data<PgPool>,
+    req: web::Json<MfaVerifyRequest>,
+) -> impl Responder {
+    if let Some(mfa_token) = &req.mfa_token {
+        // Login step 2 verification
+        let secret_key = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let token_data = jsonwebtoken::decode::<Claims>(
+            mfa_token,
+            &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
+            &jsonwebtoken::Validation::default(),
+        );
+
+        match token_data {
+            Ok(data) => {
+                if data.claims.role != "mfa_pending" {
+                    return HttpResponse::Unauthorized().body("Invalid MFA token role");
+                }
+
+                let user_id = Uuid::parse_str(&data.claims.sub).unwrap();
+                let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+                    .bind(user_id)
+                    .fetch_one(pool.get_ref())
+                    .await;
+
+                match user {
+                    Ok(u) => {
+                        if let Some(mfa_secret) = &u.mfa_secret {
+                            match MfaService::verify_token(mfa_secret, &req.code) {
+                                Ok(true) => {
+                                    let role: (String,) = sqlx::query_as(
+                                        "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1 LIMIT 1"
+                                    )
+                                    .bind(u.id)
+                                    .fetch_one(pool.get_ref())
+                                    .await
+                                    .unwrap_or(("user".to_string(),));
+
+                                    let token = generate_jwt(&u, &role.0);
+                                    HttpResponse::Ok().json(AuthResponse {
+                                        token: Some(token),
+                                        user_id: Some(u.id),
+                                        tenant_id: u.tenant_id,
+                                        merchant_id: u.merchant_id,
+                                        role: Some(role.0),
+                                        mfa_required: Some(false),
+                                        mfa_token: None,
+                                    })
+                                }
+                                Ok(false) => HttpResponse::BadRequest().body("Invalid code"),
+                                Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+                            }
+                        } else {
+                            HttpResponse::BadRequest().body("MFA not set up for this user")
+                        }
+                    }
+                    Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+                }
+            }
+            Err(_) => HttpResponse::Unauthorized().body("Invalid MFA token"),
+        }
+    } else {
+        HttpResponse::BadRequest().body("Missing mfa_token")
     }
 }
 
@@ -111,13 +283,17 @@ async fn register(
 }
 
 fn generate_jwt(user: &User, role: &str) -> String {
+    generate_jwt_with_exp(user, role, 86400) // 24 hours
+}
+
+fn generate_jwt_with_exp(user: &User, role: &str, exp_seconds: usize) -> String {
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = Claims {
         sub: user.id.to_string(),
         tenant_id: user.tenant_id,
         merchant_id: user.merchant_id,
         role: role.to_string(),
-        exp: now + 86400, // 24 hours
+        exp: now + exp_seconds,
         iat: now,
     };
 

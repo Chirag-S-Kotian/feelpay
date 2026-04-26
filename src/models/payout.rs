@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use rust_decimal::Decimal;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Payout {
@@ -19,6 +18,7 @@ pub struct Payout {
     pub metadata: Option<Value>,
     pub processed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +41,7 @@ pub struct BankAccount {
     pub is_verified: bool,
     pub is_primary: bool,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]

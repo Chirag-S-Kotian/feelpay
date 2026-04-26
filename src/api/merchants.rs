@@ -4,13 +4,18 @@ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
-use crate::models::merchant::{CreateMerchantRequest, MerchantLoginRequest};
+use crate::models::merchant::{CreateMerchantRequest, MerchantLoginRequest, Merchant};
 use crate::state::AppState;
+use crate::engine::services::auth::MfaService;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/merchants")
             .route("", web::post().to(create_merchant))
+            .route("/login", web::post().to(login_merchant))
+            .route("/forgot-password", web::post().to(forgot_password))
+            .route("/reset-password", web::post().to(reset_password))
+            .route("/mfa/verify", web::post().to(verify_mfa_merchant))
             .route("/profile", web::get().to(get_profile))
             .route("/profile", web::put().to(update_profile))
             .route("/keys", web::get().to(get_keys))
@@ -119,8 +124,8 @@ pub async fn get_merchant(
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
     req.extensions()
-        .get::<Uuid>()
-        .copied()
+        .get::<crate::middleware::auth::MerchantId>()
+        .map(|m| m.0)
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
@@ -266,5 +271,114 @@ pub async fn roll_keys(
         "api_secret": api_secret,
         "message": "Store your new API secret safely. It will not be shown again."
     })))
+}
+
+pub async fn login_merchant(
+    state: web::Data<AppState>,
+    body: web::Json<MerchantLoginRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant: Option<Merchant> = sqlx::query_as("SELECT * FROM merchants WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    let m = merchant.ok_or(FeelPayError::Unauthorized("Invalid credentials".into()))?;
+
+    let argon2 = Argon2::default();
+    let parsed_hash = PasswordHash::new(&m.password_hash).map_err(|_| FeelPayError::Internal("Hash error".into()))?;
+    
+    argon2.verify_password(body.password.as_bytes(), &parsed_hash)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid credentials".into()))?;
+
+    if m.mfa_enabled {
+        let mfa_token = create_mfa_token(m.id, &body.email)?;
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "status": "mfa_required",
+            "mfa_token": mfa_token,
+            "merchant_id": m.id
+        })));
+    }
+
+    let token = crate::middleware::auth::create_token(m.id, &body.email)?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "success",
+        "token": token,
+        "merchant_id": m.id
+    })))
+}
+
+fn create_mfa_token(id: Uuid, email: &str) -> Result<String, FeelPayError> {
+    // Generate a short-lived token for MFA
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = crate::models::user::Claims {
+        sub: id.to_string(),
+        tenant_id: None,
+        merchant_id: Some(id),
+        role: "merchant_mfa_pending".to_string(),
+        exp: now + 300, // 5 mins
+        iat: now,
+    };
+
+    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+    ).map_err(|e| FeelPayError::Internal(e.to_string()))
+}
+
+pub async fn verify_mfa_merchant(
+    state: web::Data<AppState>,
+    body: web::Json<crate::api::auth::MfaVerifyRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    if let Some(mfa_token) = &body.mfa_token {
+        let secret_key = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let token_data = jsonwebtoken::decode::<crate::models::user::Claims>(
+            mfa_token,
+            &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
+            &jsonwebtoken::Validation::default(),
+        ).map_err(|_| FeelPayError::Unauthorized("Invalid MFA token".into()))?;
+
+        if token_data.claims.role != "merchant_mfa_pending" {
+            return Err(FeelPayError::Unauthorized("Invalid MFA token role".into()));
+        }
+
+        let merchant_id = Uuid::parse_str(&token_data.claims.sub).map_err(|_| FeelPayError::Internal("Invalid ID in token".into()))?;
+        
+        let merchant: Option<Merchant> = sqlx::query_as("SELECT * FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        let m = merchant.ok_or(FeelPayError::Unauthorized("Merchant not found".into()))?;
+
+        if let Some(mfa_secret) = &m.mfa_secret {
+            if MfaService::verify_token(mfa_secret, &body.code)? {
+                let token = crate::middleware::auth::create_token(m.id, &m.email)?;
+                Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "status": "success",
+                    "token": token,
+                    "merchant_id": m.id
+                })))
+            } else {
+                Err(FeelPayError::Unauthorized("Invalid MFA code".into()))
+            }
+        } else {
+            Err(FeelPayError::BadRequest("MFA not enabled for this merchant".into()))
+        }
+    } else {
+        Err(FeelPayError::BadRequest("Missing mfa_token".into()))
+    }
+}
+
+pub async fn reset_password() -> Result<HttpResponse, FeelPayError> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({"message": "Password reset successful (simulated)"})))
+}
+
+pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
+    Ok(HttpResponse::Ok().json(serde_json::json!({"message": "Password reset instructions sent (simulated)"})))
 }
 

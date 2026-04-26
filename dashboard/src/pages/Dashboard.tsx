@@ -28,8 +28,8 @@ const CHART_DATA = [
 function MiniChart({ data, color = 'var(--fp-primary)' }: { data: { volume: number }[]; color?: string }) {
   const max = Math.max(...data.map((d: { volume: number }) => d.volume));
   const points = data.map((d: { volume: number }, i: number) => {
-    const x = (i / (data.length - 1)) * 200;
-    const y = 50 - (d.volume / max) * 40;
+    const x = data.length > 1 ? (i / (data.length - 1)) * 200 : 0;
+    const y = 50 - (d.volume / (max || 1)) * 40;
     return `${x},${y}`;
   }).join(' ');
 
@@ -117,7 +117,7 @@ export default function Dashboard() {
           <tbody>
             {RECENT_TXNS.map(t => (
               <tr key={t.id}>
-                <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-light)' }}>{t.id}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-soft)' }}>{t.id}</td>
                 <td>{t.order}</td>
                 <td style={{ fontWeight: 600 }}>₹{t.amount.toLocaleString('en-IN')}</td>
                 <td>{t.method}</td>
