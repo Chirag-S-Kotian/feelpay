@@ -283,6 +283,12 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::documents::configure),
             )
+            // Fee Plans API
+            .service(
+                web::scope("/v1/fee-plans")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::fee_plans::configure),
+            )
     })
     .workers(worker_count)
     .bind(bind_addr)?

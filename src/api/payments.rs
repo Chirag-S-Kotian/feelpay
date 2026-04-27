@@ -30,7 +30,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_payments))
             .route("/{payment_id}", web::get().to(get_payment))
             .route("/{payment_id}/capture", web::post().to(capture_payment))
-            .route("/{payment_id}/refund", web::post().to(refund_payment)),
+            .route("/{payment_id}/refund", web::post().to(refund_payment))
+            .route("/batch-refund", web::post().to(batch_refund)),
     );
 }
 
@@ -641,4 +642,203 @@ pub async fn refund_payment(
     }
 
     Ok(HttpResponse::Ok().json(body))
+}
+
+
+// ============ Batch Refund ============
+
+#[derive(Debug, Deserialize)]
+pub struct BatchRefundRequest {
+    pub refunds: Vec<BatchRefundItem>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BatchRefundItem {
+    pub payment_id: Uuid,
+    pub amount: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchRefundResponse {
+    pub batch_id: Uuid,
+    pub total_requested: i32,
+    pub successful: i32,
+    pub failed: i32,
+    pub results: Vec<BatchRefundResult>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchRefundResult {
+    pub payment_id: Uuid,
+    pub success: bool,
+    pub refund_id: Option<Uuid>,
+    pub amount: Option<i64>,
+    pub error: Option<String>,
+}
+
+/// Process multiple refunds in a batch
+pub async fn batch_refund(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    payload: web::Json<BatchRefundRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let batch_id = Uuid::new_v4();
+    let mut results = Vec::new();
+    let mut successful = 0;
+    let mut failed = 0;
+
+    for item in &payload.refunds {
+        // Get payment order
+        let order_result = sqlx::query_as::<_, PaymentOrder>(
+            "SELECT id, merchant_id, order_id, amount, currency, status, payment_method, payment_method_data, connector, customer_id, customer_email, customer_phone, description, notes, return_url, idempotency_key, gateway_reference, gateway_response, error_code, error_message, metadata, refunded_amount, created_at, updated_at, authorized_at, captured_at, settled_at FROM payment_orders WHERE id = $1 AND merchant_id = $2"
+        )
+        .bind(item.payment_id)
+        .bind(merchant_id)
+        .fetch_optional(&state.db)
+        .await;
+
+        match order_result {
+            Ok(Some(order)) => {
+                // Check if refundable
+                if !matches!(
+                    order.status,
+                    PaymentStatus::Captured | PaymentStatus::Settled | PaymentStatus::PartiallyRefunded
+                ) {
+                    failed += 1;
+                    results.push(BatchRefundResult {
+                        payment_id: item.payment_id,
+                        success: false,
+                        refund_id: None,
+                        amount: None,
+                        error: Some("Payment not in refundable state".into()),
+                    });
+                    continue;
+                }
+
+                let remaining = order.amount - order.refunded_amount;
+                if remaining <= 0 {
+                    failed += 1;
+                    results.push(BatchRefundResult {
+                        payment_id: item.payment_id,
+                        success: false,
+                        refund_id: None,
+                        amount: None,
+                        error: Some("Payment already fully refunded".into()),
+                    });
+                    continue;
+                }
+
+                let refund_amount = item.amount.min(remaining);
+                if refund_amount <= 0 {
+                    failed += 1;
+                    results.push(BatchRefundResult {
+                        payment_id: item.payment_id,
+                        success: false,
+                        refund_id: None,
+                        amount: None,
+                        error: Some("Invalid refund amount".into()),
+                    });
+                    continue;
+                }
+
+                // Process refund
+                let refund_id = Uuid::new_v4();
+                let now = chrono::Utc::now();
+
+                let insert_result = sqlx::query(
+                    "INSERT INTO refunds (id, payment_order_id, merchant_id, amount, status, reason, created_at, processed_at) VALUES ($1, $2, $3, $4, 'processed', $5, $6, $7)"
+                )
+                .bind(refund_id)
+                .bind(order.id)
+                .bind(merchant_id)
+                .bind(refund_amount)
+                .bind(&payload.reason)
+                .bind(now)
+                .bind(now)
+                .execute(&state.db)
+                .await;
+
+                match insert_result {
+                    Ok(_) => {
+                        // Update order
+                        let new_refunded = order.refunded_amount + refund_amount;
+                        let new_status = if new_refunded >= order.amount {
+                            PaymentStatus::Refunded
+                        } else {
+                            PaymentStatus::PartiallyRefunded
+                        };
+
+                        sqlx::query(
+                            "UPDATE payment_orders SET refunded_amount = $1, status = $2, updated_at = $3 WHERE id = $4"
+                        )
+                        .bind(new_refunded)
+                        .bind(new_status.as_str())
+                        .bind(now)
+                        .bind(order.id)
+                        .execute(&state.db)
+                        .await
+                        .ok();
+
+                        // Record in ledger
+                        state.ledger.record_transaction(
+                            refund_id,
+                            merchant_id,
+                            -refund_amount,
+                            0,
+                            "batch_refund",
+                        ).await.ok();
+
+                        successful += 1;
+                        results.push(BatchRefundResult {
+                            payment_id: item.payment_id,
+                            success: true,
+                            refund_id: Some(refund_id),
+                            amount: Some(refund_amount),
+                            error: None,
+                        });
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        results.push(BatchRefundResult {
+                            payment_id: item.payment_id,
+                            success: false,
+                            refund_id: None,
+                            amount: None,
+                            error: Some(e.to_string()),
+                        });
+                    }
+                }
+            }
+            Ok(None) => {
+                failed += 1;
+                results.push(BatchRefundResult {
+                    payment_id: item.payment_id,
+                    success: false,
+                    refund_id: None,
+                    amount: None,
+                    error: Some("Payment not found".into()),
+                });
+            }
+            Err(e) => {
+                failed += 1;
+                results.push(BatchRefundResult {
+                    payment_id: item.payment_id,
+                    success: false,
+                    refund_id: None,
+                    amount: None,
+                    error: Some(e.to_string()),
+                });
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(BatchRefundResponse {
+        batch_id,
+        total_requested: payload.refunds.len() as i32,
+        successful,
+        failed,
+        results,
+    }))
 }

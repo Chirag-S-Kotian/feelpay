@@ -4,6 +4,7 @@ pub mod customer;
 pub mod dispute;
 pub mod document;
 pub mod fee;
+pub mod fee_plan;
 pub mod kyc;
 pub mod ledger;
 pub mod merchant;
