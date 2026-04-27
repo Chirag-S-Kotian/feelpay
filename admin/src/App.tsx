@@ -9,14 +9,17 @@ import {
   Wallet,
   Menu,
   X,
+  FileCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import AdminDashboard from './pages/AdminDashboard';
+import Merchants from './pages/Merchants';
+import KYCQueue from './pages/KYCQueue';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
   { path: '/merchants', label: 'Merchants', icon: Users },
-  { path: '/onboarding', label: 'KYC Queue', icon: Building2 },
+  { path: '/kyc-queue', label: 'KYC Queue', icon: FileCheck },
   { path: '/settlements', label: 'Global Settlements', icon: Wallet },
   { path: '/disputes', label: 'Global Disputes', icon: ShieldAlert },
   { path: '/system', label: 'System Health', icon: PieChart },
@@ -72,6 +75,8 @@ function Layout() {
       <main className="main-content">
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
+          <Route path="/merchants" element={<Merchants />} />
+          <Route path="/kyc-queue" element={<KYCQueue />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

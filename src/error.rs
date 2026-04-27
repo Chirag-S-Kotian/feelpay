@@ -9,6 +9,49 @@ pub struct ApiError {
     pub details: Option<serde_json::Value>,
 }
 
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl ResponseError for ApiError {
+    fn error_response(&self) -> HttpResponse {
+        let status = match self.code.as_str() {
+            "UNAUTHORIZED" => actix_web::http::StatusCode::UNAUTHORIZED,
+            "FORBIDDEN" => actix_web::http::StatusCode::FORBIDDEN,
+            "NOT_FOUND" => actix_web::http::StatusCode::NOT_FOUND,
+            "BAD_REQUEST" => actix_web::http::StatusCode::BAD_REQUEST,
+            "CONFLICT" => actix_web::http::StatusCode::CONFLICT,
+            "RATE_LIMITED" => actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            _ => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        HttpResponse::build(status).json(self)
+    }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(e: sqlx::Error) -> Self {
+        tracing::error!("Database error: {:?}", e);
+        ApiError {
+            code: "DATABASE_ERROR".to_string(),
+            message: e.to_string(),
+            details: None,
+        }
+    }
+}
+
+impl From<redis::RedisError> for ApiError {
+    fn from(e: redis::RedisError) -> Self {
+        tracing::error!("Redis error: {:?}", e);
+        ApiError {
+            code: "CACHE_ERROR".to_string(),
+            message: format!("Cache error: {}", e),
+            details: None,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum FeelPayError {
     #[error("Authentication failed: {0}")]
@@ -39,13 +82,7 @@ pub enum FeelPayError {
     InvalidStateTransition { from: String, to: String },
 
     #[error("Database error: {0}")]
-    DatabaseError(String),
-
-    #[error("Database error: {0}")]
     Database(String),
-
-    #[error("Internal error: {0}")]
-    InternalError(String),
 
     #[error("Internal error: {0}")]
     Internal(String),
@@ -77,11 +114,11 @@ impl ResponseError for FeelPayError {
                 actix_web::http::StatusCode::CONFLICT,
                 "INVALID_STATE_TRANSITION",
             ),
-            Self::DatabaseError(_) | Self::Database(_) => (
+            Self::Database(_) => (
                 actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "DATABASE_ERROR",
             ),
-            Self::InternalError(_) | Self::Internal(_) => (
+            Self::Internal(_) => (
                 actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
             ),
@@ -108,10 +145,10 @@ impl From<sqlx::Error> for FeelPayError {
                 if db_err.is_unique_violation() {
                     Self::Conflict("Resource already exists".into())
                 } else {
-                    Self::DatabaseError(e.to_string())
+                    Self::Database(e.to_string())
                 }
             }
-            _ => Self::DatabaseError(e.to_string()),
+            _ => Self::Database(e.to_string()),
         }
     }
 }
@@ -119,7 +156,7 @@ impl From<sqlx::Error> for FeelPayError {
 impl From<redis::RedisError> for FeelPayError {
     fn from(e: redis::RedisError) -> Self {
         tracing::error!("Redis error: {:?}", e);
-        Self::InternalError(format!("Cache error: {}", e))
+        Self::Internal(format!("Cache error: {}", e))
     }
 }
 

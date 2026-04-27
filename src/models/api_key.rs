@@ -14,6 +14,8 @@ pub struct ApiKey {
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub ip_whitelist: Option<Vec<String>>,
+    pub ip_whitelist_enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

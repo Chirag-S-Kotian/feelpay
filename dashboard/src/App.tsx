@@ -11,6 +11,8 @@ import {
   Building2,
   Menu,
   X,
+  Link as LinkIcon,
+  Users,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Payments from './pages/Payments';
@@ -23,10 +25,14 @@ import Onboarding from './pages/Onboarding';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
+import PaymentLinks from './pages/PaymentLinks';
+import Customers from './pages/Customers';
 
 const NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/payments', label: 'Payments', icon: CreditCard },
+  { path: '/payment-links', label: 'Payment Links', icon: LinkIcon },
+  { path: '/customers', label: 'Customers', icon: Users },
   { path: '/settlements', label: 'Settlements', icon: Wallet },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   { path: '/disputes', label: 'Disputes', icon: ShieldAlert },
@@ -90,6 +96,8 @@ function Layout() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/payments" element={<Payments />} />
+          <Route path="/payment-links" element={<PaymentLinks />} />
+          <Route path="/customers" element={<Customers />} />
           <Route path="/settlements" element={<Settlements />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/disputes" element={<Disputes />} />

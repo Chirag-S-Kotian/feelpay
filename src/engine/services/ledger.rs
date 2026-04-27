@@ -28,7 +28,7 @@ impl LedgerService {
         .bind(account_type)
         .fetch_one(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))
     }
 
     pub async fn get_or_create_account(
@@ -55,7 +55,7 @@ impl LedgerService {
         .bind(owner_id)
         .fetch_one(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))
     }
 
     pub async fn record_transaction(
@@ -70,7 +70,7 @@ impl LedgerService {
             .db
             .begin()
             .await
-            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         // 1. Get or Create Merchant Account
         let merchant_account = self
@@ -87,7 +87,7 @@ impl LedgerService {
         )
         .fetch_one(&mut *tx)
         .await
-        .map_err(|_| FeelPayError::InternalError("Platform account not configured".into()))?;
+        .map_err(|_| FeelPayError::Internal("Platform account not configured".into()))?;
 
         // 3. Get Escrow Account
         let escrow_account = sqlx::query_as::<_, LedgerAccount>(
@@ -95,7 +95,7 @@ impl LedgerService {
         )
         .fetch_one(&mut *tx)
         .await
-        .map_err(|_| FeelPayError::InternalError("Escrow account not configured".into()))?;
+        .map_err(|_| FeelPayError::Internal("Escrow account not configured".into()))?;
 
         let net_amount = amount - fee_amount;
 
@@ -107,7 +107,7 @@ impl LedgerService {
             .bind(escrow_account.id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         sqlx::query("INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, description) VALUES ($1, $2, 'debit', $3, $4)")
             .bind(transaction_id)
@@ -116,7 +116,7 @@ impl LedgerService {
             .bind(format!("Payout from escrow for {}", tx_type))
             .execute(&mut *tx)
             .await
-            .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         // B. Credit Merchant (Merchant balance increases)
         sqlx::query("UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2")
@@ -124,7 +124,7 @@ impl LedgerService {
             .bind(merchant_account.id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         sqlx::query("INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, description) VALUES ($1, $2, 'credit', $3, $4)")
             .bind(transaction_id)
@@ -133,7 +133,7 @@ impl LedgerService {
             .bind(format!("Credit for {}", tx_type))
             .execute(&mut *tx)
             .await
-            .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         // C. Credit Platform (Fee income)
         if fee_amount > 0 {
@@ -142,7 +142,7 @@ impl LedgerService {
                 .bind(platform_account.id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
             sqlx::query("INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, description) VALUES ($1, $2, 'credit', $3, 'Platform fee')")
                 .bind(transaction_id)
@@ -150,12 +150,12 @@ impl LedgerService {
                 .bind(fee_amount)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
         }
 
         tx.commit()
             .await
-            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -172,6 +172,6 @@ impl LedgerService {
         .bind(account_id)
         .fetch_all(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))
     }
 }

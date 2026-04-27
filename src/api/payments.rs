@@ -98,7 +98,7 @@ async fn check_idempotency(
     .bind(resource_type)
     .fetch_optional(db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     if let Some(rec) = record {
         if rec.request_hash != req_hash {
@@ -142,7 +142,7 @@ async fn store_idempotency_response(
     .bind(body)
     .execute(db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     Ok(())
 }
 
@@ -314,10 +314,10 @@ pub async fn create_payment(
     .bind(order.updated_at)
     .execute(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let body = serde_json::to_value(&order)
-        .map_err(|e| FeelPayError::InternalError(format!("Serialize response failed: {}", e)))?;
+        .map_err(|e| FeelPayError::Internal(format!("Serialize response failed: {}", e)))?;
     if let Some(key) = idempotency_key.as_deref() {
         store_idempotency_response(
             &state.db,
@@ -360,7 +360,7 @@ pub async fn list_payments(
     .bind(offset)
     .fetch_all(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let total: (i64,) = sqlx::query_as(
         r#"
@@ -374,7 +374,7 @@ pub async fn list_payments(
     .bind(&query.status)
     .fetch_one(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "page": page,
@@ -403,7 +403,7 @@ pub async fn get_payment(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::NotFound("Payment not found".into()))?;
 
     Ok(HttpResponse::Ok().json(order))
@@ -429,7 +429,7 @@ pub async fn capture_payment(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::NotFound("Payment not found".into()))?;
 
     if order.status != PaymentStatus::Authorized {
@@ -480,7 +480,7 @@ pub async fn capture_payment(
             .bind(order.id)
             .execute(&state.db)
             .await
-            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     } else {
         sqlx::query(r#"UPDATE payment_orders SET status = $1, updated_at = $2 WHERE id = $3"#)
             .bind(order.status.as_str())
@@ -488,7 +488,7 @@ pub async fn capture_payment(
             .bind(order.id)
             .execute(&state.db)
             .await
-            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     }
 
     Ok(HttpResponse::Ok().json(order))
@@ -532,7 +532,7 @@ pub async fn refund_payment(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::NotFound("Payment not found".into()))?;
 
     if !matches!(
@@ -594,7 +594,7 @@ pub async fn refund_payment(
     .bind(now)
     .execute(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     // Record refund in ledger (reverse transaction)
     // For refund, we debit merchant and credit escrow. Fee is usually not refunded by platform.
@@ -625,7 +625,7 @@ pub async fn refund_payment(
     .bind(order.id)
     .execute(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let body = serde_json::json!({
         "payment_id": order.id,

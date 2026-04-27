@@ -54,7 +54,7 @@ pub async fn list_disputes(
     .bind(offset)
     .fetch_all(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let total: (i64,) = sqlx::query_as(
         r#"
@@ -68,7 +68,7 @@ pub async fn list_disputes(
     .bind(&query.status)
     .fetch_one(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "page": page,
@@ -97,7 +97,7 @@ pub async fn get_dispute(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::NotFound("Dispute not found".into()))?;
 
     Ok(HttpResponse::Ok().json(dispute))
@@ -135,7 +135,7 @@ pub async fn submit_evidence(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::Conflict("Dispute not open for evidence submission".into()))?;
 
     Ok(HttpResponse::Ok().json(updated))
@@ -165,7 +165,7 @@ pub async fn accept_dispute(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::Conflict("Dispute cannot be accepted in current state".into()))?;
 
     Ok(HttpResponse::Ok().json(updated))

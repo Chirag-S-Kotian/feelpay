@@ -1,6 +1,7 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use regex::Regex;
 use serde::Deserialize;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
@@ -11,7 +12,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/onboarding")
             .route("/kyc", web::post().to(submit_kyc))
             .route("/status", web::get().to(onboarding_status))
-            .route("/bank-account", web::post().to(submit_bank_account)),
+            .route("/bank-account", web::post().to(submit_bank_account))
+            .route("/registration/step", web::post().to(update_registration_step))
+            .route("/registration/progress", web::get().to(get_registration_progress))
+            .route("/business-info", web::post().to(submit_business_info))
+            .route("/branding", web::post().to(update_branding))
+            .route("/limits", web::get().to(get_limits))
+            .route("/limits", web::put().to(update_limits)),
     );
 }
 
@@ -88,21 +95,21 @@ pub async fn submit_kyc(
         "pending"
     };
 
-    let id: Uuid = sqlx::query_scalar(
+    let id: Uuid = sqlx::query(
         r#"
         INSERT INTO kyc_verifications (merchant_id, verification_type, document_number, document_data, status, verified_at)
-        VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'verified' THEN NOW() ELSE NULL END)
+        VALUES ($1, $2, $3, $4, $5, CASE WHEN $5::text = 'verified' THEN NOW() ELSE NULL END)
         RETURNING id
         "#,
     )
     .bind(merchant_id)
-    .bind(&verification_type)
-    .bind(&document_number)
-    .bind(&body.document_data)
+    .bind(verification_type.clone())
+    .bind(document_number)
+    .bind(body.document_data.as_ref())
     .bind(status)
     .fetch_one(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .await?
+    .get(0);
 
     if status == "verified" {
         sqlx::query(
@@ -114,8 +121,7 @@ pub async fn submit_kyc(
         )
         .bind(merchant_id)
         .execute(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .await?;
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -160,8 +166,7 @@ pub async fn submit_bank_account(
     .bind(merchant_id)
     .bind(&settlement)
     .execute(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "verified",
@@ -175,25 +180,23 @@ pub async fn onboarding_status(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
 
-    let merchant: Option<(String, String, i64, i64)> = sqlx::query_as(
+    let row = sqlx::query(
         "SELECT onboarding_status, tier, daily_limit, monthly_limit FROM merchants WHERE id = $1",
     )
     .bind(merchant_id)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .await?;
 
-    let Some((onboarding_status, tier, daily_limit, monthly_limit)) = merchant else {
+    let Some(row) = row else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
-    let kyc_rows: Vec<(
-        Uuid,
-        String,
-        Option<String>,
-        String,
-        Option<chrono::DateTime<chrono::Utc>>,
-    )> = sqlx::query_as(
+    let onboarding_status: String = row.get(0);
+    let tier: String = row.get(1);
+    let daily_limit: i64 = row.get(2);
+    let monthly_limit: i64 = row.get(3);
+
+    let kyc_rows = sqlx::query(
         r#"
         SELECT id, verification_type, document_number, status, verified_at
         FROM kyc_verifications
@@ -203,22 +206,19 @@ pub async fn onboarding_status(
     )
     .bind(merchant_id)
     .fetch_all(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .await?;
 
     let verifications: Vec<serde_json::Value> = kyc_rows
         .into_iter()
-        .map(
-            |(id, verification_type, document_number, status, verified_at)| {
-                serde_json::json!({
-                    "id": id,
-                    "verification_type": verification_type,
-                    "document_number": document_number,
-                    "status": status,
-                    "verified_at": verified_at,
-                })
-            },
-        )
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<Uuid, _>(0),
+                "verification_type": row.get::<String, _>(1),
+                "document_number": row.get::<Option<String>, _>(2),
+                "status": row.get::<String, _>(3),
+                "verified_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(4),
+            })
+        })
         .collect();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -227,5 +227,225 @@ pub async fn onboarding_status(
         "daily_limit": daily_limit,
         "monthly_limit": monthly_limit,
         "verifications": verifications
+    })))
+}
+// Update registration step
+#[derive(Debug, Deserialize)]
+pub struct RegistrationStepRequest {
+    pub step: i32,
+    pub data: Option<serde_json::Value>,
+}
+
+pub async fn update_registration_step(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<RegistrationStepRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    sqlx::query(
+        "UPDATE merchants SET registration_step = $1, registration_data = COALESCE(registration_data, '{}'::jsonb) || $2, updated_at = NOW() WHERE id = $3"
+    )
+    .bind(body.step)
+    .bind(body.data.as_ref().unwrap_or(&serde_json::json!({})))
+    .bind(merchant_id)
+    .execute(&state.db)
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "step": body.step,
+        "message": "Registration step updated"
+    })))
+}
+
+// Get registration progress
+pub async fn get_registration_progress(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    let row = sqlx::query(
+        "SELECT registration_step, registration_data, kyc_status FROM merchants m LEFT JOIN merchant_kyc mk ON m.id = mk.merchant_id WHERE m.id = $1"
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match row {
+        Some(row) => {
+            let step: i32 = row.get(0);
+            let data: serde_json::Value = row.get(1);
+            let kyc_status: Option<String> = row.get(2);
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "current_step": step,
+                "registration_data": data,
+                "kyc_status": kyc_status.unwrap_or_else(|| "pending".to_string()),
+                "steps": [
+                    {"step": 1, "name": "Business Info", "completed": step > 1},
+                    {"step": 2, "name": "KYC Documents", "completed": step > 2},
+                    {"step": 3, "name": "Bank Account", "completed": step > 3},
+                    {"step": 4, "name": "API Keys", "completed": step > 4},
+                    {"step": 5, "name": "Complete", "completed": step > 5}
+                ]
+            })))
+        },
+        None => Err(FeelPayError::NotFound("Merchant not found".into()))
+    }
+}
+
+// Submit business info
+#[derive(Debug, Deserialize)]
+pub struct BusinessInfoRequest {
+    pub business_name: String,
+    pub business_type: String,
+    pub pan: String,
+    pub gstin: Option<String>,
+    pub address: Option<serde_json::Value>,
+}
+
+pub async fn submit_business_info(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<BusinessInfoRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    // Validate business type
+    let valid_types = ["pvt_ltd", "llp", "sole_proprietor", "partnership", "trust", "ngo"];
+    if !valid_types.contains(&body.business_type.as_str()) {
+        return Err(FeelPayError::BadRequest("Invalid business type".to_string()));
+    }
+    
+    // Validate PAN
+    if !validate_pan(&body.pan) {
+        return Err(FeelPayError::BadRequest("Invalid PAN number".to_string()));
+    }
+    
+    // Validate GSTIN if provided
+    if let Some(ref gstin) = body.gstin {
+        if !gstin.is_empty() && !validate_gstin(gstin) {
+            return Err(FeelPayError::BadRequest("Invalid GSTIN".to_string()));
+        }
+    }
+
+    sqlx::query(
+        "UPDATE merchants SET business_name = $1, business_type = $2, pan = $3, gstin = $4, address = $5, registration_step = 2, updated_at = NOW() WHERE id = $6"
+    )
+    .bind(&body.business_name)
+    .bind(&body.business_type)
+    .bind(body.pan.to_uppercase())
+    .bind(body.gstin.as_ref().map(|s| s.to_uppercase()))
+    .bind(&body.address)
+    .bind(merchant_id)
+    .execute(&state.db)
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Business info saved successfully",
+        "next_step": 2
+    })))
+}
+
+// Update branding
+#[derive(Debug, Deserialize)]
+pub struct BrandingRequest {
+    pub logo_url: Option<String>,
+    pub color: Option<String>,
+}
+
+pub async fn update_branding(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<BrandingRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    sqlx::query(
+        "UPDATE merchants SET branding_logo = $1, branding_color = $2, updated_at = NOW() WHERE id = $3"
+    )
+    .bind(&body.logo_url)
+    .bind(&body.color)
+    .bind(merchant_id)
+    .execute(&state.db)
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Branding updated successfully"
+    })))
+}
+
+// Get transaction limits
+pub async fn get_limits(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    let row = sqlx::query(
+        "SELECT per_transaction_limit, daily_limit, monthly_limit, settlement_cycle FROM merchants WHERE id = $1"
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match row {
+        Some(row) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "per_transaction_limit": row.get::<i64, _>(0),
+            "daily_limit": row.get::<i64, _>(1),
+            "monthly_limit": row.get::<i64, _>(2),
+            "settlement_cycle": row.get::<String, _>(3)
+        }))),
+        None => Err(FeelPayError::NotFound("Merchant not found".into()))
+    }
+}
+
+// Update transaction limits
+#[derive(Debug, Deserialize)]
+pub struct LimitsRequest {
+    pub per_transaction_limit: Option<i64>,
+    pub daily_limit: Option<i64>,
+    pub monthly_limit: Option<i64>,
+    pub settlement_cycle: Option<String>,
+}
+
+pub async fn update_limits(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<LimitsRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    // Validate settlement cycle
+    if let Some(ref cycle) = body.settlement_cycle {
+        let valid_cycles = ["t+1", "t+2", "instant"];
+        if !valid_cycles.contains(&cycle.as_str()) {
+            return Err(FeelPayError::BadRequest("Invalid settlement cycle".to_string()));
+        }
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE merchants SET 
+            per_transaction_limit = COALESCE($1, per_transaction_limit),
+            daily_limit = COALESCE($2, daily_limit),
+            monthly_limit = COALESCE($3, monthly_limit),
+            settlement_cycle = COALESCE($4, settlement_cycle),
+            updated_at = NOW()
+        WHERE id = $5
+        "#,
+    )
+    .bind(body.per_transaction_limit)
+    .bind(body.daily_limit)
+    .bind(body.monthly_limit)
+    .bind(&body.settlement_cycle)
+    .bind(merchant_id)
+    .execute(&state.db)
+    .await?;
+
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Limits updated successfully"
     })))
 }

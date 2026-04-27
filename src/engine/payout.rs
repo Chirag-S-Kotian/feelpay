@@ -9,7 +9,7 @@ pub async fn process_payout(pool: &PgPool, payout_id: Uuid) -> Result<(), FeelPa
         .bind(payout_id)
         .fetch_one(pool)
         .await
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     if payout.status != "created" && payout.status != "pending" {
         return Err(FeelPayError::BadRequest(
@@ -22,7 +22,7 @@ pub async fn process_payout(pool: &PgPool, payout_id: Uuid) -> Result<(), FeelPa
         .bind(payout_id)
         .execute(pool)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     // 3. Simulate Gateway Interaction (IMPS/NEFT)
     let success = true;
@@ -42,13 +42,13 @@ pub async fn process_payout(pool: &PgPool, payout_id: Uuid) -> Result<(), FeelPa
             .bind(gateway_ref)
             .execute(pool)
             .await
-            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     } else {
         sqlx::query("UPDATE payouts SET status = 'failed', error_message = 'Simulation: Gateway timeout' WHERE id = $1")
             .bind(payout_id)
             .execute(pool)
             .await
-            .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     }
 
     Ok(())
@@ -64,11 +64,11 @@ pub async fn verify_bank_account(
         .bind(bank_account_id)
         .fetch_one(pool)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let merchant_id: Uuid = row
         .try_get("merchant_id")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let payout_id = Uuid::new_v4();
 
@@ -81,20 +81,20 @@ pub async fn verify_bank_account(
         .bind(serde_json::json!({"type": "verification", "purpose": "penny_drop"}))
         .execute(pool)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     // Simulate instant success for penny drop
     sqlx::query("UPDATE bank_accounts SET is_verified = true WHERE id = $1")
         .bind(bank_account_id)
         .execute(pool)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     sqlx::query("UPDATE payouts SET status = 'success', processed_at = NOW() WHERE id = $1")
         .bind(payout_id)
         .execute(pool)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(true)
 }

@@ -6,3 +6,9 @@
 admin/node_modules
 
 /admin/server/target
+
+# ignore agents
+.agents
+.claude
+.kilocode
+.kiro

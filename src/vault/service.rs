@@ -75,7 +75,7 @@ impl CardVaultService {
         .bind(&fingerprint)
         .execute(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         Ok(VaultedCard {
             token,
@@ -104,11 +104,11 @@ impl CardVaultService {
         .bind(merchant_id)
         .fetch_optional(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
         .ok_or_else(|| FeelPayError::NotFound("Card token not found".into()))?;
 
         if record.encryption_key_id != self.crypto.key_id {
-            return Err(FeelPayError::InternalError(
+            return Err(FeelPayError::Internal(
                 "Key rotation not fully implemented yet".into(),
             ));
         }
@@ -136,7 +136,7 @@ impl CardVaultService {
         .bind(&fp)
         .fetch_optional(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         Ok(
             row.map(|(token, card_brand, last_four, em, ey, hn)| VaultedCard {

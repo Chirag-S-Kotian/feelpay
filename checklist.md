@@ -34,21 +34,21 @@
 - [x] `roles` + `permissions` + `user_roles` (L41, L50, L57, L63)
 - [x] `api_keys` — hashed, live + test per merchant (L73)
 - [x] `webhooks` + `webhook_deliveries` (L113)
-- [ ] `payment_links`
+- [x] `payment_links` ✅ NEW
 - [x] `transactions` — partitioned monthly (L204)
-- [ ] `transaction_events` — append-only state log
+- [x] `transaction_events` — append-only state log ✅ NEW
 - [x] `refunds` (L231)
 - [x] `disputes` (L250)
 - [x] `settlements` + `settlement_transactions` (L270, L291)
-- [/] `payouts` (L87 - Missing updated_at)
-- [/] `bank_accounts` + `vpa_accounts` (L107 - Missing updated_at)
+- [x] `payouts` (L87 - Missing updated_at) ✅ FIXED
+- [x] `bank_accounts` + `vpa_accounts` (L107 - Missing updated_at) ✅ FIXED
 - [x] `subscriptions` + `subscription_invoices` (L122, L136)
-- [ ] `customers` — tokenized vault
-- [ ] `saved_payment_methods`
+- [x] `customers` — tokenized vault ✅ NEW
+- [x] `saved_payment_methods` ✅ NEW
 - [x] `fee_rules` (L149)
 - [x] `audit_logs` — immutable, append-only (L164)
-- [ ] `notification_queue`
-- [ ] `report_jobs`
+- [x] `notification_queue` ✅ NEW
+- [x] `report_jobs` ✅ NEW
 - [x] Indexes on: merchant_id, status, created_at, gateway_reference_id
 - [ ] Row-level security for tenant isolation
 - [x] Foreign key constraints enforced
@@ -56,61 +56,61 @@
 
 ---
 
-## ⬜ PHASE 2 — Auth & Authorization
+## ✅ PHASE 2 — Auth & Authorization
 
-- [ ] Email + password login
-- [ ] TOTP / MFA (Google Authenticator compatible)
+- [x] Email + password login
+- [x] TOTP / MFA (Google Authenticator compatible)
 - [ ] Email OTP / magic link login
 - [ ] SMS OTP login
-- [ ] JWT access tokens (short TTL)
-- [ ] Refresh tokens (long TTL, revocable, rotated on use)
-- [ ] Force logout all sessions
-- [ ] API key authentication for merchant programmatic access
-- [ ] IP whitelisting per API key (merchant opt-in)
-- [ ] Role-based access control: super_admin, admin, support, tenant_admin, merchant_owner, merchant_admin, merchant_staff, merchant_viewer
-- [ ] Granular permissions: transactions:read, transactions:refund, payouts:create, settings:write, etc.
-- [ ] Permission checks enforced at API layer — not just UI
+- [x] JWT access tokens (short TTL)
+- [x] Refresh tokens (long TTL, revocable, rotated on use)
+- [x] Force logout all sessions
+- [x] API key authentication for merchant programmatic access
+- [x] IP whitelisting per API key (merchant opt-in)
+- [x] Role-based access control: super_admin, admin, support, tenant_admin, merchant_owner, merchant_admin, merchant_staff, merchant_viewer
+- [x] Granular permissions: transactions:read, transactions:refund, payouts:create, settings:write, etc.
+- [x] Permission checks enforced at API layer — not just UI
 - [ ] Merchant sub-user invite + role assignment
 - [ ] Protected routes — unauthenticated users redirected to login, returned to original URL after login
-- [ ] Rate limiting on all auth endpoints (per IP + per user)
-- [ ] Account lockout after N failed attempts
-- [ ] New device/IP login → email alert
+- [x] Rate limiting on all auth endpoints (per IP + per user)
+- [x] Account lockout after N failed attempts
+- [x] New device/IP login → email alert (DB only, email pending)
 - [ ] Password strength enforcement + history (no reuse of last 5)
-- [ ] CAPTCHA on login and signup
+- [x] CAPTCHA on login and signup
 
 ---
 
-## ⬜ PHASE 3 — Merchant Onboarding & KYC
+## ✅ PHASE 3 — Merchant Onboarding & KYC (Partially Complete)
 
-- [ ] Multi-step registration form with per-step validation
-- [ ] Business info: name, email, phone, PAN, GSTIN
-- [ ] Business type selection: Pvt Ltd, LLP, Sole Proprietor, Partnership, Trust, NGO
-- [ ] Document upload with drag-and-drop and preview: PAN, GST certificate, COI/deed, cancelled cheque, address proof
+- [x] Multi-step registration form with per-step validation ✅ NEW
+- [x] Business info: name, email, phone, PAN, GSTIN ✅ NEW
+- [x] Business type selection: Pvt Ltd, LLP, Sole Proprietor, Partnership, Trust, NGO ✅ NEW
+- [ ] Document upload with drag-and-drop and preview (frontend)
 - [ ] Upload direct to object storage (not through backend memory)
 - [ ] Email + phone OTP verification during registration
-- [ ] Registration progress saved — can resume incomplete
-- [ ] KYC status machine: pending → under_review → approved / rejected / resubmit_required
+- [x] Registration progress saved — can resume incomplete ✅ NEW
+- [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ NEW
 - [ ] Auto-verification: PAN, GST, bank penny drop
 - [ ] Aadhaar eKYC (DigiLocker / UIDAI provider)
 - [ ] Rejection with specific fields flagged + resubmission flow
 - [ ] Maker-Checker approval for high-value merchants (2 admin sign-off)
 - [ ] Activation email on KYC approval
-- [ ] Post-KYC: MCC code assignment
-- [ ] Post-KYC: per-txn / daily / monthly transaction limits
-- [ ] Post-KYC: allowed payment methods configuration
+- [x] Post-KYC: MCC code assignment ✅ NEW (schema)
+- [x] Post-KYC: per-txn / daily / monthly transaction limits ✅ NEW
+- [x] Post-KYC: allowed payment methods configuration ✅ NEW
 - [ ] Post-KYC: fee plan assignment
-- [ ] Post-KYC: settlement cycle (T+1, T+2, instant)
-- [ ] Post-KYC: live + test API key generation
-- [ ] Post-KYC: custom branding upload (logo + color for hosted checkout)
+- [x] Post-KYC: settlement cycle (T+1, T+2, instant) ✅ NEW
+- [x] Post-KYC: live + test API key generation ✅ EXISTING
+- [x] Post-KYC: custom branding upload (logo + color for hosted checkout) ✅ NEW
 
 ---
 
-## ⬜ PHASE 4 — Payment Gateway Core
+## ✅ PHASE 4 — Payment Gateway Core (Partially Complete)
 
 ### Payment Methods (India)
-- [ ] UPI — Intent, QR collect, VPA push
+- [x] UPI — Intent, QR collect, VPA push ✅ EXISTING
 - [ ] UPI Autopay — mandate creation + execution
-- [ ] Cards — Visa, Mastercard, RuPay, Amex (debit + credit)
+- [x] Cards — Visa, Mastercard, RuPay, Amex (debit + credit) ✅ EXISTING
 - [ ] Net Banking — HDFC, SBI, ICICI, Axis, Kotak + others
 - [ ] Wallets — Paytm, PhonePe, Amazon Pay, Mobikwik
 - [ ] EMI — credit card, no-cost, cardless
@@ -119,85 +119,85 @@
 - [ ] International cards — Phase 2
 
 ### Provider Routing
-- [ ] Provider abstraction layer — unified interface for all providers
-- [ ] Razorpay (primary), PayU (fallback), Cashfree, Juspay (UPI routing)
-- [ ] Intelligent routing by success rate, cost, method, merchant config
-- [ ] Auto-failover to next provider on failure
-- [ ] Circuit breaker per provider
-- [ ] Provider health monitoring
+- [x] Provider abstraction layer — unified interface for all providers ✅ NEW
+- [x] Razorpay (primary), PayU (fallback), Cashfree, Juspay (UPI routing) ✅ NEW (schema)
+- [x] Intelligent routing by success rate, cost, method, merchant config ✅ NEW
+- [x] Auto-failover to next provider on failure ✅ NEW (circuit breaker)
+- [x] Circuit breaker per provider ✅ NEW
+- [x] Provider health monitoring ✅ NEW
 
 ### Transaction Flow
-- [ ] Order creation
-- [ ] Payment initiation returning session token
+- [x] Order creation ✅ EXISTING
+- [x] Payment initiation returning session token ✅ EXISTING
 - [ ] Hosted checkout page (redirect flow)
 - [ ] Embedded checkout (iframe with postMessage communication)
 - [ ] Payment status polling + real-time status updates (SSE/WebSocket)
-- [ ] Transaction state machine: created → initiated → processing → success / failed / cancelled / expired
-- [ ] Idempotency key support on all write endpoints
-- [ ] Payment link generation
-- [ ] UPI QR code generation
-- [ ] Order and link expiry handling
+- [x] Transaction state machine: created → initiated → processing → success / failed / cancelled / expired ✅ EXISTING
+- [x] Idempotency key support on all write endpoints ✅ EXISTING
+- [x] Payment link generation ✅ NEW
+- [x] UPI QR code generation ✅ EXISTING
+- [x] Order and link expiry handling ✅ NEW
 
 ### Refunds
-- [ ] Full refund
-- [ ] Partial refund
+- [x] Full refund ✅ EXISTING
+- [x] Partial refund ✅ EXISTING
 - [ ] Batch refund
-- [ ] Refund reason codes
-- [ ] Refund status tracking + webhook delivery
-- [ ] Refund event timeline in dashboard
+- [x] Refund reason codes ✅ EXISTING
+- [x] Refund status tracking + webhook delivery ✅ EXISTING
+- [x] Refund event timeline in dashboard ✅ EXISTING
 
 ---
 
-## ⬜ PHASE 5 — Merchant Dashboard
+## ✅ PHASE 5 — Merchant Dashboard (Partially Complete)
 
 ### Layout
-- [ ] Collapsible sidebar, mobile-responsive
-- [ ] Live / Test mode toggle — globally changes API key context, clearly labeled
+- [x] Collapsible sidebar, mobile-responsive ✅ EXISTING
+- [x] Live / Test mode toggle — globally changes API key context, clearly labeled ✅ EXISTING
 - [ ] Notification bell with unread count
 - [ ] Loading skeletons on all data-heavy views
-- [ ] Empty states with CTAs on all list views
+- [x] Empty states with CTAs on all list views ✅ NEW
 - [ ] Error boundaries per major section
 - [ ] URL-synced filters (shareable filtered URLs)
 - [ ] Dark mode
 
 ### Home
-- [ ] KPI cards: revenue today, transaction count, success rate, pending settlements
-- [ ] Revenue chart (daily / weekly / monthly toggle)
-- [ ] Recent transactions list
+- [x] KPI cards: revenue today, transaction count, success rate, pending settlements ✅ EXISTING
+- [x] Revenue chart (daily / weekly / monthly toggle) ✅ EXISTING
+- [x] Recent transactions list ✅ EXISTING
 - [ ] Contextual alerts: KYC pending, dispute action needed, upcoming settlement
 
 ### Transactions
-- [ ] List with filters: date range, status, payment method, amount range
-- [ ] Search: transaction ID, order ID, customer email/phone
-- [ ] Transaction detail: full event timeline, method details, customer info
-- [ ] Initiate refund from detail (modal: amount + reason)
+- [x] List with filters: date range, status, payment method, amount range ✅ EXISTING
+- [x] Search: transaction ID, order ID, customer email/phone ✅ EXISTING
+- [x] Transaction detail: full event timeline, method details, customer info ✅ EXISTING
+- [x] Initiate refund from detail (modal: amount + reason) ✅ EXISTING
 - [ ] Export CSV / Excel (async for large ranges)
 - [ ] Bulk export for reconciliation
 
 ### Payment Links
-- [ ] Create link: amount, description, expiry, partial payment toggle
-- [ ] List with status badges
-- [ ] Share via copy, WhatsApp deep link, SMS
-- [ ] Per-link analytics: views, attempts, conversions
-- [ ] Deactivate / expire link
+- [x] Create link: amount, description, expiry, partial payment toggle ✅ NEW
+- [x] List with status badges ✅ NEW
+- [x] Share via copy, WhatsApp deep link, SMS ✅ NEW (copy)
+- [x] Per-link analytics: views, attempts, conversions ✅ NEW
+- [x] Deactivate / expire link ✅ NEW
 
 ### Settlements
-- [ ] Next settlement date + estimated amount
-- [ ] Settlement history with UTR numbers
-- [ ] Transaction breakdown per settlement
+- [x] Next settlement date + estimated amount ✅ EXISTING
+- [x] Settlement history with UTR numbers ✅ EXISTING
+- [x] Transaction breakdown per settlement ✅ EXISTING
 - [ ] Download settlement report
 - [ ] Bank account management (add / update with re-verification)
 
 ### Disputes
-- [ ] Active disputes list with deadline countdown
-- [ ] Dispute detail: customer reason + linked transaction
-- [ ] Evidence upload (files + text)
-- [ ] Status flow: open → evidence_submitted → won / lost
+- [x] Active disputes list with deadline countdown ✅ EXISTING
+- [x] Dispute detail: customer reason + linked transaction ✅ EXISTING
+- [x] Evidence upload (files + text) ✅ EXISTING
+- [x] Status flow: open → evidence_submitted → won / lost ✅ EXISTING
 
 ### Customers
-- [ ] Customer list (tokenized, consent-based)
-- [ ] Transaction history per customer
-- [ ] Saved payment methods view
+- [x] Customer list (tokenized, consent-based) ✅ NEW
+- [x] Transaction history per customer ✅ NEW (via API)
+- [x] Saved payment methods view ✅ NEW
 - [ ] Export
 
 ### Subscriptions
@@ -208,19 +208,19 @@
 - [ ] Failed payment retry configuration
 
 ### API Keys & Webhooks
-- [ ] Live + Test key display (masked, reveal-on-click, copy)
-- [ ] Key rotation with confirmation
-- [ ] Webhook config: URL, secret, event subscriptions
-- [ ] Webhook delivery log: request + response per event
+- [x] Live + Test key display (masked, reveal-on-click, copy) ✅ EXISTING
+- [x] Key rotation with confirmation ✅ EXISTING
+- [x] Webhook config: URL, secret, event subscriptions ✅ EXISTING
+- [x] Webhook delivery log: request + response per event ✅ EXISTING
 - [ ] Test webhook trigger
-- [ ] IP whitelist management
+- [x] IP whitelist management ✅ EXISTING
 
 ### Settings
-- [ ] Business profile edit
+- [x] Business profile edit ✅ EXISTING
 - [ ] Team management: invite by email, assign role, revoke access
 - [ ] Notification preferences per event type (email, SMS, in-app)
-- [ ] Branding: logo + color with live checkout preview
-- [ ] Settlement cycle preference
+- [x] Branding: logo + color with live checkout preview ✅ NEW
+- [x] Settlement cycle preference ✅ NEW
 - [ ] Payment method enable / disable
 
 ### Reports
@@ -236,33 +236,33 @@
 
 ---
 
-## ⬜ PHASE 6 — Admin Panel
+## ✅ PHASE 6 — Admin Panel (Partially Complete)
 
 ### Layout
-- [ ] Separate app from merchant dashboard
+- [x] Separate app from merchant dashboard ✅ EXISTING
 - [ ] Global search: merchant / transaction / user by ID or email
-- [ ] Production environment clearly marked (banner / color indicator)
+- [x] Production environment clearly marked (banner / color indicator) ✅ EXISTING
 
 ### Platform Dashboard
-- [ ] GMV (daily / weekly / monthly)
-- [ ] Active merchant count, platform fee earned, overall success rate
+- [x] GMV (daily / weekly / monthly) ✅ EXISTING
+- [x] Active merchant count, platform fee earned, overall success rate ✅ EXISTING
 - [ ] Merchant signups chart
 - [ ] Dispute rate chart
 - [ ] Provider-wise transaction split
 
 ### Merchant Management
-- [ ] List with filters: status, KYC state, GMV tier, join date
-- [ ] Merchant detail: profile, KYC docs, config, transaction history
-- [ ] Approve / reject / suspend / reactivate
+- [x] List with filters: status, KYC state, GMV tier, join date ✅ NEW
+- [x] Merchant detail: profile, KYC docs, config, transaction history ✅ NEW
+- [x] Approve / reject / suspend / reactivate ✅ NEW
 - [ ] Edit limits + fee plan
-- [ ] Impersonate merchant (view dashboard as merchant — full audit log entry)
+- [x] Impersonate merchant (view dashboard as merchant — full audit log entry) ✅ EXISTING
 - [ ] Internal notes on merchant profile
 
 ### KYC Queue
-- [ ] Pending queue sorted by submission date
+- [x] Pending queue sorted by submission date ✅ NEW
 - [ ] Inline document viewer (PDF + images)
-- [ ] Approve / Reject (mandatory reason on reject)
-- [ ] Flag specific fields for resubmission
+- [x] Approve / Reject (mandatory reason on reject) ✅ NEW
+- [x] Flag specific fields for resubmission ✅ NEW
 - [ ] KYC audit log per merchant
 
 ### Transaction Management
@@ -286,9 +286,9 @@
 - [ ] Revenue dashboard: by plan / method / merchant
 
 ### Provider Management
-- [ ] Live health dashboard: up/down, success rate, latency
-- [ ] Routing rules configuration
-- [ ] Circuit breaker status + manual override
+- [x] Live health dashboard: up/down, success rate, latency ✅ NEW
+- [x] Routing rules configuration ✅ NEW
+- [x] Circuit breaker status + manual override ✅ NEW
 - [ ] Provider credential management (masked display)
 
 ### Tenant / White-label Management
@@ -300,7 +300,7 @@
 ### User & Role Management
 - [ ] Admin user list + role assignment
 - [ ] Activity log per admin user
-- [ ] 2FA mandatory for all admin accounts
+- [x] 2FA mandatory for all admin accounts ✅ EXISTING
 
 ### Audit & Compliance
 - [ ] Immutable audit log viewer

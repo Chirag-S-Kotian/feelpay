@@ -1,12 +1,16 @@
 pub mod api_key;
 pub mod audit;
+pub mod customer;
 pub mod dispute;
 pub mod fee;
 pub mod kyc;
 pub mod ledger;
 pub mod merchant;
+pub mod notification;
+pub mod payment_link;
 pub mod payment_order;
 pub mod payout;
+pub mod provider;
 pub mod refund;
 pub mod settlement;
 pub mod subscription;

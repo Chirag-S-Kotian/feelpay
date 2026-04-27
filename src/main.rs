@@ -164,6 +164,41 @@ async fn main() -> std::io::Result<()> {
                             .route("/keys/roll", web::post().to(api::merchants::roll_keys)),
                     ),
             )
+            // Payment Links API
+            .service(
+                web::scope("/v1/payment-links")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .route("", web::post().to(api::payment_links::create_payment_link))
+                    .route("", web::get().to(api::payment_links::list_payment_links))
+                    .route("/{id}", web::get().to(api::payment_links::get_payment_link))
+                    .route("/{id}/cancel", web::post().to(api::payment_links::cancel_payment_link)),
+            )
+            // Customers API
+            .service(
+                web::scope("/v1/customers")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .route("", web::post().to(api::customers::create_customer))
+                    .route("", web::get().to(api::customers::list_customers))
+                    .route("/{id}", web::get().to(api::customers::get_customer))
+                    .route("/{id}", web::delete().to(api::customers::delete_customer))
+                    .route("/{id}/payment-methods", web::get().to(api::customers::get_customer_payment_methods)),
+            )
+            // Notifications & Reports API
+            .service(
+                web::scope("/v1/notifications")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .route("", web::post().to(api::notifications::create_notification))
+                    .route("", web::get().to(api::notifications::list_notifications)),
+            )
+            .service(
+                web::scope("/v1/reports")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .route("", web::post().to(api::notifications::create_report))
+                    .route("", web::get().to(api::notifications::list_reports))
+                    .route("/{id}", web::get().to(api::notifications::get_report)),
+            )
+            // Public payment link view
+            .route("/pay/{link_id}", web::get().to(api::payment_links::view_payment_link))
             // Payments API
             .service(
                 web::scope("/v1/payments")
@@ -180,6 +215,12 @@ async fn main() -> std::io::Result<()> {
                         "/{id}/refund",
                         web::post().to(api::payments::refund_payment),
                     ),
+            )
+            // Providers & Routing API
+            .service(
+                web::scope("/v1/providers")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::providers::configure),
             )
             // Disputes API
             .service(

@@ -1,11 +1,15 @@
 pub mod analytics;
 pub mod auth;
+pub mod customers;
 pub mod disputes;
 pub mod health;
 pub mod merchants;
+pub mod notifications;
 pub mod onboarding;
+pub mod payment_links;
 pub mod payments;
 pub mod payouts;
+pub mod providers;
 pub mod settlements;
 pub mod tenants;
 pub mod webhooks;
@@ -17,6 +21,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/api/v1")
             .configure(health::configure)
             .configure(merchants::configure)
+            .configure(payment_links::configure)
             .configure(payments::configure)
             .configure(disputes::configure)
             .configure(onboarding::configure)

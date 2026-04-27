@@ -1,18 +1,96 @@
 use crate::engine::services::auth::MfaService;
 use crate::models::user::{Claims, User};
-use actix_web::{post, web, HttpResponse, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
 use argon2::password_hash::{rand_core::OsRng, SaltString};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use jsonwebtoken::{encode, EncodingKey, Header};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use uuid::Uuid;
+
+const MAX_FAILED_ATTEMPTS: i32 = 5;
+const REFRESH_TOKEN_DAYS: i64 = 30;
+
+struct CaptchaStore {
+    questions: Mutex<HashMap<String, (String, i32)>>,
+}
+
+lazy_static! {
+    static ref CAPTCHA_STORE: CaptchaStore = CaptchaStore::default();
+}
+
+impl Default for CaptchaStore {
+    fn default() -> Self {
+        Self {
+            questions: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+fn generate_captcha() -> (String, String, i32) {
+    let a = rand::random::<i32>() % 20 + 1;
+    let b = rand::random::<i32>() % 20 + 1;
+    let op = if rand::random::<bool>() { "+" } else { "-" };
+    
+    let question = format!("{} {} {} = ?", a, op, b);
+    let answer = if op == "+" { a + b } else { a - b };
+    
+    let id = Uuid::new_v4().to_string();
+    
+    if let Ok(mut store) = CAPTCHA_STORE.questions.lock() {
+        store.insert(id.clone(), (question.clone(), answer));
+    }
+    
+    (id, question, answer)
+}
+
+fn verify_captcha(id: &str, answer: i32) -> bool {
+    if let Ok(mut store) = CAPTCHA_STORE.questions.lock() {
+        if let Some((_, stored_answer)) = store.remove(id) {
+            return stored_answer == answer;
+        }
+    }
+    false
+}
+
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+async fn generate_refresh_token(user_id: &Uuid, pool: &PgPool) -> Result<String, sqlx::Error> {
+    let token = Uuid::new_v4().to_string();
+    let token_hash = hash_token(&token);
+    let family = Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now() + chrono::Duration::days(REFRESH_TOKEN_DAYS);
+    
+    sqlx::query(
+        "INSERT INTO refresh_tokens (user_id, token_hash, family, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5, $6)"
+    )
+    .bind(user_id)
+    .bind(&token_hash)
+    .bind(&family)
+    .bind(expires_at)
+    .execute(pool)
+    .await?;
+    
+    Ok(token)
+}
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
+            .service(captcha)
             .service(login)
             .service(register)
+            .service(refresh)
+            .service(logout)
+            .service(logout_all)
             .service(mfa_setup)
             .service(mfa_confirm)
             .service(mfa_verify),
@@ -23,12 +101,24 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
+    #[serde(default)]
+    pub captcha_id: Option<String>,
+    #[serde(default)]
+    pub captcha_answer: Option<i32>,
+}
+
+#[derive(Serialize)]
+pub struct CaptchaResponse {
+    pub captcha_id: String,
+    pub question: String,
 }
 
 #[derive(Serialize)]
 pub struct AuthResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,6 +131,122 @@ pub struct AuthResponse {
     pub mfa_required: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mfa_token: Option<String>,
+}
+
+#[get("/captcha")]
+async fn captcha(_pool: web::Data<PgPool>) -> impl Responder {
+    let (id, question, _answer) = generate_captcha();
+    HttpResponse::Ok().json(CaptchaResponse {
+        captcha_id: id,
+        question,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[post("/refresh")]
+async fn refresh(pool: web::Data<PgPool>, req: web::Json<RefreshRequest>) -> impl Responder {
+    let token_hash = hash_token(&req.refresh_token);
+    
+    let result = sqlx::query_as::<_, (
+        Uuid,
+        Uuid,
+        String,
+        chrono::DateTime<chrono::Utc>,
+        Option<chrono::DateTime<chrono::Utc>>,
+    )>(
+        "SELECT id, user_id, family, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1"
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(Some((rt_id, user_id, _family, expires_at, revoked_at))) => {
+            if revoked_at.is_some() {
+                return HttpResponse::Unauthorized().body("Token revoked");
+            }
+            if expires_at < chrono::Utc::now() {
+                return HttpResponse::Unauthorized().body("Token expired");
+            }
+            
+            sqlx::query("UPDATE refresh_tokens SET last_used_at = NOW() WHERE id = $1")
+                .bind(rt_id)
+                .execute(pool.get_ref())
+                .await.ok();
+            
+            let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_one(pool.get_ref())
+                .await;
+
+            if let Ok(u) = user {
+                let role: (String,) = sqlx::query_as(
+                    "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1 LIMIT 1"
+                )
+                .bind(u.id)
+                .fetch_one(pool.get_ref())
+                .await
+                .unwrap_or(("user".to_string(),));
+
+                let token = generate_jwt(&u, &role.0);
+                let new_refresh = generate_refresh_token(&u.id, pool.get_ref()).await;
+                
+                HttpResponse::Ok().json(AuthResponse {
+                    token: Some(token),
+                    refresh_token: new_refresh.ok(),
+                    user_id: Some(u.id),
+                    tenant_id: u.tenant_id,
+                    merchant_id: u.merchant_id,
+                    role: Some(role.0),
+                    mfa_required: Some(false),
+                    mfa_token: None,
+                })
+            } else {
+                HttpResponse::Unauthorized().body("User not found")
+            }
+        }
+        Ok(None) => HttpResponse::Unauthorized().body("Invalid token"),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct LogoutRequest {
+    pub refresh_token: Option<String>,
+}
+
+#[post("/logout")]
+async fn logout(pool: web::Data<PgPool>, req: web::Json<LogoutRequest>, claims: Claims) -> impl Responder {
+    let _user_id = claims.sub;
+    if let Some(refresh_token) = &req.refresh_token {
+        let token_hash = hash_token(refresh_token);
+        sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1")
+            .bind(&token_hash)
+            .execute(pool.get_ref())
+            .await.ok();
+    }
+    HttpResponse::Ok().json(serde_json::json!({ "message": "Logged out" }))
+}
+
+#[post("/logout-all")]
+async fn logout_all(pool: web::Data<PgPool>, claims: Claims) -> impl Responder {
+    let user_id = claims.sub.clone();
+    let _ = user_id; // Explicitly use or ignore
+    sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL")
+        .bind(&user_id)
+        .execute(pool.get_ref())
+        .await.ok();
+
+    sqlx::query("UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL")
+        .bind(&user_id)
+        .execute(pool.get_ref())
+        .await.ok();
+
+    HttpResponse::Ok().json(serde_json::json!({ "message": "All sessions logged out" }))
 }
 
 #[derive(Deserialize)]
@@ -63,6 +269,13 @@ pub struct MfaVerifyRequest {
 
 #[post("/login")]
 async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Responder {
+    // Verify CAPTCHA first if provided
+    if let (Some(captcha_id), Some(captcha_answer)) = (&req.captcha_id, req.captcha_answer) {
+        if !verify_captcha(captcha_id, captcha_answer) {
+            return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Invalid CAPTCHA" }));
+        }
+    }
+
     let user =
         sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND status = 'active'")
             .bind(&req.email)
@@ -71,11 +284,34 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
 
     match user {
         Ok(Some(u)) => {
+            // Check for account lockout
+            let recent_failures: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM login_attempts WHERE user_id = $1 AND success = false AND created_at > NOW() - INTERVAL '30 minutes'"
+            )
+            .bind(u.id)
+            .fetch_one(pool.get_ref())
+            .await
+            .unwrap_or((0,));
+
+            if recent_failures.0 as i64 >= MAX_FAILED_ATTEMPTS as i64 {
+                return HttpResponse::TooManyRequests().json(serde_json::json!({ 
+                    "error": "Account temporarily locked. Try again in 30 minutes." 
+                }));
+            }
+
             let parsed_hash = PasswordHash::new(&u.password_hash).unwrap();
             if Argon2::default()
                 .verify_password(req.password.as_bytes(), &parsed_hash)
                 .is_ok()
             {
+                // Record successful login
+                sqlx::query(
+                    "INSERT INTO login_attempts (user_id, email, success) VALUES ($1, $1, true)"
+                )
+                .bind(u.id)
+                .execute(pool.get_ref())
+                .await.ok();
+
                 // Fetch roles
                 let role: (String,) = sqlx::query_as(
                     "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1 LIMIT 1"
@@ -86,9 +322,10 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
                 .unwrap_or(("user".to_string(),));
 
                 if u.mfa_enabled {
-                    let mfa_token = generate_jwt_with_exp(&u, "mfa_pending", 300); // 5 mins
+                    let mfa_token = generate_jwt_with_exp(&u, "mfa_pending", 300);
                     return HttpResponse::Ok().json(AuthResponse {
                         token: None,
+                        refresh_token: None,
                         user_id: Some(u.id),
                         tenant_id: u.tenant_id,
                         merchant_id: u.merchant_id,
@@ -99,8 +336,11 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
                 }
 
                 let token = generate_jwt(&u, &role.0);
+                let refresh_token = generate_refresh_token(&u.id, pool.get_ref()).await;
+                
                 HttpResponse::Ok().json(AuthResponse {
                     token: Some(token),
+                    refresh_token: refresh_token.ok(),
                     user_id: Some(u.id),
                     tenant_id: u.tenant_id,
                     merchant_id: u.merchant_id,
@@ -109,10 +349,22 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
                     mfa_token: None,
                 })
             } else {
+                // Record failed login attempt
+                sqlx::query(
+                    "INSERT INTO login_attempts (user_id, email, success, failure_reason) VALUES ($1, $2, false, 'invalid_password')"
+                )
+                .bind(u.id)
+                .bind(&req.email)
+                .execute(pool.get_ref())
+                .await.ok();
+
                 HttpResponse::Unauthorized().body("Invalid credentials")
             }
         }
-        Ok(None) => HttpResponse::Unauthorized().body("Invalid credentials"),
+        Ok(None) => {
+            // Record failed attempt for non-existent user to prevent enumeration
+            HttpResponse::Unauthorized().body("Invalid credentials")
+        }
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
@@ -212,8 +464,11 @@ async fn mfa_verify(pool: web::Data<PgPool>, req: web::Json<MfaVerifyRequest>) -
                                     .unwrap_or(("user".to_string(),));
 
                                     let token = generate_jwt(&u, &role.0);
+                                    let refresh_token = generate_refresh_token(&u.id, pool.get_ref()).await.unwrap_or_else(|_| Uuid::new_v4().to_string());
+                                    
                                     HttpResponse::Ok().json(AuthResponse {
                                         token: Some(token),
+                                        refresh_token: Some(refresh_token),
                                         user_id: Some(u.id),
                                         tenant_id: u.tenant_id,
                                         merchant_id: u.merchant_id,

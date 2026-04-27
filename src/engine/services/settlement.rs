@@ -35,7 +35,7 @@ impl SettlementService {
         .bind(merchant_id)
         .fetch_one(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         let fee_amount: i64 = (total_amount.0 * 2) / 100;
         let tax_amount = (fee_amount * 18) / 100;
@@ -58,7 +58,7 @@ impl SettlementService {
         .bind(net_amount)
         .fetch_one(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         Ok(settlement)
     }
@@ -81,7 +81,7 @@ impl SettlementService {
         .bind(merchant_id)
         .fetch_all(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
         Ok(settlements)
     }
 
@@ -99,7 +99,7 @@ impl SettlementService {
         .bind(id)
         .fetch_optional(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
         Ok(settlement)
     }
 
@@ -114,7 +114,7 @@ impl SettlementService {
         .bind(merchant_id)
         .fetch_one(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         let pending: (i64,) = sqlx::query_as(
             r#"
@@ -126,7 +126,7 @@ impl SettlementService {
         .bind(merchant_id)
         .fetch_one(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         Ok((available.0 - pending.0, pending.0))
     }

@@ -32,7 +32,7 @@ async fn inbound_webhook(
     let provided = hex::decode(signature)
         .map_err(|_| FeelPayError::Unauthorized("Invalid signature encoding".into()))?;
     let mut mac = HmacSha256::new_from_slice(state.config.webhook_signing_secret.as_bytes())
-        .map_err(|_| FeelPayError::InternalError("Invalid webhook signing secret".into()))?;
+        .map_err(|_| FeelPayError::Internal("Invalid webhook signing secret".into()))?;
     mac.update(&body);
     mac.verify_slice(&provided)
         .map_err(|_| FeelPayError::Unauthorized("Signature mismatch".into()))?;
@@ -143,7 +143,7 @@ async fn handle_dispute_event(
     .bind(Some(dispute_id.to_string()))
     .execute(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(())
 }

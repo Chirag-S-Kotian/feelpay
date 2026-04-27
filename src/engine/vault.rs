@@ -36,11 +36,11 @@ struct VaultLookupRow {
 impl CardVaultService {
     pub fn new(db: PgPool, encryption_key_hex: &str, key_id: String) -> Result<Self, FeelPayError> {
         let key_bytes = hex::decode(encryption_key_hex).map_err(|_| {
-            FeelPayError::InternalError("Invalid vault encryption key format (not hex)".into())
+            FeelPayError::Internal("Invalid vault encryption key format (not hex)".into())
         })?;
 
         if key_bytes.len() != 32 {
-            return Err(FeelPayError::InternalError(
+            return Err(FeelPayError::Internal(
                 "Vault encryption key must be 32 bytes (AES-256)".into(),
             ));
         }
@@ -74,7 +74,7 @@ impl CardVaultService {
 
         let encrypted_pan = cipher
             .encrypt(&nonce, pan.as_bytes())
-            .map_err(|_| FeelPayError::InternalError("Failed to encrypt PAN".into()))?;
+            .map_err(|_| FeelPayError::Internal("Failed to encrypt PAN".into()))?;
 
         // Zeroize raw PAN from memory immediately after encryption
         pan.zeroize();
@@ -103,7 +103,7 @@ impl CardVaultService {
         .bind(&holder_name)
         .execute(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
         Ok(VaultedCard {
             token,
@@ -132,30 +132,30 @@ impl CardVaultService {
         .bind(merchant_id)
         .fetch_optional(&self.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
         .ok_or_else(|| FeelPayError::NotFound("Card token not found".into()))?;
 
         if record.encryption_key_id != self.key_id {
-            return Err(FeelPayError::InternalError(
+            return Err(FeelPayError::Internal(
                 "Key rotation not fully implemented yet".into(),
             ));
         }
 
         let encrypted_pan = B64
             .decode(record.encrypted_pan)
-            .map_err(|_| FeelPayError::InternalError("Corrupt encrypted PAN payload".into()))?;
+            .map_err(|_| FeelPayError::Internal("Corrupt encrypted PAN payload".into()))?;
         let nonce_bytes = B64
             .decode(record.nonce)
-            .map_err(|_| FeelPayError::InternalError("Corrupt nonce payload".into()))?;
+            .map_err(|_| FeelPayError::Internal("Corrupt nonce payload".into()))?;
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let cipher = Aes256Gcm::new(&self.encryption_key);
         let pan_bytes = cipher
             .decrypt(nonce, encrypted_pan.as_ref())
-            .map_err(|_| FeelPayError::InternalError("Failed to decrypt PAN".into()))?;
+            .map_err(|_| FeelPayError::Internal("Failed to decrypt PAN".into()))?;
 
         let pan = String::from_utf8(pan_bytes)
-            .map_err(|_| FeelPayError::InternalError("Decrypted PAN is not valid UTF-8".into()))?;
+            .map_err(|_| FeelPayError::Internal("Decrypted PAN is not valid UTF-8".into()))?;
 
         Ok(pan)
     }

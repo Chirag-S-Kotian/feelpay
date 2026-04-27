@@ -80,7 +80,7 @@ impl TransactionPipeline {
                     attempt += 1;
                     let is_retryable = matches!(
                         err,
-                        FeelPayError::ConnectorError(_) | FeelPayError::InternalError(_)
+                        FeelPayError::ConnectorError(_) | FeelPayError::Internal(_)
                     );
                     if !is_retryable || attempt > self.max_retries {
                         return Err(err);

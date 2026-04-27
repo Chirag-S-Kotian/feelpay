@@ -16,10 +16,10 @@ pub struct VaultCrypto {
 impl VaultCrypto {
     pub fn new(encryption_key_hex: &str, key_id: String) -> Result<Self, FeelPayError> {
         let key_bytes = hex::decode(encryption_key_hex).map_err(|_| {
-            FeelPayError::InternalError("Invalid vault encryption key format (not hex)".into())
+            FeelPayError::Internal("Invalid vault encryption key format (not hex)".into())
         })?;
         if key_bytes.len() != 32 {
-            return Err(FeelPayError::InternalError(
+            return Err(FeelPayError::Internal(
                 "Vault encryption key must be 32 bytes (AES-256)".into(),
             ));
         }
@@ -34,7 +34,7 @@ impl VaultCrypto {
         let ciphertext = self
             .cipher
             .encrypt(&nonce, plaintext.as_bytes())
-            .map_err(|_| FeelPayError::InternalError("AES encrypt failed".into()))?;
+            .map_err(|_| FeelPayError::Internal("AES encrypt failed".into()))?;
         plaintext.zeroize();
         Ok((B64.encode(ciphertext), B64.encode(nonce)))
     }
@@ -43,17 +43,17 @@ impl VaultCrypto {
     pub fn decrypt(&self, ciphertext_b64: &str, nonce_b64: &str) -> Result<String, FeelPayError> {
         let ciphertext = B64
             .decode(ciphertext_b64)
-            .map_err(|_| FeelPayError::InternalError("Corrupt encrypted payload".into()))?;
+            .map_err(|_| FeelPayError::Internal("Corrupt encrypted payload".into()))?;
         let nonce_bytes = B64
             .decode(nonce_b64)
-            .map_err(|_| FeelPayError::InternalError("Corrupt nonce payload".into()))?;
+            .map_err(|_| FeelPayError::Internal("Corrupt nonce payload".into()))?;
         let nonce = Nonce::from_slice(&nonce_bytes);
         let plaintext_bytes = self
             .cipher
             .decrypt(nonce, ciphertext.as_ref())
-            .map_err(|_| FeelPayError::InternalError("AES decrypt failed".into()))?;
+            .map_err(|_| FeelPayError::Internal("AES decrypt failed".into()))?;
         String::from_utf8(plaintext_bytes)
-            .map_err(|_| FeelPayError::InternalError("Decrypted data is not valid UTF-8".into()))
+            .map_err(|_| FeelPayError::Internal("Decrypted data is not valid UTF-8".into()))
     }
 
     /// Derive a deterministic HMAC fingerprint for duplicate-PAN detection (future use).

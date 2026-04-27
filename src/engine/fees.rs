@@ -39,7 +39,7 @@ pub async fn calculate_fees(
     .bind(payment_network)
     .fetch_optional(pool)
     .await
-    .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let row = match row {
         Some(r) => r,
@@ -52,22 +52,22 @@ pub async fn calculate_fees(
 
     let id: Uuid = row
         .try_get("id")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
     let percentage_fee_val: Option<Decimal> = row
         .try_get("percentage_fee")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
     let flat_fee_val: Option<i64> = row
         .try_get("flat_fee")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
     let min_fee_val: Option<i64> = row
         .try_get("min_fee")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
     let max_fee_val: Option<i64> = row
         .try_get("max_fee")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
     let gst_inclusive_val: Option<bool> = row
         .try_get("gst_inclusive")
-        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let amount_dec = Decimal::from_i64(amount).unwrap();
     let percentage_fee = percentage_fee_val.unwrap_or(Decimal::ZERO);

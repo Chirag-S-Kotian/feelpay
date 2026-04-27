@@ -1084,6 +1084,7 @@ dependencies = [
  "hex",
  "hmac",
  "jsonwebtoken",
+ "lazy_static",
  "num_cpus",
  "rand 0.8.6",
  "redis",

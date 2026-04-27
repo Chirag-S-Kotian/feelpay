@@ -7,6 +7,7 @@ use crate::engine::services::auth::MfaService;
 use crate::error::FeelPayError;
 use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequest};
 use crate::state::AppState;
+use sqlx::Row;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -86,14 +87,16 @@ pub async fn create_merchant(
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     // 3. Assign Role (merchant_owner)
-    let role: (Uuid,) = sqlx::query_as("SELECT id FROM roles WHERE name = 'merchant_owner'")
+    let role_row = sqlx::query("SELECT id FROM roles WHERE name = 'merchant_owner'")
         .fetch_one(&mut *tx)
         .await
         .map_err(|_| FeelPayError::Internal("Default role 'merchant_owner' not found".into()))?;
 
+    let role_id: Uuid = role_row.get(0);
+
     sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)")
         .bind(user_id)
-        .bind(role.0)
+        .bind(role_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
@@ -115,20 +118,24 @@ pub async fn get_merchant(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
     let id = path.into_inner();
-    let pool = state.db.clone();
-    let row: Option<(Uuid, Option<Uuid>, String, String, String, Option<String>, String)> = sqlx::query_as(
+    let row = sqlx::query(
         "SELECT id, tenant_id, name, email, api_key, business_name, status FROM merchants WHERE id = $1",
     )
     .bind(id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.db)
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match row {
-        Some((id, tenant_id, name, email, api_key, biz, status)) => {
+        Some(row) => {
             Ok(HttpResponse::Ok().json(serde_json::json!({
-                "id": id, "tenant_id": tenant_id, "name": name, "email": email,
-                "api_key": api_key, "business_name": biz, "status": status,
+                "id": row.get::<Uuid, _>(0),
+                "tenant_id": row.get::<Option<Uuid>, _>(1),
+                "name": row.get::<String, _>(2),
+                "email": row.get::<String, _>(3),
+                "api_key": row.get::<String, _>(4),
+                "business_name": row.get::<Option<String>, _>(5),
+                "status": row.get::<String, _>(6),
             })))
         }
         None => Err(FeelPayError::NotFound("Merchant not found".into())),
@@ -147,19 +154,7 @@ pub async fn get_profile(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let row: Option<(
-        Uuid,
-        Option<Uuid>,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        String,
-        String,
-        i64,
-        i64,
-    )> = sqlx::query_as(
+    let row = sqlx::query(
         r#"
         SELECT id, tenant_id, name, email, api_key, business_name, webhook_url, status, onboarding_status, daily_limit, monthly_limit
         FROM merchants
@@ -169,37 +164,25 @@ pub async fn get_profile(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
-    let Some((
-        id,
-        tenant_id,
-        name,
-        email,
-        api_key,
-        business_name,
-        webhook_url,
-        status,
-        onboarding_status,
-        daily_limit,
-        monthly_limit,
-    )) = row
+    let Some(row) = row
     else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "id": id,
-        "tenant_id": tenant_id,
-        "name": name,
-        "email": email,
-        "api_key": api_key,
-        "business_name": business_name,
-        "webhook_url": webhook_url,
-        "status": status,
-        "onboarding_status": onboarding_status,
-        "daily_limit": daily_limit,
-        "monthly_limit": monthly_limit
+        "id": row.get::<Uuid, _>(0),
+        "tenant_id": row.get::<Option<Uuid>, _>(1),
+        "name": row.get::<String, _>(2),
+        "email": row.get::<String, _>(3),
+        "api_key": row.get::<String, _>(4),
+        "business_name": row.get::<Option<String>, _>(5),
+        "webhook_url": row.get::<Option<String>, _>(6),
+        "status": row.get::<String, _>(7),
+        "onboarding_status": row.get::<String, _>(8),
+        "daily_limit": row.get::<i64, _>(9),
+        "monthly_limit": row.get::<i64, _>(10)
     })))
 }
 
@@ -229,7 +212,7 @@ pub async fn update_profile(
     .bind(&body.settlement_account)
     .execute(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     get_profile(req, state).await
 }
@@ -239,20 +222,21 @@ pub async fn get_keys(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let row: Option<(String,)> = sqlx::query_as("SELECT api_key FROM merchants WHERE id = $1")
+    let row = sqlx::query("SELECT api_key FROM merchants WHERE id = $1")
         .bind(merchant_id)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
-    let Some((api_key,)) = row else {
+    let Some(row) = row else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "api_key": api_key
+        "api_key": row.get::<String, _>(0)
     })))
 }
+
 
 pub async fn roll_keys(
     req: HttpRequest,
@@ -277,7 +261,7 @@ pub async fn roll_keys(
     .bind(&api_secret_hash)
     .execute(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "api_key": api_key,

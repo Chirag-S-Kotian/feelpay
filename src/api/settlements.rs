@@ -72,7 +72,7 @@ pub async fn list_settlements(
     .bind(offset)
     .fetch_all(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let total: (i64,) = sqlx::query_as(
         r#"
@@ -90,7 +90,7 @@ pub async fn list_settlements(
     .bind(&query.to_date)
     .fetch_one(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let settlements: Vec<serde_json::Value> = rows
         .into_iter()
@@ -162,7 +162,7 @@ pub async fn get_settlement(
     .bind(merchant_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let Some((
         id,
@@ -192,7 +192,7 @@ pub async fn get_settlement(
     .bind(settlement_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": id,
