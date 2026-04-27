@@ -4,8 +4,10 @@ pub mod checkout;
 pub mod customers;
 pub mod disputes;
 pub mod documents;
+pub mod emi_bnpl;
 pub mod fee_plans;
 pub mod health;
+pub mod mandates;
 pub mod merchants;
 pub mod notifications;
 pub mod onboarding;
@@ -14,6 +16,7 @@ pub mod payment_links;
 pub mod providers;
 pub mod settlements;
 pub mod subscriptions;
+pub mod virtual_accounts;
 
 use utoipa::OpenApi;
 
@@ -37,6 +40,8 @@ use utoipa::OpenApi;
         onboarding::onboarding_status,
         onboarding::submit_bank_account,
         onboarding::update_branding,
+        emi_bnpl::get_emi_plans,
+        emi_bnpl::get_bnpl_providers,
         payments::create_payment,
         payments::list_payments,
         payments::get_payment,
@@ -59,6 +64,34 @@ use utoipa::OpenApi;
         settlements::get_settlement,
         settlements::get_settlement_stats,
         analytics::get_dashboard_stats,
+        analytics::get_actionable_alerts,
+        analytics::get_volume_chart,
+        analytics::get_top_customers,
+        mandates::initiate_mandate,
+        mandates::list_mandates,
+        mandates::get_mandate,
+        mandates::cancel_mandate,
+        mandates::execute_mandate,
+        virtual_accounts::create_virtual_account,
+        virtual_accounts::list_virtual_accounts,
+        virtual_accounts::get_virtual_account,
+        onboarding::initiate_aadhaar_ekyc,
+        onboarding::verify_aadhaar_otp,
+        onboarding::update_registration_step,
+        onboarding::get_registration_progress,
+        onboarding::submit_business_info,
+        onboarding::get_limits,
+        onboarding::update_limits,
+        merchants::get_keys,
+        merchants::roll_keys,
+        merchants::verify_mfa_merchant,
+        merchants::reset_password,
+        merchants::forgot_password,
+        merchants::list_team_members,
+        merchants::invite_team_member,
+        merchants::remove_team_member,
+        merchants::update_team_member_role,
+        merchants::update_kyc_status,
     ),
     components(
         schemas(
@@ -84,8 +117,25 @@ use utoipa::OpenApi;
             crate::api::payments::RefundPaymentRequest,
             crate::models::payment_link::CreatePaymentLinkRequest,
             crate::models::payment_link::PaymentLinkResponse,
+            crate::models::mandate::Mandate,
+            crate::models::mandate::CreateMandateRequest,
             crate::api::settlements::SettlementQuery,
             crate::api::settlements::SettlementResponse,
+            crate::models::virtual_account::VirtualAccount,
+            crate::models::virtual_account::CreateVirtualAccountRequest,
+            crate::models::merchant::MerchantPaymentMethod,
+            crate::api::emi_bnpl::EmiPlan,
+            crate::api::emi_bnpl::EmiPlansQuery,
+            crate::api::onboarding::InitiateAadhaarRequest,
+            crate::api::onboarding::VerifyAadhaarOtpRequest,
+            crate::api::onboarding::RegistrationStepRequest,
+            crate::api::onboarding::RegistrationProgressResponse,
+            crate::api::onboarding::BusinessInfoRequest,
+            crate::api::onboarding::LimitsRequest,
+            crate::api::onboarding::LimitsResponse,
+            crate::api::merchants::InviteTeamMemberRequest,
+            crate::api::merchants::UpdateRoleRequest,
+            crate::api::merchants::UpdateKycStatusRequest,
         )
     ),
     tags(

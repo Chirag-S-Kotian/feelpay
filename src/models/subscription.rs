@@ -13,6 +13,7 @@ pub struct Subscription {
     pub current_period_start: DateTime<Utc>,
     pub current_period_end: DateTime<Utc>,
     pub cancel_at_period_end: bool,
+    pub retry_settings: Option<Value>,
     pub metadata: Option<Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -28,5 +29,7 @@ pub struct SubscriptionInvoice {
     pub due_date: Option<DateTime<Utc>>,
     pub paid_at: Option<DateTime<Utc>>,
     pub payment_order_id: Option<Uuid>,
+    pub failed_attempts: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }

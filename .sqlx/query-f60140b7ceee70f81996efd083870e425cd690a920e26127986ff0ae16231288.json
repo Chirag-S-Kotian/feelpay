@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO merchant_payment_methods (merchant_id, method_type, enabled, config)\n        VALUES ($1, $2, $3, $4)\n        ON CONFLICT (merchant_id, method_type) \n        DO UPDATE SET enabled = $3, config = $4, updated_at = NOW()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Bool",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f60140b7ceee70f81996efd083870e425cd690a920e26127986ff0ae16231288"
+}

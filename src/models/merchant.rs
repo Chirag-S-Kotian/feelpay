@@ -25,6 +25,13 @@ pub enum MerchantStatus {
     Pending,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct MerchantPaymentMethod {
+    pub method_type: String,
+    pub enabled: bool,
+    pub config: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Merchant {
     pub id: Uuid,
@@ -57,6 +64,9 @@ pub struct Merchant {
     pub metadata: Option<serde_json::Value>,
     pub mfa_enabled: bool,
     pub mfa_secret: Option<String>,
+    pub phone: Option<String>,
+    pub aadhaar_number_masked: Option<String>,
+    pub aadhaar_verified: bool,
     pub last_login_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

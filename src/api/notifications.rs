@@ -18,6 +18,7 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
 pub struct PaginationParams {
     pub page: Option<i32>,
     pub per_page: Option<i32>,
+    pub unread_only: Option<bool>,
 }
 
 // Notifications API
@@ -73,13 +74,18 @@ pub async fn list_notifications(
 
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(20).min(100);
+    let unread_only = query.unread_only.unwrap_or(false);
     let offset = ((page - 1) * per_page) as i64;
 
-    let notifications = sqlx::query(
-        "SELECT * FROM notification_queue 
-         WHERE recipient_id = $1 OR recipient_email = $2
-         ORDER BY created_at DESC LIMIT $3 OFFSET $4",
-    )
+    let base_query = "SELECT * FROM notification_queue 
+         WHERE (recipient_id = $1 OR recipient_email = $2)";
+    
+    let filter = if unread_only { " AND is_read = false" } else { "" };
+    let order_limit = " ORDER BY created_at DESC LIMIT $3 OFFSET $4";
+    
+    let sql = format!("{}{}{}", base_query, filter, order_limit);
+
+    let notifications = sqlx::query(&sql)
     .bind(merchant_id)
     .bind(None::<String>)
     .bind(per_page as i64)
@@ -89,6 +95,49 @@ pub async fn list_notifications(
     .await?;
 
     Ok(HttpResponse::Ok().json(notifications))
+}
+
+pub async fn mark_notification_as_read(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let notification_id = path.into_inner();
+    let mut conn = state.db.acquire().await?;
+
+    let result = sqlx::query(
+        "UPDATE notification_queue SET is_read = true, read_at = NOW() 
+         WHERE id = $1 AND (recipient_id = $2 OR recipient_email = (SELECT email FROM merchants WHERE id = $2))"
+    )
+    .bind(notification_id)
+    .bind(merchant_id)
+    .execute(&mut *conn)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(FeelPayError::NotFound("Notification not found".to_string()));
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "message": "Notification marked as read" })))
+}
+
+pub async fn mark_all_notifications_read(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let mut conn = state.db.acquire().await?;
+
+    sqlx::query(
+        "UPDATE notification_queue SET is_read = true, read_at = NOW() 
+         WHERE (recipient_id = $1 OR recipient_email = (SELECT email FROM merchants WHERE id = $1)) AND is_read = false"
+    )
+    .bind(merchant_id)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "message": "All notifications marked as read" })))
 }
 
 // Reports API
@@ -182,7 +231,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/notifications")
             .route("", web::post().to(create_notification))
-            .route("", web::get().to(list_notifications)),
+            .route("", web::get().to(list_notifications))
+            .route("/mark-all-read", web::post().to(mark_all_notifications_read))
+            .route("/{id}/read", web::post().to(mark_notification_as_read)),
     )
     .service(
         web::scope("/reports")

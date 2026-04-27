@@ -354,6 +354,12 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::documents::configure),
             )
+            // EMI & BNPL API
+            .service(
+                web::scope("/v1/emi-bnpl")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::emi_bnpl::configure),
+            )
             // Fee Plans API
             .service(
                 web::scope("/v1/fee-plans")
@@ -365,6 +371,18 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/subscriptions")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::subscriptions::configure),
+            )
+            // Virtual Accounts API
+            .service(
+                web::scope("/v1/virtual-accounts")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::virtual_accounts::configure),
+            )
+            // Mandates API
+            .service(
+                web::scope("/v1/mandates")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::mandates::configure),
             )
     })
     .workers(worker_count)

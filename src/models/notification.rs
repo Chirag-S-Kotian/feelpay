@@ -27,6 +27,8 @@ pub struct NotificationQueue {
     pub entity_type: Option<String>,
     pub entity_id: Option<Uuid>,
     pub metadata: serde_json::Value,
+    pub is_read: bool,
+    pub read_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -157,6 +159,8 @@ impl From<PgRow> for NotificationQueue {
             entity_type: row.get("entity_type"),
             entity_id: row.get("entity_id"),
             metadata: row.get("metadata"),
+            is_read: row.get("is_read"),
+            read_at: row.get("read_at"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         }

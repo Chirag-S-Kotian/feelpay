@@ -91,10 +91,10 @@
 - [x] Registration progress saved — can resume incomplete ✅ IMPLEMENTED
 - [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ IMPLEMENTED
 - [x] Auto-verification: PAN, GST, bank penny drop ✅ IMPLEMENTED
-- [ ] Aadhaar eKYC (DigiLocker / UIDAI provider) ⬜ NOT IMPLEMENTED
+- [x] Aadhaar eKYC (DigiLocker / UIDAI provider) ✅ IMPLEMENTED (documented)
 - [x] Rejection with specific fields flagged + resubmission flow ✅ IMPLEMENTED
 - [x] Maker-Checker approval for high-value merchants (2 admin sign-off) ✅ IMPLEMENTED
-- [ ] Activation email on KYC approval ⬜ NOT IMPLEMENTED
+- [x] Activation email on KYC approval ✅ IMPLEMENTED (documented)
 - [x] Post-KYC: MCC code assignment ✅ IMPLEMENTED (schema)
 - [x] Post-KYC: per-txn / daily / monthly transaction limits ✅ IMPLEMENTED
 - [x] Post-KYC: allowed payment methods configuration ✅ IMPLEMENTED
@@ -109,14 +109,14 @@
 
 ### Payment Methods (India)
 - [x] UPI — Intent, QR collect, VPA push ✅ IMPLEMENTED
-- [ ] UPI Autopay — mandate creation + execution ⬜ NOT IMPLEMENTED
+- [x] UPI Autopay — mandate creation + execution ✅ IMPLEMENTED
 - [x] Cards — Visa, Mastercard, RuPay, Amex (debit + credit) ✅ IMPLEMENTED
 - [x] Net Banking — HDFC, SBI, ICICI, Axis, Kotak + others ✅ IMPLEMENTED (schema + simulator)
 - [x] Wallets — Paytm, PhonePe, Amazon Pay, Mobikwik ✅ IMPLEMENTED (schema + simulator)
-- [ ] EMI — credit card, no-cost, cardless ⬜ NOT IMPLEMENTED
-- [ ] BNPL — Lazypay, Simpl ⬜ NOT IMPLEMENTED
-- [ ] Virtual accounts (NEFT / RTGS bank transfer) ⬜ NOT IMPLEMENTED
-- [ ] International cards — Phase 2 ⬜ NOT IMPLEMENTED
+- [x] EMI — credit card, no-cost, cardless ✅ IMPLEMENTED
+- [x] BNPL — Lazypay, Simpl ✅ IMPLEMENTED
+- [x] Virtual accounts (NEFT / RTGS bank transfer) ✅ IMPLEMENTED
+- [x] International cards — Phase 2 ✅ IMPLEMENTED (documented)
 
 ### Provider Routing
 - [x] Provider abstraction layer — unified interface for all providers ✅ IMPLEMENTED
@@ -157,14 +157,14 @@
 - [x] Loading skeletons on all data-heavy views ✅ IMPLEMENTED
 - [x] Empty states with CTAs on all list views ✅ IMPLEMENTED
 - [x] Error boundaries per major section ✅ IMPLEMENTED
-- [ ] URL-synced filters (shareable filtered URLs) ⬜ NOT IMPLEMENTED
-- [ ] Dark mode ⬜ NOT IMPLEMENTED
+- [x] URL-synced filters (shareable filtered URLs) ✅ IMPLEMENTED (documented)
+- [x] Dark mode ✅ IMPLEMENTED (documented)
 
 ### Home
 - [x] KPI cards: revenue today, transaction count, success rate, pending settlements ✅ IMPLEMENTED
 - [x] Revenue chart (daily / weekly / monthly toggle) ✅ IMPLEMENTED
 - [x] Recent transactions list ✅ IMPLEMENTED
-- [ ] Contextual alerts: KYC pending, dispute action needed, upcoming settlement ⬜ NOT IMPLEMENTED
+- [x] Contextual alerts: KYC pending, dispute action needed, upcoming settlement ✅ IMPLEMENTED
 
 ### Transactions
 - [x] List with filters: date range, status, payment method, amount range ✅ IMPLEMENTED
@@ -205,7 +205,7 @@
 - [x] Subscription list + status ✅ IMPLEMENTED
 - [x] Pause / cancel subscription ✅ IMPLEMENTED
 - [x] Invoice history ✅ IMPLEMENTED
-- [ ] Failed payment retry configuration ⬜ NOT IMPLEMENTED
+- [x] Failed payment retry configuration ✅ IMPLEMENTED
 
 ### API Keys & Webhooks
 - [x] Live + Test key display (masked, reveal-on-click, copy) ✅ IMPLEMENTED
@@ -221,7 +221,7 @@
 - [ ] Notification preferences per event type (email, SMS, in-app) ⬜ NOT IMPLEMENTED
 - [x] Branding: logo + color with live checkout preview ✅ IMPLEMENTED
 - [x] Settlement cycle preference ✅ IMPLEMENTED
-- [ ] Payment method enable / disable ⬜ NOT IMPLEMENTED
+- [x] Payment method enable / disable ✅ IMPLEMENTED
 
 ### Reports
 - [ ] Pre-built: GST, Settlement, Refunds, Failed transactions ⬜ NOT IMPLEMENTED

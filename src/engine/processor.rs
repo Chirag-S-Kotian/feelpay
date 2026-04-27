@@ -11,6 +11,8 @@ pub enum PaymentMethod {
     Upi,
     NetBanking,
     Wallet,
+    Emi,
+    Bnpl,
     Simulator,
 }
 
@@ -34,6 +36,14 @@ pub enum MethodData {
     Wallet {
         wallet_name: String,
         phone: Option<String>,
+    },
+    Emi {
+        bank_code: String,
+        duration: u8,
+        plan_id: Option<String>,
+    },
+    Bnpl {
+        provider_code: String,
     },
     Simulator {
         action: String, // "success", "fail", "delay"

@@ -266,7 +266,7 @@ pub async fn verify_document(
             verified_by = $3,
             updated_at = NOW()
         WHERE id = $4
-        RETURNING id
+        RETURNING id, merchant_id, document_type
         "#,
     )
     .bind(&body.status)
@@ -278,9 +278,70 @@ pub async fn verify_document(
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match result {
-        Some(_) => Ok(HttpResponse::Ok().json(serde_json::json!({
-            "message": format!("Document {}", body.status)
-        }))),
+        Some(row) => {
+            let merchant_id: Uuid = row.get(1);
+            let doc_type: String = row.get(2);
+
+            // Fetch merchant email for notification
+            let merchant_email: String = sqlx::query_scalar("SELECT email FROM merchants WHERE id = $1")
+                .bind(merchant_id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or_default();
+
+            if !merchant_email.is_empty() {
+                // 1. Create InApp notification
+                let notification_title = if body.status == "approved" {
+                    format!("Document Approved: {}", doc_type)
+                } else {
+                    format!("Document Rejected: {}", doc_type)
+                };
+
+                let notification_message = if body.status == "approved" {
+                    format!("Your document ({}) has been successfully verified.", doc_type)
+                } else {
+                    format!(
+                        "Your document ({}) was rejected. Reason: {}",
+                        doc_type,
+                        body.rejection_reason.as_deref().unwrap_or("No reason provided")
+                    )
+                };
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO notification_queue (
+                        notification_type, recipient_type, recipient_id, recipient_email,
+                        subject, body, status, entity_type, entity_id, metadata
+                    )
+                    VALUES ('in_app', 'merchant', $1, $2, $3, $4, 'sent', 'document', $5, $6)
+                    "#
+                )
+                .bind(merchant_id)
+                .bind(&merchant_email)
+                .bind(&notification_title)
+                .bind(&notification_message)
+                .bind(doc_id)
+                .bind(serde_json::json!({
+                    "status": body.status,
+                    "document_type": doc_type
+                }))
+                .execute(&state.db)
+                .await
+                .ok();
+
+                // 2. Trigger KYC status email if purpose is KYC
+                let _ = crate::engine::services::email::send_kyc_status_email(
+                    &state.db,
+                    &merchant_email,
+                    &body.status,
+                    body.rejection_reason.as_deref()
+                ).await;
+            }
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": format!("Document {}", body.status)
+            })))
+        }
         None => Err(FeelPayError::NotFound("Document not found".into())),
     }
 }

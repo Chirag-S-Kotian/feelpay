@@ -1,7 +1,7 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::Serialize;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -22,8 +22,67 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/analytics")
             .route("/summary", web::get().to(get_dashboard_stats))
             .route("/volume", web::get().to(get_volume_chart))
-            .route("/top-customers", web::get().to(get_top_customers)),
+            .route("/top-customers", web::get().to(get_top_customers))
+            .route("/alerts", web::get().to(get_actionable_alerts)),
     );
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/analytics/alerts",
+    responses(
+        (status = 200, description = "Actionable alerts for the merchant", body = Object),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_actionable_alerts(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
+    let merchant_id = match extract_merchant_id(&req) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    let mut alerts = Vec::new();
+
+    // Check KYC status
+    let merchant = sqlx::query("SELECT onboarding_status FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_one(pool.get_ref())
+        .await;
+
+    if let Ok(m) = merchant {
+        let onboarding_status: String = m.get("onboarding_status");
+        if onboarding_status != "approved" {
+            alerts.push(serde_json::json!({
+                "type": "kyc_pending",
+                "severity": "warning",
+                "message": format!("Your KYC status is {}. Please complete onboarding to enable settlements.", onboarding_status),
+                "action_url": "/dashboard/onboarding"
+            }));
+        }
+    }
+
+    // Check for open disputes
+    let disputes = sqlx::query("SELECT COUNT(*) as count FROM disputes WHERE merchant_id = $1 AND status = 'open'")
+        .bind(merchant_id)
+        .fetch_one(pool.get_ref())
+        .await;
+
+    if let Ok(d) = disputes {
+        let count: i64 = d.get("count");
+        if count > 0 {
+            alerts.push(serde_json::json!({
+                "type": "dispute_action",
+                "severity": "error",
+                "message": format!("You have {} open disputes that require evidence submission.", count),
+                "action_url": "/dashboard/disputes"
+            }));
+        }
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({ "alerts": alerts }))
 }
 
 /// GET /v1/analytics/summary — aggregate stats for authenticated merchant
@@ -98,6 +157,17 @@ pub struct AnalyticsSummary {
 }
 
 /// GET /v1/analytics/volume — daily volume for last 7 days
+#[utoipa::path(
+    get,
+    path = "/v1/analytics/volume",
+    responses(
+        (status = 200, description = "Daily transaction volume for last 7 days", body = [DayVolume]),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_volume_chart(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
@@ -149,8 +219,8 @@ struct DayVolumeRow {
     volume: Option<i64>,
 }
 
-#[derive(Serialize)]
-struct DayVolume {
+#[derive(Serialize, ToSchema)]
+pub struct DayVolume {
     day: String,
     date: String,
     count: i64,
@@ -216,6 +286,17 @@ pub async fn get_volume_trends(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/analytics/top-customers",
+    responses(
+        (status = 200, description = "Top 5 customers by volume", body = [TopCustomerResponse]),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_top_customers(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
@@ -244,11 +325,11 @@ pub async fn get_top_customers(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
             let customers: Vec<_> = data
                 .into_iter()
                 .map(|r| {
-                    serde_json::json!({
-                        "email": r.customer_email,
-                        "count": r.count.unwrap_or(0),
-                        "volume": r.volume.unwrap_or(0)
-                    })
+                    TopCustomerResponse {
+                        email: r.customer_email,
+                        count: r.count.unwrap_or(0),
+                        volume: r.volume.unwrap_or(0)
+                    }
                 })
                 .collect();
             HttpResponse::Ok().json(serde_json::json!({ "top_customers": customers }))
@@ -303,6 +384,13 @@ pub async fn get_webhook_events(req: HttpRequest, pool: web::Data<PgPool>) -> Ht
             }))
         }
     }
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TopCustomerResponse {
+    pub email: Option<String>,
+    pub count: i64,
+    pub volume: i64,
 }
 
 #[derive(sqlx::FromRow)]

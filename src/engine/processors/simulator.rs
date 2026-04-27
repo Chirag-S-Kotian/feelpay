@@ -88,6 +88,8 @@ impl PaymentMethodProcessor for SimulatorProcessor {
                 )),
             ),
             MethodData::Wallet { .. } => (PaymentStatus::Captured, None),
+            MethodData::Emi { .. } => (PaymentStatus::Captured, None),
+            MethodData::Bnpl { .. } => (PaymentStatus::Captured, None),
             MethodData::Simulator { .. } => (PaymentStatus::Captured, None),
         };
 

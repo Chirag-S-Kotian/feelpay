@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE subscriptions\n        SET failed_attempts = 0,\n            next_retry_at = NULL,\n            updated_at = NOW()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f058642b94efd2bf389ef2b95e3989e7760c552bed0acc6ef1d8631f06da0480"
+}

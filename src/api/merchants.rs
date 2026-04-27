@@ -60,7 +60,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/team", web::get().to(list_team_members))
             .route("/team/invite", web::post().to(invite_team_member))
             .route("/team/{user_id}", web::delete().to(remove_team_member))
-            .route("/team/{user_id}/role", web::put().to(update_team_member_role)),
+            .route("/team/{user_id}/role", web::put().to(update_team_member_role))
+            .route("/payment-methods", web::get().to(list_payment_methods))
+            .route("/payment-methods/{method_type}", web::put().to(update_payment_method))
+            .route("/request-activation", web::post().to(request_activation))
+            .route("/{merchant_id}/kyc-status", web::put().to(update_kyc_status)),
     );
 }
 
@@ -290,6 +294,17 @@ pub async fn update_profile(
     get_profile(req, state).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/merchants/keys",
+    responses(
+        (status = 200, description = "Returns merchant API keys"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_keys(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -311,6 +326,17 @@ pub async fn get_keys(
 }
 
 
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/keys/roll",
+    responses(
+        (status = 200, description = "API keys rolled successfully"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn roll_keys(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -411,6 +437,15 @@ fn create_mfa_token(id: Uuid, _email: &str) -> Result<String, FeelPayError> {
     .map_err(|e| FeelPayError::Internal(e.to_string()))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/mfa/verify",
+    request_body = crate::api::auth::MfaVerifyRequest,
+    responses(
+        (status = 200, description = "MFA verified successfully"),
+        (status = 401, description = "Unauthorized")
+    )
+)]
 pub async fn verify_mfa_merchant(
     state: web::Data<AppState>,
     body: web::Json<crate::api::auth::MfaVerifyRequest>,
@@ -461,11 +496,25 @@ pub async fn verify_mfa_merchant(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/reset-password",
+    responses(
+        (status = 200, description = "Password reset successful")
+    )
+)]
 pub async fn reset_password() -> Result<HttpResponse, FeelPayError> {
     Ok(HttpResponse::Ok()
         .json(serde_json::json!({"message": "Password reset successful (simulated)"})))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/forgot-password",
+    responses(
+        (status = 200, description = "Instructions sent")
+    )
+)]
 pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
     Ok(HttpResponse::Ok()
         .json(serde_json::json!({"message": "Password reset instructions sent (simulated)"})))
@@ -474,19 +523,31 @@ pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
 // ============ Team Management ============
 
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct InviteTeamMemberRequest {
     pub email: String,
     pub full_name: String,
     pub role: String, // merchant_admin, merchant_staff, merchant_viewer
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateRoleRequest {
     pub role: String,
 }
 
 /// List team members for the current merchant
+/// List team members for the current merchant
+#[utoipa::path(
+    get,
+    path = "/v1/merchants/team",
+    responses(
+        (status = 200, description = "List of team members", body = [Object]),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn list_team_members(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -526,6 +587,19 @@ pub async fn list_team_members(
 }
 
 /// Invite a new team member
+/// Invite a new team member
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/team/invite",
+    request_body = InviteTeamMemberRequest,
+    responses(
+        (status = 201, description = "Team member invited successfully"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn invite_team_member(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -618,6 +692,22 @@ pub async fn invite_team_member(
 }
 
 /// Remove a team member
+/// Remove a team member
+#[utoipa::path(
+    delete,
+    path = "/v1/merchants/team/{user_id}",
+    params(
+        ("user_id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 200, description = "Team member removed successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn remove_team_member(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -658,6 +748,23 @@ pub async fn remove_team_member(
 }
 
 /// Update a team member's role
+/// Update a team member's role
+#[utoipa::path(
+    put,
+    path = "/v1/merchants/team/{user_id}/role",
+    params(
+        ("user_id" = Uuid, Path, description = "User ID")
+    ),
+    request_body = UpdateRoleRequest,
+    responses(
+        (status = 200, description = "Role updated successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User can not be updated")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn update_team_member_role(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -715,4 +822,190 @@ pub async fn update_team_member_role(
         }
         None => Err(FeelPayError::NotFound("User not found".into())),
     }
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateKycStatusRequest {
+    pub status: String,
+    pub message: Option<String>,
+}
+
+/// Update KYC status and notify merchant (admin action)
+/// Update KYC status and notify merchant (admin action)
+#[utoipa::path(
+    put,
+    path = "/v1/merchants/{merchant_id}/kyc-status",
+    params(
+        ("merchant_id" = Uuid, Path, description = "Merchant ID")
+    ),
+    request_body = UpdateKycStatusRequest,
+    responses(
+        (status = 200, description = "KYC status updated successfully"),
+        (status = 404, description = "Merchant not found")
+    )
+)]
+pub async fn update_kyc_status(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateKycStatusRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = path.into_inner();
+    
+    // 1. Update merchant table
+    let result = sqlx::query(
+        r#"
+        UPDATE merchants 
+        SET onboarding_status = $1, 
+            status = CASE WHEN $1 = 'approved' THEN 'active' ELSE status END,
+            updated_at = NOW() 
+        WHERE id = $2 
+        RETURNING email
+        "#
+    )
+    .bind(&body.status)
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let Some(row) = result else {
+        return Err(FeelPayError::NotFound("Merchant not found".into()));
+    };
+    
+    let merchant_email: String = row.get(0);
+
+    // 2. Create InApp notification
+    let notification_title = match body.status.as_str() {
+        "approved" => "KYC Approved",
+        "rejected" => "KYC Rejected",
+        "resubmit_required" => "KYC Documents Required",
+        _ => "KYC Status Updated",
+    };
+
+    let notification_message = body.message.clone().unwrap_or_else(|| {
+        match body.status.as_str() {
+            "approved" => "Your KYC has been approved! You can now start accepting payments.".to_string(),
+            "rejected" => "Your KYC application has been rejected. Please contact support.".to_string(),
+            _ => format!("Your KYC status has been updated to {}.", body.status),
+        }
+    });
+
+    sqlx::query(
+        r#"
+        INSERT INTO notification_queue (
+            notification_type, recipient_type, recipient_id, recipient_email,
+            subject, body, status, entity_type, entity_id, metadata
+        )
+        VALUES ('in_app', 'merchant', $1, $2, $3, $4, 'sent', 'merchant', $1, $5)
+        "#
+    )
+    .bind(merchant_id)
+    .bind(&merchant_email)
+    .bind(notification_title)
+    .bind(&notification_message)
+    .bind(serde_json::json!({
+        "status": body.status,
+        "type": "kyc_update"
+    }))
+    .execute(&state.db)
+    .await?;
+
+    // 3. Send Email notification (simulated via email service)
+    let _ = crate::engine::services::email::send_kyc_status_email(
+        &state.db,
+        &merchant_email,
+        &body.status,
+        body.message.as_deref()
+    ).await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "KYC status updated and notifications queued",
+        "status": body.status
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdatePaymentMethodBody {
+    pub enabled: bool,
+    pub config: Option<serde_json::Value>,
+}
+
+pub async fn list_payment_methods(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = extract_merchant_id_internal(&req)?;
+
+    let methods: Vec<crate::models::merchant::MerchantPaymentMethod> = sqlx::query_as(
+        "SELECT method_type, enabled, config FROM merchant_payment_methods WHERE merchant_id = $1"
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let response: Vec<_> = methods
+        .into_iter()
+        .map(|m| {
+            serde_json::json!({
+                "method_type": m.method_type,
+                "enabled": m.enabled,
+                "config": m.config
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn update_payment_method(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<UpdatePaymentMethodBody>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = extract_merchant_id_internal(&req)?;
+    let method_type = path.into_inner();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO merchant_payment_methods (merchant_id, method_type, enabled, config)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (merchant_id, method_type) 
+        DO UPDATE SET enabled = $3, config = $4, updated_at = NOW()
+        "#,
+        merchant_id,
+        method_type,
+        body.enabled,
+        body.config
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "updated" })))
+}
+
+pub async fn request_activation(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = extract_merchant_id_internal(&req)?;
+
+    // Update status to 'pending' if it was 'draft' or 'resubmit_required'
+    let res = sqlx::query(
+        "UPDATE merchants SET onboarding_status = 'pending' WHERE id = $1 AND onboarding_status IN ('draft', 'resubmit_required') RETURNING onboarding_status"
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match res {
+        Some(_) => Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pending", "message": "Activation request submitted" }))),
+        None => Err(FeelPayError::BadRequest("KYC already submitted or approved".into())),
+    }
+}
+
+fn extract_merchant_id_internal(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
+    req.extensions()
+        .get::<crate::middleware::auth::MerchantId>()
+        .map(|m| m.0)
+        .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }

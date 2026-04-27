@@ -40,6 +40,9 @@ pub struct Subscription {
     pub trial_end: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
     pub cancel_at_period_end: bool,
+    pub retry_settings: Option<serde_json::Value>,
+    pub next_retry_at: Option<DateTime<Utc>>,
+    pub failed_attempts: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -483,4 +486,50 @@ pub async fn process_due_subscriptions(pool: &PgPool) -> Result<Vec<Uuid>, sqlx:
     }
     
     Ok(processed)
+}
+
+/// Record a payment failure and schedule retry
+pub async fn record_payment_failure(
+    pool: &PgPool,
+    subscription_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    // Increment failed attempts and calculate next retry (e.g., in 24 hours)
+    let next_retry = Utc::now() + chrono::Duration::hours(24);
+
+    sqlx::query!(
+        r#"
+        UPDATE subscriptions
+        SET failed_attempts = failed_attempts + 1,
+            next_retry_at = $1,
+            updated_at = NOW()
+        WHERE id = $2
+        "#,
+        next_retry,
+        subscription_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Reset retries on successful payment
+pub async fn record_payment_success(
+    pool: &PgPool,
+    subscription_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE subscriptions
+        SET failed_attempts = 0,
+            next_retry_at = NULL,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        subscription_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }

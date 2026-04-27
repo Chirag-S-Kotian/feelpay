@@ -19,7 +19,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/business-info", web::post().to(submit_business_info))
             .route("/branding", web::post().to(update_branding))
             .route("/limits", web::get().to(get_limits))
-            .route("/limits", web::put().to(update_limits)),
+            .route("/limits", web::put().to(update_limits))
+            .route("/aadhaar/initiate", web::post().to(initiate_aadhaar_ekyc))
+            .route("/aadhaar/verify", web::post().to(verify_aadhaar_otp)),
     );
 }
 
@@ -36,6 +38,18 @@ pub struct BankAccountSubmissionRequest {
     pub account_number: String,
     pub ifsc_code: String,
     pub bank_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct InitiateAadhaarRequest {
+    pub aadhaar_number: String,
+    pub phone: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct VerifyAadhaarOtpRequest {
+    pub aadhaar_number: String,
+    pub otp: String,
 }
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
@@ -173,6 +187,26 @@ pub async fn submit_bank_account(
         return Err(FeelPayError::BadRequest("Invalid account number".into()));
     }
 
+    let mut tx = state.db.begin().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    // 1. Insert into bank_accounts table
+    sqlx::query(
+        r#"
+        INSERT INTO bank_accounts (merchant_id, account_holder_name, account_number, ifsc_code, bank_name, is_primary)
+        VALUES ($1, $2, $3, $4, $5, true)
+        ON CONFLICT (merchant_id, account_number) DO UPDATE 
+        SET account_holder_name = $2, ifsc_code = $4, bank_name = $5, is_verified = false, updated_at = NOW()
+        "#
+    )
+    .bind(merchant_id)
+    .bind(body.account_holder_name.trim())
+    .bind(body.account_number.trim())
+    .bind(&ifsc)
+    .bind(body.bank_name.as_deref().unwrap_or(""))
+    .execute(&mut *tx)
+    .await?;
+
+    // 2. Update merchant settlement_account JSONB for backward compatibility
     let settlement = serde_json::json!({
         "account_holder_name": body.account_holder_name.trim(),
         "account_number_masked": format!("****{}", &body.account_number[body.account_number.len().saturating_sub(4)..]),
@@ -185,19 +219,192 @@ pub async fn submit_bank_account(
         r#"
         UPDATE merchants
         SET settlement_account = $2,
-            onboarding_status = 'verified',
+            registration_step = CASE WHEN registration_step < 4 THEN 4 ELSE registration_step END,
             updated_at = NOW()
         WHERE id = $1
         "#,
     )
     .bind(merchant_id)
     .bind(&settlement)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    // 3. Trigger Penny Drop verification simulation
+    let pool = state.db.clone();
+    let _account_num = body.account_number.trim().to_string();
+    let _ifsc_val = ifsc.clone();
+    
+    tokio::spawn(async move {
+        // Wait a bit to simulate async processing
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let _ = crate::engine::payout::verify_bank_account(&pool, merchant_id).await;
+    });
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "penny_drop_initiated",
+        "message": "Bank account submitted. Penny drop verification initiated.",
+        "settlement_account": settlement
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/aadhaar/initiate",
+    request_body = InitiateAadhaarRequest,
+    responses(
+        (status = 200, description = "Aadhaar OTP sent successfully"),
+        (status = 400, description = "Invalid Aadhaar number"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn initiate_aadhaar_ekyc(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<InitiateAadhaarRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    if body.aadhaar_number.len() != 12 || !body.aadhaar_number.chars().all(|c| c.is_ascii_digit()) {
+        return Err(FeelPayError::BadRequest("Invalid Aadhaar number. Must be 12 digits.".into()));
+    }
+
+    // Generate 6-digit OTP
+    let otp = format!("{:06}", rand::random::<u32>() % 1_000_000);
+    
+    // Hash OTP for verification
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(otp.as_bytes());
+    let otp_hash = format!("{:x}", hasher.finalize());
+    
+    let expires_at = chrono::Utc::now() + chrono::Duration::minutes(10);
+
+    // Store OTP in database
+    sqlx::query(
+        r#"
+        INSERT INTO otp_verifications (phone, otp_hash, otp_type, expires_at, metadata)
+        VALUES ($1, $2, 'aadhaar_ekyc', $3, $4)
+        "#
+    )
+    .bind(&body.phone)
+    .bind(&otp_hash)
+    .bind(expires_at)
+    .bind(serde_json::json!({"merchant_id": merchant_id, "aadhaar_number": body.aadhaar_number}))
     .execute(&state.db)
     .await?;
 
+    // Simulate sending SMS
+    let _ = crate::engine::services::sms::send_otp_sms(
+        &state.db,
+        &body.phone,
+        &otp,
+        "Aadhaar eKYC"
+    ).await;
+
+    // For simulation, we return the OTP in the response
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "OTP sent to your registered mobile number",
+        "phone_masked": format!("******{}", &body.phone[body.phone.len().saturating_sub(4)..]),
+        "otp_simulated": otp // Only for dev/testing
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/aadhaar/verify",
+    request_body = VerifyAadhaarOtpRequest,
+    responses(
+        (status = 200, description = "Aadhaar verified successfully"),
+        (status = 400, description = "Invalid OTP"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn verify_aadhaar_otp(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<VerifyAadhaarOtpRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    
+    // Hash the provided OTP
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(body.otp.as_bytes());
+    let otp_hash = format!("{:x}", hasher.finalize());
+
+    // Verify OTP from database
+    let row = sqlx::query(
+        r#"
+        SELECT id, phone, metadata FROM otp_verifications
+        WHERE otp_hash = $1 
+          AND otp_type = 'aadhaar_ekyc'
+          AND status = 'pending'
+          AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1
+        "#
+    )
+    .bind(&otp_hash)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let Some(row) = row else {
+        return Err(FeelPayError::BadRequest("Invalid or expired OTP".into()));
+    };
+
+    let otp_id: Uuid = row.get(0);
+    let phone: String = row.get(1);
+    let metadata: serde_json::Value = row.get(2);
+    
+    // Validate that this OTP was for this merchant and Aadhaar
+    if metadata["merchant_id"] != serde_json::json!(merchant_id) || metadata["aadhaar_number"] != serde_json::json!(body.aadhaar_number) {
+         return Err(FeelPayError::BadRequest("OTP does not match Aadhaar session".into()));
+    }
+
+    let mut tx = state.db.begin().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    // Mark OTP as verified
+    sqlx::query("UPDATE otp_verifications SET status = 'verified', verified_at = NOW() WHERE id = $1")
+        .bind(otp_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Update merchant record
+    let aadhaar_masked = format!("********{}", &body.aadhaar_number[body.aadhaar_number.len().saturating_sub(4)..]);
+    sqlx::query(
+        "UPDATE merchants SET phone = $1, aadhaar_number_masked = $2, aadhaar_verified = true, registration_step = CASE WHEN registration_step < 3 THEN 3 ELSE registration_step END, updated_at = NOW() WHERE id = $3"
+    )
+    .bind(&phone)
+    .bind(&aadhaar_masked)
+    .bind(merchant_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // Create KYC verification record
+    sqlx::query(
+        r#"
+        INSERT INTO kyc_verifications (merchant_id, verification_type, document_number, status, verified_at)
+        VALUES ($1, 'aadhaar', $2, 'verified', NOW())
+        "#
+    )
+    .bind(merchant_id)
+    .bind(&aadhaar_masked)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "verified",
-        "settlement_account": settlement
+        "message": "Aadhaar verified successfully",
+        "aadhaar_number_masked": aadhaar_masked
     })))
 }
 
@@ -278,12 +485,32 @@ pub struct OnboardingStatusResponse {
     pub verifications: Vec<serde_json::Value>,
 }
 // Update registration step
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RegistrationStepRequest {
     pub step: i32,
     pub data: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RegistrationProgressResponse {
+    pub current_step: i32,
+    pub registration_data: serde_json::Value,
+    pub kyc_status: String,
+    pub steps: Vec<serde_json::Value>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/registration/step",
+    request_body = RegistrationStepRequest,
+    responses(
+        (status = 200, description = "Registration step updated"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn update_registration_step(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -307,6 +534,17 @@ pub async fn update_registration_step(
 }
 
 // Get registration progress
+#[utoipa::path(
+    get,
+    path = "/v1/onboarding/registration/progress",
+    responses(
+        (status = 200, description = "Returns registration progress", body = RegistrationProgressResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_registration_progress(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -344,7 +582,7 @@ pub async fn get_registration_progress(
 }
 
 // Submit business info
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct BusinessInfoRequest {
     pub business_name: String,
     pub business_type: String,
@@ -353,6 +591,19 @@ pub struct BusinessInfoRequest {
     pub address: Option<serde_json::Value>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/business-info",
+    request_body = BusinessInfoRequest,
+    responses(
+        (status = 200, description = "Business info saved successfully"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn submit_business_info(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -437,6 +688,25 @@ pub async fn update_branding(
 }
 
 // Get transaction limits
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LimitsResponse {
+    pub per_transaction_limit: i64,
+    pub daily_limit: i64,
+    pub monthly_limit: i64,
+    pub settlement_cycle: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/onboarding/limits",
+    responses(
+        (status = 200, description = "Returns transaction limits", body = LimitsResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_limits(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -462,7 +732,7 @@ pub async fn get_limits(
 }
 
 // Update transaction limits
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LimitsRequest {
     pub per_transaction_limit: Option<i64>,
     pub daily_limit: Option<i64>,
@@ -470,6 +740,19 @@ pub struct LimitsRequest {
     pub settlement_cycle: Option<String>,
 }
 
+#[utoipa::path(
+    put,
+    path = "/v1/onboarding/limits",
+    request_body = LimitsRequest,
+    responses(
+        (status = 200, description = "Limits updated successfully"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn update_limits(
     state: web::Data<AppState>,
     req: HttpRequest,
