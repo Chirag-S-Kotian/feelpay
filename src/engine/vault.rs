@@ -45,7 +45,7 @@ impl CardVaultService {
             ));
         }
 
-        let encryption_key = Key::<Aes256Gcm>::from_slice(&key_bytes).clone();
+        let encryption_key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
 
         Ok(Self {
             db,

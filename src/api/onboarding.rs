@@ -75,7 +75,11 @@ pub async fn submit_kyc(
             return Err(FeelPayError::BadRequest("Invalid GSTIN format".into()));
         }
         "bank" | "aadhaar" | "pan" | "gstin" => {}
-        _ => return Err(FeelPayError::BadRequest("Unsupported verification type".into())),
+        _ => {
+            return Err(FeelPayError::BadRequest(
+                "Unsupported verification type".into(),
+            ))
+        }
     }
 
     let status = if verification_type == "pan" || verification_type == "gstin" {
@@ -183,7 +187,13 @@ pub async fn onboarding_status(
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
-    let kyc_rows: Vec<(Uuid, String, Option<String>, String, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+    let kyc_rows: Vec<(
+        Uuid,
+        String,
+        Option<String>,
+        String,
+        Option<chrono::DateTime<chrono::Utc>>,
+    )> = sqlx::query_as(
         r#"
         SELECT id, verification_type, document_number, status, verified_at
         FROM kyc_verifications
@@ -198,15 +208,17 @@ pub async fn onboarding_status(
 
     let verifications: Vec<serde_json::Value> = kyc_rows
         .into_iter()
-        .map(|(id, verification_type, document_number, status, verified_at)| {
-            serde_json::json!({
-                "id": id,
-                "verification_type": verification_type,
-                "document_number": document_number,
-                "status": status,
-                "verified_at": verified_at,
-            })
-        })
+        .map(
+            |(id, verification_type, document_number, status, verified_at)| {
+                serde_json::json!({
+                    "id": id,
+                    "verification_type": verification_type,
+                    "document_number": document_number,
+                    "status": status,
+                    "verified_at": verified_at,
+                })
+            },
+        )
         .collect();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({

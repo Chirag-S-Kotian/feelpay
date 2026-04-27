@@ -9,7 +9,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/main.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_main_rs",
-      "community": 0,
+      "community": 2,
       "norm_label": "main.rs"
     },
     {
@@ -18,7 +18,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L85",
       "id": "main_main",
-      "community": 0,
+      "community": 2,
       "norm_label": "main()"
     },
     {
@@ -27,7 +27,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/config.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_config_rs",
-      "community": 0,
+      "community": 2,
       "norm_label": "config.rs"
     },
     {
@@ -36,7 +36,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/config.rs",
       "source_location": "L4",
       "id": "config_appconfig",
-      "community": 0,
+      "community": 2,
       "norm_label": "appconfig"
     },
     {
@@ -45,7 +45,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/config.rs",
       "source_location": "L43",
       "id": "config_appconfig_from_env",
-      "community": 0,
+      "community": 2,
       "norm_label": ".from_env()"
     },
     {
@@ -54,7 +54,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/config.rs",
       "source_location": "L106",
       "id": "config_appconfig_is_live",
-      "community": 0,
+      "community": 2,
       "norm_label": ".is_live()"
     },
     {
@@ -63,7 +63,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/config.rs",
       "source_location": "L110",
       "id": "config_appconfig_is_test",
-      "community": 0,
+      "community": 2,
       "norm_label": ".is_test()"
     },
     {
@@ -72,7 +72,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/config.rs",
       "source_location": "L114",
       "id": "config_appconfig_selected_database_url",
-      "community": 0,
+      "community": 2,
       "norm_label": ".selected_database_url()"
     },
     {
@@ -81,7 +81,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/error.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_error_rs",
-      "community": 17,
+      "community": 18,
       "norm_label": "error.rs"
     },
     {
@@ -90,7 +90,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/error.rs",
       "source_location": "L5",
       "id": "error_apierror",
-      "community": 17,
+      "community": 18,
       "norm_label": "apierror"
     },
     {
@@ -99,7 +99,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/error.rs",
       "source_location": "L13",
       "id": "error_feelpayerror",
-      "community": 17,
+      "community": 18,
       "norm_label": "feelpayerror"
     },
     {
@@ -108,7 +108,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/error.rs",
       "source_location": "L58",
       "id": "error_feelpayerror_error_response",
-      "community": 17,
+      "community": 18,
       "norm_label": ".error_response()"
     },
     {
@@ -117,7 +117,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/error.rs",
       "source_location": "L103",
       "id": "error_feelpayerror_from",
-      "community": 17,
+      "community": 18,
       "norm_label": ".from()"
     },
     {
@@ -169,7 +169,7 @@
       "label": "CreateMerchantRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L29",
+      "source_location": "L32",
       "id": "merchant_createmerchantrequest",
       "community": 7,
       "norm_label": "createmerchantrequest"
@@ -178,7 +178,7 @@
       "label": "LoginRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L40",
+      "source_location": "L43",
       "id": "merchant_loginrequest",
       "community": 7,
       "norm_label": "loginrequest"
@@ -187,7 +187,7 @@
       "label": "LoginResponse",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L48",
+      "source_location": "L51",
       "id": "merchant_loginresponse",
       "community": 7,
       "norm_label": "loginresponse"
@@ -196,7 +196,7 @@
       "label": "MerchantPublic",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L54",
+      "source_location": "L57",
       "id": "merchant_merchantpublic",
       "community": 7,
       "norm_label": "merchantpublic"
@@ -205,7 +205,7 @@
       "label": ".from()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L68",
+      "source_location": "L71",
       "id": "merchant_merchantpublic_from",
       "community": 7,
       "norm_label": ".from()"
@@ -214,7 +214,7 @@
       "label": "UpdateMerchantRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L84",
+      "source_location": "L87",
       "id": "merchant_updatemerchantrequest",
       "community": 7,
       "norm_label": "updatemerchantrequest"
@@ -223,7 +223,7 @@
       "label": "ApiKeyResponse",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L92",
+      "source_location": "L95",
       "id": "merchant_apikeyresponse",
       "community": 7,
       "norm_label": "apikeyresponse"
@@ -232,7 +232,7 @@
       "label": "ForgotPasswordRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L98",
+      "source_location": "L101",
       "id": "merchant_forgotpasswordrequest",
       "community": 7,
       "norm_label": "forgotpasswordrequest"
@@ -241,7 +241,7 @@
       "label": "ResetPasswordRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L103",
+      "source_location": "L106",
       "id": "merchant_resetpasswordrequest",
       "community": 7,
       "norm_label": "resetpasswordrequest"
@@ -306,7 +306,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payment_order.rs",
       "source_location": "L94",
       "id": "payment_order_paymentmethod",
-      "community": 6,
+      "community": 7,
       "norm_label": "paymentmethod"
     },
     {
@@ -315,7 +315,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payment_order.rs",
       "source_location": "L102",
       "id": "payment_order_paymentmethod_as_str",
-      "community": 6,
+      "community": 7,
       "norm_label": ".as_str()"
     },
     {
@@ -342,7 +342,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payment_order.rs",
       "source_location": "L135",
       "id": "payment_order_connectortype_as_str",
-      "community": 2,
+      "community": 6,
       "norm_label": ".as_str()"
     },
     {
@@ -639,7 +639,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_models_user_rs",
-      "community": 18,
+      "community": 12,
       "norm_label": "user.rs"
     },
     {
@@ -648,7 +648,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
       "source_location": "L6",
       "id": "user_user",
-      "community": 18,
+      "community": 12,
       "norm_label": "user"
     },
     {
@@ -657,7 +657,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
       "source_location": "L22",
       "id": "user_createuserrequest",
-      "community": 18,
+      "community": 12,
       "norm_label": "createuserrequest"
     },
     {
@@ -666,7 +666,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
       "source_location": "L31",
       "id": "user_userresponse",
-      "community": 18,
+      "community": 12,
       "norm_label": "userresponse"
     },
     {
@@ -675,8 +675,44 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
       "source_location": "L42",
       "id": "user_claims",
-      "community": 18,
+      "community": 12,
       "norm_label": "claims"
+    },
+    {
+      "label": "Role",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L52",
+      "id": "user_role",
+      "community": 12,
+      "norm_label": "role"
+    },
+    {
+      "label": "Permission",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L62",
+      "id": "user_permission",
+      "community": 12,
+      "norm_label": "permission"
+    },
+    {
+      "label": "RolePermission",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L70",
+      "id": "user_rolepermission",
+      "community": 12,
+      "norm_label": "rolepermission"
+    },
+    {
+      "label": "UserRole",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L76",
+      "id": "user_userrole",
+      "community": 12,
+      "norm_label": "userrole"
     },
     {
       "label": "api_key.rs",
@@ -718,7 +754,7 @@
       "label": "Payout",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payout.rs",
-      "source_location": "L8",
+      "source_location": "L7",
       "id": "payout_payout",
       "community": 19,
       "norm_label": "payout"
@@ -745,7 +781,7 @@
       "label": "CreateBankAccountRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payout.rs",
-      "source_location": "L47",
+      "source_location": "L48",
       "id": "payout_createbankaccountrequest",
       "community": 19,
       "norm_label": "createbankaccountrequest"
@@ -810,7 +846,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/db/pool.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_db_pool_rs",
-      "community": 0,
+      "community": 2,
       "norm_label": "pool.rs"
     },
     {
@@ -819,7 +855,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/db/pool.rs",
       "source_location": "L5",
       "id": "pool_create_pool",
-      "community": 0,
+      "community": 2,
       "norm_label": "create_pool()"
     },
     {
@@ -837,7 +873,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_payment_rs",
-      "community": 4,
+      "community": 3,
       "norm_label": "payment.rs"
     },
     {
@@ -846,7 +882,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L11",
       "id": "payment_paymentengine",
-      "community": 4,
+      "community": 3,
       "norm_label": "paymentengine"
     },
     {
@@ -855,7 +891,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L18",
       "id": "payment_paymentengine_new",
-      "community": 0,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -864,7 +900,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L27",
       "id": "payment_paymentengine_register_processor",
-      "community": 4,
+      "community": 3,
       "norm_label": ".register_processor()"
     },
     {
@@ -873,7 +909,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L33",
       "id": "payment_paymentengine_set_default_processor",
-      "community": 4,
+      "community": 3,
       "norm_label": ".set_default_processor()"
     },
     {
@@ -882,7 +918,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L38",
       "id": "payment_paymentengine_get_processor",
-      "community": 4,
+      "community": 3,
       "norm_label": ".get_processor()"
     },
     {
@@ -891,7 +927,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L45",
       "id": "payment_paymentengine_resolve_processor",
-      "community": 4,
+      "community": 3,
       "norm_label": ".resolve_processor()"
     },
     {
@@ -900,7 +936,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L66",
       "id": "payment_paymentengine_authorize",
-      "community": 4,
+      "community": 3,
       "norm_label": ".authorize()"
     },
     {
@@ -909,7 +945,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L109",
       "id": "payment_paymentengine_capture",
-      "community": 4,
+      "community": 3,
       "norm_label": ".capture()"
     },
     {
@@ -918,7 +954,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L121",
       "id": "payment_paymentengine_void_payment",
-      "community": 4,
+      "community": 3,
       "norm_label": ".void_payment()"
     },
     {
@@ -927,7 +963,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
       "source_location": "L131",
       "id": "payment_paymentengine_refund",
-      "community": 4,
+      "community": 3,
       "norm_label": ".refund()"
     },
     {
@@ -936,7 +972,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processor.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_processor_rs",
-      "community": 13,
+      "community": 14,
       "norm_label": "processor.rs"
     },
     {
@@ -945,7 +981,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processor.rs",
       "source_location": "L9",
       "id": "processor_paymentmethod",
-      "community": 13,
+      "community": 14,
       "norm_label": "paymentmethod"
     },
     {
@@ -954,7 +990,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processor.rs",
       "source_location": "L18",
       "id": "processor_methoddata",
-      "community": 13,
+      "community": 14,
       "norm_label": "methoddata"
     },
     {
@@ -963,7 +999,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processor.rs",
       "source_location": "L44",
       "id": "processor_transactioncontext",
-      "community": 13,
+      "community": 14,
       "norm_label": "transactioncontext"
     },
     {
@@ -972,7 +1008,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processor.rs",
       "source_location": "L57",
       "id": "processor_processorresponse",
-      "community": 13,
+      "community": 14,
       "norm_label": "processorresponse"
     },
     {
@@ -981,7 +1017,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processor.rs",
       "source_location": "L68",
       "id": "processor_paymentmethodprocessor",
-      "community": 13,
+      "community": 14,
       "norm_label": "paymentmethodprocessor"
     },
     {
@@ -1053,7 +1089,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/pipeline.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_pipeline_rs",
-      "community": 4,
+      "community": 3,
       "norm_label": "pipeline.rs"
     },
     {
@@ -1062,7 +1098,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/pipeline.rs",
       "source_location": "L9",
       "id": "pipeline_transactionpipeline",
-      "community": 4,
+      "community": 3,
       "norm_label": "transactionpipeline"
     },
     {
@@ -1071,7 +1107,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/pipeline.rs",
       "source_location": "L15",
       "id": "pipeline_transactionpipeline_default",
-      "community": 3,
+      "community": 0,
       "norm_label": ".default()"
     },
     {
@@ -1080,7 +1116,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/pipeline.rs",
       "source_location": "L24",
       "id": "pipeline_transactionpipeline_validate",
-      "community": 4,
+      "community": 3,
       "norm_label": ".validate()"
     },
     {
@@ -1089,7 +1125,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/pipeline.rs",
       "source_location": "L62",
       "id": "pipeline_transactionpipeline_execute_authorize",
-      "community": 4,
+      "community": 3,
       "norm_label": ".execute_authorize()"
     },
     {
@@ -1141,7 +1177,7 @@
       "label": "verify_bank_account()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payout.rs",
-      "source_location": "L58",
+      "source_location": "L52",
       "id": "payout_verify_bank_account",
       "community": 5,
       "norm_label": "verify_bank_account()"
@@ -1161,7 +1197,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_processors_simulator_rs",
-      "community": 9,
+      "community": 10,
       "norm_label": "simulator.rs"
     },
     {
@@ -1170,7 +1206,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L12",
       "id": "simulator_simulatorprocessor",
-      "community": 9,
+      "community": 10,
       "norm_label": "simulatorprocessor"
     },
     {
@@ -1179,7 +1215,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L17",
       "id": "simulator_simulatorprocessor_new",
-      "community": 9,
+      "community": 10,
       "norm_label": ".new()"
     },
     {
@@ -1188,7 +1224,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L21",
       "id": "simulator_simulatorprocessor_should_succeed",
-      "community": 9,
+      "community": 10,
       "norm_label": ".should_succeed()"
     },
     {
@@ -1197,7 +1233,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L26",
       "id": "simulator_simulatorprocessor_generate_ref",
-      "community": 9,
+      "community": 10,
       "norm_label": ".generate_ref()"
     },
     {
@@ -1206,7 +1242,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L33",
       "id": "simulator_simulatorprocessor_method_type",
-      "community": 9,
+      "community": 10,
       "norm_label": ".method_type()"
     },
     {
@@ -1215,7 +1251,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L37",
       "id": "simulator_simulatorprocessor_authorize",
-      "community": 9,
+      "community": 10,
       "norm_label": ".authorize()"
     },
     {
@@ -1224,7 +1260,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L103",
       "id": "simulator_simulatorprocessor_capture",
-      "community": 9,
+      "community": 10,
       "norm_label": ".capture()"
     },
     {
@@ -1233,7 +1269,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L121",
       "id": "simulator_simulatorprocessor_void",
-      "community": 9,
+      "community": 10,
       "norm_label": ".void()"
     },
     {
@@ -1242,7 +1278,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/simulator.rs",
       "source_location": "L133",
       "id": "simulator_simulatorprocessor_refund",
-      "community": 9,
+      "community": 10,
       "norm_label": ".refund()"
     },
     {
@@ -1251,7 +1287,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_processors_card_rs",
-      "community": 11,
+      "community": 1,
       "norm_label": "card.rs"
     },
     {
@@ -1260,7 +1296,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L11",
       "id": "card_cardprocessor",
-      "community": 11,
+      "community": 1,
       "norm_label": "cardprocessor"
     },
     {
@@ -1269,7 +1305,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L14",
       "id": "card_cardprocessor_new",
-      "community": 11,
+      "community": 1,
       "norm_label": ".new()"
     },
     {
@@ -1278,7 +1314,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L19",
       "id": "card_cardprocessor_luhn_check",
-      "community": 11,
+      "community": 1,
       "norm_label": ".luhn_check()"
     },
     {
@@ -1305,7 +1341,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L92",
       "id": "card_cardprocessor_method_type",
-      "community": 11,
+      "community": 1,
       "norm_label": ".method_type()"
     },
     {
@@ -1314,7 +1350,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L96",
       "id": "card_cardprocessor_authorize",
-      "community": 11,
+      "community": 1,
       "norm_label": ".authorize()"
     },
     {
@@ -1323,7 +1359,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L154",
       "id": "card_cardprocessor_capture",
-      "community": 11,
+      "community": 1,
       "norm_label": ".capture()"
     },
     {
@@ -1332,7 +1368,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L171",
       "id": "card_cardprocessor_void",
-      "community": 11,
+      "community": 1,
       "norm_label": ".void()"
     },
     {
@@ -1341,7 +1377,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/card.rs",
       "source_location": "L183",
       "id": "card_cardprocessor_refund",
-      "community": 11,
+      "community": 1,
       "norm_label": ".refund()"
     },
     {
@@ -1350,7 +1386,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_processors_upi_rs",
-      "community": 4,
+      "community": 3,
       "norm_label": "upi.rs"
     },
     {
@@ -1359,7 +1395,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L11",
       "id": "upi_upiprocessor",
-      "community": 4,
+      "community": 3,
       "norm_label": "upiprocessor"
     },
     {
@@ -1368,7 +1404,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L17",
       "id": "upi_upiprocessor_new",
-      "community": 4,
+      "community": 3,
       "norm_label": ".new()"
     },
     {
@@ -1377,7 +1413,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L25",
       "id": "upi_upiprocessor_validate_vpa",
-      "community": 4,
+      "community": 3,
       "norm_label": ".validate_vpa()"
     },
     {
@@ -1386,7 +1422,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L44",
       "id": "upi_upiprocessor_generate_intent_url",
-      "community": 4,
+      "community": 3,
       "norm_label": ".generate_intent_url()"
     },
     {
@@ -1395,7 +1431,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L53",
       "id": "upi_upiprocessor_generate_qr_string",
-      "community": 4,
+      "community": 3,
       "norm_label": ".generate_qr_string()"
     },
     {
@@ -1404,7 +1440,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L64",
       "id": "upi_upiprocessor_method_type",
-      "community": 4,
+      "community": 3,
       "norm_label": ".method_type()"
     },
     {
@@ -1413,7 +1449,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L68",
       "id": "upi_upiprocessor_authorize",
-      "community": 4,
+      "community": 3,
       "norm_label": ".authorize()"
     },
     {
@@ -1422,7 +1458,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L144",
       "id": "upi_upiprocessor_capture",
-      "community": 2,
+      "community": 3,
       "norm_label": ".capture()"
     },
     {
@@ -1431,7 +1467,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L161",
       "id": "upi_upiprocessor_void",
-      "community": 4,
+      "community": 3,
       "norm_label": ".void()"
     },
     {
@@ -1440,7 +1476,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/processors/upi.rs",
       "source_location": "L167",
       "id": "upi_upiprocessor_refund",
-      "community": 4,
+      "community": 3,
       "norm_label": ".refund()"
     },
     {
@@ -1458,7 +1494,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_services_ledger_rs",
-      "community": 2,
+      "community": 3,
       "norm_label": "ledger.rs"
     },
     {
@@ -1467,7 +1503,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L6",
       "id": "ledger_ledgerservice",
-      "community": 2,
+      "community": 3,
       "norm_label": "ledgerservice"
     },
     {
@@ -1476,7 +1512,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L11",
       "id": "ledger_ledgerservice_new",
-      "community": 2,
+      "community": 3,
       "norm_label": ".new()"
     },
     {
@@ -1485,7 +1521,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L15",
       "id": "ledger_ledgerservice_get_account",
-      "community": 2,
+      "community": 3,
       "norm_label": ".get_account()"
     },
     {
@@ -1494,7 +1530,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L34",
       "id": "ledger_ledgerservice_get_or_create_account",
-      "community": 2,
+      "community": 3,
       "norm_label": ".get_or_create_account()"
     },
     {
@@ -1503,7 +1539,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L61",
       "id": "ledger_ledgerservice_record_transaction",
-      "community": 2,
+      "community": 3,
       "norm_label": ".record_transaction()"
     },
     {
@@ -1512,7 +1548,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/ledger.rs",
       "source_location": "L157",
       "id": "ledger_ledgerservice_get_entries",
-      "community": 2,
+      "community": 3,
       "norm_label": ".get_entries()"
     },
     {
@@ -1521,7 +1557,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_engine_services_settlement_rs",
-      "community": 0,
+      "community": 15,
       "norm_label": "settlement.rs"
     },
     {
@@ -1530,7 +1566,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L6",
       "id": "settlement_settlementservice",
-      "community": 0,
+      "community": 15,
       "norm_label": "settlementservice"
     },
     {
@@ -1539,7 +1575,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L11",
       "id": "settlement_settlementservice_new",
-      "community": 0,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -1548,7 +1584,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L15",
       "id": "settlement_settlementservice_create_settlement",
-      "community": 0,
+      "community": 15,
       "norm_label": ".create_settlement()"
     },
     {
@@ -1557,7 +1593,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L66",
       "id": "settlement_settlementservice_get_settlements",
-      "community": 0,
+      "community": 15,
       "norm_label": ".get_settlements()"
     },
     {
@@ -1566,7 +1602,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L88",
       "id": "settlement_settlementservice_get_settlement",
-      "community": 0,
+      "community": 15,
       "norm_label": ".get_settlement()"
     },
     {
@@ -1575,8 +1611,53 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/settlement.rs",
       "source_location": "L106",
       "id": "settlement_settlementservice_get_balance",
-      "community": 0,
+      "community": 15,
       "norm_label": ".get_balance()"
+    },
+    {
+      "label": "auth.rs",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_src_engine_services_auth_rs",
+      "community": 0,
+      "norm_label": "auth.rs"
+    },
+    {
+      "label": "MfaService",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L4",
+      "id": "auth_mfaservice",
+      "community": 0,
+      "norm_label": "mfaservice"
+    },
+    {
+      "label": ".generate_secret()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L8",
+      "id": "auth_mfaservice_generate_secret",
+      "community": 0,
+      "norm_label": ".generate_secret()"
+    },
+    {
+      "label": ".generate_qr_code()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L16",
+      "id": "auth_mfaservice_generate_qr_code",
+      "community": 0,
+      "norm_label": ".generate_qr_code()"
+    },
+    {
+      "label": ".verify_token()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L33",
+      "id": "auth_mfaservice_verify_token",
+      "community": 0,
+      "norm_label": ".verify_token()"
     },
     {
       "label": "mod.rs",
@@ -1629,80 +1710,125 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
-      "community": 3,
+      "community": 0,
       "norm_label": "merchants.rs"
     },
     {
       "label": "configure()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L10",
+      "source_location": "L11",
       "id": "merchants_configure",
-      "community": 3,
+      "community": 0,
       "norm_label": "configure()"
     },
     {
       "label": "create_merchant()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L22",
+      "source_location": "L27",
       "id": "merchants_create_merchant",
-      "community": 3,
+      "community": 0,
       "norm_label": "create_merchant()"
     },
     {
       "label": "get_merchant()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L94",
+      "source_location": "L99",
       "id": "merchants_get_merchant",
-      "community": 3,
+      "community": 0,
       "norm_label": "get_merchant()"
     },
     {
       "label": "merchant_id_from_req()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L120",
+      "source_location": "L125",
       "id": "merchants_merchant_id_from_req",
-      "community": 3,
+      "community": 0,
       "norm_label": "merchant_id_from_req()"
     },
     {
       "label": "get_profile()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L127",
+      "source_location": "L132",
       "id": "merchants_get_profile",
-      "community": 3,
+      "community": 0,
       "norm_label": "get_profile()"
     },
     {
       "label": "update_profile()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L188",
+      "source_location": "L193",
       "id": "merchants_update_profile",
-      "community": 3,
+      "community": 0,
       "norm_label": "update_profile()"
     },
     {
       "label": "get_keys()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L219",
+      "source_location": "L224",
       "id": "merchants_get_keys",
-      "community": 3,
+      "community": 0,
       "norm_label": "get_keys()"
     },
     {
       "label": "roll_keys()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L239",
+      "source_location": "L244",
       "id": "merchants_roll_keys",
-      "community": 3,
+      "community": 0,
       "norm_label": "roll_keys()"
+    },
+    {
+      "label": "login_merchant()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L276",
+      "id": "merchants_login_merchant",
+      "community": 0,
+      "norm_label": "login_merchant()"
+    },
+    {
+      "label": "create_mfa_token()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L312",
+      "id": "merchants_create_mfa_token",
+      "community": 0,
+      "norm_label": "create_mfa_token()"
+    },
+    {
+      "label": "verify_mfa_merchant()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L332",
+      "id": "merchants_verify_mfa_merchant",
+      "community": 0,
+      "norm_label": "verify_mfa_merchant()"
+    },
+    {
+      "label": "reset_password()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L377",
+      "id": "merchants_reset_password",
+      "community": 0,
+      "norm_label": "reset_password()"
+    },
+    {
+      "label": "forgot_password()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L381",
+      "id": "merchants_forgot_password",
+      "community": 0,
+      "norm_label": "forgot_password()"
     },
     {
       "label": "payments.rs",
@@ -1710,7 +1836,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_payments_rs",
-      "community": 2,
+      "community": 8,
       "norm_label": "payments.rs"
     },
     {
@@ -1719,7 +1845,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L12",
       "id": "payments_createpaymentrequest",
-      "community": 2,
+      "community": 8,
       "norm_label": "createpaymentrequest"
     },
     {
@@ -1728,7 +1854,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L26",
       "id": "payments_configure",
-      "community": 2,
+      "community": 8,
       "norm_label": "configure()"
     },
     {
@@ -1737,7 +1863,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L38",
       "id": "payments_listpaymentsquery",
-      "community": 2,
+      "community": 8,
       "norm_label": "listpaymentsquery"
     },
     {
@@ -1746,7 +1872,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L45",
       "id": "payments_capturepaymentrequest",
-      "community": 2,
+      "community": 8,
       "norm_label": "capturepaymentrequest"
     },
     {
@@ -1755,7 +1881,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L50",
       "id": "payments_refundpaymentrequest",
-      "community": 2,
+      "community": 8,
       "norm_label": "refundpaymentrequest"
     },
     {
@@ -1764,7 +1890,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L56",
       "id": "payments_idempotencyrecord",
-      "community": 2,
+      "community": 8,
       "norm_label": "idempotencyrecord"
     },
     {
@@ -1773,7 +1899,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L62",
       "id": "payments_merchant_id_from_req",
-      "community": 2,
+      "community": 8,
       "norm_label": "merchant_id_from_req()"
     },
     {
@@ -1782,7 +1908,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L75",
       "id": "payments_request_hash",
-      "community": 2,
+      "community": 8,
       "norm_label": "request_hash()"
     },
     {
@@ -1791,7 +1917,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L82",
       "id": "payments_check_idempotency",
-      "community": 2,
+      "community": 8,
       "norm_label": "check_idempotency()"
     },
     {
@@ -1800,7 +1926,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L116",
       "id": "payments_store_idempotency_response",
-      "community": 2,
+      "community": 8,
       "norm_label": "store_idempotency_response()"
     },
     {
@@ -1809,7 +1935,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L149",
       "id": "payments_create_payment",
-      "community": 2,
+      "community": 8,
       "norm_label": "create_payment()"
     },
     {
@@ -1818,7 +1944,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L337",
       "id": "payments_list_payments",
-      "community": 2,
+      "community": 8,
       "norm_label": "list_payments()"
     },
     {
@@ -1827,7 +1953,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L387",
       "id": "payments_get_payment",
-      "community": 2,
+      "community": 8,
       "norm_label": "get_payment()"
     },
     {
@@ -1836,7 +1962,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L412",
       "id": "payments_capture_payment",
-      "community": 2,
+      "community": 3,
       "norm_label": "capture_payment()"
     },
     {
@@ -1845,7 +1971,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payments.rs",
       "source_location": "L494",
       "id": "payments_refund_payment",
-      "community": 2,
+      "community": 8,
       "norm_label": "refund_payment()"
     },
     {
@@ -1854,71 +1980,134 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_auth_rs",
-      "community": 3,
+      "community": 0,
       "norm_label": "auth.rs"
     },
     {
       "label": "configure()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L10",
+      "source_location": "L11",
       "id": "auth_configure",
-      "community": 3,
+      "community": 0,
       "norm_label": "configure()"
     },
     {
       "label": "LoginRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L19",
+      "source_location": "L23",
       "id": "auth_loginrequest",
-      "community": 3,
+      "community": 0,
       "norm_label": "loginrequest"
     },
     {
       "label": "AuthResponse",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L25",
+      "source_location": "L29",
       "id": "auth_authresponse",
-      "community": 3,
+      "community": 0,
       "norm_label": "authresponse"
+    },
+    {
+      "label": "MfaSetupRequest",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L47",
+      "id": "auth_mfasetuprequest",
+      "community": 0,
+      "norm_label": "mfasetuprequest"
+    },
+    {
+      "label": "MfaSetupResponse",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L52",
+      "id": "auth_mfasetupresponse",
+      "community": 0,
+      "norm_label": "mfasetupresponse"
+    },
+    {
+      "label": "MfaVerifyRequest",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L58",
+      "id": "auth_mfaverifyrequest",
+      "community": 0,
+      "norm_label": "mfaverifyrequest"
     },
     {
       "label": "login()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L34",
+      "source_location": "L65",
       "id": "auth_login",
-      "community": 3,
+      "community": 0,
       "norm_label": "login()"
+    },
+    {
+      "label": "mfa_setup()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L122",
+      "id": "auth_mfa_setup",
+      "community": 0,
+      "norm_label": "mfa_setup()"
+    },
+    {
+      "label": "mfa_confirm()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L137",
+      "id": "auth_mfa_confirm",
+      "community": 0,
+      "norm_label": "mfa_confirm()"
+    },
+    {
+      "label": "mfa_verify()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L181",
+      "id": "auth_mfa_verify",
+      "community": 0,
+      "norm_label": "mfa_verify()"
     },
     {
       "label": "RegisterRequest",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L76",
+      "source_location": "L248",
       "id": "auth_registerrequest",
-      "community": 3,
+      "community": 0,
       "norm_label": "registerrequest"
     },
     {
       "label": "register()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L85",
+      "source_location": "L257",
       "id": "auth_register",
-      "community": 3,
+      "community": 0,
       "norm_label": "register()"
     },
     {
       "label": "generate_jwt()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L113",
+      "source_location": "L285",
       "id": "auth_generate_jwt",
-      "community": 3,
+      "community": 0,
       "norm_label": "generate_jwt()"
+    },
+    {
+      "label": "generate_jwt_with_exp()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L289",
+      "id": "auth_generate_jwt_with_exp",
+      "community": 0,
+      "norm_label": "generate_jwt_with_exp()"
     },
     {
       "label": "webhooks.rs",
@@ -1926,7 +2115,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/webhooks.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_webhooks_rs",
-      "community": 2,
+      "community": 6,
       "norm_label": "webhooks.rs"
     },
     {
@@ -1935,7 +2124,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/webhooks.rs",
       "source_location": "L10",
       "id": "webhooks_configure",
-      "community": 2,
+      "community": 6,
       "norm_label": "configure()"
     },
     {
@@ -1944,7 +2133,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/webhooks.rs",
       "source_location": "L15",
       "id": "webhooks_inbound_webhook",
-      "community": 2,
+      "community": 6,
       "norm_label": "inbound_webhook()"
     },
     {
@@ -1953,7 +2142,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/webhooks.rs",
       "source_location": "L61",
       "id": "webhooks_handle_dispute_event",
-      "community": 2,
+      "community": 6,
       "norm_label": "handle_dispute_event()"
     },
     {
@@ -2025,7 +2214,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_onboarding_rs",
-      "community": 0,
+      "community": 2,
       "norm_label": "onboarding.rs"
     },
     {
@@ -2034,7 +2223,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L9",
       "id": "onboarding_configure",
-      "community": 0,
+      "community": 2,
       "norm_label": "configure()"
     },
     {
@@ -2043,7 +2232,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L19",
       "id": "onboarding_kycsubmissionrequest",
-      "community": 0,
+      "community": 2,
       "norm_label": "kycsubmissionrequest"
     },
     {
@@ -2052,7 +2241,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L26",
       "id": "onboarding_bankaccountrequest",
-      "community": 0,
+      "community": 2,
       "norm_label": "bankaccountrequest"
     },
     {
@@ -2061,7 +2250,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L33",
       "id": "onboarding_merchant_id_from_req",
-      "community": 0,
+      "community": 2,
       "norm_label": "merchant_id_from_req()"
     },
     {
@@ -2070,7 +2259,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L40",
       "id": "onboarding_validate_pan",
-      "community": 0,
+      "community": 2,
       "norm_label": "validate_pan()"
     },
     {
@@ -2079,7 +2268,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L47",
       "id": "onboarding_validate_gstin",
-      "community": 0,
+      "community": 2,
       "norm_label": "validate_gstin()"
     },
     {
@@ -2088,7 +2277,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L54",
       "id": "onboarding_validate_ifsc",
-      "community": 0,
+      "community": 2,
       "norm_label": "validate_ifsc()"
     },
     {
@@ -2097,7 +2286,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L61",
       "id": "onboarding_submit_kyc",
-      "community": 0,
+      "community": 2,
       "norm_label": "submit_kyc()"
     },
     {
@@ -2106,7 +2295,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L124",
       "id": "onboarding_submit_bank_account",
-      "community": 0,
+      "community": 2,
       "norm_label": "submit_bank_account()"
     },
     {
@@ -2115,7 +2304,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
       "source_location": "L168",
       "id": "onboarding_onboarding_status",
-      "community": 0,
+      "community": 2,
       "norm_label": "onboarding_status()"
     },
     {
@@ -2124,7 +2313,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_settlements_rs",
-      "community": 12,
+      "community": 13,
       "norm_label": "settlements.rs"
     },
     {
@@ -2133,7 +2322,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L10",
       "id": "settlements_configure",
-      "community": 12,
+      "community": 13,
       "norm_label": "configure()"
     },
     {
@@ -2142,7 +2331,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L20",
       "id": "settlements_settlementquery",
-      "community": 12,
+      "community": 13,
       "norm_label": "settlementquery"
     },
     {
@@ -2151,7 +2340,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L28",
       "id": "settlements_merchant_id_from_req",
-      "community": 12,
+      "community": 13,
       "norm_label": "merchant_id_from_req()"
     },
     {
@@ -2160,7 +2349,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L35",
       "id": "settlements_list_settlements",
-      "community": 12,
+      "community": 13,
       "norm_label": "list_settlements()"
     },
     {
@@ -2169,7 +2358,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L124",
       "id": "settlements_get_settlement",
-      "community": 12,
+      "community": 13,
       "norm_label": "get_settlement()"
     },
     {
@@ -2178,7 +2367,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
       "source_location": "L196",
       "id": "settlements_get_balance",
-      "community": 12,
+      "community": 13,
       "norm_label": "get_balance()"
     },
     {
@@ -2187,7 +2376,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_analytics_rs",
-      "community": 8,
+      "community": 9,
       "norm_label": "analytics.rs"
     },
     {
@@ -2196,7 +2385,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L8",
       "id": "analytics_extract_merchant_id",
-      "community": 8,
+      "community": 9,
       "norm_label": "extract_merchant_id()"
     },
     {
@@ -2214,7 +2403,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L29",
       "id": "analytics_get_summary",
-      "community": 8,
+      "community": 9,
       "norm_label": "get_summary()"
     },
     {
@@ -2223,7 +2412,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L74",
       "id": "analytics_analyticssummaryrow",
-      "community": 8,
+      "community": 9,
       "norm_label": "analyticssummaryrow"
     },
     {
@@ -2232,7 +2421,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L83",
       "id": "analytics_analyticssummary",
-      "community": 8,
+      "community": 9,
       "norm_label": "analyticssummary"
     },
     {
@@ -2241,7 +2430,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L92",
       "id": "analytics_get_volume_chart",
-      "community": 8,
+      "community": 9,
       "norm_label": "get_volume_chart()"
     },
     {
@@ -2250,7 +2439,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L140",
       "id": "analytics_dayvolumerow",
-      "community": 8,
+      "community": 9,
       "norm_label": "dayvolumerow"
     },
     {
@@ -2259,7 +2448,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L147",
       "id": "analytics_dayvolume",
-      "community": 8,
+      "community": 9,
       "norm_label": "dayvolume"
     },
     {
@@ -2268,7 +2457,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L155",
       "id": "analytics_volumetrendrow",
-      "community": 8,
+      "community": 9,
       "norm_label": "volumetrendrow"
     },
     {
@@ -2277,7 +2466,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L162",
       "id": "analytics_topcustomerrow",
-      "community": 8,
+      "community": 9,
       "norm_label": "topcustomerrow"
     },
     {
@@ -2286,7 +2475,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L168",
       "id": "analytics_get_volume_trends",
-      "community": 8,
+      "community": 9,
       "norm_label": "get_volume_trends()"
     },
     {
@@ -2295,7 +2484,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L213",
       "id": "analytics_get_top_customers",
-      "community": 8,
+      "community": 9,
       "norm_label": "get_top_customers()"
     },
     {
@@ -2304,7 +2493,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L260",
       "id": "analytics_get_webhook_events",
-      "community": 8,
+      "community": 9,
       "norm_label": "get_webhook_events()"
     },
     {
@@ -2313,7 +2502,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L306",
       "id": "analytics_webhookeventrow",
-      "community": 8,
+      "community": 9,
       "norm_label": "webhookeventrow"
     },
     {
@@ -2322,7 +2511,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/analytics.rs",
       "source_location": "L315",
       "id": "analytics_webhookevent",
-      "community": 8,
+      "community": 9,
       "norm_label": "webhookevent"
     },
     {
@@ -2331,7 +2520,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/tenants.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_api_tenants_rs",
-      "community": 14,
+      "community": 16,
       "norm_label": "tenants.rs"
     },
     {
@@ -2340,7 +2529,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/tenants.rs",
       "source_location": "L6",
       "id": "tenants_configure",
-      "community": 14,
+      "community": 16,
       "norm_label": "configure()"
     },
     {
@@ -2349,7 +2538,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/tenants.rs",
       "source_location": "L16",
       "id": "tenants_createtenantrequest",
-      "community": 14,
+      "community": 16,
       "norm_label": "createtenantrequest"
     },
     {
@@ -2358,7 +2547,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/tenants.rs",
       "source_location": "L23",
       "id": "tenants_create_tenant",
-      "community": 14,
+      "community": 16,
       "norm_label": "create_tenant()"
     },
     {
@@ -2367,7 +2556,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/tenants.rs",
       "source_location": "L43",
       "id": "tenants_list_tenants",
-      "community": 14,
+      "community": 16,
       "norm_label": "list_tenants()"
     },
     {
@@ -2376,7 +2565,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/tenants.rs",
       "source_location": "L55",
       "id": "tenants_get_tenant",
-      "community": 14,
+      "community": 16,
       "norm_label": "get_tenant()"
     },
     {
@@ -2475,7 +2664,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/vault/crypto.rs",
       "source_location": "L17",
       "id": "crypto_vaultcrypto_new",
-      "community": 1,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -2610,7 +2799,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/vault/service.rs",
       "source_location": "L33",
       "id": "service_cardvaultservice_new",
-      "community": 1,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -2655,7 +2844,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_middleware_rate_limit_rs",
-      "community": 0,
+      "community": 2,
       "norm_label": "rate_limit.rs"
     },
     {
@@ -2664,7 +2853,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L13",
       "id": "rate_limit_ratelimiter",
-      "community": 0,
+      "community": 2,
       "norm_label": "ratelimiter"
     },
     {
@@ -2673,7 +2862,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L19",
       "id": "rate_limit_ratelimiter_new",
-      "community": 0,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -2682,7 +2871,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L38",
       "id": "rate_limit_ratelimiter_new_transform",
-      "community": 0,
+      "community": 2,
       "norm_label": ".new_transform()"
     },
     {
@@ -2691,7 +2880,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L47",
       "id": "rate_limit_ratelimitermiddleware",
-      "community": 0,
+      "community": 2,
       "norm_label": "ratelimitermiddleware"
     },
     {
@@ -2700,7 +2889,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L53",
       "id": "rate_limit_ratelimitermiddleware_s",
-      "community": 3,
+      "community": 4,
       "norm_label": "ratelimitermiddleware<s>"
     },
     {
@@ -2709,7 +2898,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
       "source_location": "L64",
       "id": "rate_limit_ratelimitermiddleware_s_call",
-      "community": 3,
+      "community": 4,
       "norm_label": ".call()"
     },
     {
@@ -2718,115 +2907,268 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
-      "community": 15,
+      "community": 4,
       "norm_label": "auth.rs"
+    },
+    {
+      "label": "MerchantId",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L12",
+      "id": "auth_merchantid",
+      "community": 4,
+      "norm_label": "merchantid"
+    },
+    {
+      "label": "TenantId",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L13",
+      "id": "auth_tenantid",
+      "community": 4,
+      "norm_label": "tenantid"
+    },
+    {
+      "label": "UserId",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L14",
+      "id": "auth_userid",
+      "community": 4,
+      "norm_label": "userid"
+    },
+    {
+      "label": "UserRole",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L15",
+      "id": "auth_userrole",
+      "community": 4,
+      "norm_label": "userrole"
     },
     {
       "label": "Claims",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L12",
+      "source_location": "L17",
       "id": "auth_claims",
-      "community": 3,
+      "community": 0,
       "norm_label": "claims"
     },
     {
       "label": ".from_request()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L16",
+      "source_location": "L21",
       "id": "auth_claims_from_request",
-      "community": 3,
+      "community": 0,
       "norm_label": ".from_request()"
     },
     {
       "label": "ApiKeyMiddleware",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L53",
+      "source_location": "L58",
       "id": "auth_apikeymiddleware",
-      "community": 15,
+      "community": 4,
       "norm_label": "apikeymiddleware"
     },
     {
       "label": ".new_transform()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L67",
+      "source_location": "L72",
       "id": "auth_apikeymiddleware_new_transform",
-      "community": 0,
+      "community": 2,
       "norm_label": ".new_transform()"
     },
     {
       "label": "ApiKeyMiddlewareService",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L74",
+      "source_location": "L79",
       "id": "auth_apikeymiddlewareservice",
-      "community": 15,
+      "community": 4,
       "norm_label": "apikeymiddlewareservice"
     },
     {
       "label": "ApiKeyMiddlewareService<S>",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L78",
+      "source_location": "L83",
       "id": "auth_apikeymiddlewareservice_s",
-      "community": 3,
+      "community": 4,
       "norm_label": "apikeymiddlewareservice<s>"
     },
     {
       "label": ".call()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L90",
+      "source_location": "L95",
       "id": "auth_apikeymiddlewareservice_s_call",
-      "community": 3,
+      "community": 4,
       "norm_label": ".call()"
     },
     {
       "label": "JwtMiddleware",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L138",
+      "source_location": "L143",
       "id": "auth_jwtmiddleware",
-      "community": 15,
+      "community": 4,
       "norm_label": "jwtmiddleware"
     },
     {
       "label": ".new_transform()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L152",
+      "source_location": "L157",
       "id": "auth_jwtmiddleware_new_transform",
-      "community": 15,
+      "community": 4,
       "norm_label": ".new_transform()"
     },
     {
       "label": "JwtMiddlewareService",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L157",
+      "source_location": "L162",
       "id": "auth_jwtmiddlewareservice",
-      "community": 15,
+      "community": 4,
       "norm_label": "jwtmiddlewareservice"
     },
     {
       "label": "JwtMiddlewareService<S>",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L161",
+      "source_location": "L166",
       "id": "auth_jwtmiddlewareservice_s",
-      "community": 3,
+      "community": 4,
       "norm_label": "jwtmiddlewareservice<s>"
     },
     {
       "label": ".call()",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L173",
+      "source_location": "L178",
       "id": "auth_jwtmiddlewareservice_s_call",
-      "community": 3,
+      "community": 4,
+      "norm_label": ".call()"
+    },
+    {
+      "label": "UnifiedAuth",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L249",
+      "id": "auth_unifiedauth",
+      "community": 4,
+      "norm_label": "unifiedauth"
+    },
+    {
+      "label": ".new_transform()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L263",
+      "id": "auth_unifiedauth_new_transform",
+      "community": 4,
+      "norm_label": ".new_transform()"
+    },
+    {
+      "label": "UnifiedAuthService",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L270",
+      "id": "auth_unifiedauthservice",
+      "community": 4,
+      "norm_label": "unifiedauthservice"
+    },
+    {
+      "label": "UnifiedAuthService<S>",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L274",
+      "id": "auth_unifiedauthservice_s",
+      "community": 4,
+      "norm_label": "unifiedauthservice<s>"
+    },
+    {
+      "label": ".call()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L286",
+      "id": "auth_unifiedauthservice_s_call",
+      "community": 4,
+      "norm_label": ".call()"
+    },
+    {
+      "label": "create_token()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L356",
+      "id": "auth_create_token",
+      "community": 0,
+      "norm_label": "create_token()"
+    },
+    {
+      "label": "rbac.rs",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_src_middleware_rbac_rs",
+      "community": 2,
+      "norm_label": "rbac.rs"
+    },
+    {
+      "label": "RequirePermission",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L11",
+      "id": "rbac_requirepermission",
+      "community": 2,
+      "norm_label": "requirepermission"
+    },
+    {
+      "label": ".new()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L16",
+      "id": "rbac_requirepermission_new",
+      "community": 2,
+      "norm_label": ".new()"
+    },
+    {
+      "label": ".new_transform()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L35",
+      "id": "rbac_requirepermission_new_transform",
+      "community": 2,
+      "norm_label": ".new_transform()"
+    },
+    {
+      "label": "RequirePermissionService",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L43",
+      "id": "rbac_requirepermissionservice",
+      "community": 2,
+      "norm_label": "requirepermissionservice"
+    },
+    {
+      "label": "RequirePermissionService<S>",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L48",
+      "id": "rbac_requirepermissionservice_s",
+      "community": 4,
+      "norm_label": "requirepermissionservice<s>"
+    },
+    {
+      "label": ".call()",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L60",
+      "id": "rbac_requirepermissionservice_s_call",
+      "community": 4,
       "norm_label": ".call()"
     },
     {
@@ -2979,7 +3321,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/dashboard/src/pages/Onboarding.tsx",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_dashboard_src_pages_onboarding_tsx",
-      "community": 10,
+      "community": 11,
       "norm_label": "onboarding.tsx"
     },
     {
@@ -2988,7 +3330,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/dashboard/src/pages/Onboarding.tsx",
       "source_location": "L28",
       "id": "onboarding_handlesubmit",
-      "community": 10,
+      "community": 11,
       "norm_label": "handlesubmit()"
     },
     {
@@ -3069,7 +3411,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/dashboard/src/hooks/useApi.ts",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_dashboard_src_hooks_useapi_ts",
-      "community": 10,
+      "community": 11,
       "norm_label": "useapi.ts"
     },
     {
@@ -3078,7 +3420,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/hooks/useApi.ts",
       "source_location": "L5",
       "id": "useapi_gettoken",
-      "community": 10,
+      "community": 11,
       "norm_label": "gettoken()"
     },
     {
@@ -3087,7 +3429,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/hooks/useApi.ts",
       "source_location": "L9",
       "id": "useapi_getapikey",
-      "community": 10,
+      "community": 11,
       "norm_label": "getapikey()"
     },
     {
@@ -3096,7 +3438,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/hooks/useApi.ts",
       "source_location": "L20",
       "id": "useapi_apirequest",
-      "community": 10,
+      "community": 11,
       "norm_label": "apirequest()"
     },
     {
@@ -3159,7 +3501,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/pages/AdminDashboard.tsx",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_pages_admindashboard_tsx",
-      "community": 10,
+      "community": 11,
       "norm_label": "admindashboard.tsx"
     },
     {
@@ -3168,7 +3510,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/pages/AdminDashboard.tsx",
       "source_location": "L45",
       "id": "admindashboard_handleimpersonate",
-      "community": 10,
+      "community": 11,
       "norm_label": "handleimpersonate()"
     },
     {
@@ -3177,7 +3519,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/pages/AdminDashboard.tsx",
       "source_location": "L60",
       "id": "admindashboard_fetchdata",
-      "community": 10,
+      "community": 11,
       "norm_label": "fetchdata()"
     },
     {
@@ -3186,7 +3528,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/hooks/useApi.ts",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_hooks_useapi_ts",
-      "community": 10,
+      "community": 11,
       "norm_label": "useapi.ts"
     },
     {
@@ -3195,7 +3537,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_server_src_main_rs",
-      "community": 16,
+      "community": 17,
       "norm_label": "main.rs"
     },
     {
@@ -3204,7 +3546,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L10",
       "id": "main_platformstats",
-      "community": 16,
+      "community": 17,
       "norm_label": "platformstats"
     },
     {
@@ -3213,7 +3555,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L17",
       "id": "main_get_platform_stats",
-      "community": 16,
+      "community": 17,
       "norm_label": "get_platform_stats()"
     },
     {
@@ -3222,7 +3564,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L48",
       "id": "main_list_merchants",
-      "community": 16,
+      "community": 17,
       "norm_label": "list_merchants()"
     },
     {
@@ -3231,7 +3573,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L118",
       "id": "main_impersonate_merchant",
-      "community": 16,
+      "community": 17,
       "norm_label": "impersonate_merchant()"
     },
     {
@@ -3240,7 +3582,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/main.rs",
       "source_location": "L143",
       "id": "main_generate_jwt",
-      "community": 16,
+      "community": 17,
       "norm_label": "generate_jwt()"
     },
     {
@@ -3294,7 +3636,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/middleware.rs",
       "source_location": "L40",
       "id": "middleware_adminauthmiddlewareservice_s",
-      "community": 3,
+      "community": 4,
       "norm_label": "adminauthmiddlewareservice<s>"
     },
     {
@@ -3303,7 +3645,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/server/src/middleware.rs",
       "source_location": "L52",
       "id": "middleware_adminauthmiddlewareservice_s_call",
-      "community": 3,
+      "community": 4,
       "norm_label": ".call()"
     }
   ],
@@ -3340,9 +3682,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "_src": "main_main",
-      "_tgt": "rate_limit_ratelimiter_new",
+      "_tgt": "rbac_requirepermission_new",
       "source": "main_main",
-      "target": "rate_limit_ratelimiter_new"
+      "target": "rbac_requirepermission_new"
     },
     {
       "relation": "calls",
@@ -3427,6 +3769,18 @@
       "_tgt": "pipeline_transactionpipeline_default",
       "source": "main_main",
       "target": "pipeline_transactionpipeline_default"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/main.rs",
+      "source_location": "L25",
+      "weight": 1.0,
+      "_src": "main_main",
+      "_tgt": "rate_limit_ratelimiter_new",
+      "source": "main_main",
+      "target": "rate_limit_ratelimiter_new"
     },
     {
       "relation": "calls",
@@ -3588,7 +3942,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L29",
+      "source_location": "L32",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_createmerchantrequest",
@@ -3600,7 +3954,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L40",
+      "source_location": "L43",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_loginrequest",
@@ -3612,7 +3966,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L48",
+      "source_location": "L51",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_loginresponse",
@@ -3624,7 +3978,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_merchantpublic",
@@ -3636,7 +3990,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L84",
+      "source_location": "L87",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_updatemerchantrequest",
@@ -3648,7 +4002,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L92",
+      "source_location": "L95",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_apikeyresponse",
@@ -3660,7 +4014,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L98",
+      "source_location": "L101",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_forgotpasswordrequest",
@@ -3672,7 +4026,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L103",
+      "source_location": "L106",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_merchant_rs",
       "_tgt": "merchant_resetpasswordrequest",
@@ -3684,7 +4038,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/merchant.rs",
-      "source_location": "L68",
+      "source_location": "L71",
       "weight": 1.0,
       "_src": "merchant_merchantpublic",
       "_tgt": "merchant_merchantpublic_from",
@@ -3699,8 +4053,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/fees.rs",
       "source_location": "L54",
       "weight": 1.0,
-      "_src": "fees_calculate_fees",
-      "_tgt": "merchant_merchantpublic_from",
+      "_src": "merchant_merchantpublic_from",
+      "_tgt": "fees_calculate_fees",
       "source": "merchant_merchantpublic_from",
       "target": "fees_calculate_fees"
     },
@@ -3915,8 +4269,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/fees.rs",
       "source_location": "L70",
       "weight": 1.0,
-      "_src": "fees_calculate_fees",
-      "_tgt": "payment_order_paymentmethod_from_str",
+      "_src": "payment_order_paymentmethod_from_str",
+      "_tgt": "fees_calculate_fees",
       "source": "payment_order_paymentmethod_from_str",
       "target": "fees_calculate_fees"
     },
@@ -4271,6 +4625,54 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L52",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "_tgt": "user_role",
+      "source": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "target": "user_role",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L62",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "_tgt": "user_permission",
+      "source": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "target": "user_permission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L70",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "_tgt": "user_rolepermission",
+      "source": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "target": "user_rolepermission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/models/user.rs",
+      "source_location": "L76",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "_tgt": "user_userrole",
+      "source": "home_chiragskotian_desktop_payment_src_models_user_rs",
+      "target": "user_userrole",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/api_key.rs",
       "source_location": "L6",
       "weight": 1.0,
@@ -4296,7 +4698,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payout.rs",
-      "source_location": "L8",
+      "source_location": "L7",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_payout_rs",
       "_tgt": "payout_payout",
@@ -4332,7 +4734,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/models/payout.rs",
-      "source_location": "L47",
+      "source_location": "L48",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_models_payout_rs",
       "_tgt": "payout_createbankaccountrequest",
@@ -4387,6 +4789,18 @@
       "source": "home_chiragskotian_desktop_payment_src_db_pool_rs",
       "target": "pool_create_pool",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/db/pool.rs",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_src": "pool_create_pool",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "pool_create_pool",
+      "target": "rbac_requirepermission_new"
     },
     {
       "relation": "calls",
@@ -4540,9 +4954,9 @@
       "source_location": "L20",
       "weight": 1.0,
       "_src": "payment_paymentengine_new",
-      "_tgt": "rate_limit_ratelimiter_new",
+      "_tgt": "rbac_requirepermission_new",
       "source": "payment_paymentengine_new",
-      "target": "rate_limit_ratelimiter_new"
+      "target": "rbac_requirepermission_new"
     },
     {
       "relation": "calls",
@@ -4555,6 +4969,18 @@
       "_tgt": "pipeline_transactionpipeline_default",
       "source": "payment_paymentengine_new",
       "target": "pipeline_transactionpipeline_default"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payment.rs",
+      "source_location": "L20",
+      "weight": 1.0,
+      "_src": "payment_paymentengine_new",
+      "_tgt": "rate_limit_ratelimiter_new",
+      "source": "payment_paymentengine_new",
+      "target": "rate_limit_ratelimiter_new"
     },
     {
       "relation": "calls",
@@ -5016,11 +5442,47 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L288",
+      "weight": 1.0,
+      "_src": "merchants_login_merchant",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "merchants_login_merchant"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L326",
+      "weight": 1.0,
+      "_src": "merchants_create_mfa_token",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "merchants_create_mfa_token"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L341",
+      "weight": 1.0,
+      "_src": "merchants_verify_mfa_merchant",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "merchants_verify_mfa_merchant"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
       "source_location": "L48",
       "weight": 1.0,
-      "_src": "auth_login",
-      "_tgt": "pipeline_transactionpipeline_default",
+      "_src": "pipeline_transactionpipeline_default",
+      "_tgt": "auth_login",
       "source": "pipeline_transactionpipeline_default",
       "target": "auth_login"
     },
@@ -5029,10 +5491,34 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L149",
+      "weight": 1.0,
+      "_src": "auth_mfa_confirm",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "auth_mfa_confirm"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L191",
+      "weight": 1.0,
+      "_src": "auth_mfa_verify",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "auth_mfa_verify"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
       "source_location": "L90",
       "weight": 1.0,
-      "_src": "auth_register",
-      "_tgt": "pipeline_transactionpipeline_default",
+      "_src": "pipeline_transactionpipeline_default",
+      "_tgt": "auth_register",
       "source": "pipeline_transactionpipeline_default",
       "target": "auth_register"
     },
@@ -5041,12 +5527,12 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L126",
+      "source_location": "L302",
       "weight": 1.0,
-      "_src": "auth_generate_jwt",
+      "_src": "auth_generate_jwt_with_exp",
       "_tgt": "pipeline_transactionpipeline_default",
       "source": "pipeline_transactionpipeline_default",
-      "target": "auth_generate_jwt"
+      "target": "auth_generate_jwt_with_exp"
     },
     {
       "relation": "calls",
@@ -5055,8 +5541,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
       "source_location": "L42",
       "weight": 1.0,
-      "_src": "auth_claims_from_request",
-      "_tgt": "pipeline_transactionpipeline_default",
+      "_src": "pipeline_transactionpipeline_default",
+      "_tgt": "auth_claims_from_request",
       "source": "pipeline_transactionpipeline_default",
       "target": "auth_claims_from_request"
     },
@@ -5071,6 +5557,30 @@
       "_tgt": "auth_jwtmiddlewareservice_s_call",
       "source": "pipeline_transactionpipeline_default",
       "target": "auth_jwtmiddlewareservice_s_call"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L331",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s_call",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "auth_unifiedauthservice_s_call"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L369",
+      "weight": 1.0,
+      "_src": "auth_create_token",
+      "_tgt": "pipeline_transactionpipeline_default",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "auth_create_token"
     },
     {
       "relation": "calls",
@@ -5095,6 +5605,18 @@
       "_tgt": "middleware_adminauthmiddlewareservice_s_call",
       "source": "pipeline_transactionpipeline_default",
       "target": "middleware_adminauthmiddlewareservice_s_call"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_src": "pipeline_transactionpipeline_default",
+      "_tgt": "auth_generate_jwt",
+      "source": "pipeline_transactionpipeline_default",
+      "target": "auth_generate_jwt"
     },
     {
       "relation": "calls",
@@ -5148,7 +5670,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/engine/payout.rs",
-      "source_location": "L58",
+      "source_location": "L52",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_engine_payout_rs",
       "_tgt": "payout_verify_bank_account",
@@ -5163,8 +5685,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payouts.rs",
       "source_location": "L69",
       "weight": 1.0,
-      "_src": "payouts_request_payout",
-      "_tgt": "payout_process_payout",
+      "_src": "payout_process_payout",
+      "_tgt": "payouts_request_payout",
       "source": "payout_process_payout",
       "target": "payouts_request_payout"
     },
@@ -5175,8 +5697,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/payouts.rs",
       "source_location": "L180",
       "weight": 1.0,
-      "_src": "payouts_verify_account",
-      "_tgt": "payout_verify_bank_account",
+      "_src": "payout_verify_bank_account",
+      "_tgt": "payouts_verify_account",
       "source": "payout_verify_bank_account",
       "target": "payouts_verify_account"
     },
@@ -5879,6 +6401,138 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L4",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_engine_services_auth_rs",
+      "_tgt": "auth_mfaservice",
+      "source": "home_chiragskotian_desktop_payment_src_engine_services_auth_rs",
+      "target": "auth_mfaservice",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_src": "auth_mfaservice",
+      "_tgt": "auth_mfaservice_generate_secret",
+      "source": "auth_mfaservice",
+      "target": "auth_mfaservice_generate_secret",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_src": "auth_mfaservice",
+      "_tgt": "auth_mfaservice_generate_qr_code",
+      "source": "auth_mfaservice",
+      "target": "auth_mfaservice_generate_qr_code",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_src": "auth_mfaservice",
+      "_tgt": "auth_mfaservice_verify_token",
+      "source": "auth_mfaservice",
+      "target": "auth_mfaservice_verify_token",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_src": "auth_mfa_setup",
+      "_tgt": "auth_mfaservice_generate_secret",
+      "source": "auth_mfaservice_generate_secret",
+      "target": "auth_mfa_setup"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L17",
+      "weight": 1.0,
+      "_src": "auth_mfaservice_generate_qr_code",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "auth_mfaservice_generate_qr_code",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L127",
+      "weight": 1.0,
+      "_src": "auth_mfa_setup",
+      "_tgt": "auth_mfaservice_generate_qr_code",
+      "source": "auth_mfaservice_generate_qr_code",
+      "target": "auth_mfa_setup"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/engine/services/auth.rs",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_src": "auth_mfaservice_verify_token",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "auth_mfaservice_verify_token",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L359",
+      "weight": 1.0,
+      "_src": "merchants_verify_mfa_merchant",
+      "_tgt": "auth_mfaservice_verify_token",
+      "source": "auth_mfaservice_verify_token",
+      "target": "merchants_verify_mfa_merchant"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L155",
+      "weight": 1.0,
+      "_src": "auth_mfa_confirm",
+      "_tgt": "auth_mfaservice_verify_token",
+      "source": "auth_mfaservice_verify_token",
+      "target": "auth_mfa_confirm"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L209",
+      "weight": 1.0,
+      "_src": "auth_mfa_verify",
+      "_tgt": "auth_mfaservice_verify_token",
+      "source": "auth_mfaservice_verify_token",
+      "target": "auth_mfa_verify"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/mod.rs",
       "source_location": "L15",
       "weight": 1.0,
@@ -5952,7 +6606,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L10",
+      "source_location": "L11",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_configure",
@@ -5964,7 +6618,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L22",
+      "source_location": "L27",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_create_merchant",
@@ -5976,7 +6630,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L94",
+      "source_location": "L99",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_get_merchant",
@@ -5988,7 +6642,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L120",
+      "source_location": "L125",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_merchant_id_from_req",
@@ -6000,7 +6654,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L127",
+      "source_location": "L132",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_get_profile",
@@ -6012,7 +6666,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L188",
+      "source_location": "L193",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_update_profile",
@@ -6024,7 +6678,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L219",
+      "source_location": "L224",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_get_keys",
@@ -6036,7 +6690,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L239",
+      "source_location": "L244",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
       "_tgt": "merchants_roll_keys",
@@ -6045,10 +6699,70 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L276",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "_tgt": "merchants_login_merchant",
+      "source": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "target": "merchants_login_merchant",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L312",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "_tgt": "merchants_create_mfa_token",
+      "source": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "target": "merchants_create_mfa_token",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L332",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "_tgt": "merchants_verify_mfa_merchant",
+      "source": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "target": "merchants_verify_mfa_merchant",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L377",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "_tgt": "merchants_reset_password",
+      "source": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "target": "merchants_reset_password",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L381",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "_tgt": "merchants_forgot_password",
+      "source": "home_chiragskotian_desktop_payment_src_api_merchants_rs",
+      "target": "merchants_forgot_password",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L131",
+      "source_location": "L136",
       "weight": 1.0,
       "_src": "merchants_get_profile",
       "_tgt": "merchants_merchant_id_from_req",
@@ -6060,7 +6774,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L193",
+      "source_location": "L198",
       "weight": 1.0,
       "_src": "merchants_update_profile",
       "_tgt": "merchants_merchant_id_from_req",
@@ -6072,7 +6786,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L223",
+      "source_location": "L228",
       "weight": 1.0,
       "_src": "merchants_get_keys",
       "_tgt": "merchants_merchant_id_from_req",
@@ -6084,7 +6798,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L243",
+      "source_location": "L248",
       "weight": 1.0,
       "_src": "merchants_roll_keys",
       "_tgt": "merchants_merchant_id_from_req",
@@ -6096,13 +6810,61 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
-      "source_location": "L216",
+      "source_location": "L221",
       "weight": 1.0,
       "_src": "merchants_update_profile",
       "_tgt": "merchants_get_profile",
       "source": "merchants_get_profile",
       "target": "merchants_update_profile",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L295",
+      "weight": 1.0,
+      "_src": "merchants_login_merchant",
+      "_tgt": "merchants_create_mfa_token",
+      "source": "merchants_login_merchant",
+      "target": "merchants_create_mfa_token",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L289",
+      "weight": 1.0,
+      "_src": "merchants_login_merchant",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "merchants_login_merchant",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L303",
+      "weight": 1.0,
+      "_src": "merchants_login_merchant",
+      "_tgt": "auth_create_token",
+      "source": "merchants_login_merchant",
+      "target": "auth_create_token"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
+      "source_location": "L360",
+      "weight": 1.0,
+      "_src": "merchants_verify_mfa_merchant",
+      "_tgt": "auth_create_token",
+      "source": "merchants_verify_mfa_merchant",
+      "target": "auth_create_token"
     },
     {
       "relation": "contains",
@@ -6432,7 +7194,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L10",
+      "source_location": "L11",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_configure",
@@ -6444,7 +7206,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L19",
+      "source_location": "L23",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_loginrequest",
@@ -6456,7 +7218,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L25",
+      "source_location": "L29",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_authresponse",
@@ -6468,7 +7230,43 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L34",
+      "source_location": "L47",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_mfasetuprequest",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_mfasetuprequest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L52",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_mfasetupresponse",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_mfasetupresponse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L58",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_mfaverifyrequest",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_mfaverifyrequest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L65",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_login",
@@ -6480,7 +7278,43 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L76",
+      "source_location": "L122",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_mfa_setup",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_mfa_setup",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L137",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_mfa_confirm",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_mfa_confirm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L181",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_mfa_verify",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_mfa_verify",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L248",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_registerrequest",
@@ -6492,7 +7326,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L85",
+      "source_location": "L257",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_register",
@@ -6504,7 +7338,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L113",
+      "source_location": "L285",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
       "_tgt": "auth_generate_jwt",
@@ -6513,10 +7347,34 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L289",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "_tgt": "auth_generate_jwt_with_exp",
+      "source": "home_chiragskotian_desktop_payment_src_api_auth_rs",
+      "target": "auth_generate_jwt_with_exp",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
-      "source_location": "L58",
+      "source_location": "L90",
+      "weight": 1.0,
+      "_src": "auth_login",
+      "_tgt": "auth_generate_jwt_with_exp",
+      "source": "auth_login",
+      "target": "auth_generate_jwt_with_exp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L102",
       "weight": 1.0,
       "_src": "auth_login",
       "_tgt": "auth_generate_jwt",
@@ -6529,12 +7387,48 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L78",
+      "weight": 1.0,
+      "_src": "auth_login",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "auth_login",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
       "source_location": "L47",
       "weight": 1.0,
       "_src": "auth_login",
       "_tgt": "rate_limit_ratelimiter_new",
       "source": "auth_login",
       "target": "rate_limit_ratelimiter_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L219",
+      "weight": 1.0,
+      "_src": "auth_mfa_verify",
+      "_tgt": "auth_generate_jwt",
+      "source": "auth_mfa_verify",
+      "target": "auth_generate_jwt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
+      "source_location": "L286",
+      "weight": 1.0,
+      "_src": "auth_generate_jwt",
+      "_tgt": "auth_generate_jwt_with_exp",
+      "source": "auth_generate_jwt",
+      "target": "auth_generate_jwt_with_exp",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -6880,6 +7774,18 @@
       "source_location": "L41",
       "weight": 1.0,
       "_src": "onboarding_validate_pan",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "onboarding_validate_pan",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
+      "source_location": "L41",
+      "weight": 1.0,
+      "_src": "onboarding_validate_pan",
       "_tgt": "rate_limit_ratelimiter_new",
       "source": "onboarding_validate_pan",
       "target": "rate_limit_ratelimiter_new"
@@ -6904,6 +7810,18 @@
       "source_location": "L48",
       "weight": 1.0,
       "_src": "onboarding_validate_gstin",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "onboarding_validate_gstin",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
+      "source_location": "L48",
+      "weight": 1.0,
+      "_src": "onboarding_validate_gstin",
       "_tgt": "rate_limit_ratelimiter_new",
       "source": "onboarding_validate_gstin",
       "target": "rate_limit_ratelimiter_new"
@@ -6919,6 +7837,18 @@
       "source": "onboarding_validate_ifsc",
       "target": "onboarding_submit_bank_account",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/onboarding.rs",
+      "source_location": "L55",
+      "weight": 1.0,
+      "_src": "onboarding_validate_ifsc",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "onboarding_validate_ifsc",
+      "target": "rbac_requirepermission_new"
     },
     {
       "relation": "calls",
@@ -7039,6 +7969,18 @@
       "source": "settlements_merchant_id_from_req",
       "target": "settlements_get_balance",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/api/settlements.rs",
+      "source_location": "L201",
+      "weight": 1.0,
+      "_src": "settlements_get_balance",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "settlements_get_balance",
+      "target": "rbac_requirepermission_new"
     },
     {
       "relation": "calls",
@@ -7492,6 +8434,18 @@
       "source_location": "L27",
       "weight": 1.0,
       "_src": "crypto_vaultcrypto_new",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "crypto_vaultcrypto_new",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/vault/crypto.rs",
+      "source_location": "L27",
+      "weight": 1.0,
+      "_src": "crypto_vaultcrypto_new",
       "_tgt": "rate_limit_ratelimiter_new",
       "source": "crypto_vaultcrypto_new",
       "target": "rate_limit_ratelimiter_new"
@@ -7756,6 +8710,18 @@
       "source_location": "L34",
       "weight": 1.0,
       "_src": "service_cardvaultservice_new",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "service_cardvaultservice_new",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/vault/service.rs",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_src": "service_cardvaultservice_new",
       "_tgt": "rate_limit_ratelimiter_new",
       "source": "service_cardvaultservice_new",
       "target": "rate_limit_ratelimiter_new"
@@ -7812,11 +8778,23 @@
       "relation": "calls",
       "confidence": "INFERRED",
       "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rate_limit.rs",
+      "source_location": "L22",
+      "weight": 1.0,
+      "_src": "rate_limit_ratelimiter_new",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "rate_limit_ratelimiter_new",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
       "source_location": "L29",
       "weight": 1.0,
-      "_src": "auth_apikeymiddleware_new_transform",
-      "_tgt": "rate_limit_ratelimiter_new",
+      "_src": "rate_limit_ratelimiter_new",
+      "_tgt": "auth_apikeymiddleware_new_transform",
       "source": "rate_limit_ratelimiter_new",
       "target": "auth_apikeymiddleware_new_transform"
     },
@@ -7851,8 +8829,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/auth.rs",
       "source_location": "L190",
       "weight": 1.0,
-      "_src": "auth_jwtmiddlewareservice_s_call",
-      "_tgt": "rate_limit_ratelimitermiddleware_s_call",
+      "_src": "rate_limit_ratelimitermiddleware_s_call",
+      "_tgt": "auth_jwtmiddlewareservice_s_call",
       "source": "rate_limit_ratelimitermiddleware_s_call",
       "target": "auth_jwtmiddlewareservice_s_call"
     },
@@ -7860,7 +8838,55 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L53",
+      "source_location": "L12",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_merchantid",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_merchantid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_tenantid",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_tenantid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_userid",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_userid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_userrole",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_userrole",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L58",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
       "_tgt": "auth_apikeymiddleware",
@@ -7872,7 +8898,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L74",
+      "source_location": "L79",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
       "_tgt": "auth_apikeymiddlewareservice",
@@ -7884,7 +8910,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L138",
+      "source_location": "L143",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
       "_tgt": "auth_jwtmiddleware",
@@ -7896,7 +8922,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L157",
+      "source_location": "L162",
       "weight": 1.0,
       "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
       "_tgt": "auth_jwtmiddlewareservice",
@@ -7905,10 +8931,166 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L249",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_unifiedauth",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_unifiedauth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L270",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_unifiedauthservice",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_unifiedauthservice",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L356",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "_tgt": "auth_create_token",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_auth_rs",
+      "target": "auth_create_token",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L134",
+      "weight": 1.0,
+      "_src": "auth_apikeymiddlewareservice_s_call",
+      "_tgt": "auth_merchantid",
+      "source": "auth_merchantid",
+      "target": "auth_apikeymiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L233",
+      "weight": 1.0,
+      "_src": "auth_jwtmiddlewareservice_s_call",
+      "_tgt": "auth_merchantid",
+      "source": "auth_merchantid",
+      "target": "auth_jwtmiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L309",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s_call",
+      "_tgt": "auth_merchantid",
+      "source": "auth_merchantid",
+      "target": "auth_unifiedauthservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L135",
+      "weight": 1.0,
+      "_src": "auth_apikeymiddlewareservice_s_call",
+      "_tgt": "auth_tenantid",
+      "source": "auth_tenantid",
+      "target": "auth_apikeymiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L230",
+      "weight": 1.0,
+      "_src": "auth_jwtmiddlewareservice_s_call",
+      "_tgt": "auth_tenantid",
+      "source": "auth_tenantid",
+      "target": "auth_jwtmiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L310",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s_call",
+      "_tgt": "auth_tenantid",
+      "source": "auth_tenantid",
+      "target": "auth_unifiedauthservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L228",
+      "weight": 1.0,
+      "_src": "auth_jwtmiddlewareservice_s_call",
+      "_tgt": "auth_userid",
+      "source": "auth_userid",
+      "target": "auth_jwtmiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L335",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s_call",
+      "_tgt": "auth_userid",
+      "source": "auth_userid",
+      "target": "auth_unifiedauthservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L235",
+      "weight": 1.0,
+      "_src": "auth_jwtmiddlewareservice_s_call",
+      "_tgt": "auth_userrole",
+      "source": "auth_userrole",
+      "target": "auth_jwtmiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L342",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s_call",
+      "_tgt": "auth_userrole",
+      "source": "auth_userrole",
+      "target": "auth_unifiedauthservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L16",
+      "source_location": "L21",
       "weight": 1.0,
       "_src": "auth_claims",
       "_tgt": "auth_claims_from_request",
@@ -7920,7 +9102,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L67",
+      "source_location": "L72",
       "weight": 1.0,
       "_src": "auth_apikeymiddleware",
       "_tgt": "auth_apikeymiddleware_new_transform",
@@ -7929,10 +9111,22 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L74",
+      "weight": 1.0,
+      "_src": "auth_apikeymiddleware_new_transform",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "auth_apikeymiddleware_new_transform",
+      "target": "rbac_requirepermission_new"
+    },
+    {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L90",
+      "source_location": "L95",
       "weight": 1.0,
       "_src": "auth_apikeymiddlewareservice_s",
       "_tgt": "auth_apikeymiddlewareservice_s_call",
@@ -7944,19 +9138,19 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L132",
+      "source_location": "L137",
       "weight": 1.0,
       "_src": "auth_apikeymiddlewareservice_s_call",
-      "_tgt": "auth_jwtmiddlewareservice_s_call",
+      "_tgt": "auth_unifiedauthservice_s_call",
       "source": "auth_apikeymiddlewareservice_s_call",
-      "target": "auth_jwtmiddlewareservice_s_call",
+      "target": "auth_unifiedauthservice_s_call",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L152",
+      "source_location": "L157",
       "weight": 1.0,
       "_src": "auth_jwtmiddleware",
       "_tgt": "auth_jwtmiddleware_new_transform",
@@ -7968,12 +9162,24 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
-      "source_location": "L173",
+      "source_location": "L178",
       "weight": 1.0,
       "_src": "auth_jwtmiddlewareservice_s",
       "_tgt": "auth_jwtmiddlewareservice_s_call",
       "source": "auth_jwtmiddlewareservice_s",
       "target": "auth_jwtmiddlewareservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L237",
+      "weight": 1.0,
+      "_src": "auth_jwtmiddlewareservice_s_call",
+      "_tgt": "auth_unifiedauthservice_s_call",
+      "source": "auth_jwtmiddlewareservice_s_call",
+      "target": "auth_unifiedauthservice_s_call",
       "confidence_score": 1.0
     },
     {
@@ -7986,6 +9192,138 @@
       "_src": "auth_jwtmiddlewareservice_s_call",
       "_tgt": "middleware_adminauthmiddlewareservice_s_call",
       "source": "auth_jwtmiddlewareservice_s_call",
+      "target": "middleware_adminauthmiddlewareservice_s_call"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L263",
+      "weight": 1.0,
+      "_src": "auth_unifiedauth",
+      "_tgt": "auth_unifiedauth_new_transform",
+      "source": "auth_unifiedauth",
+      "target": "auth_unifiedauth_new_transform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L265",
+      "weight": 1.0,
+      "_src": "auth_unifiedauth_new_transform",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "auth_unifiedauth_new_transform",
+      "target": "rbac_requirepermission_new"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L286",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s",
+      "_tgt": "auth_unifiedauthservice_s_call",
+      "source": "auth_unifiedauthservice_s",
+      "target": "auth_unifiedauthservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/auth.rs",
+      "source_location": "L311",
+      "weight": 1.0,
+      "_src": "auth_unifiedauthservice_s_call",
+      "_tgt": "middleware_adminauthmiddlewareservice_s_call",
+      "source": "auth_unifiedauthservice_s_call",
+      "target": "middleware_adminauthmiddlewareservice_s_call"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L11",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_rbac_rs",
+      "_tgt": "rbac_requirepermission",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_rbac_rs",
+      "target": "rbac_requirepermission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L43",
+      "weight": 1.0,
+      "_src": "home_chiragskotian_desktop_payment_src_middleware_rbac_rs",
+      "_tgt": "rbac_requirepermissionservice",
+      "source": "home_chiragskotian_desktop_payment_src_middleware_rbac_rs",
+      "target": "rbac_requirepermissionservice",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_src": "rbac_requirepermission",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "rbac_requirepermission",
+      "target": "rbac_requirepermission_new",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_src": "rbac_requirepermission",
+      "_tgt": "rbac_requirepermission_new_transform",
+      "source": "rbac_requirepermission",
+      "target": "rbac_requirepermission_new_transform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_src": "rbac_requirepermission_new_transform",
+      "_tgt": "rbac_requirepermission_new",
+      "source": "rbac_requirepermission_new",
+      "target": "rbac_requirepermission_new_transform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_src": "rbac_requirepermissionservice_s",
+      "_tgt": "rbac_requirepermissionservice_s_call",
+      "source": "rbac_requirepermissionservice_s",
+      "target": "rbac_requirepermissionservice_s_call",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "/home/chiragskotian/Desktop/payment/src/middleware/rbac.rs",
+      "source_location": "L79",
+      "weight": 1.0,
+      "_src": "rbac_requirepermissionservice_s_call",
+      "_tgt": "middleware_adminauthmiddlewareservice_s_call",
+      "source": "rbac_requirepermissionservice_s_call",
       "target": "middleware_adminauthmiddlewareservice_s_call"
     },
     {

@@ -1,14 +1,14 @@
+use crate::models::user::Claims;
 use actix_web::{
     dev::{forward_ready, Payload, Service, ServiceRequest, ServiceResponse, Transform},
     web, Error, FromRequest, HttpMessage, HttpRequest,
 };
+use chrono::{Duration, Utc};
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use std::future::{ready, Ready};
 use std::rc::Rc;
 use uuid::Uuid;
-use chrono::{Utc, Duration};
-use crate::models::user::Claims;
 pub struct MerchantId(pub Uuid);
 pub struct TenantId(pub Uuid);
 pub struct UserId(pub Uuid);
@@ -49,7 +49,9 @@ impl FromRequest for Claims {
 
         match decoded {
             Ok(v) => ready(Ok(v.claims)),
-            Err(_) => ready(Err(actix_web::error::ErrorUnauthorized("Invalid or expired token"))),
+            Err(_) => ready(Err(actix_web::error::ErrorUnauthorized(
+                "Invalid or expired token",
+            ))),
         }
     }
 }
@@ -210,7 +212,9 @@ where
             Ok(v) => v.claims,
             Err(_) => {
                 return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized("Invalid or expired token"))
+                    Err(actix_web::error::ErrorUnauthorized(
+                        "Invalid or expired token",
+                    ))
                 });
             }
         };
@@ -219,7 +223,9 @@ where
             Ok(id) => id,
             Err(_) => {
                 return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized("Invalid user identity in token"))
+                    Err(actix_web::error::ErrorUnauthorized(
+                        "Invalid user identity in token",
+                    ))
                 });
             }
         };
@@ -242,7 +248,6 @@ where
         })
     }
 }
-
 
 /// Middleware that accepts EITHER an API Key OR a JWT token.
 /// Useful for resources shared between the dashboard and API integrators.
@@ -323,8 +328,9 @@ where
 
             if auth_header.to_lowercase().starts_with("bearer ") {
                 let token = auth_header[7..].trim();
-                let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
-                
+                let secret =
+                    std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+
                 if let Ok(token_data) = decode::<Claims>(
                     token,
                     &DecodingKey::from_secret(secret.as_bytes()),

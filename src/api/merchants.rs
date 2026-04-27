@@ -3,10 +3,10 @@ use argon2::password_hash::{rand_core::OsRng, PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use uuid::Uuid;
 
-use crate::error::FeelPayError;
-use crate::models::merchant::{CreateMerchantRequest, MerchantLoginRequest, Merchant};
-use crate::state::AppState;
 use crate::engine::services::auth::MfaService;
+use crate::error::FeelPayError;
+use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequest};
+use crate::state::AppState;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -28,8 +28,12 @@ pub async fn create_merchant(
     state: web::Data<AppState>,
     body: web::Json<CreateMerchantRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
-    let mut tx = state.db.begin().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
     let id = Uuid::new_v4();
     let api_key = format!("fp_live_{}", Uuid::new_v4().simple());
     let api_secret = format!("fp_secret_{}", Uuid::new_v4().simple());
@@ -53,7 +57,7 @@ pub async fn create_merchant(
         r#"INSERT INTO merchants (id, tenant_id, name, email, password_hash, api_key, api_secret_hash, webhook_url, webhook_secret, business_name, business_type) 
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)"#
     )
-    .bind(&id).bind(&body.tenant_id).bind(&body.name).bind(&body.email).bind(&password_hash)
+    .bind(id).bind(body.tenant_id).bind(&body.name).bind(&body.email).bind(&password_hash)
     .bind(&api_key).bind(&api_secret_hash).bind(&body.webhook_url)
     .bind(&webhook_secret).bind(&body.business_name).bind(&body.business_type)
     .execute(&mut *tx).await
@@ -69,23 +73,34 @@ pub async fn create_merchant(
     let user_id = Uuid::new_v4();
     sqlx::query(
         r#"INSERT INTO users (id, tenant_id, merchant_id, email, password_hash, full_name, status) 
-           VALUES ($1, $2, $3, $4, $5, $6, 'active')"#
+           VALUES ($1, $2, $3, $4, $5, $6, 'active')"#,
     )
-    .bind(&user_id).bind(&body.tenant_id).bind(&id).bind(&body.email).bind(&password_hash).bind(&body.name)
-    .execute(&mut *tx).await
+    .bind(user_id)
+    .bind(body.tenant_id)
+    .bind(id)
+    .bind(&body.email)
+    .bind(&password_hash)
+    .bind(&body.name)
+    .execute(&mut *tx)
+    .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     // 3. Assign Role (merchant_owner)
     let role: (Uuid,) = sqlx::query_as("SELECT id FROM roles WHERE name = 'merchant_owner'")
-        .fetch_one(&mut *tx).await
+        .fetch_one(&mut *tx)
+        .await
         .map_err(|_| FeelPayError::Internal("Default role 'merchant_owner' not found".into()))?;
 
     sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)")
-        .bind(&user_id).bind(&role.0)
-        .execute(&mut *tx).await
+        .bind(user_id)
+        .bind(role.0)
+        .execute(&mut *tx)
+        .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    tx.commit().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     Ok(HttpResponse::Created().json(serde_json::json!({
         "id": id, "name": body.name, "email": body.email,
@@ -94,7 +109,6 @@ pub async fn create_merchant(
         "message": "Store your API secret safely."
     })))
 }
-
 
 pub async fn get_merchant(
     state: web::Data<AppState>,
@@ -105,7 +119,7 @@ pub async fn get_merchant(
     let row: Option<(Uuid, Option<Uuid>, String, String, String, Option<String>, String)> = sqlx::query_as(
         "SELECT id, tenant_id, name, email, api_key, business_name, status FROM merchants WHERE id = $1",
     )
-    .bind(&id)
+    .bind(id)
     .fetch_optional(&pool)
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
@@ -120,7 +134,6 @@ pub async fn get_merchant(
         None => Err(FeelPayError::NotFound("Merchant not found".into())),
     }
 }
-
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
     req.extensions()
@@ -286,9 +299,11 @@ pub async fn login_merchant(
     let m = merchant.ok_or(FeelPayError::Unauthorized("Invalid credentials".into()))?;
 
     let argon2 = Argon2::default();
-    let parsed_hash = PasswordHash::new(&m.password_hash).map_err(|_| FeelPayError::Internal("Hash error".into()))?;
-    
-    argon2.verify_password(body.password.as_bytes(), &parsed_hash)
+    let parsed_hash = PasswordHash::new(&m.password_hash)
+        .map_err(|_| FeelPayError::Internal("Hash error".into()))?;
+
+    argon2
+        .verify_password(body.password.as_bytes(), &parsed_hash)
         .map_err(|_| FeelPayError::Unauthorized("Invalid credentials".into()))?;
 
     if m.mfa_enabled {
@@ -309,7 +324,7 @@ pub async fn login_merchant(
     })))
 }
 
-fn create_mfa_token(id: Uuid, email: &str) -> Result<String, FeelPayError> {
+fn create_mfa_token(id: Uuid, _email: &str) -> Result<String, FeelPayError> {
     // Generate a short-lived token for MFA
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = crate::models::user::Claims {
@@ -326,7 +341,8 @@ fn create_mfa_token(id: Uuid, email: &str) -> Result<String, FeelPayError> {
         &jsonwebtoken::Header::default(),
         &claims,
         &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
-    ).map_err(|e| FeelPayError::Internal(e.to_string()))
+    )
+    .map_err(|e| FeelPayError::Internal(e.to_string()))
 }
 
 pub async fn verify_mfa_merchant(
@@ -334,19 +350,22 @@ pub async fn verify_mfa_merchant(
     body: web::Json<crate::api::auth::MfaVerifyRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     if let Some(mfa_token) = &body.mfa_token {
-        let secret_key = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret_key =
+            std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
         let token_data = jsonwebtoken::decode::<crate::models::user::Claims>(
             mfa_token,
             &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
             &jsonwebtoken::Validation::default(),
-        ).map_err(|_| FeelPayError::Unauthorized("Invalid MFA token".into()))?;
+        )
+        .map_err(|_| FeelPayError::Unauthorized("Invalid MFA token".into()))?;
 
         if token_data.claims.role != "merchant_mfa_pending" {
             return Err(FeelPayError::Unauthorized("Invalid MFA token role".into()));
         }
 
-        let merchant_id = Uuid::parse_str(&token_data.claims.sub).map_err(|_| FeelPayError::Internal("Invalid ID in token".into()))?;
-        
+        let merchant_id = Uuid::parse_str(&token_data.claims.sub)
+            .map_err(|_| FeelPayError::Internal("Invalid ID in token".into()))?;
+
         let merchant: Option<Merchant> = sqlx::query_as("SELECT * FROM merchants WHERE id = $1")
             .bind(merchant_id)
             .fetch_optional(&state.db)
@@ -367,7 +386,9 @@ pub async fn verify_mfa_merchant(
                 Err(FeelPayError::Unauthorized("Invalid MFA code".into()))
             }
         } else {
-            Err(FeelPayError::BadRequest("MFA not enabled for this merchant".into()))
+            Err(FeelPayError::BadRequest(
+                "MFA not enabled for this merchant".into(),
+            ))
         }
     } else {
         Err(FeelPayError::BadRequest("Missing mfa_token".into()))
@@ -375,10 +396,11 @@ pub async fn verify_mfa_merchant(
 }
 
 pub async fn reset_password() -> Result<HttpResponse, FeelPayError> {
-    Ok(HttpResponse::Ok().json(serde_json::json!({"message": "Password reset successful (simulated)"})))
+    Ok(HttpResponse::Ok()
+        .json(serde_json::json!({"message": "Password reset successful (simulated)"})))
 }
 
 pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
-    Ok(HttpResponse::Ok().json(serde_json::json!({"message": "Password reset instructions sent (simulated)"})))
+    Ok(HttpResponse::Ok()
+        .json(serde_json::json!({"message": "Password reset instructions sent (simulated)"})))
 }
-

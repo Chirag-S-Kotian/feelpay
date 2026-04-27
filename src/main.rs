@@ -1,6 +1,6 @@
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer};
 use actix_web::http::header;
+use actix_web::{web, App, HttpServer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod api;
@@ -15,8 +15,8 @@ pub mod vault;
 
 use config::AppConfig;
 use engine::payment::PaymentEngine;
-use vault::CardVaultService;
 use state::AppState;
+use vault::CardVaultService;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -89,7 +89,9 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Initialize Ledger Service
-    let ledger = std::sync::Arc::new(crate::engine::services::ledger::LedgerService::new(pool.clone()));
+    let ledger = std::sync::Arc::new(crate::engine::services::ledger::LedgerService::new(
+        pool.clone(),
+    ));
 
     // Prepare App State
     let pool_for_handler = pool.clone();
@@ -106,7 +108,8 @@ async fn main() -> std::io::Result<()> {
     tracing::info!("FeelPay Gateway API listening on {}", bind_addr);
 
     let worker_count = num_cpus::get() * 2;
-    let rate_limiter = crate::middleware::rate_limit::RateLimiter::new(config.rate_limit_per_minute);
+    let rate_limiter =
+        crate::middleware::rate_limit::RateLimiter::new(config.rate_limit_per_minute);
     let cors_allowed_origins = config.cors_allowed_origins.clone();
 
     HttpServer::new(move || {
@@ -143,8 +146,14 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/merchants")
                     .route("/register", web::post().to(api::merchants::create_merchant))
                     .route("/login", web::post().to(api::merchants::login_merchant))
-                    .route("/forgot-password", web::post().to(api::merchants::forgot_password))
-                    .route("/reset-password", web::post().to(api::merchants::reset_password))
+                    .route(
+                        "/forgot-password",
+                        web::post().to(api::merchants::forgot_password),
+                    )
+                    .route(
+                        "/reset-password",
+                        web::post().to(api::merchants::reset_password),
+                    )
                     // Protected merchant routes
                     .service(
                         web::scope("")
@@ -212,14 +221,20 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("/summary", web::get().to(api::analytics::get_summary))
                     .route("/volume", web::get().to(api::analytics::get_volume_chart))
-                    .route("/top-customers", web::get().to(api::analytics::get_top_customers)),
+                    .route(
+                        "/top-customers",
+                        web::get().to(api::analytics::get_top_customers),
+                    ),
             )
             // Developers API (API key info)
             .service(
                 web::scope("/v1/developers")
                     .wrap(crate::middleware::auth::JwtMiddleware)
                     .route("/keys", web::get().to(api::merchants::get_keys))
-                    .route("/webhooks", web::get().to(api::analytics::get_webhook_events)),
+                    .route(
+                        "/webhooks",
+                        web::get().to(api::analytics::get_webhook_events),
+                    ),
             )
     })
     .workers(worker_count)

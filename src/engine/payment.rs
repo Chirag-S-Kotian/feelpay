@@ -14,6 +14,12 @@ pub struct PaymentEngine {
     pipeline: TransactionPipeline,
 }
 
+impl Default for PaymentEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PaymentEngine {
     pub fn new() -> Self {
         Self {

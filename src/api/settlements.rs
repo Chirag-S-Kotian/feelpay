@@ -95,7 +95,17 @@ pub async fn list_settlements(
     let settlements: Vec<serde_json::Value> = rows
         .into_iter()
         .map(
-            |(id, settlement_date, status, amount, fee_amount, net_amount, utr_number, processed_at, created_at)| {
+            |(
+                id,
+                settlement_date,
+                status,
+                amount,
+                fee_amount,
+                net_amount,
+                utr_number,
+                processed_at,
+                created_at,
+            )| {
                 let tax_amount = ((fee_amount as f64) * 0.18_f64).round() as i64;
                 serde_json::json!({
                     "id": id,
@@ -154,7 +164,20 @@ pub async fn get_settlement(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
-    let Some((id, settlement_date, status, amount, fee_amount, net_amount, utr_number, bank_reference, error_message, processed_at, created_at)) = row else {
+    let Some((
+        id,
+        settlement_date,
+        status,
+        amount,
+        fee_amount,
+        net_amount,
+        utr_number,
+        bank_reference,
+        error_message,
+        processed_at,
+        created_at,
+    )) = row
+    else {
         return Err(FeelPayError::NotFound("Settlement not found".into()));
     };
 

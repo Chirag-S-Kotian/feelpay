@@ -1,8 +1,8 @@
-use actix_web::{web, HttpRequest, HttpResponse, HttpMessage};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use rust_decimal::Decimal;
 use serde::Serialize;
 use sqlx::PgPool;
 use uuid::Uuid;
-use rust_decimal::Decimal;
 
 /// Extract merchant_id from request extensions (inserted by ApiKeyMiddleware or JwtMiddleware)
 fn extract_merchant_id(req: &HttpRequest) -> Result<Uuid, HttpResponse> {
@@ -26,10 +26,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 }
 
 /// GET /v1/analytics/summary — aggregate stats for authenticated merchant
-pub async fn get_summary(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn get_summary(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -89,10 +86,7 @@ struct AnalyticsSummary {
 }
 
 /// GET /v1/analytics/volume — daily volume for last 7 days
-pub async fn get_volume_chart(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn get_volume_chart(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -165,10 +159,7 @@ struct TopCustomerRow {
     volume: Option<i64>,
 }
 
-pub async fn get_volume_trends(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn get_volume_trends(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -192,13 +183,16 @@ pub async fn get_volume_trends(
 
     match rows {
         Ok(data) => {
-            let trends: Vec<_> = data.into_iter().map(|r| {
-                serde_json::json!({
-                    "date": r.day.map(|d| d.to_string()).unwrap_or_default(),
-                    "count": r.count.unwrap_or(0),
-                    "volume": r.volume.unwrap_or(0)
+            let trends: Vec<_> = data
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "date": r.day.map(|d| d.to_string()).unwrap_or_default(),
+                        "count": r.count.unwrap_or(0),
+                        "volume": r.volume.unwrap_or(0)
+                    })
                 })
-            }).collect();
+                .collect();
             HttpResponse::Ok().json(serde_json::json!({ "trends": trends }))
         }
         Err(e) => {
@@ -210,10 +204,7 @@ pub async fn get_volume_trends(
     }
 }
 
-pub async fn get_top_customers(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn get_top_customers(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -238,13 +229,16 @@ pub async fn get_top_customers(
 
     match rows {
         Ok(data) => {
-            let customers: Vec<_> = data.into_iter().map(|r| {
-                serde_json::json!({
-                    "email": r.customer_email,
-                    "count": r.count.unwrap_or(0),
-                    "volume": r.volume.unwrap_or(0)
+            let customers: Vec<_> = data
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "email": r.customer_email,
+                        "count": r.count.unwrap_or(0),
+                        "volume": r.volume.unwrap_or(0)
+                    })
                 })
-            }).collect();
+                .collect();
             HttpResponse::Ok().json(serde_json::json!({ "top_customers": customers }))
         }
         Err(e) => {
@@ -257,10 +251,7 @@ pub async fn get_top_customers(
 }
 
 /// GET /v1/developers/webhooks — recent webhook delivery log
-pub async fn get_webhook_events(
-    req: HttpRequest,
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn get_webhook_events(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,

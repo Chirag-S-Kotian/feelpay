@@ -462,13 +462,16 @@ pub async fn capture_payment(
     if order.status == PaymentStatus::Captured {
         // Record in ledger
         let fee = (order.amount as f64 * 0.03) as i64; // 3% platform fee
-        state.ledger.record_transaction(
-            order.id,
-            order.merchant_id,
-            order.amount,
-            fee,
-            "payment_capture"
-        ).await?;
+        state
+            .ledger
+            .record_transaction(
+                order.id,
+                order.merchant_id,
+                order.amount,
+                fee,
+                "payment_capture",
+            )
+            .await?;
 
         sqlx::query(r#"UPDATE payment_orders SET status = $1, updated_at = $2, captured_at = $3 WHERE id = $4"#)
             .bind(order.status.as_str())
@@ -595,13 +598,16 @@ pub async fn refund_payment(
 
     // Record refund in ledger (reverse transaction)
     // For refund, we debit merchant and credit escrow. Fee is usually not refunded by platform.
-    state.ledger.record_transaction(
-        refund_id,
-        order.merchant_id,
-        -refund_amount, // Negative amount to represent reversal
-        0,
-        "refund"
-    ).await?;
+    state
+        .ledger
+        .record_transaction(
+            refund_id,
+            order.merchant_id,
+            -refund_amount, // Negative amount to represent reversal
+            0,
+            "refund",
+        )
+        .await?;
 
     order.refunded_amount += refund_amount;
     order.status = if order.refunded_amount >= order.amount {

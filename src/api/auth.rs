@@ -1,12 +1,12 @@
+use crate::engine::services::auth::MfaService;
+use crate::models::user::{Claims, User};
 use actix_web::{post, web, HttpResponse, Responder};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::{rand_core::OsRng, SaltString};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use crate::models::user::{User, Claims};
-use crate::engine::services::auth::MfaService;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -15,7 +15,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(register)
             .service(mfa_setup)
             .service(mfa_confirm)
-            .service(mfa_verify)
+            .service(mfa_verify),
     );
 }
 
@@ -62,21 +62,20 @@ pub struct MfaVerifyRequest {
 }
 
 #[post("/login")]
-async fn login(
-    pool: web::Data<PgPool>,
-    req: web::Json<LoginRequest>,
-) -> impl Responder {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE email = $1 AND status = 'active'"
-    )
-    .bind(&req.email)
-    .fetch_optional(pool.get_ref())
-    .await;
+async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Responder {
+    let user =
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND status = 'active'")
+            .bind(&req.email)
+            .fetch_optional(pool.get_ref())
+            .await;
 
     match user {
         Ok(Some(u)) => {
             let parsed_hash = PasswordHash::new(&u.password_hash).unwrap();
-            if Argon2::default().verify_password(req.password.as_bytes(), &parsed_hash).is_ok() {
+            if Argon2::default()
+                .verify_password(req.password.as_bytes(), &parsed_hash)
+                .is_ok()
+            {
                 // Fetch roles
                 let role: (String,) = sqlx::query_as(
                     "SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = $1 LIMIT 1"
@@ -119,10 +118,7 @@ async fn login(
 }
 
 #[post("/mfa/setup")]
-async fn mfa_setup(
-    pool: web::Data<PgPool>,
-    req: web::Json<MfaSetupRequest>,
-) -> impl Responder {
+async fn mfa_setup(_pool: web::Data<PgPool>, req: web::Json<MfaSetupRequest>) -> impl Responder {
     let secret = MfaService::generate_secret();
     match MfaService::generate_qr_code(&req.email, &secret) {
         Ok(qr_code_url) => HttpResponse::Ok().json(MfaSetupResponse {
@@ -142,7 +138,8 @@ async fn mfa_confirm(
     // In a real app, we'd get user_id from the authenticated session
     // For now, we'll assume the request has it or we use a temp token
     if let (Some(secret), Some(mfa_token)) = (&req.secret, &req.mfa_token) {
-        let secret_key = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret_key =
+            std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
         let token_data = jsonwebtoken::decode::<Claims>(
             mfa_token,
             &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
@@ -155,7 +152,7 @@ async fn mfa_confirm(
                 match MfaService::verify_token(secret, &req.code) {
                     Ok(true) => {
                         let result = sqlx::query(
-                            "UPDATE users SET mfa_enabled = true, mfa_secret = $2 WHERE id = $1"
+                            "UPDATE users SET mfa_enabled = true, mfa_secret = $2 WHERE id = $1",
                         )
                         .bind(user_id)
                         .bind(secret)
@@ -178,13 +175,11 @@ async fn mfa_confirm(
     }
 }
 #[post("/mfa/verify")]
-async fn mfa_verify(
-    pool: web::Data<PgPool>,
-    req: web::Json<MfaVerifyRequest>,
-) -> impl Responder {
+async fn mfa_verify(pool: web::Data<PgPool>, req: web::Json<MfaVerifyRequest>) -> impl Responder {
     if let Some(mfa_token) = &req.mfa_token {
         // Login step 2 verification
-        let secret_key = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret_key =
+            std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
         let token_data = jsonwebtoken::decode::<Claims>(
             mfa_token,
             &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
@@ -254,10 +249,7 @@ pub struct RegisterRequest {
 }
 
 #[post("/register")]
-async fn register(
-    pool: web::Data<PgPool>,
-    req: web::Json<RegisterRequest>,
-) -> impl Responder {
+async fn register(pool: web::Data<PgPool>, req: web::Json<RegisterRequest>) -> impl Responder {
     let salt = SaltString::generate(&mut OsRng);
     let password_hash = Argon2::default()
         .hash_password(req.password.as_bytes(), &salt)
@@ -266,7 +258,7 @@ async fn register(
 
     let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (tenant_id, merchant_id, email, password_hash, full_name, status) 
-         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING *"
+         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING *",
     )
     .bind(req.tenant_id)
     .bind(req.merchant_id)

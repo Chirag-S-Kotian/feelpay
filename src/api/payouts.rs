@@ -1,9 +1,9 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
-use uuid::Uuid;
-use crate::models::payout::{Payout, BankAccount, CreatePayoutRequest, CreateBankAccountRequest};
-use crate::models::user::Claims;
 use crate::engine::payout;
+use crate::models::payout::{BankAccount, CreateBankAccountRequest, CreatePayoutRequest, Payout};
+use crate::models::user::Claims;
+use actix_web::{get, post, web, HttpResponse, Responder};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -12,7 +12,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(list_payouts)
             .service(get_bank_accounts)
             .service(add_bank_account)
-            .service(verify_account)
+            .service(verify_account),
     );
 }
 
@@ -33,13 +33,12 @@ async fn request_payout(
     };
 
     // Verify bank account belongs to merchant
-    let account_exists = sqlx::query(
-        "SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2"
-    )
-    .bind(bank_account_id)
-    .bind(merchant_id)
-    .fetch_optional(pool.get_ref())
-    .await;
+    let account_exists =
+        sqlx::query("SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2")
+            .bind(bank_account_id)
+            .bind(merchant_id)
+            .fetch_optional(pool.get_ref())
+            .await;
 
     match account_exists {
         Ok(Some(_)) => (),
@@ -69,23 +68,20 @@ async fn request_payout(
                 let _ = payout::process_payout(&pool_clone, payout_id).await;
             });
             HttpResponse::Created().json(p)
-        },
+        }
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
 
 #[get("")]
-async fn list_payouts(
-    pool: web::Data<PgPool>,
-    claims: Claims,
-) -> impl Responder {
+async fn list_payouts(pool: web::Data<PgPool>, claims: Claims) -> impl Responder {
     let merchant_id = match claims.merchant_id {
         Some(id) => id,
         None => return HttpResponse::Forbidden().body("Merchant ID missing in token"),
     };
 
     let payouts = sqlx::query_as::<_, Payout>(
-        "SELECT * FROM payouts WHERE merchant_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM payouts WHERE merchant_id = $1 ORDER BY created_at DESC",
     )
     .bind(merchant_id)
     .fetch_all(pool.get_ref())
@@ -98,17 +94,14 @@ async fn list_payouts(
 }
 
 #[get("/bank-accounts")]
-async fn get_bank_accounts(
-    pool: web::Data<PgPool>,
-    claims: Claims,
-) -> impl Responder {
+async fn get_bank_accounts(pool: web::Data<PgPool>, claims: Claims) -> impl Responder {
     let merchant_id = match claims.merchant_id {
         Some(id) => id,
         None => return HttpResponse::Forbidden().body("Merchant ID missing in token"),
     };
 
     let accounts = sqlx::query_as::<_, BankAccount>(
-        "SELECT * FROM bank_accounts WHERE merchant_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM bank_accounts WHERE merchant_id = $1 ORDER BY created_at DESC",
     )
     .bind(merchant_id)
     .fetch_all(pool.get_ref())
@@ -163,13 +156,12 @@ async fn verify_account(
     };
 
     // Verify ownership
-    let account_exists = sqlx::query(
-        "SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2"
-    )
-    .bind(bank_account_id)
-    .bind(merchant_id)
-    .fetch_optional(pool.get_ref())
-    .await;
+    let account_exists =
+        sqlx::query("SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2")
+            .bind(bank_account_id)
+            .bind(merchant_id)
+            .fetch_optional(pool.get_ref())
+            .await;
 
     match account_exists {
         Ok(Some(_)) => (),

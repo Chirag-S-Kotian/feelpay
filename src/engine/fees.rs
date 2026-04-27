@@ -1,8 +1,8 @@
+use crate::error::FeelPayError;
+use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::*;
-use crate::error::FeelPayError;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct FeeCalculation {
@@ -43,15 +43,31 @@ pub async fn calculate_fees(
 
     let row = match row {
         Some(r) => r,
-        None => return Err(FeelPayError::BadRequest("No applicable fee rule found".into())),
+        None => {
+            return Err(FeelPayError::BadRequest(
+                "No applicable fee rule found".into(),
+            ))
+        }
     };
 
-    let id: Uuid = row.try_get("id").map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
-    let percentage_fee_val: Option<Decimal> = row.try_get("percentage_fee").map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
-    let flat_fee_val: Option<i64> = row.try_get("flat_fee").map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
-    let min_fee_val: Option<i64> = row.try_get("min_fee").map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
-    let max_fee_val: Option<i64> = row.try_get("max_fee").map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
-    let gst_inclusive_val: Option<bool> = row.try_get("gst_inclusive").map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    let id: Uuid = row
+        .try_get("id")
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    let percentage_fee_val: Option<Decimal> = row
+        .try_get("percentage_fee")
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    let flat_fee_val: Option<i64> = row
+        .try_get("flat_fee")
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    let min_fee_val: Option<i64> = row
+        .try_get("min_fee")
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    let max_fee_val: Option<i64> = row
+        .try_get("max_fee")
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
+    let gst_inclusive_val: Option<bool> = row
+        .try_get("gst_inclusive")
+        .map_err(|e| FeelPayError::DatabaseError(e.to_string()))?;
 
     let amount_dec = Decimal::from_i64(amount).unwrap();
     let percentage_fee = percentage_fee_val.unwrap_or(Decimal::ZERO);

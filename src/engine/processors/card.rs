@@ -10,6 +10,12 @@ use crate::models::payment_order::PaymentStatus;
 /// Card processor — handles card payments via internal vault
 pub struct CardProcessor;
 
+impl Default for CardProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CardProcessor {
     pub fn new() -> Self {
         Self
@@ -45,7 +51,7 @@ impl CardProcessor {
             })
             .sum();
 
-        sum % 10 == 0
+        sum.is_multiple_of(10)
     }
 
     /// Detect card brand from BIN (first 6 digits)

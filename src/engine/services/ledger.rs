@@ -73,11 +73,17 @@ impl LedgerService {
             .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
         // 1. Get or Create Merchant Account
-        let merchant_account = self.get_or_create_account(merchant_id, "merchant", &format!("Merchant {}", merchant_id)).await?;
-        
+        let merchant_account = self
+            .get_or_create_account(
+                merchant_id,
+                "merchant",
+                &format!("Merchant {}", merchant_id),
+            )
+            .await?;
+
         // 2. Get Platform Fee Account
         let platform_account = sqlx::query_as::<_, LedgerAccount>(
-            "SELECT * FROM ledger_accounts WHERE account_type = 'platform' LIMIT 1"
+            "SELECT * FROM ledger_accounts WHERE account_type = 'platform' LIMIT 1",
         )
         .fetch_one(&mut *tx)
         .await
@@ -85,7 +91,7 @@ impl LedgerService {
 
         // 3. Get Escrow Account
         let escrow_account = sqlx::query_as::<_, LedgerAccount>(
-            "SELECT * FROM ledger_accounts WHERE account_type = 'escrow' LIMIT 1"
+            "SELECT * FROM ledger_accounts WHERE account_type = 'escrow' LIMIT 1",
         )
         .fetch_one(&mut *tx)
         .await
@@ -94,7 +100,7 @@ impl LedgerService {
         let net_amount = amount - fee_amount;
 
         // --- DOUBLE ENTRY ---
-        
+
         // A. Debit Escrow (Escrow balance decreases as we payout)
         sqlx::query("UPDATE ledger_accounts SET balance = balance - $1 WHERE id = $2")
             .bind(amount)

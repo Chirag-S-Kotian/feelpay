@@ -1,5 +1,5 @@
-use totp_rs::{Algorithm, TOTP, Secret};
 use crate::error::FeelPayError;
+use totp_rs::{Algorithm, Secret, TOTP};
 
 pub struct MfaService;
 
@@ -24,7 +24,8 @@ impl MfaService {
                 .map_err(|e| FeelPayError::Internal(format!("Secret error: {}", e)))?,
             Some("FeelPay".to_string()),
             email.to_string(),
-        ).map_err(|e| FeelPayError::Internal(format!("TOTP init error: {}", e)))?;
+        )
+        .map_err(|e| FeelPayError::Internal(format!("TOTP init error: {}", e)))?;
 
         Ok(totp.get_url())
     }
@@ -41,7 +42,8 @@ impl MfaService {
                 .map_err(|e| FeelPayError::Internal(format!("Secret error: {}", e)))?,
             Some("FeelPay".to_string()),
             "".to_string(), // Account name not needed for verification
-        ).map_err(|e| FeelPayError::Internal(format!("TOTP init error: {}", e)))?;
+        )
+        .map_err(|e| FeelPayError::Internal(format!("TOTP init error: {}", e)))?;
 
         totp.check_current(token)
             .map_err(|e| FeelPayError::Internal(format!("TOTP verification error: {}", e)))

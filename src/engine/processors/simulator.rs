@@ -13,6 +13,12 @@ pub struct SimulatorProcessor {
     success_rate: f64,
 }
 
+impl Default for SimulatorProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimulatorProcessor {
     pub fn new() -> Self {
         Self { success_rate: 0.9 }

@@ -5,9 +5,9 @@ pub mod health;
 pub mod merchants;
 pub mod onboarding;
 pub mod payments;
+pub mod payouts;
 pub mod settlements;
 pub mod tenants;
-pub mod payouts;
 pub mod webhooks;
 
 use actix_web::web;

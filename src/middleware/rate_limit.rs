@@ -98,7 +98,9 @@ where
                             "message": "Rate limiter temporarily unavailable",
                         }
                     }));
-                    return Box::pin(async move { Ok(req.into_response(response).map_into_right_body()) });
+                    return Box::pin(async move {
+                        Ok(req.into_response(response).map_into_right_body())
+                    });
                 }
             };
 
@@ -125,9 +127,7 @@ where
                         "message": format!("Rate limit of {} requests per minute exceeded. Please retry after a moment.", max),
                     }
                 }));
-            return Box::pin(async move {
-                Ok(req.into_response(response).map_into_right_body())
-            });
+            return Box::pin(async move { Ok(req.into_response(response).map_into_right_body()) });
         }
 
         let fut = self.service.call(req);

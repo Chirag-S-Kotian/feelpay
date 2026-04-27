@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
-use crate::engine::processor::{MethodData, PaymentMethodProcessor, ProcessorResponse, TransactionContext};
+use crate::engine::processor::{
+    MethodData, PaymentMethodProcessor, ProcessorResponse, TransactionContext,
+};
 use crate::error::FeelPayError;
 
 /// Transaction pipeline stages:
@@ -27,10 +29,14 @@ impl TransactionPipeline {
         method_data: &MethodData,
     ) -> Result<(), FeelPayError> {
         if txn.amount <= 0 {
-            return Err(FeelPayError::BadRequest("Amount must be greater than 0".into()));
+            return Err(FeelPayError::BadRequest(
+                "Amount must be greater than 0".into(),
+            ));
         }
         if txn.currency.trim().len() != 3 {
-            return Err(FeelPayError::BadRequest("Currency must be 3-letter code".into()));
+            return Err(FeelPayError::BadRequest(
+                "Currency must be 3-letter code".into(),
+            ));
         }
 
         match method_data {
@@ -72,8 +78,10 @@ impl TransactionPipeline {
                 Ok(resp) => return Ok(resp),
                 Err(err) => {
                     attempt += 1;
-                    let is_retryable =
-                        matches!(err, FeelPayError::ConnectorError(_) | FeelPayError::InternalError(_));
+                    let is_retryable = matches!(
+                        err,
+                        FeelPayError::ConnectorError(_) | FeelPayError::InternalError(_)
+                    );
                     if !is_retryable || attempt > self.max_retries {
                         return Err(err);
                     }

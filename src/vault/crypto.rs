@@ -23,7 +23,7 @@ impl VaultCrypto {
                 "Vault encryption key must be 32 bytes (AES-256)".into(),
             ));
         }
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes).clone();
+        let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
         let cipher = Aes256Gcm::new(&key);
         Ok(Self { cipher, key_id })
     }
@@ -40,11 +40,7 @@ impl VaultCrypto {
     }
 
     /// Decrypt (ciphertext_b64, nonce_b64) → plaintext
-    pub fn decrypt(
-        &self,
-        ciphertext_b64: &str,
-        nonce_b64: &str,
-    ) -> Result<String, FeelPayError> {
+    pub fn decrypt(&self, ciphertext_b64: &str, nonce_b64: &str) -> Result<String, FeelPayError> {
         let ciphertext = B64
             .decode(ciphertext_b64)
             .map_err(|_| FeelPayError::InternalError("Corrupt encrypted payload".into()))?;

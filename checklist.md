@@ -8,8 +8,8 @@
 
 - [x] Monorepo structure with merchant dashboard, admin panel, hosted checkout, backend, shared types, shared UI component library
 - [x] Environment variable files for all apps
-- [ ] Git hooks — lint + type-check on commit
-- [ ] CI/CD pipeline (run tests on PR, deploy staging on merge, manual-gate prod deploy)
+- [x] Git hooks — lint + type-check on commit (scripts/pre-commit.sh)
+- [x] CI/CD pipeline (GitHub Actions: .github/workflows/pipeline.yml)
 - [ ] Branch protection on main and staging
 - [ ] Secrets management configured
 - [x] NeonDB project with branches: prod, staging, dev

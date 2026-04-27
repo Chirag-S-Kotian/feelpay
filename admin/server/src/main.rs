@@ -120,16 +120,19 @@ async fn impersonate_merchant(
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let merchant_id = path.into_inner();
-    let row = sqlx::query!(
+    let row = sqlx::query(
         "SELECT id, name FROM merchants WHERE id = $1",
-        merchant_id
     )
+    .bind(merchant_id)
     .fetch_optional(pool.get_ref())
     .await;
 
     match row {
         Ok(Some(m)) => {
-            let token = match generate_jwt(&m.id.to_string(), &m.name) {
+            use sqlx::Row;
+            let m_id: Uuid = m.get("id");
+            let m_name: String = m.get("name");
+            let token = match generate_jwt(&m_id, &m_name) {
                 Ok(t) => t,
                 Err(_) => return HttpResponse::InternalServerError().finish(),
             };
@@ -140,19 +143,23 @@ async fn impersonate_merchant(
     }
 }
 
-fn generate_jwt(merchant_id: &str, name: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn generate_jwt(merchant_id: &Uuid, _name: &str) -> Result<String, Box<dyn std::error::Error>> {
     use jsonwebtoken::{encode, EncodingKey, Header};
     #[derive(serde::Serialize)]
     struct Claims {
         sub: String,
-        name: String,
+        tenant_id: Option<Uuid>,
+        merchant_id: Option<Uuid>,
+        role: String,
         exp: usize,
         iat: usize,
     }
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = Claims {
-        sub: merchant_id.into(),
-        name: name.into(),
+        sub: merchant_id.to_string(),
+        tenant_id: None,
+        merchant_id: Some(*merchant_id),
+        role: "merchant".to_string(),
         exp: now + 86400,
         iat: now,
     };

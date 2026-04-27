@@ -66,7 +66,6 @@ pub struct MerchantPublic {
     pub created_at: DateTime<Utc>,
 }
 
-
 impl From<Merchant> for MerchantPublic {
     fn from(m: Merchant) -> Self {
         Self {

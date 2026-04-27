@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use std::str::FromStr;
+
 use crate::error::FeelPayError;
 
 /// Payment order statuses with valid state transitions
@@ -35,8 +37,12 @@ impl PaymentStatus {
             Self::PartiallyRefunded => "partially_refunded",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Result<Self, FeelPayError> {
+impl FromStr for PaymentStatus {
+    type Err = FeelPayError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "created" => Ok(Self::Created),
             "processing" => Ok(Self::Processing),
@@ -53,7 +59,9 @@ impl PaymentStatus {
             ))),
         }
     }
+}
 
+impl PaymentStatus {
     /// Validate state transition. Returns error if transition invalid.
     pub fn can_transition_to(&self, target: &PaymentStatus) -> Result<(), FeelPayError> {
         let valid = match self {
@@ -107,8 +115,12 @@ impl PaymentMethod {
             Self::Wallet => "wallet",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Result<Self, FeelPayError> {
+impl FromStr for PaymentMethod {
+    type Err = FeelPayError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "upi" => Ok(Self::Upi),
             "card" => Ok(Self::Card),

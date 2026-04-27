@@ -1,14 +1,14 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
-use uuid::Uuid;
 use crate::models::tenant::Tenant;
+use actix_web::{get, post, web, HttpResponse, Responder};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/tenants")
             .service(create_tenant)
             .service(list_tenants)
-            .service(get_tenant)
+            .service(get_tenant),
     );
 }
 
@@ -25,7 +25,7 @@ async fn create_tenant(
     req: web::Json<CreateTenantRequest>,
 ) -> impl Responder {
     let tenant = sqlx::query_as::<_, Tenant>(
-        "INSERT INTO tenants (name, slug, domain) VALUES ($1, $2, $3) RETURNING *"
+        "INSERT INTO tenants (name, slug, domain) VALUES ($1, $2, $3) RETURNING *",
     )
     .bind(&req.name)
     .bind(&req.slug)

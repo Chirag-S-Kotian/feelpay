@@ -5,7 +5,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 pub struct BinInfo {
     pub brand: String,
-    pub card_type: String,   // debit | credit | prepaid
+    pub card_type: String, // debit | credit | prepaid
     pub issuer: String,
     pub country: String,
     pub last_four: String,
@@ -16,7 +16,10 @@ pub struct BinLookup;
 impl BinLookup {
     /// Detect card brand from PAN prefix (IIN ranges).
     pub fn detect_brand(pan: &str) -> &'static str {
-        let digits: Vec<u8> = pan.chars().filter_map(|c| c.to_digit(10).map(|d| d as u8)).collect();
+        let digits: Vec<u8> = pan
+            .chars()
+            .filter_map(|c| c.to_digit(10).map(|d| d as u8))
+            .collect();
         if digits.is_empty() {
             return "unknown";
         }
@@ -85,11 +88,7 @@ impl BinLookup {
 
     /// Basic Luhn validation.
     pub fn luhn_valid(pan: &str) -> bool {
-        let digits: Vec<u32> = pan
-            .chars()
-            .rev()
-            .filter_map(|c| c.to_digit(10))
-            .collect();
+        let digits: Vec<u32> = pan.chars().rev().filter_map(|c| c.to_digit(10)).collect();
         if digits.len() < 13 {
             return false;
         }
@@ -99,13 +98,17 @@ impl BinLookup {
             .map(|(i, &d)| {
                 if i % 2 == 1 {
                     let doubled = d * 2;
-                    if doubled > 9 { doubled - 9 } else { doubled }
+                    if doubled > 9 {
+                        doubled - 9
+                    } else {
+                        doubled
+                    }
                 } else {
                     d
                 }
             })
             .sum();
-        sum % 10 == 0
+        sum.is_multiple_of(10)
     }
 
     /// Build BinInfo from PAN (offline heuristic). Production would call BIN API.

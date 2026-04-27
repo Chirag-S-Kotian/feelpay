@@ -1,9 +1,9 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::error::FeelPayError;
-use super::crypto::VaultCrypto;
 use super::bin_lookup::BinLookup;
+use super::crypto::VaultCrypto;
+use crate::error::FeelPayError;
 
 /// Secure card vault service. PCI-DSS scope reduction.
 /// Now delegates crypto to VaultCrypto and BIN detection to BinLookup.
@@ -138,13 +138,15 @@ impl CardVaultService {
         .await
         .map_err(|e: sqlx::Error| FeelPayError::DatabaseError(e.to_string()))?;
 
-        Ok(row.map(|(token, card_brand, last_four, em, ey, hn)| VaultedCard {
-            token,
-            card_brand,
-            last_four,
-            expiry_month: em as i32,
-            expiry_year: ey as i32,
-            holder_name: hn,
-        }))
+        Ok(
+            row.map(|(token, card_brand, last_four, em, ey, hn)| VaultedCard {
+                token,
+                card_brand,
+                last_four,
+                expiry_month: em as i32,
+                expiry_year: ey as i32,
+                holder_name: hn,
+            }),
+        )
     }
 }

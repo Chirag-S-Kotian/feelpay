@@ -5,7 +5,6 @@ use actix_web::{
 use futures_util::future::LocalBoxFuture;
 use std::future::{ready, Ready};
 use std::rc::Rc;
-use uuid::Uuid;
 
 /// RBAC Middleware to check for granular permissions
 pub struct RequirePermission {
@@ -65,13 +64,19 @@ where
             let (user_id, role_name) = {
                 let extensions = req.extensions();
                 (
-                    extensions.get::<crate::middleware::auth::UserId>().map(|u| u.0),
-                    extensions.get::<crate::middleware::auth::UserRole>().map(|r| r.0.clone()),
+                    extensions
+                        .get::<crate::middleware::auth::UserId>()
+                        .map(|u| u.0),
+                    extensions
+                        .get::<crate::middleware::auth::UserRole>()
+                        .map(|r| r.0.clone()),
                 )
             };
 
             let (Some(user_id), Some(role_name)) = (user_id, role_name) else {
-                return Err(actix_web::error::ErrorUnauthorized("Missing authentication context"));
+                return Err(actix_web::error::ErrorUnauthorized(
+                    "Missing authentication context",
+                ));
             };
 
             // Platform super_admin has all permissions
@@ -80,7 +85,9 @@ where
             }
 
             let Some(pool) = req.app_data::<web::Data<sqlx::PgPool>>() else {
-                return Err(actix_web::error::ErrorInternalServerError("Database pool unavailable"));
+                return Err(actix_web::error::ErrorInternalServerError(
+                    "Database pool unavailable",
+                ));
             };
 
             // Check if the user's role has the required permission
