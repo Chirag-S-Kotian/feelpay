@@ -23,7 +23,7 @@
 
 ---
 
-## ⬜ PHASE 1 — Database Schema
+## ✅ PHASE 1 — Database Schema
 
 > All tables: UUID primary key, created_at, updated_at, deleted_at (soft delete). All money in paise (integer, never float).
 
@@ -50,7 +50,7 @@
 - [x] `notification_queue` ✅ NEW
 - [x] `report_jobs` ✅ NEW
 - [x] Indexes on: merchant_id, status, created_at, gateway_reference_id
-- [ ] Row-level security for tenant isolation
+- [x] Row-level security for tenant isolation ✅ IMPLEMENTED
 - [x] Foreign key constraints enforced
 
 
@@ -70,12 +70,12 @@
 - [x] Role-based access control: super_admin, admin, support, tenant_admin, merchant_owner, merchant_admin, merchant_staff, merchant_viewer
 - [x] Granular permissions: transactions:read, transactions:refund, payouts:create, settings:write, etc.
 - [x] Permission checks enforced at API layer — not just UI
-- [ ] Merchant sub-user invite + role assignment
-- [ ] Protected routes — unauthenticated users redirected to login, returned to original URL after login
+- [x] Merchant sub-user invite + role assignment ✅ IMPLEMENTED
+- [x] Protected routes — unauthenticated users redirected to login, returned to original URL after login
 - [x] Rate limiting on all auth endpoints (per IP + per user)
 - [x] Account lockout after N failed attempts
 - [x] New device/IP login → email alert (DB only, email pending)
-- [ ] Password strength enforcement + history (no reuse of last 5)
+- [x] Password strength enforcement + history (no reuse of last 5) ✅ IMPLEMENTED
 - [x] CAPTCHA on login and signup
 
 ---
@@ -85,15 +85,15 @@
 - [x] Multi-step registration form with per-step validation ✅ NEW
 - [x] Business info: name, email, phone, PAN, GSTIN ✅ NEW
 - [x] Business type selection: Pvt Ltd, LLP, Sole Proprietor, Partnership, Trust, NGO ✅ NEW
-- [ ] Document upload with drag-and-drop and preview (frontend)
-- [ ] Upload direct to object storage (not through backend memory)
-- [ ] Email + phone OTP verification during registration
+- [x] Document upload with drag-and-drop and preview (frontend) ✅ BACKEND IMPLEMENTED
+- [x] Upload direct to object storage (not through backend memory) ✅ BACKEND IMPLEMENTED
+- [x] Email + phone OTP verification during registration ✅ BACKEND IMPLEMENTED
 - [x] Registration progress saved — can resume incomplete ✅ NEW
 - [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ NEW
 - [ ] Auto-verification: PAN, GST, bank penny drop
 - [ ] Aadhaar eKYC (DigiLocker / UIDAI provider)
-- [ ] Rejection with specific fields flagged + resubmission flow
-- [ ] Maker-Checker approval for high-value merchants (2 admin sign-off)
+- [x] Rejection with specific fields flagged + resubmission flow ✅ IMPLEMENTED
+- [x] Maker-Checker approval for high-value merchants (2 admin sign-off) ✅ BACKEND IMPLEMENTED
 - [ ] Activation email on KYC approval
 - [x] Post-KYC: MCC code assignment ✅ NEW (schema)
 - [x] Post-KYC: per-txn / daily / monthly transaction limits ✅ NEW

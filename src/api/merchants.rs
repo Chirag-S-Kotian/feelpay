@@ -21,7 +21,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/profile", web::put().to(update_profile))
             .route("/keys", web::get().to(get_keys))
             .route("/keys/roll", web::post().to(roll_keys))
-            .route("/{merchant_id}", web::get().to(get_merchant)),
+            .route("/{merchant_id}", web::get().to(get_merchant))
+            // Team management
+            .route("/team", web::get().to(list_team_members))
+            .route("/team/invite", web::post().to(invite_team_member))
+            .route("/team/{user_id}", web::delete().to(remove_team_member))
+            .route("/team/{user_id}/role", web::put().to(update_team_member_role)),
     );
 }
 
@@ -387,4 +392,251 @@ pub async fn reset_password() -> Result<HttpResponse, FeelPayError> {
 pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
     Ok(HttpResponse::Ok()
         .json(serde_json::json!({"message": "Password reset instructions sent (simulated)"})))
+}
+
+// ============ Team Management ============
+
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct InviteTeamMemberRequest {
+    pub email: String,
+    pub full_name: String,
+    pub role: String, // merchant_admin, merchant_staff, merchant_viewer
+}
+
+#[derive(Deserialize)]
+pub struct UpdateRoleRequest {
+    pub role: String,
+}
+
+/// List team members for the current merchant
+pub async fn list_team_members(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT u.id, u.email, u.full_name, u.status, u.created_at, r.name as role_name
+        FROM users u
+        JOIN user_roles ur ON u.id = ur.user_id
+        JOIN roles r ON ur.role_id = r.id
+        WHERE u.merchant_id = $1
+        ORDER BY u.created_at DESC
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    let members: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<Uuid, _>(0),
+                "email": row.get::<String, _>(1),
+                "full_name": row.get::<Option<String>, _>(2),
+                "status": row.get::<String, _>(3),
+                "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>(4),
+                "role": row.get::<String, _>(5),
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(members))
+}
+
+/// Invite a new team member
+pub async fn invite_team_member(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<InviteTeamMemberRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    // Validate role
+    let valid_roles = ["merchant_admin", "merchant_staff", "merchant_viewer"];
+    if !valid_roles.contains(&body.role.as_str()) {
+        return Err(FeelPayError::BadRequest(
+            "Invalid role. Must be one of: merchant_admin, merchant_staff, merchant_viewer".into(),
+        ));
+    }
+
+    // Get tenant_id from merchant
+    let merchant_row = sqlx::query("SELECT tenant_id FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    let tenant_id: Option<Uuid> = merchant_row.get(0);
+
+    // Check if user already exists
+    let existing = sqlx::query("SELECT id FROM users WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    if existing.is_some() {
+        return Err(FeelPayError::Conflict("User with this email already exists".into()));
+    }
+
+    // Generate a temporary password
+    let temp_password = format!("temp_{}", Uuid::new_v4().simple());
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(temp_password.as_bytes(), &salt)
+        .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
+        .to_string();
+
+    // Get role ID
+    let role_row = sqlx::query("SELECT id FROM roles WHERE name = $1")
+        .bind(&body.role)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| FeelPayError::Internal(format!("Role '{}' not found", body.role)))?;
+
+    let role_id: Uuid = role_row.get(0);
+
+    // Create user
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO users (id, tenant_id, merchant_id, email, password_hash, full_name, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        "#,
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(merchant_id)
+    .bind(&body.email)
+    .bind(&password_hash)
+    .bind(&body.full_name)
+    .execute(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    // Assign role
+    sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)")
+        .bind(user_id)
+        .bind(role_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    // In a real app, send invitation email here
+    // For now, return the temp password (in production, this would be a reset link)
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "id": user_id,
+        "email": body.email,
+        "full_name": body.full_name,
+        "role": body.role,
+        "status": "pending",
+        "message": "Invitation sent. User must set their password on first login.",
+        "temp_password": temp_password // Remove in production
+    })))
+}
+
+/// Remove a team member
+pub async fn remove_team_member(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let user_id = path.into_inner();
+
+    // Verify user belongs to this merchant
+    let row = sqlx::query("SELECT merchant_id FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    match row {
+        Some(row) => {
+            let user_merchant_id: Option<Uuid> = row.get(0);
+            if user_merchant_id != Some(merchant_id) {
+                return Err(FeelPayError::Forbidden(
+                    "Cannot remove users from other merchants".into(),
+                ));
+            }
+
+            // Soft delete by setting status to 'removed'
+            sqlx::query("UPDATE users SET status = 'removed', updated_at = NOW() WHERE id = $1")
+                .bind(user_id)
+                .execute(&state.db)
+                .await
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": "Team member removed"
+            })))
+        }
+        None => Err(FeelPayError::NotFound("User not found".into())),
+    }
+}
+
+/// Update a team member's role
+pub async fn update_team_member_role(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateRoleRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let user_id = path.into_inner();
+
+    // Validate role
+    let valid_roles = ["merchant_admin", "merchant_staff", "merchant_viewer"];
+    if !valid_roles.contains(&body.role.as_str()) {
+        return Err(FeelPayError::BadRequest(
+            "Invalid role. Must be one of: merchant_admin, merchant_staff, merchant_viewer".into(),
+        ));
+    }
+
+    // Verify user belongs to this merchant
+    let row = sqlx::query("SELECT merchant_id FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    match row {
+        Some(row) => {
+            let user_merchant_id: Option<Uuid> = row.get(0);
+            if user_merchant_id != Some(merchant_id) {
+                return Err(FeelPayError::Forbidden(
+                    "Cannot update users from other merchants".into(),
+                ));
+            }
+
+            // Get new role ID
+            let role_row = sqlx::query("SELECT id FROM roles WHERE name = $1")
+                .bind(&body.role)
+                .fetch_one(&state.db)
+                .await
+                .map_err(|_| FeelPayError::Internal(format!("Role '{}' not found", body.role)))?;
+
+            let role_id: Uuid = role_row.get(0);
+
+            // Update role
+            sqlx::query("UPDATE user_roles SET role_id = $1 WHERE user_id = $2")
+                .bind(role_id)
+                .bind(user_id)
+                .execute(&state.db)
+                .await
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "message": "Role updated",
+                "new_role": body.role
+            })))
+        }
+        None => Err(FeelPayError::NotFound("User not found".into())),
+    }
 }

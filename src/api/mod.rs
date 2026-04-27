@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod auth;
 pub mod customers;
 pub mod disputes;
+pub mod documents;
 pub mod health;
 pub mod merchants;
 pub mod notifications;
@@ -29,6 +30,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .configure(tenants::configure)
             .configure(payouts::configure)
             .configure(webhooks::configure)
-            .configure(analytics::configure),
+            .configure(analytics::configure)
+            .configure(documents::configure),
     );
 }

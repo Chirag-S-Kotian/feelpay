@@ -277,6 +277,12 @@ async fn main() -> std::io::Result<()> {
                         web::get().to(api::analytics::get_webhook_events),
                     ),
             )
+            // Documents API
+            .service(
+                web::scope("/v1/documents")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::documents::configure),
+            )
     })
     .workers(worker_count)
     .bind(bind_addr)?

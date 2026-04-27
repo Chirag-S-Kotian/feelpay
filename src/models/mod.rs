@@ -2,6 +2,7 @@ pub mod api_key;
 pub mod audit;
 pub mod customer;
 pub mod dispute;
+pub mod document;
 pub mod fee;
 pub mod kyc;
 pub mod ledger;

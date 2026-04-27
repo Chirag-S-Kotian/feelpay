@@ -93,7 +93,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(logout_all)
             .service(mfa_setup)
             .service(mfa_confirm)
-            .service(mfa_verify),
+            .service(mfa_verify)
+            .service(change_password),
     );
 }
 
@@ -503,8 +504,82 @@ pub struct RegisterRequest {
     pub merchant_id: Option<Uuid>,
 }
 
+/// Password strength validation
+fn validate_password_strength(password: &str) -> Result<(), String> {
+    if password.len() < 8 {
+        return Err("Password must be at least 8 characters long".to_string());
+    }
+    if password.len() > 128 {
+        return Err("Password must be less than 128 characters".to_string());
+    }
+    if !password.chars().any(|c| c.is_uppercase()) {
+        return Err("Password must contain at least one uppercase letter".to_string());
+    }
+    if !password.chars().any(|c| c.is_lowercase()) {
+        return Err("Password must contain at least one lowercase letter".to_string());
+    }
+    if !password.chars().any(|c| c.is_numeric()) {
+        return Err("Password must contain at least one number".to_string());
+    }
+    if !password.chars().any(|c| "!@#$%^&*()_+-=[]{}|;:',.<>?/~`".contains(c)) {
+        return Err("Password must contain at least one special character".to_string());
+    }
+    Ok(())
+}
+
+/// Check if password was used in last 5 passwords
+async fn check_password_history(user_id: Uuid, password_hash: &str, pool: &PgPool) -> bool {
+    let result: Result<Vec<(String,)>, _> = sqlx::query_as(
+        "SELECT password_hash FROM password_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5"
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await;
+
+    match result {
+        Ok(history) => {
+            for (old_hash,) in history {
+                if let Ok(parsed) = PasswordHash::new(&old_hash) {
+                    if Argon2::default()
+                        .verify_password(password_hash.as_bytes(), &parsed)
+                        .is_ok()
+                    {
+                        return true; // Password was used before
+                    }
+                }
+            }
+            false
+        }
+        Err(_) => false,
+    }
+}
+
+/// Store password in history
+async fn store_password_history(user_id: Uuid, password_hash: &str, pool: &PgPool) {
+    let _ = sqlx::query(
+        "INSERT INTO password_history (user_id, password_hash) VALUES ($1, $2)"
+    )
+    .bind(user_id)
+    .bind(password_hash)
+    .execute(pool)
+    .await;
+    
+    // Keep only last 5 passwords
+    let _ = sqlx::query(
+        "DELETE FROM password_history WHERE user_id = $1 AND id NOT IN (SELECT id FROM password_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5)"
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await;
+}
+
 #[post("/register")]
 async fn register(pool: web::Data<PgPool>, req: web::Json<RegisterRequest>) -> impl Responder {
+    // Validate password strength
+    if let Err(e) = validate_password_strength(&req.password) {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": e }));
+    }
+
     let salt = SaltString::generate(&mut OsRng);
     let password_hash = Argon2::default()
         .hash_password(req.password.as_bytes(), &salt)
@@ -512,8 +587,8 @@ async fn register(pool: web::Data<PgPool>, req: web::Json<RegisterRequest>) -> i
         .to_string();
 
     let user = sqlx::query_as::<_, User>(
-        "INSERT INTO users (tenant_id, merchant_id, email, password_hash, full_name, status) 
-         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING *",
+        "INSERT INTO users (tenant_id, merchant_id, email, password_hash, full_name, status, password_updated_at) 
+         VALUES ($1, $2, $3, $4, $5, 'active', NOW()) RETURNING *",
     )
     .bind(req.tenant_id)
     .bind(req.merchant_id)
@@ -524,7 +599,11 @@ async fn register(pool: web::Data<PgPool>, req: web::Json<RegisterRequest>) -> i
     .await;
 
     match user {
-        Ok(u) => HttpResponse::Created().json(u),
+        Ok(u) => {
+            // Store in password history
+            store_password_history(u.id, &password_hash, pool.get_ref()).await;
+            HttpResponse::Created().json(u)
+        }
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
@@ -551,4 +630,83 @@ fn generate_jwt_with_exp(user: &User, role: &str, exp_seconds: usize) -> String 
         &EncodingKey::from_secret(secret.as_bytes()),
     )
     .unwrap()
+}
+
+#[derive(Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[post("/change-password")]
+async fn change_password(
+    pool: web::Data<PgPool>,
+    claims: Claims,
+    req: web::Json<ChangePasswordRequest>,
+) -> impl Responder {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::Unauthorized().body("Invalid user identity"),
+    };
+
+    // Fetch user
+    let user = match sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool.get_ref())
+        .await
+    {
+        Ok(Some(u)) => u,
+        Ok(None) => return HttpResponse::NotFound().body("User not found"),
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    };
+
+    // Verify current password
+    let parsed_hash = match PasswordHash::new(&user.password_hash) {
+        Ok(h) => h,
+        Err(_) => return HttpResponse::InternalServerError().body("Invalid password hash"),
+    };
+
+    if Argon2::default()
+        .verify_password(req.current_password.as_bytes(), &parsed_hash)
+        .is_err()
+    {
+        return HttpResponse::Unauthorized().body("Current password is incorrect");
+    }
+
+    // Validate new password strength
+    if let Err(e) = validate_password_strength(&req.new_password) {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": e }));
+    }
+
+    // Hash new password
+    let salt = SaltString::generate(&mut OsRng);
+    let new_hash = match Argon2::default().hash_password(req.new_password.as_bytes(), &salt) {
+        Ok(h) => h.to_string(),
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    };
+
+    // Check password history
+    if check_password_history(user_id, &new_hash, pool.get_ref()).await {
+        return HttpResponse::BadRequest().json(serde_json::json!({ 
+            "error": "Cannot reuse any of your last 5 passwords" 
+        }));
+    }
+
+    // Update password
+    let result = sqlx::query(
+        "UPDATE users SET password_hash = $1, password_updated_at = NOW(), updated_at = NOW() WHERE id = $2"
+    )
+    .bind(&new_hash)
+    .bind(user_id)
+    .execute(pool.get_ref())
+    .await;
+
+    match result {
+        Ok(_) => {
+            // Store in history
+            store_password_history(user_id, &new_hash, pool.get_ref()).await;
+            HttpResponse::Ok().json(serde_json::json!({ "message": "Password changed successfully" }))
+        }
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
 }
