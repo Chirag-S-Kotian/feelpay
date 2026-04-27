@@ -2,13 +2,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use utoipa::ToSchema;
 
 use std::str::FromStr;
 
 use crate::error::FeelPayError;
 
 /// Payment order statuses with valid state transitions
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "VARCHAR")]
 #[sqlx(rename_all = "snake_case")]
 pub enum PaymentStatus {
@@ -153,7 +154,7 @@ impl ConnectorType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct PaymentOrder {
     pub id: Uuid,
     pub merchant_id: Uuid,

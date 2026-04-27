@@ -2,24 +2,58 @@ use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+use utoipa::{ToSchema, IntoParams};
 
 use crate::engine::processor::{MethodData, TransactionContext};
 use crate::error::FeelPayError;
 use crate::models::payment_order::{PaymentOrder, PaymentStatus};
 use crate::state::AppState;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, ToSchema)]
+#[schema(example = json!({
+    "amount": 1000,
+    "currency": "INR",
+    "order_id": "ORD-12345",
+    "customer_email": "customer@example.com",
+    "customer_phone": "+919999999999",
+    "description": "Test payment",
+    "return_url": "https://merchant.com/return",
+    "method_data": {
+        "method": "card",
+        "data": {
+            "card_number": "4111111111111111",
+            "expiry_month": 12,
+            "expiry_year": 2025,
+            "cvv": "123"
+        }
+    }
+}))]
 pub struct CreatePaymentRequest {
+    /// Amount in paise (e.g., 1000 = ₹10)
     pub amount: i64,
+    /// Currency code (INR)
     pub currency: String,
+    /// Merchant's order ID
     pub order_id: String,
+    /// Customer email
+    #[schema(value_type = Option<String>)]
     pub customer_email: Option<String>,
+    /// Customer phone
+    #[schema(value_type = Option<String>)]
     pub customer_phone: Option<String>,
+    /// Payment description
+    #[schema(value_type = Option<String>)]
     pub description: Option<String>,
+    /// URL to redirect after payment
+    #[schema(value_type = Option<String>)]
     pub return_url: Option<String>,
+    /// Payment method data
     pub method_data: MethodData,
+    /// Whether to vault the card for future payments
     #[serde(default)]
-    pub vault_card: bool, // If true, we vault the card
+    pub vault_card: bool,
+    /// Override default processor
+    #[schema(value_type = Option<String>)]
     pub processor_override: Option<String>,
 }
 
@@ -35,19 +69,19 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema, IntoParams)]
 pub struct ListPaymentsQuery {
     pub status: Option<String>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CapturePaymentRequest {
     pub amount: i64,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, ToSchema)]
 pub struct RefundPaymentRequest {
     pub amount: i64,
     pub reason: Option<String>,
@@ -147,6 +181,19 @@ async fn store_idempotency_response(
     Ok(())
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/payments",
+    request_body = CreatePaymentRequest,
+    responses(
+        (status = 200, description = "Payment created successfully", body = PaymentOrder),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn create_payment(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -335,6 +382,19 @@ pub async fn create_payment(
     Ok(HttpResponse::Ok().json(body))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/payments",
+    params(
+        ListPaymentsQuery
+    ),
+    responses(
+        (status = 200, description = "List of payments")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn list_payments(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -385,6 +445,20 @@ pub async fn list_payments(
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/payments/{payment_id}",
+    params(
+        ("payment_id" = Uuid, Path, description = "Payment ID")
+    ),
+    responses(
+        (status = 200, description = "Payment details", body = PaymentOrder),
+        (status = 404, description = "Payment not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_payment(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -410,6 +484,22 @@ pub async fn get_payment(
     Ok(HttpResponse::Ok().json(order))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/payments/{payment_id}/capture",
+    params(
+        ("payment_id" = Uuid, Path, description = "Payment ID")
+    ),
+    request_body = CapturePaymentRequest,
+    responses(
+        (status = 200, description = "Payment captured successfully", body = PaymentOrder),
+        (status = 400, description = "Invalid state"),
+        (status = 404, description = "Payment not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn capture_payment(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -495,6 +585,22 @@ pub async fn capture_payment(
     Ok(HttpResponse::Ok().json(order))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/payments/{payment_id}/refund",
+    params(
+        ("payment_id" = Uuid, Path, description = "Payment ID")
+    ),
+    request_body = RefundPaymentRequest,
+    responses(
+        (status = 200, description = "Payment refunded successfully"),
+        (status = 400, description = "Invalid amount or state"),
+        (status = 404, description = "Payment not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn refund_payment(
     req: HttpRequest,
     state: web::Data<AppState>,

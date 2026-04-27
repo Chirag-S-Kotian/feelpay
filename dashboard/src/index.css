@@ -173,6 +173,68 @@ a:focus-visible {
   background: #22c55e;
 }
 
+.top-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--fp-border);
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+.notification-bell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--fp-border);
+  background: var(--fp-bg-elevated);
+  color: var(--fp-text-muted);
+  cursor: pointer;
+  transition: var(--fp-transition);
+}
+
+.notification-bell:hover {
+  background: var(--fp-bg-hover);
+  color: var(--fp-text);
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--fp-danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--fp-bg-elevated) 25%, var(--fp-bg-hover) 50%, var(--fp-bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .main-content {
   width: 100%;
   margin-left: 270px;

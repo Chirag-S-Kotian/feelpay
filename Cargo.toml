@@ -83,5 +83,9 @@ totp-rs = { version = "5.7.1", features = ["qr"] }
 # Lazy static for CAPTCHA store
 lazy_static = "1.5"
 
+# OpenAPI
+utoipa = { version = "4", features = ["actix_extras"] }
+utoipa-swagger-ui = { version = "7", features = ["actix-web"] }
+
 [dev-dependencies]
 actix-test = "0.1"

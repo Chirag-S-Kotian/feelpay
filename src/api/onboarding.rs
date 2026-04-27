@@ -1,7 +1,8 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
@@ -22,15 +23,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct KycSubmissionRequest {
     pub verification_type: String, // pan/gstin/bank/aadhaar
     pub document_number: String,
     pub document_data: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct BankAccountRequest {
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BankAccountSubmissionRequest {
     pub account_holder_name: String,
     pub account_number: String,
     pub ifsc_code: String,
@@ -65,6 +66,19 @@ fn validate_ifsc(ifsc: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/kyc",
+    request_body = KycSubmissionRequest,
+    responses(
+        (status = 200, description = "KYC submitted successfully"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn submit_kyc(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -131,10 +145,23 @@ pub async fn submit_kyc(
     })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/bank-account",
+    request_body = BankAccountSubmissionRequest,
+    responses(
+        (status = 200, description = "Bank account submitted successfully"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn submit_bank_account(
     req: HttpRequest,
     state: web::Data<AppState>,
-    body: web::Json<BankAccountRequest>,
+    body: web::Json<BankAccountSubmissionRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let ifsc = body.ifsc_code.trim().to_uppercase();
@@ -174,6 +201,18 @@ pub async fn submit_bank_account(
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/onboarding/status",
+    responses(
+        (status = 200, description = "Returns onboarding status", body = OnboardingStatusResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Merchant not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn onboarding_status(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -228,6 +267,15 @@ pub async fn onboarding_status(
         "monthly_limit": monthly_limit,
         "verifications": verifications
     })))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OnboardingStatusResponse {
+    pub onboarding_status: String,
+    pub tier: String,
+    pub daily_limit: i64,
+    pub monthly_limit: i64,
+    pub verifications: Vec<serde_json::Value>,
 }
 // Update registration step
 #[derive(Debug, Deserialize)]
@@ -349,12 +397,24 @@ pub async fn submit_business_info(
 }
 
 // Update branding
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct BrandingRequest {
     pub logo_url: Option<String>,
     pub color: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/branding",
+    request_body = BrandingRequest,
+    responses(
+        (status = 200, description = "Branding updated successfully"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn update_branding(
     state: web::Data<AppState>,
     req: HttpRequest,

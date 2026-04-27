@@ -2,6 +2,8 @@ use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{web, App, HttpServer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 pub mod api;
 pub mod config;
@@ -18,6 +20,56 @@ use engine::payment::PaymentEngine;
 use state::AppState;
 use vault::CardVaultService;
 
+fn io_other(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::other(message.into())
+}
+
+fn validate_startup_config(config: &AppConfig) -> Result<(), String> {
+    let key = config.vault_encryption_key.trim();
+    let is_hex_64 = key.len() == 64 && key.chars().all(|c| c.is_ascii_hexdigit());
+
+    if !is_hex_64 {
+        return Err("VAULT_ENCRYPTION_KEY must be 64 hex chars (32-byte key)".into());
+    }
+
+    if config.is_live() && key == "0000000000000000000000000000000000000000000000000000000000000000" {
+        return Err("Live mode requires non-default VAULT_ENCRYPTION_KEY".into());
+    }
+
+    Ok(())
+}
+
+async fn run_startup_preflight(
+    pool: &sqlx::PgPool,
+    redis_client: &redis::Client,
+    strict_redis: bool,
+) -> Result<(), String> {
+    sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Database preflight failed: {e}"))?;
+
+    match redis_client.get_connection() {
+        Ok(mut redis_conn) => {
+            let pong: String = redis::cmd("PING")
+                .query(&mut redis_conn)
+                .map_err(|e| format!("Redis preflight ping failed: {e}"))?;
+
+            if pong != "PONG" {
+                return Err(format!("Unexpected Redis ping response: {pong}"));
+            }
+        }
+        Err(e) if strict_redis => {
+            return Err(format!("Redis preflight failed to connect: {e}"));
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Redis unavailable; continuing startup in test mode");
+        }
+    }
+
+    Ok(())
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Initialize structured logging
@@ -31,7 +83,8 @@ async fn main() -> std::io::Result<()> {
     tracing::info!("Starting FeelPay Payment Gateway...");
 
     // Load configuration
-    let config = AppConfig::from_env().expect("Failed to load configuration");
+    let config = AppConfig::from_env().map_err(|e| io_other(format!("Config load failed: {e}")))?;
+    validate_startup_config(&config).map_err(io_other)?;
 
     // Initialize Database
     let database_url = config.selected_database_url().to_string();
@@ -41,12 +94,17 @@ async fn main() -> std::io::Result<()> {
     );
     let pool = db::pool::create_pool(&database_url)
         .await
-        .expect("Failed to connect to PostgreSQL");
+        .map_err(|e| io_other(format!("Failed to connect to PostgreSQL: {e}")))?;
 
     // Initialize Redis
     tracing::info!("Connecting to Redis at {}", config.redis_url);
-    let redis_client =
-        redis::Client::open(config.redis_url.clone()).expect("Failed to connect to Redis");
+    let redis_client = redis::Client::open(config.redis_url.clone())
+        .map_err(|e| io_other(format!("Failed to connect to Redis: {e}")))?;
+
+    run_startup_preflight(&pool, &redis_client, config.is_live())
+        .await
+        .map_err(io_other)?;
+    tracing::info!("Startup preflight checks passed");
 
     // Initialize Vault Service
     tracing::info!("Initializing PCI-ready Card Vault");
@@ -55,7 +113,7 @@ async fn main() -> std::io::Result<()> {
         &config.vault_encryption_key,
         config.vault_key_id.clone(),
     )
-    .expect("Failed to initialize vault");
+    .map_err(|e| io_other(format!("Failed to initialize vault: {e}")))?;
 
     // Initialize Payment Engine
     tracing::info!("Configuring Payment Processors");
@@ -76,6 +134,14 @@ async fn main() -> std::io::Result<()> {
             config.upi_psp_id.clone(),
             config.upi_merchant_vpa.clone(),
         )),
+    );
+    payment_engine.register_processor(
+        "netbanking",
+        std::sync::Arc::new(engine::processors::netbanking::NetBankingProcessor::new()),
+    );
+    payment_engine.register_processor(
+        "wallet",
+        std::sync::Arc::new(engine::processors::wallet::WalletProcessor::new()),
     );
 
     // If live, default to real processors. Otherwise default to simulator.
@@ -112,7 +178,7 @@ async fn main() -> std::io::Result<()> {
         crate::middleware::rate_limit::RateLimiter::new(config.rate_limit_per_minute);
     let cors_allowed_origins = config.cors_allowed_origins.clone();
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         let mut cors = Cors::default()
             .supports_credentials()
             .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
@@ -141,6 +207,11 @@ async fn main() -> std::io::Result<()> {
             // Healthcheck
             .route("/health", web::get().to(api::health::health_check))
             .route("/v1/health", web::get().to(api::health::health_check))
+            // Swagger UI (only in non-production)
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", api::ApiDoc::openapi()),
+            )
             // Merchants API
             .service(
                 web::scope("/v1/merchants")
@@ -242,7 +313,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/settlements")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::get().to(api::settlements::list_settlements))
-                    .route("/balance", web::get().to(api::settlements::get_balance))
+                    .route("/balance", web::get().to(crate::api::settlements::get_settlement_stats))
                     .route("/{id}", web::get().to(api::settlements::get_settlement)),
             )
             // Merchant onboarding API (dashboard JWT auth)
@@ -260,7 +331,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/v1/analytics")
                     .wrap(crate::middleware::auth::UnifiedAuth)
-                    .route("/summary", web::get().to(api::analytics::get_summary))
+                    .route("/summary", web::get().to(crate::api::analytics::get_dashboard_stats))
                     .route("/volume", web::get().to(api::analytics::get_volume_chart))
                     .route(
                         "/top-customers",
@@ -289,9 +360,30 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::fee_plans::configure),
             )
+            // Subscriptions API
+            .service(
+                web::scope("/v1/subscriptions")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::subscriptions::configure),
+            )
     })
     .workers(worker_count)
+    .shutdown_timeout(30)
     .bind(bind_addr)?
-    .run()
-    .await
+    .run();
+
+    let server_handle = server.handle();
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                tracing::warn!("Shutdown signal received, draining in-flight requests");
+                server_handle.stop(true).await;
+            }
+            Err(e) => {
+                tracing::error!("Failed to listen for shutdown signal: {e}");
+            }
+        }
+    });
+
+    server.await
 }

@@ -2,6 +2,28 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use utoipa::ToSchema;
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
+#[sqlx(type_name = "VARCHAR")]
+#[sqlx(rename_all = "snake_case")]
+pub enum BusinessType {
+    Individual,
+    SoleProprietorship,
+    Partnership,
+    Corporation,
+    Llc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
+#[sqlx(type_name = "VARCHAR")]
+#[sqlx(rename_all = "snake_case")]
+pub enum MerchantStatus {
+    Active,
+    Inactive,
+    Suspended,
+    Pending,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Merchant {
@@ -40,7 +62,7 @@ pub struct Merchant {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMerchantRequest {
     pub tenant_id: Option<Uuid>,
     pub name: String,

@@ -13,6 +13,7 @@ import {
   X,
   Link as LinkIcon,
   Users,
+  Bell,
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Payments from './pages/Payments';
@@ -27,6 +28,7 @@ import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import PaymentLinks from './pages/PaymentLinks';
 import Customers from './pages/Customers';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -75,6 +77,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
 function Layout() {
   const [open, setOpen] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(3); // TODO: fetch from API
 
   return (
     <div className="app-layout">
@@ -93,7 +96,21 @@ function Layout() {
         <Sidebar />
       </div>
       <main className="main-content">
-        <Routes>
+        <ErrorBoundary>
+          <header className="top-header">
+            <div className="header-spacer"></div>
+            <button 
+              className="notification-bell" 
+              aria-label="Notifications"
+              onClick={() => {/* TODO: open notification panel */}}
+            >
+              <Bell size={20} />
+              {notificationCount > 0 && (
+                <span className="notification-badge">{notificationCount}</span>
+              )}
+            </button>
+          </header>
+          <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/payment-links" element={<PaymentLinks />} />
@@ -105,7 +122,8 @@ function Layout() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -64,6 +64,20 @@ impl PaymentEngine {
                     self.default_processor.clone()
                 }
             }
+            MethodData::NetBanking { .. } => {
+                if self.processors.contains_key("netbanking") {
+                    "netbanking".to_string()
+                } else {
+                    self.default_processor.clone()
+                }
+            }
+            MethodData::Wallet { .. } => {
+                if self.processors.contains_key("wallet") {
+                    "wallet".to_string()
+                } else {
+                    self.default_processor.clone()
+                }
+            }
             _ => self.default_processor.clone(),
         }
     }

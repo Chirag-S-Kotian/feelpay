@@ -10,6 +10,8 @@ import {
   Menu,
   X,
   FileCheck,
+  Bell,
+  Search,
 } from 'lucide-react';
 import { useState } from 'react';
 import AdminDashboard from './pages/AdminDashboard';
@@ -60,6 +62,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
 function Layout() {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [notificationCount] = useState(2); // TODO: fetch from API
 
   return (
     <div className="app-layout">
@@ -73,6 +77,23 @@ function Layout() {
         <Sidebar />
       </div>
       <main className="main-content">
+        <header className="top-header">
+          <div className="global-search">
+            <Search size={16} />
+            <input
+              type="text"
+              placeholder="Search merchants, transactions, users..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <button className="notification-bell" aria-label="Notifications">
+            <Bell size={20} />
+            {notificationCount > 0 && (
+              <span className="notification-badge">{notificationCount}</span>
+            )}
+          </button>
+        </header>
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
           <Route path="/merchants" element={<Merchants />} />

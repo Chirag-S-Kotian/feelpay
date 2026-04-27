@@ -2,6 +2,7 @@ use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use sqlx::PgPool;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Extract merchant_id from request extensions (inserted by ApiKeyMiddleware or JwtMiddleware)
@@ -19,14 +20,25 @@ fn extract_merchant_id(req: &HttpRequest) -> Result<Uuid, HttpResponse> {
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/analytics")
-            .route("/summary", web::get().to(get_summary))
+            .route("/summary", web::get().to(get_dashboard_stats))
             .route("/volume", web::get().to(get_volume_chart))
             .route("/top-customers", web::get().to(get_top_customers)),
     );
 }
 
 /// GET /v1/analytics/summary — aggregate stats for authenticated merchant
-pub async fn get_summary(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
+#[utoipa::path(
+    get,
+    path = "/v1/analytics/summary",
+    responses(
+        (status = 200, description = "Analytics summary", body = AnalyticsSummary),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_dashboard_stats(req: HttpRequest, pool: web::Data<PgPool>) -> HttpResponse {
     let merchant_id = match extract_merchant_id(&req) {
         Ok(id) => id,
         Err(resp) => return resp,
@@ -76,8 +88,8 @@ struct AnalyticsSummaryRow {
     success_rate: Decimal,
 }
 
-#[derive(Serialize)]
-struct AnalyticsSummary {
+#[derive(Serialize, ToSchema)]
+pub struct AnalyticsSummary {
     total_transactions: i64,
     total_volume: i64,
     successful: i64,

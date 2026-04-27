@@ -49,7 +49,7 @@ fn user_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
 /// Generate a presigned upload URL for document upload
 pub async fn generate_upload_url(
     req: HttpRequest,
-    state: web::Data<AppState>,
+    _state: web::Data<AppState>,
     body: web::Json<GenerateUploadUrlRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;

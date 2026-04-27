@@ -1,5 +1,6 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
+use utoipa::{ToSchema, IntoParams};
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
@@ -15,19 +16,19 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Merchant ID not found".to_string()))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct PaginationParams {
     pub page: Option<i32>,
     pub per_page: Option<i32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CustomerListResponse {
     pub data: Vec<CustomerResponse>,
     pub meta: PaginationMeta,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaginationMeta {
     pub page: i32,
     pub per_page: i32,
@@ -36,6 +37,18 @@ pub struct PaginationMeta {
 }
 
 // Create a new customer
+#[utoipa::path(
+    post,
+    path = "/v1/customers",
+    request_body = CreateCustomerRequest,
+    responses(
+        (status = 201, description = "Customer created successfully", body = CustomerResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn create_customer(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -71,6 +84,21 @@ pub async fn create_customer(
 }
 
 // Get customer by ID
+#[utoipa::path(
+    get,
+    path = "/v1/customers/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Customer ID")
+    ),
+    responses(
+        (status = 200, description = "Customer details", body = CustomerResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Customer not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_customer(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -93,6 +121,20 @@ pub async fn get_customer(
 }
 
 // List customers
+#[utoipa::path(
+    get,
+    path = "/v1/customers",
+    params(
+        PaginationParams
+    ),
+    responses(
+        (status = 200, description = "List of customers", body = CustomerListResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn list_customers(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -141,6 +183,20 @@ pub async fn list_customers(
 }
 
 // Get customer's saved payment methods
+#[utoipa::path(
+    get,
+    path = "/v1/customers/{id}/payment-methods",
+    params(
+        ("id" = Uuid, Path, description = "Customer ID")
+    ),
+    responses(
+        (status = 200, description = "Customer payment methods", body = Vec<SavedPaymentMethodResponse>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_customer_payment_methods(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -171,6 +227,21 @@ pub async fn get_customer_payment_methods(
 }
 
 // Delete customer (soft delete)
+#[utoipa::path(
+    delete,
+    path = "/v1/customers/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Customer ID")
+    ),
+    responses(
+        (status = 204, description = "Customer deleted successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Customer not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn delete_customer(
     state: web::Data<AppState>,
     req: HttpRequest,

@@ -1,6 +1,7 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use chrono::NaiveDate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use utoipa::{ToSchema, IntoParams};
 use uuid::Uuid;
 
 use crate::engine::services::settlement::SettlementService;
@@ -11,12 +12,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/settlements")
             .route("", web::get().to(list_settlements))
-            .route("/balance", web::get().to(get_balance))
+            .route("/balance", web::get().to(get_settlement_stats))
             .route("/{id}", web::get().to(get_settlement)),
     );
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct SettlementQuery {
     pub status: Option<String>,
     pub from_date: Option<String>,
@@ -32,6 +33,20 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/settlements",
+    params(
+        SettlementQuery
+    ),
+    responses(
+        (status = 200, description = "List of settlements", body = Vec<SettlementResponse>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn list_settlements(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -131,6 +146,21 @@ pub async fn list_settlements(
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/settlements/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Settlement ID")
+    ),
+    responses(
+        (status = 200, description = "Settlement details", body = SettlementResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Settlement not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_settlement(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -216,7 +246,17 @@ pub async fn get_settlement(
     })))
 }
 
-pub async fn get_balance(
+#[utoipa::path(
+    get,
+    path = "/v1/settlements/balance",
+    responses(
+        (status = 200, description = "Settlement balance stats")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_settlement_stats(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
@@ -227,4 +267,18 @@ pub async fn get_balance(
         "available": available,
         "pending": pending
     })))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SettlementResponse {
+    pub id: Uuid,
+    pub settlement_date: Option<NaiveDate>,
+    pub status: String,
+    pub amount: i64,
+    pub fee_amount: i64,
+    pub tax_amount: i64,
+    pub net_amount: i64,
+    pub utr: Option<String>,
+    pub processed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }

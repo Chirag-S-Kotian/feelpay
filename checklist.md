@@ -31,24 +31,24 @@
 - [x] `merchants` — businesses under a tenant (L31)
 - [x] `merchant_kyc` — KYC docs + verification status (L40)
 - [x] `users` — all system users (L22)
-- [x] `roles` + `permissions` + `user_roles` (L41, L50, L57, L63)
+- [x] `roles` + `permissions` + `user_roles` (L41, L50, 57, L63)
 - [x] `api_keys` — hashed, live + test per merchant (L73)
 - [x] `webhooks` + `webhook_deliveries` (L113)
-- [x] `payment_links` ✅ NEW
+- [x] `payment_links` ✅ IMPLEMENTED
 - [x] `transactions` — partitioned monthly (L204)
-- [x] `transaction_events` — append-only state log ✅ NEW
+- [x] `transaction_events` — append-only state log ✅ IMPLEMENTED
 - [x] `refunds` (L231)
 - [x] `disputes` (L250)
 - [x] `settlements` + `settlement_transactions` (L270, L291)
 - [x] `payouts` (L87 - Missing updated_at) ✅ FIXED
 - [x] `bank_accounts` + `vpa_accounts` (L107 - Missing updated_at) ✅ FIXED
-- [x] `subscriptions` + `subscription_invoices` (L122, L136)
-- [x] `customers` — tokenized vault ✅ NEW
-- [x] `saved_payment_methods` ✅ NEW
+- [x] `subscriptions` + `subscription_invoices` (L122, L136) ✅ SCHEMA ONLY
+- [x] `customers` — tokenized vault ✅ IMPLEMENTED
+- [x] `saved_payment_methods` ✅ IMPLEMENTED
 - [x] `fee_rules` (L149)
 - [x] `audit_logs` — immutable, append-only (L164)
-- [x] `notification_queue` ✅ NEW
-- [x] `report_jobs` ✅ NEW
+- [x] `notification_queue` ✅ IMPLEMENTED
+- [x] `report_jobs` ✅ IMPLEMENTED
 - [x] Indexes on: merchant_id, status, created_at, gateway_reference_id
 - [x] Row-level security for tenant isolation ✅ IMPLEMENTED
 - [x] Foreign key constraints enforced
@@ -82,273 +82,273 @@
 
 ## ✅ PHASE 3 — Merchant Onboarding & KYC
 
-- [x] Multi-step registration form with per-step validation ✅ NEW
-- [x] Business info: name, email, phone, PAN, GSTIN ✅ NEW
-- [x] Business type selection: Pvt Ltd, LLP, Sole Proprietor, Partnership, Trust, NGO ✅ NEW
+- [x] Multi-step registration form with per-step validation ✅ IMPLEMENTED
+- [x] Business info: name, email, phone, PAN, GSTIN ✅ IMPLEMENTED
+- [x] Business type selection: Pvt Ltd, LLP, Sole Proprietor, Partnership, Trust, NGO ✅ IMPLEMENTED
 - [x] Document upload with drag-and-drop and preview (frontend) ✅ BACKEND IMPLEMENTED
 - [x] Upload direct to object storage (not through backend memory) ✅ BACKEND IMPLEMENTED
 - [x] Email + phone OTP verification during registration ✅ BACKEND IMPLEMENTED
-- [x] Registration progress saved — can resume incomplete ✅ NEW
-- [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ NEW
+- [x] Registration progress saved — can resume incomplete ✅ IMPLEMENTED
+- [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ IMPLEMENTED
 - [x] Auto-verification: PAN, GST, bank penny drop ✅ IMPLEMENTED
-- [x] Aadhaar eKYC (DigiLocker / UIDAI provider) ✅ BACKEND READY
+- [ ] Aadhaar eKYC (DigiLocker / UIDAI provider) ⬜ NOT IMPLEMENTED
 - [x] Rejection with specific fields flagged + resubmission flow ✅ IMPLEMENTED
-- [x] Maker-Checker approval for high-value merchants (2 admin sign-off) ✅ BACKEND IMPLEMENTED
-- [x] Activation email on KYC approval ✅ BACKEND READY
-- [x] Post-KYC: MCC code assignment ✅ NEW (schema)
-- [x] Post-KYC: per-txn / daily / monthly transaction limits ✅ NEW
-- [x] Post-KYC: allowed payment methods configuration ✅ NEW
+- [x] Maker-Checker approval for high-value merchants (2 admin sign-off) ✅ IMPLEMENTED
+- [ ] Activation email on KYC approval ⬜ NOT IMPLEMENTED
+- [x] Post-KYC: MCC code assignment ✅ IMPLEMENTED (schema)
+- [x] Post-KYC: per-txn / daily / monthly transaction limits ✅ IMPLEMENTED
+- [x] Post-KYC: allowed payment methods configuration ✅ IMPLEMENTED
 - [x] Post-KYC: fee plan assignment ✅ IMPLEMENTED
-- [x] Post-KYC: settlement cycle (T+1, T+2, instant) ✅ NEW
+- [x] Post-KYC: settlement cycle (T+1, T+2, instant) ✅ IMPLEMENTED
 - [x] Post-KYC: live + test API key generation ✅ EXISTING
-- [x] Post-KYC: custom branding upload (logo + color for hosted checkout) ✅ NEW
+- [x] Post-KYC: custom branding upload (logo + color for hosted checkout) ✅ IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 4 — Payment Gateway Core
 
 ### Payment Methods (India)
-- [x] UPI — Intent, QR collect, VPA push ✅ EXISTING
-- [x] UPI Autopay — mandate creation + execution ✅ BACKEND READY
-- [x] Cards — Visa, Mastercard, RuPay, Amex (debit + credit) ✅ EXISTING
-- [x] Net Banking — HDFC, SBI, ICICI, Axis, Kotak + others ✅ BACKEND READY
-- [x] Wallets — Paytm, PhonePe, Amazon Pay, Mobikwik ✅ BACKEND READY
-- [x] EMI — credit card, no-cost, cardless ✅ BACKEND READY
-- [x] BNPL — Lazypay, Simpl ✅ BACKEND READY
-- [x] Virtual accounts (NEFT / RTGS bank transfer) ✅ BACKEND READY
-- [x] International cards — Phase 2 ✅ BACKEND READY
+- [x] UPI — Intent, QR collect, VPA push ✅ IMPLEMENTED
+- [ ] UPI Autopay — mandate creation + execution ⬜ NOT IMPLEMENTED
+- [x] Cards — Visa, Mastercard, RuPay, Amex (debit + credit) ✅ IMPLEMENTED
+- [x] Net Banking — HDFC, SBI, ICICI, Axis, Kotak + others ✅ IMPLEMENTED (schema + simulator)
+- [x] Wallets — Paytm, PhonePe, Amazon Pay, Mobikwik ✅ IMPLEMENTED (schema + simulator)
+- [ ] EMI — credit card, no-cost, cardless ⬜ NOT IMPLEMENTED
+- [ ] BNPL — Lazypay, Simpl ⬜ NOT IMPLEMENTED
+- [ ] Virtual accounts (NEFT / RTGS bank transfer) ⬜ NOT IMPLEMENTED
+- [ ] International cards — Phase 2 ⬜ NOT IMPLEMENTED
 
 ### Provider Routing
-- [x] Provider abstraction layer — unified interface for all providers ✅ NEW
-- [x] Razorpay (primary), PayU (fallback), Cashfree, Juspay (UPI routing) ✅ NEW (schema)
-- [x] Intelligent routing by success rate, cost, method, merchant config ✅ NEW
-- [x] Auto-failover to next provider on failure ✅ NEW (circuit breaker)
-- [x] Circuit breaker per provider ✅ NEW
-- [x] Provider health monitoring ✅ NEW
+- [x] Provider abstraction layer — unified interface for all providers ✅ IMPLEMENTED
+- [x] Razorpay (primary), PayU (fallback), Cashfree, Juspay (UPI routing) ✅ IMPLEMENTED (schema)
+- [x] Intelligent routing by success rate, cost, method, merchant config ✅ IMPLEMENTED
+- [x] Auto-failover to next provider on failure ✅ IMPLEMENTED (circuit breaker)
+- [x] Circuit breaker per provider ✅ IMPLEMENTED
+- [x] Provider health monitoring ✅ IMPLEMENTED
 
 ### Transaction Flow
-- [x] Order creation ✅ EXISTING
-- [x] Payment initiation returning session token ✅ EXISTING
+- [x] Order creation ✅ IMPLEMENTED
+- [x] Payment initiation returning session token ✅ IMPLEMENTED
 - [x] Hosted checkout page (redirect flow) ✅ IMPLEMENTED
 - [x] Embedded checkout (iframe with postMessage communication) ✅ IMPLEMENTED
 - [x] Payment status polling + real-time status updates (SSE/WebSocket) ✅ IMPLEMENTED
-- [x] Transaction state machine: created → initiated → processing → success / failed / cancelled / expired ✅ EXISTING
-- [x] Idempotency key support on all write endpoints ✅ EXISTING
-- [x] Payment link generation ✅ NEW
-- [x] UPI QR code generation ✅ EXISTING
-- [x] Order and link expiry handling ✅ NEW
+- [x] Transaction state machine: created → initiated → processing → success / failed / cancelled / expired ✅ IMPLEMENTED
+- [x] Idempotency key support on all write endpoints ✅ IMPLEMENTED
+- [x] Payment link generation ✅ IMPLEMENTED
+- [x] UPI QR code generation ✅ IMPLEMENTED
+- [x] Order and link expiry handling ✅ IMPLEMENTED
 
 ### Refunds
-- [x] Full refund ✅ EXISTING
-- [x] Partial refund ✅ EXISTING
+- [x] Full refund ✅ IMPLEMENTED
+- [x] Partial refund ✅ IMPLEMENTED
 - [x] Batch refund ✅ IMPLEMENTED
-- [x] Refund reason codes ✅ EXISTING
-- [x] Refund status tracking + webhook delivery ✅ EXISTING
-- [x] Refund event timeline in dashboard ✅ EXISTING
+- [x] Refund reason codes ✅ IMPLEMENTED
+- [x] Refund status tracking + webhook delivery ✅ IMPLEMENTED
+- [x] Refund event timeline in dashboard ✅ IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 5 — Merchant Dashboard
 
 ### Layout
-- [x] Collapsible sidebar, mobile-responsive ✅ EXISTING
-- [x] Live / Test mode toggle — globally changes API key context, clearly labeled ✅ EXISTING
-- [x] Notification bell with unread count ✅ BACKEND READY
-- [x] Loading skeletons on all data-heavy views ✅ BACKEND READY
-- [x] Empty states with CTAs on all list views ✅ NEW
-- [x] Error boundaries per major section ✅ BACKEND READY
-- [x] URL-synced filters (shareable filtered URLs) ✅ BACKEND READY
-- [x] Dark mode ✅ BACKEND READY
+- [x] Collapsible sidebar, mobile-responsive ✅ IMPLEMENTED
+- [x] Live / Test mode toggle — globally changes API key context, clearly labeled ✅ IMPLEMENTED
+- [x] Notification bell with unread count ✅ IMPLEMENTED
+- [x] Loading skeletons on all data-heavy views ✅ IMPLEMENTED
+- [x] Empty states with CTAs on all list views ✅ IMPLEMENTED
+- [x] Error boundaries per major section ✅ IMPLEMENTED
+- [ ] URL-synced filters (shareable filtered URLs) ⬜ NOT IMPLEMENTED
+- [ ] Dark mode ⬜ NOT IMPLEMENTED
 
 ### Home
-- [x] KPI cards: revenue today, transaction count, success rate, pending settlements ✅ EXISTING
-- [x] Revenue chart (daily / weekly / monthly toggle) ✅ EXISTING
-- [x] Recent transactions list ✅ EXISTING
-- [x] Contextual alerts: KYC pending, dispute action needed, upcoming settlement ✅ BACKEND READY
+- [x] KPI cards: revenue today, transaction count, success rate, pending settlements ✅ IMPLEMENTED
+- [x] Revenue chart (daily / weekly / monthly toggle) ✅ IMPLEMENTED
+- [x] Recent transactions list ✅ IMPLEMENTED
+- [ ] Contextual alerts: KYC pending, dispute action needed, upcoming settlement ⬜ NOT IMPLEMENTED
 
 ### Transactions
-- [x] List with filters: date range, status, payment method, amount range ✅ EXISTING
-- [x] Search: transaction ID, order ID, customer email/phone ✅ EXISTING
-- [x] Transaction detail: full event timeline, method details, customer info ✅ EXISTING
-- [x] Initiate refund from detail (modal: amount + reason) ✅ EXISTING
-- [x] Export CSV / Excel (async for large ranges) ✅ BACKEND READY
-- [x] Bulk export for reconciliation ✅ BACKEND READY
+- [x] List with filters: date range, status, payment method, amount range ✅ IMPLEMENTED
+- [x] Search: transaction ID, order ID, customer email/phone ✅ IMPLEMENTED
+- [x] Transaction detail: full event timeline, method details, customer info ✅ IMPLEMENTED
+- [x] Initiate refund from detail (modal: amount + reason) ✅ IMPLEMENTED
+- [ ] Export CSV / Excel (async for large ranges) ⬜ NOT IMPLEMENTED
+- [ ] Bulk export for reconciliation ⬜ NOT IMPLEMENTED
 
 ### Payment Links
-- [x] Create link: amount, description, expiry, partial payment toggle ✅ NEW
-- [x] List with status badges ✅ NEW
-- [x] Share via copy, WhatsApp deep link, SMS ✅ NEW (copy)
-- [x] Per-link analytics: views, attempts, conversions ✅ NEW
-- [x] Deactivate / expire link ✅ NEW
+- [x] Create link: amount, description, expiry, partial payment toggle ✅ IMPLEMENTED
+- [x] List with status badges ✅ IMPLEMENTED
+- [x] Share via copy, WhatsApp deep link, SMS ✅ IMPLEMENTED (copy)
+- [x] Per-link analytics: views, attempts, conversions ✅ IMPLEMENTED
+- [x] Deactivate / expire link ✅ IMPLEMENTED
 
 ### Settlements
-- [x] Next settlement date + estimated amount ✅ EXISTING
-- [x] Settlement history with UTR numbers ✅ EXISTING
-- [x] Transaction breakdown per settlement ✅ EXISTING
-- [x] Download settlement report ✅ BACKEND READY
-- [x] Bank account management (add / update with re-verification) ✅ BACKEND READY
+- [x] Next settlement date + estimated amount ✅ IMPLEMENTED
+- [x] Settlement history with UTR numbers ✅ IMPLEMENTED
+- [x] Transaction breakdown per settlement ✅ IMPLEMENTED
+- [ ] Download settlement report ⬜ NOT IMPLEMENTED
+- [ ] Bank account management (add / update with re-verification) ⬜ NOT IMPLEMENTED
 
 ### Disputes
-- [x] Active disputes list with deadline countdown ✅ EXISTING
-- [x] Dispute detail: customer reason + linked transaction ✅ EXISTING
-- [x] Evidence upload (files + text) ✅ EXISTING
-- [x] Status flow: open → evidence_submitted → won / lost ✅ EXISTING
+- [x] Active disputes list with deadline countdown ✅ IMPLEMENTED
+- [x] Dispute detail: customer reason + linked transaction ✅ IMPLEMENTED
+- [x] Evidence upload (files + text) ✅ IMPLEMENTED
+- [x] Status flow: open → evidence_submitted → won / lost ✅ IMPLEMENTED
 
 ### Customers
-- [x] Customer list (tokenized, consent-based) ✅ NEW
-- [x] Transaction history per customer ✅ NEW (via API)
-- [x] Saved payment methods view ✅ NEW
-- [x] Export ✅ BACKEND READY
+- [x] Customer list (tokenized, consent-based) ✅ IMPLEMENTED
+- [x] Transaction history per customer ✅ IMPLEMENTED (via API)
+- [x] Saved payment methods view ✅ IMPLEMENTED
+- [ ] Export ⬜ NOT IMPLEMENTED
 
 ### Subscriptions
-- [x] Create plan: billing cycle, amount, trial period ✅ BACKEND READY
-- [x] Subscription list + status ✅ BACKEND READY
-- [x] Pause / cancel subscription ✅ BACKEND READY
-- [x] Invoice history ✅ BACKEND READY
-- [x] Failed payment retry configuration ✅ BACKEND READY
+- [x] Create plan: billing cycle, amount, trial period ✅ IMPLEMENTED
+- [x] Subscription list + status ✅ IMPLEMENTED
+- [x] Pause / cancel subscription ✅ IMPLEMENTED
+- [x] Invoice history ✅ IMPLEMENTED
+- [ ] Failed payment retry configuration ⬜ NOT IMPLEMENTED
 
 ### API Keys & Webhooks
-- [x] Live + Test key display (masked, reveal-on-click, copy) ✅ EXISTING
-- [x] Key rotation with confirmation ✅ EXISTING
-- [x] Webhook config: URL, secret, event subscriptions ✅ EXISTING
-- [x] Webhook delivery log: request + response per event ✅ EXISTING
-- [x] Test webhook trigger ✅ BACKEND READY
-- [x] IP whitelist management ✅ EXISTING
+- [x] Live + Test key display (masked, reveal-on-click, copy) ✅ IMPLEMENTED
+- [x] Key rotation with confirmation ✅ IMPLEMENTED
+- [x] Webhook config: URL, secret, event subscriptions ✅ IMPLEMENTED
+- [x] Webhook delivery log: request + response per event ✅ IMPLEMENTED
+- [ ] Test webhook trigger ⬜ NOT IMPLEMENTED
+- [x] IP whitelist management ✅ IMPLEMENTED
 
 ### Settings
-- [x] Business profile edit ✅ EXISTING
+- [x] Business profile edit ✅ IMPLEMENTED
 - [x] Team management: invite by email, assign role, revoke access ✅ IMPLEMENTED
-- [x] Notification preferences per event type (email, SMS, in-app) ✅ BACKEND READY
-- [x] Branding: logo + color with live checkout preview ✅ NEW
-- [x] Settlement cycle preference ✅ NEW
-- [x] Payment method enable / disable ✅ BACKEND READY
+- [ ] Notification preferences per event type (email, SMS, in-app) ⬜ NOT IMPLEMENTED
+- [x] Branding: logo + color with live checkout preview ✅ IMPLEMENTED
+- [x] Settlement cycle preference ✅ IMPLEMENTED
+- [ ] Payment method enable / disable ⬜ NOT IMPLEMENTED
 
 ### Reports
-- [x] Pre-built: GST, Settlement, Refunds, Failed transactions ✅ BACKEND READY
-- [x] Custom date range (async with progress indicator) ✅ BACKEND READY
-- [x] Scheduled email delivery ✅ BACKEND READY
-- [x] Download: CSV, PDF ✅ BACKEND READY
+- [ ] Pre-built: GST, Settlement, Refunds, Failed transactions ⬜ NOT IMPLEMENTED
+- [x] Custom date range (async with progress indicator) ✅ IMPLEMENTED
+- [ ] Scheduled email delivery ⬜ NOT IMPLEMENTED
+- [ ] Download: CSV, PDF ⬜ NOT IMPLEMENTED
 
 ### Notifications
-- [x] In-app notification center ✅ BACKEND READY
-- [x] Real-time delivery ✅ BACKEND READY
-- [x] Mark all read, clear all ✅ BACKEND READY
+- [x] In-app notification center ✅ IMPLEMENTED
+- [ ] Real-time delivery ⬜ NOT IMPLEMENTED
+- [ ] Mark all read, clear all ⬜ NOT IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 6 — Admin Panel
 
 ### Layout
-- [x] Separate app from merchant dashboard ✅ EXISTING
-- [x] Global search: merchant / transaction / user by ID or email ✅ BACKEND READY
-- [x] Production environment clearly marked (banner / color indicator) ✅ EXISTING
+- [x] Separate app from merchant dashboard ✅ IMPLEMENTED
+- [x] Global search: merchant / transaction / user by ID or email ✅ IMPLEMENTED
+- [x] Production environment clearly marked (banner / color indicator) ✅ IMPLEMENTED
 
 ### Platform Dashboard
-- [x] GMV (daily / weekly / monthly) ✅ EXISTING
-- [x] Active merchant count, platform fee earned, overall success rate ✅ EXISTING
-- [x] Merchant signups chart ✅ BACKEND READY
-- [x] Dispute rate chart ✅ BACKEND READY
-- [x] Provider-wise transaction split ✅ BACKEND READY
+- [x] GMV (daily / weekly / monthly) ✅ IMPLEMENTED
+- [x] Active merchant count, platform fee earned, overall success rate ✅ IMPLEMENTED
+- [ ] Merchant signups chart ⬜ NOT IMPLEMENTED
+- [ ] Dispute rate chart ⬜ NOT IMPLEMENTED
+- [ ] Provider-wise transaction split ⬜ NOT IMPLEMENTED
 
 ### Merchant Management
-- [x] List with filters: status, KYC state, GMV tier, join date ✅ NEW
-- [x] Merchant detail: profile, KYC docs, config, transaction history ✅ NEW
-- [x] Approve / reject / suspend / reactivate ✅ NEW
+- [x] List with filters: status, KYC state, GMV tier, join date ✅ IMPLEMENTED
+- [x] Merchant detail: profile, KYC docs, config, transaction history ✅ IMPLEMENTED
+- [x] Approve / reject / suspend / reactivate ✅ IMPLEMENTED
 - [x] Edit limits + fee plan ✅ IMPLEMENTED
-- [x] Impersonate merchant (view dashboard as merchant — full audit log entry) ✅ EXISTING
-- [x] Internal notes on merchant profile ✅ BACKEND READY
+- [x] Impersonate merchant (view dashboard as merchant — full audit log entry) ✅ IMPLEMENTED
+- [ ] Internal notes on merchant profile ⬜ NOT IMPLEMENTED
 
 ### KYC Queue
-- [x] Pending queue sorted by submission date ✅ NEW
-- [x] Inline document viewer (PDF + images) ✅ BACKEND READY
-- [x] Approve / Reject (mandatory reason on reject) ✅ NEW
-- [x] Flag specific fields for resubmission ✅ NEW
-- [x] KYC audit log per merchant ✅ BACKEND READY
+- [x] Pending queue sorted by submission date ✅ IMPLEMENTED
+- [ ] Inline document viewer (PDF + images) ⬜ NOT IMPLEMENTED
+- [x] Approve / Reject (mandatory reason on reject) ✅ IMPLEMENTED
+- [x] Flag specific fields for resubmission ✅ IMPLEMENTED
+- [ ] KYC audit log per merchant ⬜ NOT IMPLEMENTED
 
 ### Transaction Management
-- [x] Platform-wide transaction search ✅ BACKEND READY
-- [x] Full detail including provider-level debug payload ✅ BACKEND READY
-- [x] Force refund (admin override) ✅ BACKEND READY
-- [x] Flag / freeze suspicious transaction ✅ BACKEND READY
-- [x] Manual payment confirmation ✅ BACKEND READY
+- [ ] Platform-wide transaction search ⬜ NOT IMPLEMENTED
+- [ ] Full detail including provider-level debug payload ⬜ NOT IMPLEMENTED
+- [ ] Force refund (admin override) ⬜ NOT IMPLEMENTED
+- [ ] Flag / freeze suspicious transaction ⬜ NOT IMPLEMENTED
+- [ ] Manual payment confirmation ⬜ NOT IMPLEMENTED
 
 ### Settlement Management
 - [x] Generate settlement batches ✅ IMPLEMENTED
-- [x] Approve / hold settlements ✅ BACKEND READY
-- [x] Mark as paid (UTR entry) ✅ BACKEND READY
-- [x] Reconciliation file upload (bank statement) ✅ BACKEND READY
-- [x] Bulk processing ✅ BACKEND READY
+- [ ] Approve / hold settlements ⬜ NOT IMPLEMENTED
+- [ ] Mark as paid (UTR entry) ⬜ NOT IMPLEMENTED
+- [ ] Reconciliation file upload (bank statement) ⬜ NOT IMPLEMENTED
+- [ ] Bulk processing ⬜ NOT IMPLEMENTED
 
 ### Fee & Pricing
 - [x] Fee plan CRUD: MDR %, flat fee, GST on fee ✅ IMPLEMENTED
 - [x] Assign plan to merchant ✅ IMPLEMENTED
 - [x] Plan versioning (no retroactive changes to completed transactions) ✅ IMPLEMENTED
-- [x] Revenue dashboard: by plan / method / merchant ✅ BACKEND READY
+- [ ] Revenue dashboard: by plan / method / merchant ⬜ NOT IMPLEMENTED
 
 ### Provider Management
-- [x] Live health dashboard: up/down, success rate, latency ✅ NEW
-- [x] Routing rules configuration ✅ NEW
-- [x] Circuit breaker status + manual override ✅ NEW
-- [x] Provider credential management (masked display) ✅ BACKEND READY
+- [x] Live health dashboard: up/down, success rate, latency ✅ IMPLEMENTED
+- [x] Routing rules configuration ✅ IMPLEMENTED
+- [x] Circuit breaker status + manual override ✅ IMPLEMENTED
+- [ ] Provider credential management (masked display) ⬜ NOT IMPLEMENTED
 
 ### Tenant / White-label Management
-- [x] Tenant CRUD ✅ BACKEND READY
-- [x] Branding + custom domain config per tenant ✅ BACKEND READY
-- [x] Per-tenant fee + settlement config ✅ BACKEND READY
-- [x] Tenant admin can manage their own merchants ✅ BACKEND READY
+- [ ] Tenant CRUD ⬜ NOT IMPLEMENTED
+- [ ] Branding + custom domain config per tenant ⬜ NOT IMPLEMENTED
+- [ ] Per-tenant fee + settlement config ⬜ NOT IMPLEMENTED
+- [ ] Tenant admin can manage their own merchants ⬜ NOT IMPLEMENTED
 
 ### User & Role Management
-- [x] Admin user list + role assignment ✅ BACKEND READY
-- [x] Activity log per admin user ✅ BACKEND READY
-- [x] 2FA mandatory for all admin accounts ✅ EXISTING
+- [ ] Admin user list + role assignment ⬜ NOT IMPLEMENTED
+- [ ] Activity log per admin user ⬜ NOT IMPLEMENTED
+- [x] 2FA mandatory for all admin accounts ✅ IMPLEMENTED
 
 ### Audit & Compliance
-- [x] Immutable audit log viewer ✅ BACKEND READY
-- [x] Filters: entity, action, date, user ✅ BACKEND READY
-- [x] Export audit log ✅ BACKEND READY
+- [ ] Immutable audit log viewer ⬜ NOT IMPLEMENTED
+- [ ] Filters: entity, action, date, user ⬜ NOT IMPLEMENTED
+- [ ] Export audit log ⬜ NOT IMPLEMENTED
 
 ### System Config
-- [x] Global payment method toggle ✅ BACKEND READY
-- [x] Feature flags ✅ BACKEND READY
-- [x] Rate limit configuration ✅ BACKEND READY
-- [x] Notification template editor (email + SMS) ✅ BACKEND READY
-- [x] Maintenance mode per feature ✅ BACKEND READY
+- [ ] Global payment method toggle ⬜ NOT IMPLEMENTED
+- [ ] Feature flags ⬜ NOT IMPLEMENTED
+- [ ] Rate limit configuration ⬜ NOT IMPLEMENTED
+- [ ] Notification template editor (email + SMS) ⬜ NOT IMPLEMENTED
+- [ ] Maintenance mode per feature ⬜ NOT IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 7 — Public API & Webhooks
 
-- [x] Versioned API (`/v1/`) ✅ EXISTING
-- [x] OpenAPI spec auto-generated ✅ BACKEND READY
-- [x] API docs (non-prod only) ✅ BACKEND READY
-- [x] Standard response envelope: `{ success, data, error, meta }` ✅ EXISTING
-- [x] Cursor-based pagination on all list endpoints ✅ BACKEND READY
-- [x] Idempotency key support on all write endpoints ✅ EXISTING
-- [x] CORS configured per environment ✅ EXISTING
-- [x] `POST /v1/orders` · `GET /v1/orders/:id` ✅ EXISTING
-- [x] `POST /v1/payments` · `GET /v1/payments/:id` ✅ EXISTING
-- [x] `POST /v1/payments/:id/refund` · `GET /v1/refunds/:id` ✅ EXISTING
-- [x] `POST /v1/payment-links` · `GET /v1/payment-links/:id` ✅ EXISTING
-- [x] `POST /v1/subscriptions` · `PATCH /v1/subscriptions/:id` ✅ BACKEND READY
-- [x] `POST /v1/customers` · `GET /v1/customers/:id` ✅ EXISTING
-- [x] `GET /v1/settlements` ✅ EXISTING
-- [x] `POST /v1/reports` ✅ EXISTING
-- [x] `POST /v1/webhooks/verify` ✅ BACKEND READY
-- [x] Webhook events: payment.success, payment.failed, refund.initiated, refund.success, dispute.created, settlement.processed, subscription.charged, subscription.failed ✅ EXISTING
-- [x] Webhook signing: HMAC-SHA256 in `X-FeelPay-Signature` header ✅ EXISTING
-- [x] Retry: exponential backoff, 7 attempts over 72 hours ✅ BACKEND READY
-- [x] Dead letter queue + merchant alert on exhaustion ✅ BACKEND READY
+- [x] Versioned API (`/v1/`) ✅ IMPLEMENTED
+- [x] OpenAPI spec auto-generated ✅ IMPLEMENTED
+- [x] API docs (non-prod only) ✅ IMPLEMENTED (Swagger UI at /swagger-ui)
+- [x] Standard response envelope: `{ success, data, error, meta }` ✅ IMPLEMENTED
+- [ ] Cursor-based pagination on all list endpoints ⬜ NOT IMPLEMENTED
+- [x] Idempotency key support on all write endpoints ✅ IMPLEMENTED
+- [x] CORS configured per environment ✅ IMPLEMENTED
+- [x] `POST /v1/orders` · `GET /v1/orders/:id` ✅ IMPLEMENTED
+- [x] `POST /v1/payments` · `GET /v1/payments/:id` ✅ IMPLEMENTED
+- [x] `POST /v1/payments/:id/refund` · `GET /v1/refunds/:id` ✅ IMPLEMENTED
+- [x] `POST /v1/payment-links` · `GET /v1/payment-links/:id` ✅ IMPLEMENTED
+- [x] `POST /v1/subscriptions` · `PATCH /v1/subscriptions/:id` ✅ IMPLEMENTED
+- [x] `POST /v1/customers` · `GET /v1/customers/:id` ✅ IMPLEMENTED
+- [x] `GET /v1/settlements` ✅ IMPLEMENTED
+- [x] `POST /v1/reports` ✅ IMPLEMENTED
+- [ ] `POST /v1/webhooks/verify` ⬜ NOT IMPLEMENTED
+- [x] Webhook events: payment.success, payment.failed, refund.initiated, refund.success, dispute.created, settlement.processed, subscription.charged, subscription.failed ✅ IMPLEMENTED
+- [x] Webhook signing: HMAC-SHA256 in `X-FeelPay-Signature` header ✅ IMPLEMENTED
+- [x] Retry: exponential backoff, 7 attempts over 72 hours ✅ IMPLEMENTED
+- [x] Dead letter queue + merchant alert on exhaustion ✅ IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 8 — SDKs
 
-- [x] JavaScript / TypeScript SDK (npm) ✅ BACKEND READY
-- [x] Pre-built React components: `<PayButton />`, `<CheckoutForm />`, `<PaymentStatus />` ✅ IMPLEMENTED
-- [x] Python SDK — Phase 2 ✅ BACKEND READY
-- [x] PHP SDK — Phase 2 ✅ BACKEND READY
-- [x] WooCommerce plugin — Phase 2 ✅ BACKEND READY
-- [x] Shopify plugin — Phase 2 ✅ BACKEND READY
+- [ ] JavaScript / TypeScript SDK (npm) ⬜ NOT IMPLEMENTED
+- [ ] Pre-built React components: `<PayButton />`, `<CheckoutForm />`, `<PaymentStatus />` ⬜ NOT IMPLEMENTED
+- [ ] Python SDK — Phase 2 ⬜ NOT IMPLEMENTED
+- [ ] PHP SDK — Phase 2 ⬜ NOT IMPLEMENTED
+- [ ] WooCommerce plugin — Phase 2 ⬜ NOT IMPLEMENTED
+- [ ] Shopify plugin — Phase 2 ⬜ NOT IMPLEMENTED
 
 ---
 
@@ -361,75 +361,75 @@
 - [x] `X-Frame-Options: DENY` (checkout embed: SAMEORIGIN) ✅ CONFIG READY
 - [x] `X-Content-Type-Options: nosniff` ✅ CONFIG READY
 - [x] `Referrer-Policy: strict-origin-when-cross-origin` ✅ CONFIG READY
-- [x] API keys: store SHA-256 hash only — never plaintext ✅ EXISTING
-- [x] Rate limiting per API key + per IP ✅ EXISTING
-- [x] Replay attack prevention: timestamp + nonce, 5-min window ✅ BACKEND READY
-- [x] Parameterized queries only — no string-concat SQL ✅ EXISTING
-- [x] Max request body size enforced ✅ EXISTING
-- [x] Card data never stored — pass-through to PCI provider only ✅ EXISTING
-- [x] PAN masked in all display and logs (`XXXX XXXX XXXX 1234`) ✅ EXISTING
-- [x] Bank account, VPA, Aadhaar encrypted at rest (AES-256-GCM) ✅ EXISTING
+- [x] API keys: store SHA-256 hash only — never plaintext ✅ IMPLEMENTED
+- [x] Rate limiting per API key + per IP ✅ IMPLEMENTED
+- [ ] Replay attack prevention: timestamp + nonce, 5-min window ⬜ NOT IMPLEMENTED
+- [x] Parameterized queries only — no string-concat SQL ✅ IMPLEMENTED
+- [x] Max request body size enforced ✅ IMPLEMENTED
+- [x] Card data never stored — pass-through to PCI provider only ✅ IMPLEMENTED
+- [x] PAN masked in all display and logs (`XXXX XXXX XXXX 1234`) ✅ IMPLEMENTED
+- [x] Bank account, VPA, Aadhaar encrypted at rest (AES-256-GCM) ✅ IMPLEMENTED
 - [x] Encryption keys in KMS ✅ CONFIG READY
-- [x] No PII in logs or URLs ✅ EXISTING
-- [x] No secrets in frontend bundles ✅ EXISTING
-- [x] User-generated content sanitized before render ✅ BACKEND READY
-- [x] Auth tokens in sessionStorage (not localStorage) ✅ EXISTING
-- [x] Velocity checks: same card / IP / device ✅ BACKEND READY
-- [x] Blacklist: card BINs, IPs, email domains ✅ BACKEND READY
-- [x] 3DS2 enforced for high-risk transactions ✅ BACKEND READY
-- [x] Device fingerprinting ✅ BACKEND READY
-- [x] Manual review queue for flagged transactions ✅ BACKEND READY
-- [x] OWASP Top 10 reviewed and addressed ✅ BACKEND READY
-- [x] Dependency vulnerability scanning in CI ✅ EXISTING
-- [x] Secret scanning in Git (pre-commit + CI) ✅ EXISTING
+- [x] No PII in logs or URLs ✅ IMPLEMENTED
+- [x] No secrets in frontend bundles ✅ IMPLEMENTED
+- [ ] User-generated content sanitized before render ⬜ NOT IMPLEMENTED
+- [x] Auth tokens in sessionStorage (not localStorage) ✅ IMPLEMENTED
+- [ ] Velocity checks: same card / IP / device ⬜ NOT IMPLEMENTED
+- [ ] Blacklist: card BINs, IPs, email domains ⬜ NOT IMPLEMENTED
+- [ ] 3DS2 enforced for high-risk transactions ⬜ NOT IMPLEMENTED
+- [ ] Device fingerprinting ⬜ NOT IMPLEMENTED
+- [ ] Manual review queue for flagged transactions ⬜ NOT IMPLEMENTED
+- [ ] OWASP Top 10 reviewed and addressed ⬜ NOT IMPLEMENTED
+- [x] Dependency vulnerability scanning in CI ✅ IMPLEMENTED
+- [x] Secret scanning in Git (pre-commit + CI) ✅ IMPLEMENTED
 
 ### Compliance (India)
-- [x] RBI Payment Aggregator guidelines ✅ BACKEND READY
-- [x] PCI-DSS (pass-through via licensed PA partner) ✅ EXISTING
-- [x] DPDP Act 2023 ✅ BACKEND READY
+- [ ] RBI Payment Aggregator guidelines ⬜ NOT IMPLEMENTED
+- [x] PCI-DSS (pass-through via licensed PA partner) ✅ IMPLEMENTED
+- [ ] DPDP Act 2023 ⬜ NOT IMPLEMENTED
 - [x] GST on platform fees (18%) ✅ IMPLEMENTED
-- [x] TDS on payouts ✅ BACKEND READY
-- [x] Suspicious Transaction Report (STR) capability for PMLA ✅ BACKEND READY
-- [x] Annual KYC refresh for merchants ✅ BACKEND READY
+- [ ] TDS on payouts ⬜ NOT IMPLEMENTED
+- [ ] Suspicious Transaction Report (STR) capability for PMLA ⬜ NOT IMPLEMENTED
+- [ ] Annual KYC refresh for merchants ⬜ NOT IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 10 — Settlements & Finance
 
 - [x] Daily settlement batch (T+1 / T+2 per merchant config) ✅ IMPLEMENTED
-- [x] Instant settlement option for UPI (premium) ✅ BACKEND READY
-- [x] Net settlement calc: gross − MDR fee − refunds − disputes ✅ EXISTING
+- [ ] Instant settlement option for UPI (premium) ⬜ NOT IMPLEMENTED
+- [x] Net settlement calc: gross − MDR fee − refunds − disputes ✅ IMPLEMENTED
 - [x] GST on fees deducted ✅ IMPLEMENTED
-- [x] TDS deducted where applicable ✅ BACKEND READY
-- [x] UTR recorded post-transfer ✅ EXISTING
-- [x] Provider reconciliation (FeelPay records vs provider report) ✅ BACKEND READY
-- [x] Bank reconciliation (transfers vs bank statement) ✅ BACKEND READY
-- [x] Discrepancy flagging + resolution workflow ✅ BACKEND READY
-- [x] Payout via IMPS / NEFT / RTGS ✅ EXISTING
-- [x] Payout failure retry ✅ BACKEND READY
+- [ ] TDS deducted where applicable ⬜ NOT IMPLEMENTED
+- [x] UTR recorded post-transfer ✅ IMPLEMENTED
+- [ ] Provider reconciliation (FeelPay records vs provider report) ⬜ NOT IMPLEMENTED
+- [ ] Bank reconciliation (transfers vs bank statement) ⬜ NOT IMPLEMENTED
+- [ ] Discrepancy flagging + resolution workflow ⬜ NOT IMPLEMENTED
+- [x] Payout via IMPS / NEFT / RTGS ✅ IMPLEMENTED
+- [ ] Payout failure retry ⬜ NOT IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 11 — Notifications & Communications
 
-- [x] Transactional email (payment receipt, settlement, dispute alert, KYC status) ✅ BACKEND READY
-- [x] SMS (OTP, payment confirmation) ✅ IMPLEMENTED
-- [x] WhatsApp (payment links, receipts) ✅ BACKEND READY
+- [ ] Transactional email (payment receipt, settlement, dispute alert, KYC status) ⬜ NOT IMPLEMENTED (service ready)
+- [ ] SMS (OTP, payment confirmation) ⬜ NOT IMPLEMENTED (service ready)
+- [ ] WhatsApp (payment links, receipts) ⬜ NOT IMPLEMENTED
 - [x] In-app real-time notifications ✅ IMPLEMENTED
-- [x] Notification templates editable from admin panel ✅ BACKEND READY
-- [x] Per-merchant notification preferences per event ✅ BACKEND READY
-- [x] Customer receipt email (merchant-configurable on/off) ✅ BACKEND READY
+- [ ] Notification templates editable from admin panel ⬜ NOT IMPLEMENTED
+- [ ] Per-merchant notification preferences per event ⬜ NOT IMPLEMENTED
+- [ ] Customer receipt email (merchant-configurable on/off) ⬜ NOT IMPLEMENTED
 
 ---
 
 ## ✅ PHASE 12 — Analytics & Reports
 
-- [x] Merchant: revenue over time, success rate trend, payment method split, peak hours heatmap, refund rate, failed txn reasons ✅ EXISTING
-- [x] Admin: platform GMV, fee revenue, merchant growth, provider performance (success rate + latency) ✅ EXISTING
-- [x] Pre-built reports: GST (monthly), Settlement, Refunds, Transactions, Disputes, Merchant Fee ✅ BACKEND READY
-- [x] Custom date range reports (async generation with progress) ✅ EXISTING
-- [x] Download: CSV, Excel, PDF ✅ BACKEND READY
-- [x] Scheduled email delivery of reports ✅ BACKEND READY
+- [x] Merchant: revenue over time, success rate trend, payment method split, peak hours heatmap, refund rate, failed txn reasons ✅ IMPLEMENTED
+- [x] Admin: platform GMV, fee revenue, merchant growth, provider performance (success rate + latency) ✅ IMPLEMENTED
+- [ ] Pre-built reports: GST (monthly), Settlement, Refunds, Transactions, Disputes, Merchant Fee ⬜ NOT IMPLEMENTED
+- [x] Custom date range reports (async generation with progress) ✅ IMPLEMENTED
+- [ ] Download: CSV, Excel, PDF ⬜ NOT IMPLEMENTED
+- [ ] Scheduled email delivery of reports ⬜ NOT IMPLEMENTED
 
 ---
 

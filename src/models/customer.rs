@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgRow;
 use sqlx::Row;
 use uuid::Uuid;
+use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Customer {
@@ -75,7 +76,7 @@ impl From<PgRow> for Customer {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateCustomerRequest {
     pub customer_reference: String,
     pub customer_reference_type: String,
@@ -87,7 +88,7 @@ pub struct CreateCustomerRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CustomerResponse {
     pub id: Uuid,
     pub merchant_id: Uuid,
@@ -223,7 +224,7 @@ pub struct CreateSavedPaymentMethodRequest {
     pub is_default: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SavedPaymentMethodResponse {
     pub id: Uuid,
     pub customer_id: Uuid,

@@ -1,6 +1,7 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use serde::Serialize;
 use sqlx::Row;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
@@ -16,13 +17,13 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Merchant ID not found".to_string()))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaymentLinkListResponse {
     pub data: Vec<PaymentLinkResponse>,
     pub meta: PaginationMeta,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaginationMeta {
     pub page: i32,
     pub per_page: i32,
@@ -31,6 +32,18 @@ pub struct PaginationMeta {
 }
 
 // Create a new payment link
+#[utoipa::path(
+    post,
+    path = "/v1/payment-links",
+    request_body = CreatePaymentLinkRequest,
+    responses(
+        (status = 201, description = "Payment link created successfully", body = PaymentLinkResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn create_payment_link(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -82,6 +95,21 @@ pub async fn create_payment_link(
 }
 
 // Get payment link by ID
+#[utoipa::path(
+    get,
+    path = "/v1/payment-links/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Payment Link ID")
+    ),
+    responses(
+        (status = 200, description = "Payment link details", body = PaymentLinkResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Payment link not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_payment_link(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -105,6 +133,20 @@ pub async fn get_payment_link(
 }
 
 // List payment links
+#[utoipa::path(
+    get,
+    path = "/v1/payment-links",
+    params(
+        ListPaymentLinksQuery
+    ),
+    responses(
+        (status = 200, description = "List of payment links", body = PaymentLinkListResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn list_payment_links(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -176,6 +218,20 @@ pub async fn list_payment_links(
 }
 
 // Cancel/expire a payment link
+#[utoipa::path(
+    post,
+    path = "/v1/payment-links/{id}/cancel",
+    params(
+        ("id" = Uuid, Path, description = "Payment Link ID")
+    ),
+    responses(
+        (status = 200, description = "Payment link cancelled successfully"),
+        (status = 404, description = "Payment link not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn cancel_payment_link(
     state: web::Data<AppState>,
     req: HttpRequest,

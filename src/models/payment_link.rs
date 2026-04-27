@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgRow;
 use sqlx::Row;
+use utoipa::{ToSchema, IntoParams};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,7 +94,7 @@ impl From<PgRow> for PaymentLink {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreatePaymentLinkRequest {
     pub amount: i64,
     pub currency: Option<String>,
@@ -108,7 +109,7 @@ pub struct CreatePaymentLinkRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaymentLinkResponse {
     pub id: Uuid,
     pub link_id: String,
@@ -142,7 +143,7 @@ impl From<PaymentLink> for PaymentLinkResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListPaymentLinksQuery {
     pub status: Option<String>,
     pub from_date: Option<DateTime<Utc>>,

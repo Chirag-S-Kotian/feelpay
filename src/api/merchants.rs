@@ -1,13 +1,47 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use utoipa::ToSchema;
 
 use crate::engine::services::auth::MfaService;
 use crate::error::FeelPayError;
 use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequest};
 use crate::state::AppState;
 use sqlx::Row;
+
+#[derive(Deserialize, ToSchema)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in: i64,
+    pub merchant: MerchantResponse,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct MerchantResponse {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub business_type: String,
+    pub status: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CreateMerchantRequestInput {
+    pub email: String,
+    pub password: String,
+    pub business_name: String,
+    pub business_type: String,
+    pub phone: String,
+}
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -30,6 +64,16 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     );
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/merchants",
+    request_body = CreateMerchantRequest,
+    responses(
+        (status = 201, description = "Merchant created successfully"),
+        (status = 400, description = "Invalid input"),
+        (status = 409, description = "Conflict - email already registered")
+    )
+)]
 pub async fn create_merchant(
     state: web::Data<AppState>,
     body: web::Json<CreateMerchantRequest>,
@@ -154,6 +198,18 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/merchants/profile",
+    responses(
+        (status = 200, description = "Returns merchant profile", body = MerchantResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Merchant not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn get_profile(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -191,6 +247,18 @@ pub async fn get_profile(
     })))
 }
 
+#[utoipa::path(
+    put,
+    path = "/v1/merchants/profile",
+    request_body = crate::models::merchant::UpdateMerchantRequest,
+    responses(
+        (status = 200, description = "Profile updated successfully", body = MerchantResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
 pub async fn update_profile(
     req: HttpRequest,
     state: web::Data<AppState>,
@@ -275,6 +343,15 @@ pub async fn roll_keys(
     })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/login",
+    request_body = MerchantLoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 401, description = "Invalid credentials")
+    )
+)]
 pub async fn login_merchant(
     state: web::Data<AppState>,
     body: web::Json<MerchantLoginRequest>,
@@ -396,7 +473,6 @@ pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
 
 // ============ Team Management ============
 
-use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct InviteTeamMemberRequest {
