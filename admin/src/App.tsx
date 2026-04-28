@@ -12,16 +12,24 @@ import {
   FileCheck,
   Bell,
   Search,
+  Download,
+  Webhook,
 } from 'lucide-react';
 import { useState } from 'react';
 import AdminDashboard from './pages/AdminDashboard';
 import Merchants from './pages/Merchants';
 import KYCQueue from './pages/KYCQueue';
+import AdminBulkExport from './pages/AdminBulkExport';
+import AdminWebhookTesting from './pages/AdminWebhookTesting';
+import NotificationDeliveryLogs from './pages/NotificationDeliveryLogs';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
   { path: '/merchants', label: 'Merchants', icon: Users },
   { path: '/kyc-queue', label: 'KYC Queue', icon: FileCheck },
+  { path: '/bulk-export', label: 'Bulk Export', icon: Download },
+  { path: '/webhook-testing', label: 'Webhook Testing', icon: Webhook },
+  { path: '/notification-logs', label: 'Notification Logs', icon: Bell },
   { path: '/settlements', label: 'Global Settlements', icon: Wallet },
   { path: '/disputes', label: 'Global Disputes', icon: ShieldAlert },
   { path: '/system', label: 'System Health', icon: PieChart },
@@ -98,6 +106,9 @@ function Layout() {
           <Route path="/" element={<AdminDashboard />} />
           <Route path="/merchants" element={<Merchants />} />
           <Route path="/kyc-queue" element={<KYCQueue />} />
+          <Route path="/bulk-export" element={<AdminBulkExport />} />
+          <Route path="/webhook-testing" element={<AdminWebhookTesting />} />
+          <Route path="/notification-logs" element={<NotificationDeliveryLogs />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

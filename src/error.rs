@@ -89,6 +89,9 @@ pub enum FeelPayError {
 
     #[error("Idempotency conflict: request already processed")]
     IdempotencyConflict,
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 impl ResponseError for FeelPayError {
@@ -125,6 +128,10 @@ impl ResponseError for FeelPayError {
             Self::IdempotencyConflict => (
                 actix_web::http::StatusCode::CONFLICT,
                 "IDEMPOTENCY_CONFLICT",
+            ),
+            Self::NotImplemented(_) => (
+                actix_web::http::StatusCode::NOT_IMPLEMENTED,
+                "NOT_IMPLEMENTED",
             ),
         };
 

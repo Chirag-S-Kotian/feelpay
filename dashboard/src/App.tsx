@@ -28,6 +28,12 @@ import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import PaymentLinks from './pages/PaymentLinks';
 import Customers from './pages/Customers';
+import Exports from './pages/Exports';
+import SettlementReports from './pages/SettlementReports';
+import ScheduledReports from './pages/ScheduledReports';
+import NotificationPreferences from './pages/NotificationPreferences';
+import WebhookTesting from './pages/WebhookTesting';
+import BankAccounts from './pages/BankAccounts';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const NAV = [
@@ -36,8 +42,14 @@ const NAV = [
   { path: '/payment-links', label: 'Payment Links', icon: LinkIcon },
   { path: '/customers', label: 'Customers', icon: Users },
   { path: '/settlements', label: 'Settlements', icon: Wallet },
+  { path: '/exports', label: 'Exports', icon: BarChart3 },
+  { path: '/settlement-reports', label: 'Settlement Reports', icon: BarChart3 },
+  { path: '/scheduled-reports', label: 'Scheduled Reports', icon: BarChart3 },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   { path: '/disputes', label: 'Disputes', icon: ShieldAlert },
+  { path: '/notifications', label: 'Notifications', icon: Bell },
+  { path: '/webhooks', label: 'Webhooks', icon: Code2 },
+  { path: '/bank-accounts', label: 'Bank Accounts', icon: Wallet },
   { path: '/developers', label: 'Developers', icon: Code2 },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
   { path: '/onboarding', label: 'Onboarding', icon: Building2 },
@@ -116,8 +128,14 @@ function Layout() {
           <Route path="/payment-links" element={<PaymentLinks />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/settlements" element={<Settlements />} />
+          <Route path="/exports" element={<Exports />} />
+          <Route path="/settlement-reports" element={<SettlementReports />} />
+          <Route path="/scheduled-reports" element={<ScheduledReports />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/disputes" element={<Disputes />} />
+          <Route path="/notifications" element={<NotificationPreferences />} />
+          <Route path="/webhooks" element={<WebhookTesting />} />
+          <Route path="/bank-accounts" element={<BankAccounts />} />
           <Route path="/developers" element={<Developers />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/onboarding" element={<Onboarding />} />

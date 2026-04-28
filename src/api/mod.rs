@@ -1,22 +1,27 @@
 pub mod analytics;
 pub mod auth;
+pub mod bank_accounts;
 pub mod checkout;
 pub mod customers;
 pub mod disputes;
 pub mod documents;
 pub mod emi_bnpl;
+pub mod exports;
 pub mod fee_plans;
 pub mod health;
 pub mod mandates;
 pub mod merchants;
+pub mod notification_prefs;
 pub mod notifications;
 pub mod onboarding;
 pub mod payments;
 pub mod payment_links;
 pub mod providers;
+pub mod reports;
 pub mod settlements;
 pub mod subscriptions;
 pub mod virtual_accounts;
+pub mod webhook_test;
 
 use utoipa::OpenApi;
 

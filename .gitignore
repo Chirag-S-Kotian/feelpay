@@ -12,3 +12,4 @@ admin/node_modules
 .claude
 .kilocode
 .kiro
+payment/.sqlx

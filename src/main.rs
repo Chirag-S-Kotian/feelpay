@@ -327,6 +327,89 @@ async fn main() -> std::io::Result<()> {
                         web::post().to(api::onboarding::submit_bank_account),
                     ),
             )
+            // Merchant settings and operational APIs
+            .service(
+                web::scope("/v1/merchants/{merchant_id}")
+                    .wrap(crate::middleware::auth::JwtMiddleware)
+                    // Bank accounts
+                    .route(
+                        "/bank-accounts",
+                        web::post().to(api::bank_accounts::add_bank_account),
+                    )
+                    .route(
+                        "/bank-accounts",
+                        web::get().to(api::bank_accounts::list_bank_accounts),
+                    )
+                    .route(
+                        "/bank-accounts/{account_id}/verify",
+                        web::post().to(api::bank_accounts::verify_bank_account),
+                    )
+                    .route(
+                        "/bank-accounts/{account_id}/set-primary",
+                        web::post().to(api::bank_accounts::set_primary_bank_account),
+                    )
+                    // Export jobs
+                    .route(
+                        "/exports/transactions",
+                        web::post().to(api::exports::create_transaction_export),
+                    )
+                    .route(
+                        "/exports/{job_id}",
+                        web::get().to(api::exports::get_export_status),
+                    )
+                    .route(
+                        "/exports/{job_id}/download",
+                        web::get().to(api::exports::download_export),
+                    )
+                    .route("/exports", web::get().to(api::exports::list_exports))
+                    // Notification preferences
+                    .route(
+                        "/notification-preferences",
+                        web::get().to(api::notification_prefs::get_notification_preferences),
+                    )
+                    .route(
+                        "/notification-preferences/{event_type}",
+                        web::put().to(api::notification_prefs::update_notification_preference),
+                    )
+                    .route(
+                        "/notification-preferences/user/{user_id}",
+                        web::get().to(api::notification_prefs::get_user_notification_preferences),
+                    )
+                    .route(
+                        "/notification-preferences/user/{user_id}/{event_type}",
+                        web::put().to(api::notification_prefs::update_user_notification_preference),
+                    )
+                    // Scheduled reports
+                    .route(
+                        "/scheduled-reports",
+                        web::post().to(api::reports::create_scheduled_report),
+                    )
+                    .route(
+                        "/scheduled-reports",
+                        web::get().to(api::reports::list_scheduled_reports),
+                    )
+                    .route(
+                        "/scheduled-reports/{report_id}",
+                        web::get().to(api::reports::get_scheduled_report),
+                    )
+                    .route(
+                        "/scheduled-reports/{report_id}",
+                        web::put().to(api::reports::update_scheduled_report),
+                    )
+                    .route(
+                        "/scheduled-reports/{report_id}",
+                        web::delete().to(api::reports::delete_scheduled_report),
+                    )
+                    // Webhook test helpers
+                    .route(
+                        "/webhooks/test",
+                        web::post().to(api::webhook_test::send_test_webhook),
+                    )
+                    .route(
+                        "/webhooks/test-logs",
+                        web::get().to(api::webhook_test::get_webhook_test_logs),
+                    ),
+            )
             // Analytics API
             .service(
                 web::scope("/v1/analytics")

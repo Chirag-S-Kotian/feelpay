@@ -14,6 +14,8 @@ pub struct TenantId(pub Uuid);
 pub struct UserId(pub Uuid);
 pub struct UserRole(pub String);
 
+pub type JwtClaims = Claims;
+
 impl FromRequest for Claims {
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;

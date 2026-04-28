@@ -1,0 +1,320 @@
+import { useState, useEffect } from 'react';
+import { Users, Save, AlertCircle } from 'lucide-react';
+import { apiRequest } from '../hooks/useApi';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+
+interface UserPreference {
+  event_type: string;
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  in_app_enabled: boolean;
+}
+
+const EVENT_TYPES = [
+  'payment.success',
+  'payment.failed',
+  'refund.initiated',
+  'refund.success',
+  'dispute.created',
+  'settlement.processed',
+];
+
+const CHANNELS = ['email', 'sms', 'in_app'] as const;
+
+export default function PerUserNotificationPreferences() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [preferences, setPreferences] = useState<Record<string, UserPreference>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    if (selectedUserId) {
+      fetchUserPreferences(selectedUserId);
+    }
+  }, [selectedUserId]);
+
+  const fetchUsers = async () => {
+    try {
+      const data = await apiRequest<{ users: User[] }>(
+        'GET',
+        `/api/v1/merchants/${merchantId}/users`
+      );
+      setUsers(data.users || []);
+      if (data.users && data.users.length > 0) {
+        setSelectedUserId(data.users[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUserPreferences = async (userId: string) => {
+    try {
+      const data = await apiRequest<{ preferences: UserPreference[] }>(
+        'GET',
+        `/api/v1/merchants/${merchantId}/notification-preferences/user/${userId}`
+      );
+
+      const prefs: Record<string, UserPreference> = {};
+      EVENT_TYPES.forEach(eventType => {
+        const existing = data.preferences?.find(p => p.event_type === eventType);
+        prefs[eventType] = existing || {
+          event_type: eventType,
+          email_enabled: true,
+          sms_enabled: false,
+          in_app_enabled: true,
+        };
+      });
+
+      setPreferences(prefs);
+      setSuccess(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load preferences');
+    }
+  };
+
+  const handleToggle = (eventType: string, channel: typeof CHANNELS[number]) => {
+    setPreferences(prev => ({
+      ...prev,
+      [eventType]: {
+        ...prev[eventType],
+        [`${channel}_enabled`]: !prev[eventType][`${channel}_enabled` as keyof UserPreference],
+      },
+    }));
+    setSuccess(false);
+  };
+
+  const handleSave = async () => {
+    if (!selectedUserId) return;
+
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const updates = Object.values(preferences);
+      await Promise.all(
+        updates.map(pref =>
+          apiRequest(
+            'PUT',
+            `/api/v1/merchants/${merchantId}/notification-preferences/user/${selectedUserId}/${pref.event_type}`,
+            {
+              email_enabled: pref.email_enabled,
+              sms_enabled: pref.sms_enabled,
+              in_app_enabled: pref.in_app_enabled,
+            }
+          )
+        )
+      );
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save preferences');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="loading">Loading team members...</div>;
+  }
+
+  if (users.length === 0) {
+    return (
+      <div className="card">
+        <div className="empty-state">
+          <Users size={32} />
+          <p>No team members found</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      {error && (
+        <div className="alert alert-error">
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="alert alert-success">
+          Preferences saved successfully!
+        </div>
+      )}
+
+      <div className="user-selector">
+        <label>Select Team Member:</label>
+        <select
+          value={selectedUserId || ''}
+          onChange={e => setSelectedUserId(e.target.value)}
+        >
+          {users.map(user => (
+            <option key={user.id} value={user.id}>
+              {user.name} ({user.email})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {selectedUserId && (
+        <>
+          <div className="preferences-matrix">
+            <div className="matrix-header">
+              <div className="event-column">Event Type</div>
+              {CHANNELS.map(channel => (
+                <div key={channel} className="channel-column">
+                  {channel === 'in_app' ? 'In-App' : channel.charAt(0).toUpperCase() + channel.slice(1)}
+                </div>
+              ))}
+            </div>
+
+            {EVENT_TYPES.map(eventType => (
+              <div key={eventType} className="matrix-row">
+                <div className="event-column">
+                  <span className="event-label">{eventType}</span>
+                </div>
+                {CHANNELS.map(channel => (
+                  <div key={`${eventType}-${channel}`} className="channel-column">
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={preferences[eventType]?.[`${channel}_enabled` as keyof UserPreference] || false}
+                        onChange={() => handleToggle(eventType, channel)}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <div className="form-actions">
+            <button
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : (
+                <>
+                  <Save size={16} />
+                  Save Preferences
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      )}
+
+      <style>{`
+        .user-selector {
+          margin-bottom: 20px;
+        }
+        .user-selector label {
+          display: block;
+          margin-bottom: 8px;
+          font-weight: 500;
+        }
+        .user-selector select {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px solid var(--border-color);
+          border-radius: 4px;
+          font-size: 14px;
+        }
+        .preferences-matrix {
+          border: 1px solid var(--border-color);
+          border-radius: 8px;
+          overflow: hidden;
+          margin-bottom: 20px;
+        }
+        .matrix-header {
+          display: grid;
+          grid-template-columns: 200px repeat(3, 1fr);
+          background: var(--bg-secondary);
+          border-bottom: 2px solid var(--border-color);
+          font-weight: 600;
+          font-size: 13px;
+        }
+        .matrix-row {
+          display: grid;
+          grid-template-columns: 200px repeat(3, 1fr);
+          border-bottom: 1px solid var(--border-color);
+          align-items: center;
+        }
+        .matrix-row:last-child {
+          border-bottom: none;
+        }
+        .event-column,
+        .channel-column {
+          padding: 12px 16px;
+        }
+        .event-label {
+          font-size: 13px;
+          font-family: monospace;
+        }
+        .channel-column {
+          display: flex;
+          justify-content: center;
+        }
+        .toggle-switch {
+          position: relative;
+          display: inline-block;
+          width: 40px;
+          height: 24px;
+        }
+        .toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+        .toggle-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: #ccc;
+          transition: 0.3s;
+          border-radius: 24px;
+        }
+        .toggle-slider:before {
+          position: absolute;
+          content: "";
+          height: 18px;
+          width: 18px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          transition: 0.3s;
+          border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+          background-color: var(--primary);
+        }
+        input:checked + .toggle-slider:before {
+          transform: translateX(16px);
+        }
+      `}</style>
+    </div>
+  );
+}
