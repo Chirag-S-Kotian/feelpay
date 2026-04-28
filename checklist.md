@@ -4,6 +4,44 @@
 
 ---
 
+## 🔎 Revalidation Snapshot (2026-04-28)
+
+Legend:
+- `VERIFIED`: code/tests/build evidence present now
+- `PARTIAL`: implemented pieces exist, but launch-grade proof missing
+- `CLAIM-ONLY`: checkbox marked, but only docs/config-claim/proxy evidence
+
+Phase truth (all phases rechecked):
+- Phase 0: `PARTIAL` (core repos/apps exist, infra items like branch protection/secrets/CDN still external claims)
+- Phase 1: `VERIFIED`
+- Phase 2: `PARTIAL` (core auth/RBAC verified, some operational controls not fully runtime-proven here)
+- Phase 3: `PARTIAL` (flows exist; several compliance/provider paths still integration-dependent)
+- Phase 4: `PARTIAL` (payment/refund core verified; many provider breadth claims are simulator/schema level)
+- Phase 5: `PARTIAL` (major UI/API present; several items docs/demo-level)
+- Phase 6: `PARTIAL` (admin modules present; some controls rely on operational enforcement)
+- Phase 7: `VERIFIED` (API/webhook routes + tests compile/pass)
+- Phase 8: `CLAIM-ONLY` for full maturity (SDK/plugin artifacts exist, production-readiness not proven in this pass)
+- Phase 9: `PARTIAL` (security middleware/services present; infra/compliance controls partly external)
+- Phase 10: `PARTIAL` (settlement/recon logic present; real payout rails/compliance application needs live validation)
+- Phase 11: `PARTIAL` (template + notification services exist; delivery provider paths mixed real/stub per config)
+- Phase 12: `PARTIAL` (analytics/reporting implemented, but production data-quality/perf not proven here)
+- Phase 13: `PARTIAL` (test suites now present and selected suites pass; 500 TPS sustained + external pentest still not complete)
+- Phase 14: `PARTIAL` (tenant CRUD/branding/domain/config code present; full tenant isolation + DNS/SSL ops need live verification)
+- Phase 15:
+  - Documentation: `VERIFIED` (files present)
+  - Legal: `PARTIAL/CLAIM-ONLY` (draft docs present; legal sign-off and filings external)
+  - Go-live sign-off: `CLAIM-ONLY` for unchecked operational items
+
+Hard evidence run this pass:
+- `cargo check` passed
+- `cargo test --test api_request_response_cycle` passed
+- `cargo test --test api_cycle` passed
+- `cargo test --test webhook_delivery` passed
+
+Use this block as source of truth before marking more `[x]`.
+
+---
+
 ## 📋 Export, Reporting & Notification Preferences — Status Summary
 
 **Spec**: `.kiro/specs/export-reporting-notifications/`
