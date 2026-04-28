@@ -26,7 +26,15 @@ impl ResponseError for ApiError {
             "RATE_LIMITED" => actix_web::http::StatusCode::TOO_MANY_REQUESTS,
             _ => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
         };
-        HttpResponse::build(status).json(self)
+        HttpResponse::build(status).json(serde_json::json!({
+            "success": false,
+            "data": null,
+            "error": self,
+            "meta": {
+                "request_id": uuid::Uuid::new_v4().to_string(),
+                "locale": "en"
+            }
+        }))
     }
 }
 
@@ -135,11 +143,21 @@ impl ResponseError for FeelPayError {
             ),
         };
 
-        HttpResponse::build(status).json(ApiError {
+        let error = ApiError {
             code: code.to_string(),
             message: self.to_string(),
             details: None,
-        })
+        };
+
+        HttpResponse::build(status).json(serde_json::json!({
+            "success": false,
+            "data": null,
+            "error": error,
+            "meta": {
+                "request_id": uuid::Uuid::new_v4().to_string(),
+                "locale": "en"
+            }
+        }))
     }
 }
 

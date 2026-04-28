@@ -1,11 +1,14 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
 use crate::middleware::auth::MerchantId;
-use crate::models::customer::{CreateCustomerRequest, Customer, CustomerResponse, SavedPaymentMethod, SavedPaymentMethodResponse};
+use crate::models::customer::{
+    CreateCustomerRequest, Customer, CustomerResponse, SavedPaymentMethod,
+    SavedPaymentMethodResponse,
+};
 use crate::state::AppState;
 use sqlx::Row;
 
@@ -106,7 +109,11 @@ pub async fn get_customer(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let customer_id = path.into_inner();
-    let mut conn = state.db.acquire().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let result = sqlx::query(
         "SELECT * FROM customers WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL",
@@ -148,12 +155,11 @@ pub async fn list_customers(
     let offset = ((page - 1) * per_page) as i64;
 
     // Get total count
-    let total_row = sqlx::query(
-        "SELECT COUNT(*) FROM customers WHERE merchant_id = $1 AND deleted_at IS NULL",
-    )
-    .bind(merchant_id)
-    .fetch_one(&mut *conn)
-    .await?;
+    let total_row =
+        sqlx::query("SELECT COUNT(*) FROM customers WHERE merchant_id = $1 AND deleted_at IS NULL")
+            .bind(merchant_id)
+            .fetch_one(&mut *conn)
+            .await?;
     let total: i64 = total_row.get(0);
 
     // Get results
@@ -216,7 +222,10 @@ pub async fn get_customer_payment_methods(
     .fetch_all(&mut *conn)
     .await?;
 
-    let methods: Vec<SavedPaymentMethod> = methods_rows.into_iter().map(SavedPaymentMethod::from).collect();
+    let methods: Vec<SavedPaymentMethod> = methods_rows
+        .into_iter()
+        .map(SavedPaymentMethod::from)
+        .collect();
 
     Ok(HttpResponse::Ok().json(
         methods
@@ -251,14 +260,11 @@ pub async fn delete_customer(
     let customer_id = path.into_inner();
     let mut conn = state.db.acquire().await?;
 
-    sqlx::query(
-        "UPDATE customers SET deleted_at = NOW() WHERE id = $1 AND merchant_id = $2",
-    )
-    .bind(customer_id)
-    .bind(merchant_id)
-    .execute(&mut *conn)
-    .await?;
-
+    sqlx::query("UPDATE customers SET deleted_at = NOW() WHERE id = $1 AND merchant_id = $2")
+        .bind(customer_id)
+        .bind(merchant_id)
+        .execute(&mut *conn)
+        .await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -270,6 +276,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_customers))
             .route("/{id}", web::get().to(get_customer))
             .route("/{id}", web::delete().to(delete_customer))
-            .route("/{id}/payment-methods", web::get().to(get_customer_payment_methods)),
+            .route(
+                "/{id}/payment-methods",
+                web::get().to(get_customer_payment_methods),
+            ),
     );
 }

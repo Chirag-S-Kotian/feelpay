@@ -175,14 +175,20 @@ impl ReportService {
         // Validate frequency-specific fields
         match frequency {
             ReportFrequency::Weekly => {
-                if request.day_of_week.is_none() || request.day_of_week.unwrap() < 0 || request.day_of_week.unwrap() > 6 {
+                if request.day_of_week.is_none()
+                    || request.day_of_week.unwrap() < 0
+                    || request.day_of_week.unwrap() > 6
+                {
                     return Err(FeelPayError::BadRequest(
                         "Weekly frequency requires day_of_week (0-6)".into(),
                     ));
                 }
             }
             ReportFrequency::Monthly => {
-                if request.day_of_month.is_none() || request.day_of_month.unwrap() < 1 || request.day_of_month.unwrap() > 31 {
+                if request.day_of_month.is_none()
+                    || request.day_of_month.unwrap() < 1
+                    || request.day_of_month.unwrap() > 31
+                {
                     return Err(FeelPayError::BadRequest(
                         "Monthly frequency requires day_of_month (1-31)".into(),
                     ));
@@ -201,28 +207,36 @@ impl ReportService {
         }
 
         // Calculate next run time
-        let next_run_at = self.calculate_next_run(&frequency, request.day_of_week, request.day_of_month, &time_of_day);
+        let next_run_at = self.calculate_next_run(
+            &frequency,
+            request.day_of_week,
+            request.day_of_month,
+            &time_of_day,
+        );
 
         let report_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let report = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<i32>,
-            String,
-            Vec<String>,
-            String,
-            bool,
-            Option<String>,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let report = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<i32>,
+                String,
+                Vec<String>,
+                String,
+                bool,
+                Option<String>,
+                Option<String>,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             INSERT INTO scheduled_reports (
                 id, merchant_id, report_type, frequency, day_of_week, day_of_month,
@@ -267,23 +281,26 @@ impl ReportService {
         merchant_id: Uuid,
         report_id: Uuid,
     ) -> Result<Option<ScheduledReport>, FeelPayError> {
-        let report = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<i32>,
-            String,
-            Vec<String>,
-            String,
-            bool,
-            Option<String>,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let report = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<i32>,
+                String,
+                Vec<String>,
+                String,
+                bool,
+                Option<String>,
+                Option<String>,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, report_type, frequency, day_of_week, day_of_month,
@@ -327,23 +344,26 @@ impl ReportService {
         })?;
 
         // Get paginated results
-        let reports = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<i32>,
-            String,
-            Vec<String>,
-            String,
-            bool,
-            Option<String>,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let reports = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<i32>,
+                String,
+                Vec<String>,
+                String,
+                bool,
+                Option<String>,
+                Option<String>,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, report_type, frequency, day_of_week, day_of_month,
@@ -365,7 +385,10 @@ impl ReportService {
             FeelPayError::Database(e.to_string())
         })?;
 
-        let items = reports.into_iter().map(|row| self.row_to_scheduled_report(row)).collect();
+        let items = reports
+            .into_iter()
+            .map(|row| self.row_to_scheduled_report(row))
+            .collect();
         Ok((items, total))
     }
 
@@ -377,7 +400,8 @@ impl ReportService {
         request: UpdateScheduledReportRequest,
     ) -> Result<ScheduledReport, FeelPayError> {
         // Get existing report
-        let existing = self.get_scheduled_report(merchant_id, report_id)
+        let existing = self
+            .get_scheduled_report(merchant_id, report_id)
             .await?
             .ok_or_else(|| FeelPayError::NotFound("Scheduled report not found".into()))?;
 
@@ -405,7 +429,9 @@ impl ReportService {
 
         let day_of_week = request.day_of_week.or(existing.day_of_week);
         let day_of_month = request.day_of_month.or(existing.day_of_month);
-        let recipient_emails = request.recipient_emails.unwrap_or(existing.recipient_emails.clone());
+        let recipient_emails = request
+            .recipient_emails
+            .unwrap_or(existing.recipient_emails.clone());
         let is_active = request.is_active.unwrap_or(existing.is_active);
 
         // Validate frequency-specific fields
@@ -418,7 +444,8 @@ impl ReportService {
                 }
             }
             ReportFrequency::Monthly => {
-                if day_of_month.is_none() || day_of_month.unwrap() < 1 || day_of_month.unwrap() > 31 {
+                if day_of_month.is_none() || day_of_month.unwrap() < 1 || day_of_month.unwrap() > 31
+                {
                     return Err(FeelPayError::BadRequest(
                         "Monthly frequency requires day_of_month (1-31)".into(),
                     ));
@@ -428,7 +455,8 @@ impl ReportService {
         }
 
         // Calculate next run time
-        let next_run_at = self.calculate_next_run(&frequency, day_of_week, day_of_month, &time_of_day);
+        let next_run_at =
+            self.calculate_next_run(&frequency, day_of_week, day_of_month, &time_of_day);
 
         let now = Utc::now();
 
@@ -514,23 +542,26 @@ impl ReportService {
         &self,
         now: &DateTime<Utc>,
     ) -> Result<Vec<ScheduledReport>, FeelPayError> {
-        let reports = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<i32>,
-            String,
-            Vec<String>,
-            String,
-            bool,
-            Option<String>,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let reports = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<i32>,
+                String,
+                Vec<String>,
+                String,
+                bool,
+                Option<String>,
+                Option<String>,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, report_type, frequency, day_of_week, day_of_month,
@@ -549,7 +580,10 @@ impl ReportService {
             FeelPayError::Database(e.to_string())
         })?;
 
-        Ok(reports.into_iter().map(|row| self.row_to_scheduled_report(row)).collect())
+        Ok(reports
+            .into_iter()
+            .map(|row| self.row_to_scheduled_report(row))
+            .collect())
     }
 
     /// Update last_run_at and next_run_at for a scheduled report
@@ -558,23 +592,26 @@ impl ReportService {
         report_id: Uuid,
     ) -> Result<(), FeelPayError> {
         // Get the report to calculate next run
-        let report = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<i32>,
-            String,
-            Vec<String>,
-            String,
-            bool,
-            Option<String>,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let report = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<i32>,
+                String,
+                Vec<String>,
+                String,
+                bool,
+                Option<String>,
+                Option<String>,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, report_type, frequency, day_of_week, day_of_month,
@@ -588,7 +625,10 @@ impl ReportService {
         .fetch_one(&self.db)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to fetch scheduled report for execution update: {:?}", e);
+            tracing::error!(
+                "Failed to fetch scheduled report for execution update: {:?}",
+                e
+            );
             FeelPayError::Database(e.to_string())
         })?;
 
@@ -772,8 +812,14 @@ mod tests {
 
     #[test]
     fn test_report_type_as_str() {
-        assert_eq!(ReportType::TransactionSummary.as_str(), "transaction_summary");
-        assert_eq!(ReportType::SettlementReconciliation.as_str(), "settlement_reconciliation");
+        assert_eq!(
+            ReportType::TransactionSummary.as_str(),
+            "transaction_summary"
+        );
+        assert_eq!(
+            ReportType::SettlementReconciliation.as_str(),
+            "settlement_reconciliation"
+        );
     }
 
     #[test]
@@ -816,7 +862,7 @@ mod property_tests {
         ) {
             let settlement_id = format!("settlement-{}", settlement_id_suffix);
             let net_amount_paise = gross_amount_paise - mdr_fee_paise - gst_on_fee_paise - refund_deductions_paise;
-            
+
             // Verify all required fields can be represented
             prop_assert!(!settlement_id.is_empty(), "settlement_id must not be empty");
             prop_assert!(transaction_count > 0, "transaction_count must be positive");
@@ -861,10 +907,10 @@ mod property_tests {
         ) {
             // Verify amount calculations are consistent
             let net_amount_paise = gross_amount_paise - mdr_fee_paise - gst_on_fee_paise - refund_deductions_paise;
-            
+
             // Net amount should never exceed gross amount
             prop_assert!(net_amount_paise <= gross_amount_paise, "net_amount must not exceed gross_amount");
-            
+
             // All amounts should be non-negative
             prop_assert!(gross_amount_paise >= 0);
             prop_assert!(mdr_fee_paise >= 0);
@@ -885,7 +931,7 @@ mod property_tests {
                 ReportFormat::Excel,
             ];
             let format = formats[format_idx].clone();
-            
+
             // Verify all formats are supported for settlement reports
             let format_str = format.as_str();
             prop_assert!(
@@ -912,7 +958,7 @@ mod property_tests {
                 ReportFrequency::Monthly,
             ];
             let frequency = frequencies[frequency_idx].clone();
-            
+
             // Verify frequency is valid
             let freq_str = frequency.as_str();
             prop_assert!(
@@ -931,7 +977,7 @@ mod property_tests {
             for i in 0..email_count {
                 emails.push(format!("recipient{}@example.com", i));
             }
-            
+
             // Verify recipient emails are non-empty and valid format
             prop_assert!(!emails.is_empty(), "Must have at least one recipient email");
             for email in &emails {
@@ -960,7 +1006,7 @@ mod property_tests {
         ) {
             let now = chrono::Utc::now();
             let next_run = now + chrono::Duration::days(days_offset);
-            
+
             // Verify next_run_at is in the future
             prop_assert!(next_run > now, "next_run_at must be in the future");
         }

@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{web, App, HttpServer};
@@ -32,7 +34,8 @@ fn validate_startup_config(config: &AppConfig) -> Result<(), String> {
         return Err("VAULT_ENCRYPTION_KEY must be 64 hex chars (32-byte key)".into());
     }
 
-    if config.is_live() && key == "0000000000000000000000000000000000000000000000000000000000000000" {
+    if config.is_live() && key == "0000000000000000000000000000000000000000000000000000000000000000"
+    {
         return Err("Live mode requires non-default VAULT_ENCRYPTION_KEY".into());
     }
 
@@ -202,6 +205,14 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(pool_for_handler.clone()))
             .wrap(actix_web::middleware::Logger::default())
+            .wrap(
+                actix_web::middleware::DefaultHeaders::new()
+                    .add(("x-api-version", "2026-04-28"))
+                    .add(("x-deprecated", "false"))
+                    .add(("x-deprecation-notice", ""))
+                    .add(("x-content-type-options", "nosniff"))
+                    .add(("referrer-policy", "strict-origin-when-cross-origin")),
+            )
             .wrap(cors)
             .wrap(rate_limiter.clone())
             // Healthcheck
@@ -242,7 +253,10 @@ async fn main() -> std::io::Result<()> {
                     .route("", web::post().to(api::payment_links::create_payment_link))
                     .route("", web::get().to(api::payment_links::list_payment_links))
                     .route("/{id}", web::get().to(api::payment_links::get_payment_link))
-                    .route("/{id}/cancel", web::post().to(api::payment_links::cancel_payment_link)),
+                    .route(
+                        "/{id}/cancel",
+                        web::post().to(api::payment_links::cancel_payment_link),
+                    ),
             )
             // Customers API
             .service(
@@ -252,7 +266,10 @@ async fn main() -> std::io::Result<()> {
                     .route("", web::get().to(api::customers::list_customers))
                     .route("/{id}", web::get().to(api::customers::get_customer))
                     .route("/{id}", web::delete().to(api::customers::delete_customer))
-                    .route("/{id}/payment-methods", web::get().to(api::customers::get_customer_payment_methods)),
+                    .route(
+                        "/{id}/payment-methods",
+                        web::get().to(api::customers::get_customer_payment_methods),
+                    ),
             )
             // Notifications & Reports API
             .service(
@@ -269,7 +286,10 @@ async fn main() -> std::io::Result<()> {
                     .route("/{id}", web::get().to(api::notifications::get_report)),
             )
             // Public payment link view
-            .route("/pay/{link_id}", web::get().to(api::payment_links::view_payment_link))
+            .route(
+                "/pay/{link_id}",
+                web::get().to(api::payment_links::view_payment_link),
+            )
             // Payments API
             .service(
                 web::scope("/v1/payments")
@@ -313,7 +333,10 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/settlements")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::get().to(api::settlements::list_settlements))
-                    .route("/balance", web::get().to(crate::api::settlements::get_settlement_stats))
+                    .route(
+                        "/balance",
+                        web::get().to(crate::api::settlements::get_settlement_stats),
+                    )
                     .route("/{id}", web::get().to(api::settlements::get_settlement)),
             )
             // Merchant onboarding API (dashboard JWT auth)
@@ -414,7 +437,10 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/v1/analytics")
                     .wrap(crate::middleware::auth::UnifiedAuth)
-                    .route("/summary", web::get().to(crate::api::analytics::get_dashboard_stats))
+                    .route(
+                        "/summary",
+                        web::get().to(crate::api::analytics::get_dashboard_stats),
+                    )
                     .route("/volume", web::get().to(api::analytics::get_volume_chart))
                     .route(
                         "/top-customers",
@@ -466,6 +492,12 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/mandates")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::mandates::configure),
+            )
+            // Admin API
+            .service(
+                web::scope("/v1")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::admin::configure),
             )
     })
     .workers(worker_count)

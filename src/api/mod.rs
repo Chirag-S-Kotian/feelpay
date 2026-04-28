@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod analytics;
 pub mod auth;
 pub mod bank_accounts;
@@ -14,8 +15,9 @@ pub mod merchants;
 pub mod notification_prefs;
 pub mod notifications;
 pub mod onboarding;
-pub mod payments;
+pub mod pagination;
 pub mod payment_links;
+pub mod payments;
 pub mod providers;
 pub mod reports;
 pub mod settlements;
@@ -141,6 +143,8 @@ use utoipa::OpenApi;
             crate::api::merchants::InviteTeamMemberRequest,
             crate::api::merchants::UpdateRoleRequest,
             crate::api::merchants::UpdateKycStatusRequest,
+            crate::api::pagination::Cursor,
+            crate::api::pagination::PaginationParams,
         )
     ),
     tags(

@@ -50,7 +50,11 @@ pub async fn create_payment_link(
     body: web::Json<CreatePaymentLinkRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let mut conn = state.db.acquire().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     // Generate unique link_id
     let link_id = generate_link_id();
@@ -59,9 +63,9 @@ pub async fn create_payment_link(
     let short_url = format!("{}/pay/{}", base_url, link_id);
 
     // Calculate expiry (default 24 hours)
-    let expires_at = body.expires_at.unwrap_or_else(|| {
-        chrono::Utc::now() + chrono::Duration::hours(24)
-    });
+    let expires_at = body
+        .expires_at
+        .unwrap_or_else(|| chrono::Utc::now() + chrono::Duration::hours(24));
 
     let row = sqlx::query(
         r#"
@@ -117,7 +121,11 @@ pub async fn get_payment_link(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let link_id = path.into_inner();
-    let mut conn = state.db.acquire().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let result = sqlx::query(
         "SELECT * FROM payment_links WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL",
@@ -153,15 +161,22 @@ pub async fn list_payment_links(
     query: web::Query<ListPaymentLinksQuery>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let mut conn = state.db.acquire().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
     // Build query
-    let mut sql = "SELECT * FROM payment_links WHERE merchant_id = $1 AND deleted_at IS NULL".to_string();
-    let mut count_sql = "SELECT COUNT(*) FROM payment_links WHERE merchant_id = $1 AND deleted_at IS NULL".to_string();
+    let mut sql =
+        "SELECT * FROM payment_links WHERE merchant_id = $1 AND deleted_at IS NULL".to_string();
+    let mut count_sql =
+        "SELECT COUNT(*) FROM payment_links WHERE merchant_id = $1 AND deleted_at IS NULL"
+            .to_string();
     let mut param_idx = 2;
 
     if query.status.is_some() {
@@ -170,11 +185,14 @@ pub async fn list_payment_links(
         param_idx += 1;
     }
 
-    sql.push_str(&format!(" ORDER BY created_at DESC LIMIT ${} OFFSET ${}", param_idx, param_idx + 1));
+    sql.push_str(&format!(
+        " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+        param_idx,
+        param_idx + 1
+    ));
 
     // Get total count
-    let total_row = sqlx::query(&count_sql)
-        .bind(merchant_id);
+    let total_row = sqlx::query(&count_sql).bind(merchant_id);
 
     let total_row = if let Some(ref status) = query.status {
         total_row.bind(status)
@@ -182,14 +200,14 @@ pub async fn list_payment_links(
         total_row
     };
 
-    let total: i64 = total_row.fetch_one(&mut *conn)
+    let total: i64 = total_row
+        .fetch_one(&mut *conn)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?
         .get(0);
 
     // Get results
-    let mut links_query = sqlx::query(&sql)
-        .bind(merchant_id);
+    let mut links_query = sqlx::query(&sql).bind(merchant_id);
 
     if let Some(ref status) = query.status {
         links_query = links_query.bind(status);
@@ -239,7 +257,11 @@ pub async fn cancel_payment_link(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let link_id = path.into_inner();
-    let mut conn = state.db.acquire().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let result = sqlx::query(
         "UPDATE payment_links SET status = 'cancelled', updated_at = NOW() 
@@ -253,7 +275,9 @@ pub async fn cancel_payment_link(
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     if result.is_none() {
-        return Err(FeelPayError::NotFound("Payment link not found or already cancelled".to_string()));
+        return Err(FeelPayError::NotFound(
+            "Payment link not found or already cancelled".to_string(),
+        ));
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -267,7 +291,11 @@ pub async fn view_payment_link(
     path: web::Path<String>,
 ) -> Result<HttpResponse, FeelPayError> {
     let link_id = path.into_inner();
-    let mut conn = state.db.acquire().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut conn = state
+        .db
+        .acquire()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let result: Option<sqlx::postgres::PgRow> = sqlx::query(
         "UPDATE payment_links SET view_count = view_count + 1 
@@ -281,22 +309,22 @@ pub async fn view_payment_link(
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match result {
-        Some(row) => {
-            Ok(HttpResponse::Ok().json(serde_json::json!({
-                "link_id": link_id,
-                "amount": row.get::<i64, _>("amount"),
-                "currency": row.get::<String, _>("currency"),
-                "description": row.get::<Option<String>, _>("description"),
-                "customer_name": row.get::<Option<String>, _>("customer_name"),
-                "customer_email": row.get::<Option<String>, _>("customer_email"),
-                "customer_phone": row.get::<Option<String>, _>("customer_phone"),
-                "allow_partial": row.get::<bool, _>("allow_partial"),
-                "min_partial_amount": row.get::<Option<i64>, _>("min_partial_amount"),
-                "max_partial_amount": row.get::<Option<i64>, _>("max_partial_amount"),
-                "status": row.get::<String, _>("status"),
-            })))
-        },
-        None => Err(FeelPayError::NotFound("Payment link not found or expired".to_string())),
+        Some(row) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "link_id": link_id,
+            "amount": row.get::<i64, _>("amount"),
+            "currency": row.get::<String, _>("currency"),
+            "description": row.get::<Option<String>, _>("description"),
+            "customer_name": row.get::<Option<String>, _>("customer_name"),
+            "customer_email": row.get::<Option<String>, _>("customer_email"),
+            "customer_phone": row.get::<Option<String>, _>("customer_phone"),
+            "allow_partial": row.get::<bool, _>("allow_partial"),
+            "min_partial_amount": row.get::<Option<i64>, _>("min_partial_amount"),
+            "max_partial_amount": row.get::<Option<i64>, _>("max_partial_amount"),
+            "status": row.get::<String, _>("status"),
+        }))),
+        None => Err(FeelPayError::NotFound(
+            "Payment link not found or expired".to_string(),
+        )),
     }
 }
 

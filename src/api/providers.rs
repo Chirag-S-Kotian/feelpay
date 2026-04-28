@@ -2,7 +2,9 @@ use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
-use crate::models::provider::{CreateRoutingRuleRequest, PaymentProvider, ProviderHealthResponse, ProviderRoutingRule};
+use crate::models::provider::{
+    CreateRoutingRuleRequest, PaymentProvider, ProviderHealthResponse, ProviderRoutingRule,
+};
 use crate::state::AppState;
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
@@ -13,17 +15,17 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
 }
 
 // List all providers (health dashboard)
-pub async fn list_providers(
-    state: web::Data<AppState>,
-) -> Result<HttpResponse, FeelPayError> {
-    let providers_rows = sqlx::query(
-        "SELECT * FROM payment_providers ORDER BY priority DESC, is_default DESC"
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+pub async fn list_providers(state: web::Data<AppState>) -> Result<HttpResponse, FeelPayError> {
+    let providers_rows =
+        sqlx::query("SELECT * FROM payment_providers ORDER BY priority DESC, is_default DESC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    let providers: Vec<PaymentProvider> = providers_rows.into_iter().map(PaymentProvider::from).collect();
+    let providers: Vec<PaymentProvider> = providers_rows
+        .into_iter()
+        .map(PaymentProvider::from)
+        .collect();
 
     Ok(HttpResponse::Ok().json(
         providers
@@ -39,17 +41,19 @@ pub async fn get_provider(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
     let provider_id = path.into_inner();
-    
-    let provider_row = sqlx::query(
-        "SELECT * FROM payment_providers WHERE id = $1",
-    )
-    .bind(provider_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| FeelPayError::Database(e.to_string()))?
-    .ok_or_else(|| FeelPayError::NotFound("Provider not found".to_string()))?;
 
-    Ok(HttpResponse::Ok().json(ProviderHealthResponse::from(PaymentProvider::from(provider_row))))
+    let provider_row = sqlx::query("SELECT * FROM payment_providers WHERE id = $1")
+        .bind(provider_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?
+        .ok_or_else(|| FeelPayError::NotFound("Provider not found".to_string()))?;
+
+    Ok(
+        HttpResponse::Ok().json(ProviderHealthResponse::from(PaymentProvider::from(
+            provider_row,
+        ))),
+    )
 }
 
 // Create routing rule
@@ -59,7 +63,7 @@ pub async fn create_routing_rule(
     body: web::Json<CreateRoutingRuleRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let _merchant_id = merchant_id_from_req(&req)?;
-    
+
     let rule_row = sqlx::query(
         r#"
         INSERT INTO provider_routing_rules (
@@ -89,7 +93,7 @@ pub async fn list_routing_rules(
     req: HttpRequest,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     let rules_rows = sqlx::query(
         "SELECT * FROM provider_routing_rules WHERE merchant_id = $1 OR merchant_id IS NULL ORDER BY priority",
     )
@@ -98,7 +102,10 @@ pub async fn list_routing_rules(
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    let rules: Vec<ProviderRoutingRule> = rules_rows.into_iter().map(ProviderRoutingRule::from).collect();
+    let rules: Vec<ProviderRoutingRule> = rules_rows
+        .into_iter()
+        .map(ProviderRoutingRule::from)
+        .collect();
 
     Ok(HttpResponse::Ok().json(rules))
 }
@@ -112,7 +119,7 @@ pub async fn update_routing_rule(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let rule_id = path.into_inner();
-    
+
     let rule_row = sqlx::query(
         r#"
         UPDATE provider_routing_rules SET
@@ -150,7 +157,7 @@ pub async fn delete_routing_rule(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let rule_id = path.into_inner();
-    
+
     sqlx::query(
         "DELETE FROM provider_routing_rules WHERE id = $1 AND (merchant_id = $2 OR merchant_id IS NULL)",
     )
@@ -159,7 +166,6 @@ pub async fn delete_routing_rule(
     .execute(&state.db)
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
-
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -170,12 +176,12 @@ pub async fn get_provider_stats(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
     let provider_id = path.into_inner();
-    
+
     // Get recent health logs (last 100)
     let logs: Vec<(bool, i32)> = sqlx::query_as(
         "SELECT is_success, latency_ms FROM provider_health_logs 
          WHERE provider_id = $1 AND created_at > NOW() - INTERVAL '24 hours'
-         ORDER BY created_at DESC LIMIT 100"
+         ORDER BY created_at DESC LIMIT 100",
     )
     .bind(provider_id)
     .fetch_all(&state.db)
@@ -189,7 +195,11 @@ pub async fn get_provider_stats(
     } else {
         logs.iter().map(|(_, l)| l).sum::<i32>() / logs.len() as i32
     };
-    let success_rate = if total > 0.0 { (success_count / total) * 100.0 } else { 100.0 };
+    let success_rate = if total > 0.0 {
+        (success_count / total) * 100.0
+    } else {
+        100.0
+    };
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success_rate": success_rate,

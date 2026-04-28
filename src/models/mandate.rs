@@ -1,16 +1,16 @@
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, utoipa::ToSchema)]
 pub struct Mandate {
     pub id: Uuid,
     pub merchant_id: Uuid,
     pub customer_id: Option<Uuid>,
-    pub mandate_type: String, // upi, card, nach
+    pub mandate_type: String,              // upi, card, nach
     pub mandate_reference: Option<String>, // UMN for UPI
-    pub status: String, // initiated, active, revoked, expired, paused
+    pub status: String,                    // initiated, active, revoked, expired, paused
     pub amount_limit: i64,
     pub currency: String,
     pub frequency: String,

@@ -65,10 +65,12 @@ pub async fn get_actionable_alerts(req: HttpRequest, pool: web::Data<PgPool>) ->
     }
 
     // Check for open disputes
-    let disputes = sqlx::query("SELECT COUNT(*) as count FROM disputes WHERE merchant_id = $1 AND status = 'open'")
-        .bind(merchant_id)
-        .fetch_one(pool.get_ref())
-        .await;
+    let disputes = sqlx::query(
+        "SELECT COUNT(*) as count FROM disputes WHERE merchant_id = $1 AND status = 'open'",
+    )
+    .bind(merchant_id)
+    .fetch_one(pool.get_ref())
+    .await;
 
     if let Ok(d) = disputes {
         let count: i64 = d.get("count");
@@ -324,12 +326,10 @@ pub async fn get_top_customers(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
         Ok(data) => {
             let customers: Vec<_> = data
                 .into_iter()
-                .map(|r| {
-                    TopCustomerResponse {
-                        email: r.customer_email,
-                        count: r.count.unwrap_or(0),
-                        volume: r.volume.unwrap_or(0)
-                    }
+                .map(|r| TopCustomerResponse {
+                    email: r.customer_email,
+                    count: r.count.unwrap_or(0),
+                    volume: r.volume.unwrap_or(0),
                 })
                 .collect();
             HttpResponse::Ok().json(serde_json::json!({ "top_customers": customers }))

@@ -45,7 +45,7 @@ pub async fn queue_webhook(
     payload: serde_json::Value,
 ) -> Result<Uuid, sqlx::Error> {
     let id = Uuid::new_v4();
-    
+
     sqlx::query(
         r#"
         INSERT INTO webhook_deliveries (id, merchant_id, event_type, payload, status, attempt_count, created_at)
@@ -86,7 +86,7 @@ pub async fn process_webhook_queue(pool: &PgPool) -> Result<(), Box<dyn std::err
     for event in pending {
         // Get webhook config for merchant
         let config: Option<(String, String)> = sqlx::query_as(
-            "SELECT url, secret FROM webhooks WHERE merchant_id = $1 AND active = true"
+            "SELECT url, secret FROM webhooks WHERE merchant_id = $1 AND active = true",
         )
         .bind(event.merchant_id)
         .fetch_optional(pool)
@@ -106,7 +106,7 @@ pub async fn process_webhook_queue(pool: &PgPool) -> Result<(), Box<dyn std::err
         // Sign payload
         let payload_bytes = serde_json::to_vec(&event.payload)?;
         let signature = sign_webhook(&secret, &payload_bytes);
-        
+
         // Send webhook
         let result = client
             .post(&url)
@@ -127,7 +127,7 @@ pub async fn process_webhook_queue(pool: &PgPool) -> Result<(), Box<dyn std::err
                 .bind(event.id)
                 .execute(pool)
                 .await?;
-                
+
                 tracing::info!(
                     webhook_id = %event.id,
                     event_type = %event.event_type,
@@ -151,13 +151,9 @@ pub async fn process_webhook_queue(pool: &PgPool) -> Result<(), Box<dyn std::err
 }
 
 /// Handle retry with exponential backoff
-async fn handle_retry(
-    pool: &PgPool,
-    event: &WebhookEvent,
-    error: &str,
-) -> Result<(), sqlx::Error> {
+async fn handle_retry(pool: &PgPool, event: &WebhookEvent, error: &str) -> Result<(), sqlx::Error> {
     let new_attempt = event.attempt_count + 1;
-    
+
     // Exponential backoff: 1m, 5m, 15m, 1h, 6h, 24h
     let backoff_minutes = match new_attempt {
         1 => 1,
@@ -168,9 +164,9 @@ async fn handle_retry(
         6 => 1440,
         _ => 1440,
     };
-    
+
     let next_retry = Utc::now() + chrono::Duration::minutes(backoff_minutes);
-    
+
     if new_attempt >= 7 {
         // Move to dead letter queue
         sqlx::query(
@@ -188,7 +184,7 @@ async fn handle_retry(
         .bind(event.id)
         .execute(pool)
         .await?;
-        
+
         // Alert merchant (create notification)
         sqlx::query(
             r#"
@@ -201,7 +197,7 @@ async fn handle_retry(
         .bind(serde_json::json!({"webhook_id": event.id, "event_type": event.event_type}))
         .execute(pool)
         .await?;
-        
+
         tracing::warn!(
             webhook_id = %event.id,
             merchant_id = %event.merchant_id,
@@ -223,7 +219,7 @@ async fn handle_retry(
         .bind(event.id)
         .execute(pool)
         .await?;
-        
+
         tracing::info!(
             webhook_id = %event.id,
             attempt = new_attempt,
@@ -231,14 +227,14 @@ async fn handle_retry(
             "Webhook retry scheduled"
         );
     }
-    
+
     Ok(())
 }
 
 /// Sign webhook payload with HMAC-SHA256
 pub fn sign_webhook(secret: &str, payload: &[u8]) -> String {
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
     mac.update(payload);
     hex::encode(mac.finalize().into_bytes())
 }
@@ -249,8 +245,8 @@ pub fn verify_webhook(secret: &str, payload: &[u8], signature: &str) -> bool {
         return false;
     };
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
     mac.update(payload);
 
     mac.verify_slice(&signature_bytes).is_ok()
@@ -278,7 +274,7 @@ pub async fn trigger_payment_webhook(
             "status": status,
         }
     });
-    
+
     queue_webhook(pool, merchant_id, event_type, payload).await?;
     Ok(())
 }
@@ -303,7 +299,7 @@ pub async fn trigger_refund_webhook(
             "status": status,
         }
     });
-    
+
     queue_webhook(pool, merchant_id, event_type, payload).await?;
     Ok(())
 }
@@ -327,7 +323,7 @@ pub async fn trigger_dispute_webhook(
             "status": status,
         }
     });
-    
+
     queue_webhook(pool, merchant_id, "dispute.created", payload).await?;
     Ok(())
 }
@@ -349,7 +345,7 @@ pub async fn trigger_settlement_webhook(
             "utr": utr,
         }
     });
-    
+
     queue_webhook(pool, merchant_id, "settlement.processed", payload).await?;
     Ok(())
 }

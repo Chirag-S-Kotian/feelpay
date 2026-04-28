@@ -35,16 +35,16 @@ fn generate_captcha() -> (String, String, i32) {
     let a = rand::random::<i32>() % 20 + 1;
     let b = rand::random::<i32>() % 20 + 1;
     let op = if rand::random::<bool>() { "+" } else { "-" };
-    
+
     let question = format!("{} {} {} = ?", a, op, b);
     let answer = if op == "+" { a + b } else { a - b };
-    
+
     let id = Uuid::new_v4().to_string();
-    
+
     if let Ok(mut store) = CAPTCHA_STORE.questions.lock() {
         store.insert(id.clone(), (question.clone(), answer));
     }
-    
+
     (id, question, answer)
 }
 
@@ -68,7 +68,7 @@ async fn generate_refresh_token(user_id: &Uuid, pool: &PgPool) -> Result<String,
     let token_hash = hash_token(&token);
     let family = Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now() + chrono::Duration::days(REFRESH_TOKEN_DAYS);
-    
+
     sqlx::query(
         "INSERT INTO refresh_tokens (user_id, token_hash, family, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5, $6)"
     )
@@ -78,7 +78,7 @@ async fn generate_refresh_token(user_id: &Uuid, pool: &PgPool) -> Result<String,
     .bind(expires_at)
     .execute(pool)
     .await?;
-    
+
     Ok(token)
 }
 
@@ -151,7 +151,7 @@ pub struct RefreshRequest {
 #[post("/refresh")]
 async fn refresh(pool: web::Data<PgPool>, req: web::Json<RefreshRequest>) -> impl Responder {
     let token_hash = hash_token(&req.refresh_token);
-    
+
     let result = sqlx::query_as::<_, (
         Uuid,
         Uuid,
@@ -173,12 +173,13 @@ async fn refresh(pool: web::Data<PgPool>, req: web::Json<RefreshRequest>) -> imp
             if expires_at < chrono::Utc::now() {
                 return HttpResponse::Unauthorized().body("Token expired");
             }
-            
+
             sqlx::query("UPDATE refresh_tokens SET last_used_at = NOW() WHERE id = $1")
                 .bind(rt_id)
                 .execute(pool.get_ref())
-                .await.ok();
-            
+                .await
+                .ok();
+
             let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
                 .bind(user_id)
                 .fetch_one(pool.get_ref())
@@ -195,7 +196,7 @@ async fn refresh(pool: web::Data<PgPool>, req: web::Json<RefreshRequest>) -> imp
 
                 let token = generate_jwt(&u, &role.0);
                 let new_refresh = generate_refresh_token(&u.id, pool.get_ref()).await;
-                
+
                 HttpResponse::Ok().json(AuthResponse {
                     token: Some(token),
                     refresh_token: new_refresh.ok(),
@@ -221,14 +222,19 @@ pub struct LogoutRequest {
 }
 
 #[post("/logout")]
-async fn logout(pool: web::Data<PgPool>, req: web::Json<LogoutRequest>, claims: Claims) -> impl Responder {
+async fn logout(
+    pool: web::Data<PgPool>,
+    req: web::Json<LogoutRequest>,
+    claims: Claims,
+) -> impl Responder {
     let _user_id = claims.sub;
     if let Some(refresh_token) = &req.refresh_token {
         let token_hash = hash_token(refresh_token);
         sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1")
             .bind(&token_hash)
             .execute(pool.get_ref())
-            .await.ok();
+            .await
+            .ok();
     }
     HttpResponse::Ok().json(serde_json::json!({ "message": "Logged out" }))
 }
@@ -237,15 +243,21 @@ async fn logout(pool: web::Data<PgPool>, req: web::Json<LogoutRequest>, claims: 
 async fn logout_all(pool: web::Data<PgPool>, claims: Claims) -> impl Responder {
     let user_id = claims.sub.clone();
     let _ = user_id; // Explicitly use or ignore
-    sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL")
-        .bind(&user_id)
-        .execute(pool.get_ref())
-        .await.ok();
+    sqlx::query(
+        "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&user_id)
+    .execute(pool.get_ref())
+    .await
+    .ok();
 
-    sqlx::query("UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL")
-        .bind(&user_id)
-        .execute(pool.get_ref())
-        .await.ok();
+    sqlx::query(
+        "UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(&user_id)
+    .execute(pool.get_ref())
+    .await
+    .ok();
 
     HttpResponse::Ok().json(serde_json::json!({ "message": "All sessions logged out" }))
 }
@@ -273,7 +285,8 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
     // Verify CAPTCHA first if provided
     if let (Some(captcha_id), Some(captcha_answer)) = (&req.captcha_id, req.captcha_answer) {
         if !verify_captcha(captcha_id, captcha_answer) {
-            return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Invalid CAPTCHA" }));
+            return HttpResponse::BadRequest()
+                .json(serde_json::json!({ "error": "Invalid CAPTCHA" }));
         }
     }
 
@@ -295,8 +308,8 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
             .unwrap_or((0,));
 
             if recent_failures.0 as i64 >= MAX_FAILED_ATTEMPTS as i64 {
-                return HttpResponse::TooManyRequests().json(serde_json::json!({ 
-                    "error": "Account temporarily locked. Try again in 30 minutes." 
+                return HttpResponse::TooManyRequests().json(serde_json::json!({
+                    "error": "Account temporarily locked. Try again in 30 minutes."
                 }));
             }
 
@@ -307,11 +320,12 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
             {
                 // Record successful login
                 sqlx::query(
-                    "INSERT INTO login_attempts (user_id, email, success) VALUES ($1, $1, true)"
+                    "INSERT INTO login_attempts (user_id, email, success) VALUES ($1, $1, true)",
                 )
                 .bind(u.id)
                 .execute(pool.get_ref())
-                .await.ok();
+                .await
+                .ok();
 
                 // Fetch roles
                 let role: (String,) = sqlx::query_as(
@@ -338,7 +352,7 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
 
                 let token = generate_jwt(&u, &role.0);
                 let refresh_token = generate_refresh_token(&u.id, pool.get_ref()).await;
-                
+
                 HttpResponse::Ok().json(AuthResponse {
                     token: Some(token),
                     refresh_token: refresh_token.ok(),
@@ -465,8 +479,11 @@ async fn mfa_verify(pool: web::Data<PgPool>, req: web::Json<MfaVerifyRequest>) -
                                     .unwrap_or(("user".to_string(),));
 
                                     let token = generate_jwt(&u, &role.0);
-                                    let refresh_token = generate_refresh_token(&u.id, pool.get_ref()).await.unwrap_or_else(|_| Uuid::new_v4().to_string());
-                                    
+                                    let refresh_token =
+                                        generate_refresh_token(&u.id, pool.get_ref())
+                                            .await
+                                            .unwrap_or_else(|_| Uuid::new_v4().to_string());
+
                                     HttpResponse::Ok().json(AuthResponse {
                                         token: Some(token),
                                         refresh_token: Some(refresh_token),
@@ -521,7 +538,10 @@ fn validate_password_strength(password: &str) -> Result<(), String> {
     if !password.chars().any(|c| c.is_numeric()) {
         return Err("Password must contain at least one number".to_string());
     }
-    if !password.chars().any(|c| "!@#$%^&*()_+-=[]{}|;:',.<>?/~`".contains(c)) {
+    if !password
+        .chars()
+        .any(|c| "!@#$%^&*()_+-=[]{}|;:',.<>?/~`".contains(c))
+    {
         return Err("Password must contain at least one special character".to_string());
     }
     Ok(())
@@ -556,14 +576,12 @@ async fn check_password_history(user_id: Uuid, password_hash: &str, pool: &PgPoo
 
 /// Store password in history
 async fn store_password_history(user_id: Uuid, password_hash: &str, pool: &PgPool) {
-    let _ = sqlx::query(
-        "INSERT INTO password_history (user_id, password_hash) VALUES ($1, $2)"
-    )
-    .bind(user_id)
-    .bind(password_hash)
-    .execute(pool)
-    .await;
-    
+    let _ = sqlx::query("INSERT INTO password_history (user_id, password_hash) VALUES ($1, $2)")
+        .bind(user_id)
+        .bind(password_hash)
+        .execute(pool)
+        .await;
+
     // Keep only last 5 passwords
     let _ = sqlx::query(
         "DELETE FROM password_history WHERE user_id = $1 AND id NOT IN (SELECT id FROM password_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5)"
@@ -687,8 +705,8 @@ async fn change_password(
 
     // Check password history
     if check_password_history(user_id, &new_hash, pool.get_ref()).await {
-        return HttpResponse::BadRequest().json(serde_json::json!({ 
-            "error": "Cannot reuse any of your last 5 passwords" 
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Cannot reuse any of your last 5 passwords"
         }));
     }
 
@@ -705,7 +723,8 @@ async fn change_password(
         Ok(_) => {
             // Store in history
             store_password_history(user_id, &new_hash, pool.get_ref()).await;
-            HttpResponse::Ok().json(serde_json::json!({ "message": "Password changed successfully" }))
+            HttpResponse::Ok()
+                .json(serde_json::json!({ "message": "Password changed successfully" }))
         }
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }

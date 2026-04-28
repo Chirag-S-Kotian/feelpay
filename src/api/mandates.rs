@@ -1,8 +1,8 @@
+use crate::error::FeelPayError;
+use crate::models::mandate::{CreateMandateRequest, Mandate};
+use crate::state::AppState;
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use uuid::Uuid;
-use crate::error::FeelPayError;
-use crate::state::AppState;
-use crate::models::mandate::{CreateMandateRequest, Mandate};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -42,7 +42,10 @@ pub async fn initiate_mandate(
     let merchant_id = merchant_id_from_req(&req)?;
 
     // Generate a unique mandate reference (UMN for UPI)
-    let umn = format!("feelpay.{}@bank", Uuid::new_v4().to_string()[..8].to_lowercase());
+    let umn = format!(
+        "feelpay.{}@bank",
+        Uuid::new_v4().to_string()[..8].to_lowercase()
+    );
 
     let mandate = sqlx::query_as::<_, Mandate>(
         r#"
@@ -52,7 +55,7 @@ pub async fn initiate_mandate(
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *
-        "#
+        "#,
     )
     .bind(merchant_id)
     .bind(body.customer_id)
@@ -100,7 +103,7 @@ pub async fn list_mandates(
     let merchant_id = merchant_id_from_req(&req)?;
 
     let mandates = sqlx::query_as::<_, Mandate>(
-        "SELECT * FROM mandates WHERE merchant_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM mandates WHERE merchant_id = $1 ORDER BY created_at DESC",
     )
     .bind(merchant_id)
     .fetch_all(&state.db)
@@ -132,13 +135,12 @@ pub async fn get_mandate(
     let merchant_id = merchant_id_from_req(&req)?;
     let mandate_id = path.into_inner();
 
-    let mandate = sqlx::query_as::<_, Mandate>(
-        "SELECT * FROM mandates WHERE id = $1 AND merchant_id = $2"
-    )
-    .bind(mandate_id)
-    .bind(merchant_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let mandate =
+        sqlx::query_as::<_, Mandate>("SELECT * FROM mandates WHERE id = $1 AND merchant_id = $2")
+            .bind(mandate_id)
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     match mandate {
         Some(m) => Ok(HttpResponse::Ok().json(m)),
@@ -212,27 +214,32 @@ pub async fn execute_mandate(
     })?;
 
     // Verify mandate is active
-    let mandate = sqlx::query_as::<_, Mandate>(
-        "SELECT * FROM mandates WHERE id = $1 AND merchant_id = $2"
-    )
-    .bind(mandate_id)
-    .bind(merchant_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let mandate =
+        sqlx::query_as::<_, Mandate>("SELECT * FROM mandates WHERE id = $1 AND merchant_id = $2")
+            .bind(mandate_id)
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let m = mandate.ok_or_else(|| FeelPayError::NotFound("Mandate not found".into()))?;
 
     if m.status != "active" {
-        return Err(FeelPayError::BadRequest(format!("Mandate is not active (current status: {})", m.status)));
+        return Err(FeelPayError::BadRequest(format!(
+            "Mandate is not active (current status: {})",
+            m.status
+        )));
     }
 
     if amount > m.amount_limit {
-        return Err(FeelPayError::BadRequest(format!("Amount exceeds mandate limit of {}", m.amount_limit)));
+        return Err(FeelPayError::BadRequest(format!(
+            "Amount exceeds mandate limit of {}",
+            m.amount_limit
+        )));
     }
 
     // In a real system, we would call the UPI provider's execution API here.
     // For now, we simulate a successful transaction.
-    
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "captured",
         "transaction_id": Uuid::new_v4(),

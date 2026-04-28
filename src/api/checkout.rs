@@ -70,8 +70,24 @@ pub async fn create_checkout_session(
             .query(&mut conn);
     }
 
-    let checkout_url = format!("{}/checkout/{}", state.config.cors_allowed_origins.first().unwrap_or(&"https://checkout.feelpay.com".to_string()), session_id);
-    let embed_url = format!("{}/checkout/embed/{}", state.config.cors_allowed_origins.first().unwrap_or(&"https://checkout.feelpay.com".to_string()), session_id);
+    let checkout_url = format!(
+        "{}/checkout/{}",
+        state
+            .config
+            .cors_allowed_origins
+            .first()
+            .unwrap_or(&"https://checkout.feelpay.com".to_string()),
+        session_id
+    );
+    let embed_url = format!(
+        "{}/checkout/embed/{}",
+        state
+            .config
+            .cors_allowed_origins
+            .first()
+            .unwrap_or(&"https://checkout.feelpay.com".to_string()),
+        session_id
+    );
 
     Ok(HttpResponse::Created().json(CheckoutSessionResponse {
         session_id: session_id.clone(),
@@ -90,18 +106,18 @@ pub async fn get_checkout_session(
     let redis_key = format!("checkout:{}", session_id);
 
     if let Ok(mut conn) = state.redis.get_connection() {
-        let result: Result<String, _> = redis::cmd("GET")
-            .arg(&redis_key)
-            .query(&mut conn);
+        let result: Result<String, _> = redis::cmd("GET").arg(&redis_key).query(&mut conn);
 
         if let Ok(data) = result {
-            let session: serde_json::Value = serde_json::from_str(&data)
-                .map_err(|e| FeelPayError::Internal(e.to_string()))?;
+            let session: serde_json::Value =
+                serde_json::from_str(&data).map_err(|e| FeelPayError::Internal(e.to_string()))?;
             return Ok(HttpResponse::Ok().json(session));
         }
     }
 
-    Err(FeelPayError::NotFound("Checkout session not found or expired".into()))
+    Err(FeelPayError::NotFound(
+        "Checkout session not found or expired".into(),
+    ))
 }
 
 /// Get payment status (for polling)
@@ -113,14 +129,12 @@ pub async fn get_payment_status(
     let redis_key = format!("checkout:{}", session_id);
 
     if let Ok(mut conn) = state.redis.get_connection() {
-        let result: Result<String, _> = redis::cmd("GET")
-            .arg(&redis_key)
-            .query(&mut conn);
+        let result: Result<String, _> = redis::cmd("GET").arg(&redis_key).query(&mut conn);
 
         if let Ok(data) = result {
-            let session: serde_json::Value = serde_json::from_str(&data)
-                .map_err(|e| FeelPayError::Internal(e.to_string()))?;
-            
+            let session: serde_json::Value =
+                serde_json::from_str(&data).map_err(|e| FeelPayError::Internal(e.to_string()))?;
+
             return Ok(HttpResponse::Ok().json(serde_json::json!({
                 "session_id": session_id,
                 "status": session["status"],

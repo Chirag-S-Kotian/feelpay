@@ -138,8 +138,9 @@ impl JobQueue {
 
         match result {
             Some((_, job_json)) => {
-                let job: Job = serde_json::from_str(&job_json)
-                    .map_err(|e| FeelPayError::Internal(format!("Failed to deserialize job: {}", e)))?;
+                let job: Job = serde_json::from_str(&job_json).map_err(|e| {
+                    FeelPayError::Internal(format!("Failed to deserialize job: {}", e))
+                })?;
                 Ok(Some(job))
             }
             None => Ok(None),
@@ -160,11 +161,7 @@ impl JobQueue {
     }
 
     /// Retry a job with exponential backoff
-    pub async fn retry(
-        &self,
-        job: &Job,
-        backoff_ms: u64,
-    ) -> Result<(), FeelPayError> {
+    pub async fn retry(&self, job: &Job, backoff_ms: u64) -> Result<(), FeelPayError> {
         if job.retry_count >= job.max_retries {
             // Max retries exceeded, mark as failed
             return self.mark_failed(job.id).await;
@@ -189,18 +186,15 @@ impl JobQueue {
         let score = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() + delay_secs) as f64;
+            .as_secs()
+            + delay_secs) as f64;
 
         conn.zadd::<_, _, _, ()>("job_queue_delayed", &job_json, score)
             .map_err(|e| FeelPayError::Internal(format!("Failed to retry job: {}", e)))?;
 
         // Update job metadata
-        conn.set_ex::<_, _, ()>(
-            format!("job:{}", job.id),
-            &job_json,
-            3600 * 24,
-        )
-        .map_err(|e| FeelPayError::Internal(format!("Failed to update job metadata: {}", e)))?;
+        conn.set_ex::<_, _, ()>(format!("job:{}", job.id), &job_json, 3600 * 24)
+            .map_err(|e| FeelPayError::Internal(format!("Failed to update job metadata: {}", e)))?;
 
         Ok(())
     }
@@ -231,8 +225,9 @@ impl JobQueue {
 
         match job_json {
             Some(json) => {
-                let job: Job = serde_json::from_str(&json)
-                    .map_err(|e| FeelPayError::Internal(format!("Failed to deserialize job: {}", e)))?;
+                let job: Job = serde_json::from_str(&json).map_err(|e| {
+                    FeelPayError::Internal(format!("Failed to deserialize job: {}", e))
+                })?;
                 Ok(Some(job))
             }
             None => Ok(None),
@@ -263,7 +258,9 @@ impl JobQueue {
 
             // Remove from delayed queue
             conn.zrem::<_, _, ()>("job_queue_delayed", &job_json)
-                .map_err(|e| FeelPayError::Internal(format!("Failed to remove from delayed: {}", e)))?;
+                .map_err(|e| {
+                    FeelPayError::Internal(format!("Failed to remove from delayed: {}", e))
+                })?;
         }
 
         Ok(())
@@ -280,9 +277,9 @@ impl JobQueue {
             .llen("job_queue")
             .map_err(|e| FeelPayError::Internal(format!("Failed to get queue length: {}", e)))?;
 
-        let delayed_count: i64 = conn
-            .zcard("job_queue_delayed")
-            .map_err(|e| FeelPayError::Internal(format!("Failed to get delayed queue length: {}", e)))?;
+        let delayed_count: i64 = conn.zcard("job_queue_delayed").map_err(|e| {
+            FeelPayError::Internal(format!("Failed to get delayed queue length: {}", e))
+        })?;
 
         Ok(QueueStats {
             queued_jobs: queued_count,

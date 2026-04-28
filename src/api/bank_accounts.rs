@@ -1,4 +1,6 @@
-use crate::engine::services::bank_account::{BankAccountService, AddBankAccountRequest, mask_bank_account};
+use crate::engine::services::bank_account::{
+    mask_bank_account, AddBankAccountRequest, BankAccountService,
+};
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
 use actix_web::{web, HttpResponse};
@@ -80,8 +82,7 @@ pub async fn add_bank_account(
     }
 
     // Get encryption key from config (TODO: pass from state)
-    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY")
-        .unwrap_or_else(|_| "0".repeat(64));
+    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
 
     let bank_account_service = BankAccountService::new(db.get_ref().clone(), &encryption_key)?;
 
@@ -132,8 +133,7 @@ pub async fn list_bank_accounts(
         ));
     }
 
-    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY")
-        .unwrap_or_else(|_| "0".repeat(64));
+    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
 
     let bank_account_service = BankAccountService::new(db.get_ref().clone(), &encryption_key)?;
     let limit = query.limit.unwrap_or(20);
@@ -195,8 +195,7 @@ pub async fn verify_bank_account(
         ));
     }
 
-    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY")
-        .unwrap_or_else(|_| "0".repeat(64));
+    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
 
     let bank_account_service = BankAccountService::new(db.get_ref().clone(), &encryption_key)?;
 
@@ -246,8 +245,7 @@ pub async fn set_primary_bank_account(
         ));
     }
 
-    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY")
-        .unwrap_or_else(|_| "0".repeat(64));
+    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
 
     let bank_account_service = BankAccountService::new(db.get_ref().clone(), &encryption_key)?;
 

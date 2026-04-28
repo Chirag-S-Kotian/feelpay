@@ -8,7 +8,11 @@ use crate::state::AppState;
 type HmacSha256 = Hmac<Sha256>;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("/webhooks").route("/inbound", web::post().to(inbound_webhook)));
+    cfg.service(
+        web::scope("/webhooks")
+            .route("/inbound", web::post().to(inbound_webhook))
+            .route("/verify", web::post().to(verify_webhook))
+    );
 }
 
 /// POST /api/v1/webhooks/inbound — FeelPay internal webhook/event ingress
@@ -146,4 +150,158 @@ async fn handle_dispute_event(
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     Ok(())
+}
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use sha2::{Sha256, Sha512, Digest};
+
+/// Request for webhook verification endpoint
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct WebhookVerifyRequest {
+    /// Raw webhook payload (base64 encoded)
+    pub payload: String,
+    /// X-FeelPay-Signature header value
+    pub signature: String,
+    /// Webhook signing secret
+    pub secret: String,
+}
+
+/// Response for webhook verification
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WebhookVerifyResponse {
+    pub valid: bool,
+    pub event_type: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Signature algorithm
+#[derive(Debug, Clone, Copy)]
+enum SignatureAlgorithm {
+    HmacSha256,
+    HmacSha512,
+}
+
+/// Parsed signature parts
+struct ParsedSignature {
+    timestamp: Option<i64>,
+    signature: Vec<u8>,
+    algo: SignatureAlgorithm,
+}
+
+/// Parse signature from header value
+fn parse_signature(sig: &str) -> Result<ParsedSignature, FeelPayError> {
+    let mut timestamp = None;
+    let mut signature = Vec::new();
+    let mut algo = SignatureAlgorithm::HmacSha256;
+
+    for part in sig.split(',') {
+        let part = part.trim();
+        if let Some((key, value)) = part.split_once('=') {
+            match key {
+                "t" => {
+                    timestamp = value.parse().ok();
+                }
+                "v1" => {
+                    algo = SignatureAlgorithm::HmacSha256;
+                    signature = hex::decode(value)
+                        .map_err(|_| FeelPayError::BadRequest("Invalid signature encoding".into()))?;
+                }
+                "v2" => {
+                    algo = SignatureAlgorithm::HmacSha512;
+                    signature = hex::decode(value)
+                        .map_err(|_| FeelPayError::BadRequest("Invalid signature encoding".into()))?;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if signature.is_empty() {
+        return Err(FeelPayError::BadRequest("Missing signature".into()));
+    }
+
+    Ok(ParsedSignature {
+        timestamp,
+        signature,
+        algo,
+    })
+}
+
+/// Compute expected signature
+fn compute_signature(payload: &[u8], secret: &str, algo: &SignatureAlgorithm) -> Vec<u8> {
+    match algo {
+        SignatureAlgorithm::HmacSha256 => {
+            let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+            mac.update(payload);
+            mac.finalize().into_bytes().to_vec()
+        }
+        SignatureAlgorithm::HmacSha512 => {
+            let mut mac = Hmac::<Sha512>::new_from_slice(secret.as_bytes()).unwrap();
+            mac.update(payload);
+            mac.finalize().into_bytes().to_vec()
+        }
+    }
+}
+
+/// Constant-time comparison to prevent timing attacks
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b.iter()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// POST /v1/webhooks/verify — Verify webhook signature
+#[utoipa::path(
+    post,
+    path = "/v1/webhooks/verify",
+    request_body = WebhookVerifyRequest,
+    responses(
+        (status = 200, description = "Verification result", body = WebhookVerifyResponse)
+    )
+)]
+pub async fn verify_webhook(
+    payload: web::Json<WebhookVerifyRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    // Decode payload
+    let payload_bytes = BASE64.decode(&payload.payload)
+        .map_err(|_| FeelPayError::BadRequest("Invalid payload encoding".into()))?;
+
+    // Parse signature
+    let sig_parts = parse_signature(&payload.signature)?;
+
+    // Check timestamp (5-minute window)
+    if let Some(timestamp) = sig_parts.timestamp {
+        let now = chrono::Utc::now().timestamp();
+        let age = now - timestamp;
+        if age > 300 || age < -300 {
+            return Ok(HttpResponse::Ok().json(WebhookVerifyResponse {
+                valid: false,
+                event_type: None,
+                error: Some("Timestamp expired".into()),
+            }));
+        }
+    }
+
+    // Verify HMAC
+    let expected_sig = compute_signature(&payload_bytes, &payload.secret, &sig_parts.algo);
+    let valid = constant_time_eq(&expected_sig, &sig_parts.signature);
+
+    // Extract event type if valid
+    let event_type = if valid {
+        serde_json::from_slice::<serde_json::Value>(&payload_bytes)
+            .ok()
+            .and_then(|v| v.get("event").or_else(|| v.get("type")))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    } else {
+        None
+    };
+
+    Ok(HttpResponse::Ok().json(WebhookVerifyResponse {
+        valid,
+        event_type,
+        error: if !valid { Some("Signature mismatch".into()) } else { None },
+    }))
 }

@@ -2,8 +2,8 @@ use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::engine::services::auth::MfaService;
 use crate::error::FeelPayError;
@@ -60,11 +60,20 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/team", web::get().to(list_team_members))
             .route("/team/invite", web::post().to(invite_team_member))
             .route("/team/{user_id}", web::delete().to(remove_team_member))
-            .route("/team/{user_id}/role", web::put().to(update_team_member_role))
+            .route(
+                "/team/{user_id}/role",
+                web::put().to(update_team_member_role),
+            )
             .route("/payment-methods", web::get().to(list_payment_methods))
-            .route("/payment-methods/{method_type}", web::put().to(update_payment_method))
+            .route(
+                "/payment-methods/{method_type}",
+                web::put().to(update_payment_method),
+            )
             .route("/request-activation", web::post().to(request_activation))
-            .route("/{merchant_id}/kyc-status", web::put().to(update_kyc_status)),
+            .route(
+                "/{merchant_id}/kyc-status",
+                web::put().to(update_kyc_status),
+            ),
     );
 }
 
@@ -180,17 +189,15 @@ pub async fn get_merchant(
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match row {
-        Some(row) => {
-            Ok(HttpResponse::Ok().json(serde_json::json!({
-                "id": row.get::<Uuid, _>(0),
-                "tenant_id": row.get::<Option<Uuid>, _>(1),
-                "name": row.get::<String, _>(2),
-                "email": row.get::<String, _>(3),
-                "api_key": row.get::<String, _>(4),
-                "business_name": row.get::<Option<String>, _>(5),
-                "status": row.get::<String, _>(6),
-            })))
-        }
+        Some(row) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "id": row.get::<Uuid, _>(0),
+            "tenant_id": row.get::<Option<Uuid>, _>(1),
+            "name": row.get::<String, _>(2),
+            "email": row.get::<String, _>(3),
+            "api_key": row.get::<String, _>(4),
+            "business_name": row.get::<Option<String>, _>(5),
+            "status": row.get::<String, _>(6),
+        }))),
         None => Err(FeelPayError::NotFound("Merchant not found".into())),
     }
 }
@@ -231,8 +238,7 @@ pub async fn get_profile(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
-    let Some(row) = row
-    else {
+    let Some(row) = row else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
@@ -324,7 +330,6 @@ pub async fn get_keys(
         "api_key": row.get::<String, _>(0)
     })))
 }
-
 
 #[utoipa::path(
     post,
@@ -522,7 +527,6 @@ pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
 
 // ============ Team Management ============
 
-
 #[derive(Deserialize, ToSchema)]
 pub struct InviteTeamMemberRequest {
     pub email: String,
@@ -632,7 +636,9 @@ pub async fn invite_team_member(
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     if existing.is_some() {
-        return Err(FeelPayError::Conflict("User with this email already exists".into()));
+        return Err(FeelPayError::Conflict(
+            "User with this email already exists".into(),
+        ));
     }
 
     // Generate a temporary password
@@ -850,7 +856,7 @@ pub async fn update_kyc_status(
     body: web::Json<UpdateKycStatusRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = path.into_inner();
-    
+
     // 1. Update merchant table
     let result = sqlx::query(
         r#"
@@ -860,7 +866,7 @@ pub async fn update_kyc_status(
             updated_at = NOW() 
         WHERE id = $2 
         RETURNING email
-        "#
+        "#,
     )
     .bind(&body.status)
     .bind(merchant_id)
@@ -870,7 +876,7 @@ pub async fn update_kyc_status(
     let Some(row) = result else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
-    
+
     let merchant_email: String = row.get(0);
 
     // 2. Create InApp notification
@@ -881,13 +887,18 @@ pub async fn update_kyc_status(
         _ => "KYC Status Updated",
     };
 
-    let notification_message = body.message.clone().unwrap_or_else(|| {
-        match body.status.as_str() {
-            "approved" => "Your KYC has been approved! You can now start accepting payments.".to_string(),
-            "rejected" => "Your KYC application has been rejected. Please contact support.".to_string(),
+    let notification_message = body
+        .message
+        .clone()
+        .unwrap_or_else(|| match body.status.as_str() {
+            "approved" => {
+                "Your KYC has been approved! You can now start accepting payments.".to_string()
+            }
+            "rejected" => {
+                "Your KYC application has been rejected. Please contact support.".to_string()
+            }
             _ => format!("Your KYC status has been updated to {}.", body.status),
-        }
-    });
+        });
 
     sqlx::query(
         r#"
@@ -896,7 +907,7 @@ pub async fn update_kyc_status(
             subject, body, status, entity_type, entity_id, metadata
         )
         VALUES ('in_app', 'merchant', $1, $2, $3, $4, 'sent', 'merchant', $1, $5)
-        "#
+        "#,
     )
     .bind(merchant_id)
     .bind(&merchant_email)
@@ -914,8 +925,9 @@ pub async fn update_kyc_status(
         &state.db,
         &merchant_email,
         &body.status,
-        body.message.as_deref()
-    ).await;
+        body.message.as_deref(),
+    )
+    .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "KYC status updated and notifications queued",
@@ -936,7 +948,7 @@ pub async fn list_payment_methods(
     let merchant_id = extract_merchant_id_internal(&req)?;
 
     let methods: Vec<crate::models::merchant::MerchantPaymentMethod> = sqlx::query_as(
-        "SELECT method_type, enabled, config FROM merchant_payment_methods WHERE merchant_id = $1"
+        "SELECT method_type, enabled, config FROM merchant_payment_methods WHERE merchant_id = $1",
     )
     .bind(merchant_id)
     .fetch_all(&state.db)
@@ -998,8 +1010,12 @@ pub async fn request_activation(
     .await?;
 
     match res {
-        Some(_) => Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pending", "message": "Activation request submitted" }))),
-        None => Err(FeelPayError::BadRequest("KYC already submitted or approved".into())),
+        Some(_) => Ok(HttpResponse::Ok().json(
+            serde_json::json!({ "status": "pending", "message": "Activation request submitted" }),
+        )),
+        None => Err(FeelPayError::BadRequest(
+            "KYC already submitted or approved".into(),
+        )),
     }
 }
 

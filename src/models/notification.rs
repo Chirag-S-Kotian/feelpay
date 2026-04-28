@@ -139,7 +139,9 @@ impl From<PgRow> for NotificationQueue {
     fn from(row: PgRow) -> Self {
         NotificationQueue {
             id: row.get("id"),
-            notification_type: NotificationType::from(row.get::<String, _>("notification_type").as_str()),
+            notification_type: NotificationType::from(
+                row.get::<String, _>("notification_type").as_str(),
+            ),
             recipient_type: RecipientType::from(row.get::<String, _>("recipient_type").as_str()),
             recipient_id: row.get("recipient_id"),
             recipient_email: row.get("recipient_email"),

@@ -51,7 +51,7 @@ export default function AdminWebhookTesting() {
       );
       const merchantList = data.merchants || [];
       setMerchants(merchantList);
-      if (merchantList.length > 0) {
+      if (merchantList[0]) {
         setSelectedMerchantId(merchantList[0].id);
       }
     } catch (err) {

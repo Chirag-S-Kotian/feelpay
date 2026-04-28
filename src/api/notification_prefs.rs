@@ -1,4 +1,6 @@
-use crate::engine::services::notification::{NotificationService, SetNotificationPreferenceRequest};
+use crate::engine::services::notification::{
+    NotificationService, SetNotificationPreferenceRequest,
+};
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
 use actix_web::{web, HttpResponse};

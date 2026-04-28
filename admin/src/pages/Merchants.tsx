@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../hooks/useApi';
-import { Search, Filter, Eye, Ban, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
 
 interface Merchant {
   id: string;

@@ -1,9 +1,10 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
-use utoipa::{ToSchema, IntoParams};
 
+use crate::api::pagination::{build_cursor, PaginatedResponse, PaginationParams};
 use crate::engine::processor::{MethodData, TransactionContext};
 use crate::error::FeelPayError;
 use crate::models::payment_order::{PaymentOrder, PaymentStatus};
@@ -72,8 +73,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 #[derive(Deserialize, ToSchema, IntoParams)]
 pub struct ListPaymentsQuery {
     pub status: Option<String>,
+    // Legacy pagination (deprecated)
     pub page: Option<i64>,
     pub per_page: Option<i64>,
+    // Cursor-based pagination
+    #[serde(flatten)]
+    pub pagination: PaginationParams,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -401,48 +406,76 @@ pub async fn list_payments(
     query: web::Query<ListPaymentsQuery>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
-    let offset = (page - 1) * per_page;
 
-    let orders = sqlx::query_as::<_, PaymentOrder>(
-        r#"
-        SELECT id, merchant_id, order_id, amount, currency, status, payment_method, payment_method_data, connector, customer_id, customer_email, customer_phone, description, notes, return_url, idempotency_key, gateway_reference, gateway_response, error_code, error_message, metadata, refunded_amount, created_at, updated_at, authorized_at, captured_at, settled_at
-        FROM payment_orders
-        WHERE merchant_id = $1
-          AND ($2::TEXT IS NULL OR status = $2::TEXT)
-        ORDER BY created_at DESC
-        LIMIT $3 OFFSET $4
-        "#,
-    )
-    .bind(merchant_id)
-    .bind(&query.status)
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    // Use cursor-based pagination if cursor provided, otherwise use legacy
+    let use_cursor = query.pagination.cursor.is_some();
+    let limit = query.pagination.limit.clamp(1, 100);
 
-    let total: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*)::BIGINT
-        FROM payment_orders
-        WHERE merchant_id = $1
-          AND ($2::TEXT IS NULL OR status = $2::TEXT)
-        "#,
-    )
-    .bind(merchant_id)
-    .bind(&query.status)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    let orders: Vec<PaymentOrder> = if use_cursor {
+        // Cursor-based pagination
+        let cursor = query
+            .pagination
+            .decode_cursor()?
+            .ok_or_else(|| FeelPayError::BadRequest("Invalid cursor".into()))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "page": page,
-        "per_page": per_page,
-        "total": total.0,
-        "payments": orders
-    })))
+        sqlx::query_as::<_, PaymentOrder>(
+            r#"
+            SELECT id, merchant_id, order_id, amount, currency, status, payment_method, payment_method_data, connector, customer_id, customer_email, customer_phone, description, notes, return_url, idempotency_key, gateway_reference, gateway_response, error_code, error_message, metadata, refunded_amount, created_at, updated_at, authorized_at, captured_at, settled_at
+            FROM payment_orders
+            WHERE merchant_id = $1
+              AND ($2::TEXT IS NULL OR status = $2::TEXT)
+              AND (created_at, id) < ($3::TIMESTAMP, $4::UUID)
+            ORDER BY created_at DESC, id DESC
+            LIMIT $5
+            "#,
+        )
+        .bind(merchant_id)
+        .bind(&query.status)
+        .bind(&cursor.sort_key)
+        .bind(&cursor.last_id)
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    } else {
+        // Legacy offset-based pagination (backward compatible)
+        let page = query.page.unwrap_or(1).max(1);
+        let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+        let offset = (page - 1) * per_page;
+
+        sqlx::query_as::<_, PaymentOrder>(
+            r#"
+            SELECT id, merchant_id, order_id, amount, currency, status, payment_method, payment_method_data, connector, customer_id, customer_email, customer_phone, description, notes, return_url, idempotency_key, gateway_reference, gateway_response, error_code, error_message, metadata, refunded_amount, created_at, updated_at, authorized_at, captured_at, settled_at
+            FROM payment_orders
+            WHERE merchant_id = $1
+              AND ($2::TEXT IS NULL OR status = $2::TEXT)
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4
+            "#,
+        )
+        .bind(merchant_id)
+        .bind(&query.status)
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    };
+
+    let has_more = orders.len() > limit as usize;
+    let data: Vec<PaymentOrder> = orders.into_iter().take(limit as usize).collect();
+
+    // Generate next cursor from last record
+    let next_cursor = if has_more {
+        data.last()
+            .map(|p| build_cursor(&p.created_at.to_rfc3339(), &p.id.to_string()))
+    } else {
+        None
+    };
+
+    let response = PaginatedResponse::new(data, next_cursor, has_more);
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 #[utoipa::path(
@@ -750,7 +783,6 @@ pub async fn refund_payment(
     Ok(HttpResponse::Ok().json(body))
 }
 
-
 // ============ Batch Refund ============
 
 #[derive(Debug, Deserialize)]
@@ -810,7 +842,9 @@ pub async fn batch_refund(
                 // Check if refundable
                 if !matches!(
                     order.status,
-                    PaymentStatus::Captured | PaymentStatus::Settled | PaymentStatus::PartiallyRefunded
+                    PaymentStatus::Captured
+                        | PaymentStatus::Settled
+                        | PaymentStatus::PartiallyRefunded
                 ) {
                     failed += 1;
                     results.push(BatchRefundResult {
@@ -888,13 +922,17 @@ pub async fn batch_refund(
                         .ok();
 
                         // Record in ledger
-                        state.ledger.record_transaction(
-                            refund_id,
-                            merchant_id,
-                            -refund_amount,
-                            0,
-                            "batch_refund",
-                        ).await.ok();
+                        state
+                            .ledger
+                            .record_transaction(
+                                refund_id,
+                                merchant_id,
+                                -refund_amount,
+                                0,
+                                "batch_refund",
+                            )
+                            .await
+                            .ok();
 
                         successful += 1;
                         results.push(BatchRefundResult {

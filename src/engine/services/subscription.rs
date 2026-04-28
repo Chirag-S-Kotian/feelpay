@@ -105,7 +105,7 @@ pub async fn create_plan(
 ) -> Result<SubscriptionPlan, sqlx::Error> {
     let id = Uuid::new_v4();
     let currency = req.currency.unwrap_or_else(|| "INR".to_string());
-    
+
     let plan: SubscriptionPlan = sqlx::query_as(
         r#"
         INSERT INTO subscription_plans (id, merchant_id, name, amount, currency, billing_cycle, trial_days, active)
@@ -122,7 +122,7 @@ pub async fn create_plan(
     .bind(req.trial_days)
     .fetch_one(pool)
     .await?;
-    
+
     Ok(plan)
 }
 
@@ -137,7 +137,7 @@ pub async fn list_plans(
     .bind(merchant_id)
     .fetch_all(pool)
     .await?;
-    
+
     Ok(plans)
 }
 
@@ -153,13 +153,13 @@ pub async fn create_subscription(
     let (plan_id, plan_name, amount, currency, billing_cycle, trial_days) =
         if let Some(plan_id) = req.plan_id {
             let plan = sqlx::query_as::<_, SubscriptionPlan>(
-                "SELECT * FROM subscription_plans WHERE id = $1 AND merchant_id = $2 AND active = true",
-            )
-            .bind(plan_id)
-            .bind(merchant_id)
-            .fetch_optional(pool)
-            .await?
-            .ok_or(sqlx::Error::RowNotFound)?;
+            "SELECT * FROM subscription_plans WHERE id = $1 AND merchant_id = $2 AND active = true",
+        )
+        .bind(plan_id)
+        .bind(merchant_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?;
 
             (
                 Some(plan_id),
@@ -179,10 +179,11 @@ pub async fn create_subscription(
                 req.trial_days,
             )
         };
-    
+
     // Calculate period dates based on billing cycle
-    let (period_start, period_end) = calculate_period(&billing_cycle, req.start_date.unwrap_or(now));
-    
+    let (period_start, period_end) =
+        calculate_period(&billing_cycle, req.start_date.unwrap_or(now));
+
     // Calculate trial dates if applicable
     let (trial_start, trial_end) = if let Some(days) = trial_days {
         let start = period_start;
@@ -191,7 +192,7 @@ pub async fn create_subscription(
     } else {
         (None, None)
     };
-    
+
     let subscription: Subscription = sqlx::query_as(
         r#"
         INSERT INTO subscriptions (
@@ -217,7 +218,7 @@ pub async fn create_subscription(
     .bind(trial_end)
     .fetch_one(pool)
     .await?;
-    
+
     Ok(subscription)
 }
 
@@ -227,14 +228,12 @@ pub async fn get_subscription(
     merchant_id: Uuid,
     subscription_id: Uuid,
 ) -> Result<Option<Subscription>, sqlx::Error> {
-    let sub = sqlx::query_as(
-        "SELECT * FROM subscriptions WHERE id = $1 AND merchant_id = $2"
-    )
-    .bind(subscription_id)
-    .bind(merchant_id)
-    .fetch_optional(pool)
-    .await?;
-    
+    let sub = sqlx::query_as("SELECT * FROM subscriptions WHERE id = $1 AND merchant_id = $2")
+        .bind(subscription_id)
+        .bind(merchant_id)
+        .fetch_optional(pool)
+        .await?;
+
     Ok(sub)
 }
 
@@ -266,7 +265,7 @@ pub async fn list_subscriptions(
         .fetch_all(pool)
         .await?
     };
-    
+
     Ok(subs)
 }
 
@@ -288,7 +287,7 @@ pub async fn pause_subscription(
     .bind(merchant_id)
     .fetch_one(pool)
     .await?;
-    
+
     Ok(sub)
 }
 
@@ -310,7 +309,7 @@ pub async fn resume_subscription(
     .bind(merchant_id)
     .fetch_one(pool)
     .await?;
-    
+
     Ok(sub)
 }
 
@@ -348,7 +347,7 @@ pub async fn cancel_subscription(
         .fetch_one(pool)
         .await?
     };
-    
+
     Ok(sub)
 }
 
@@ -359,15 +358,13 @@ pub async fn generate_invoice(
 ) -> Result<SubscriptionInvoice, sqlx::Error> {
     let id = Uuid::new_v4();
     let invoice_number = format!("INV-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"));
-    
+
     // Get subscription details
-    let sub: Subscription = sqlx::query_as(
-        "SELECT * FROM subscriptions WHERE id = $1"
-    )
-    .bind(subscription_id)
-    .fetch_one(pool)
-    .await?;
-    
+    let sub: Subscription = sqlx::query_as("SELECT * FROM subscriptions WHERE id = $1")
+        .bind(subscription_id)
+        .fetch_one(pool)
+        .await?;
+
     let invoice: SubscriptionInvoice = sqlx::query_as(
         r#"
         INSERT INTO subscription_invoices (
@@ -388,7 +385,7 @@ pub async fn generate_invoice(
     .bind(sub.current_period_end)
     .fetch_one(pool)
     .await?;
-    
+
     Ok(invoice)
 }
 
@@ -420,7 +417,7 @@ pub async fn list_invoices(
         .fetch_all(pool)
         .await?
     };
-    
+
     Ok(invoices)
 }
 
@@ -434,14 +431,14 @@ fn calculate_period(billing_cycle: &str, start: DateTime<Utc>) -> (DateTime<Utc>
         "yearly" => start + chrono::Duration::days(365),
         _ => start + chrono::Duration::days(30),
     };
-    
+
     (start, end)
 }
 
 /// Process due subscriptions (called by scheduler)
 pub async fn process_due_subscriptions(pool: &PgPool) -> Result<Vec<Uuid>, sqlx::Error> {
     let now = Utc::now();
-    
+
     // Find subscriptions that need renewal
     let due_subs: Vec<Subscription> = sqlx::query_as(
         r#"
@@ -454,16 +451,16 @@ pub async fn process_due_subscriptions(pool: &PgPool) -> Result<Vec<Uuid>, sqlx:
     .bind(now)
     .fetch_all(pool)
     .await?;
-    
+
     let mut processed = Vec::new();
-    
+
     for sub in due_subs {
         // Generate invoice for next period
         match generate_invoice(pool, sub.id).await {
             Ok(_) => {
                 // Update period dates
                 let (new_start, new_end) = calculate_period(&sub.billing_cycle, now);
-                
+
                 sqlx::query(
                     r#"
                     UPDATE subscriptions
@@ -476,15 +473,19 @@ pub async fn process_due_subscriptions(pool: &PgPool) -> Result<Vec<Uuid>, sqlx:
                 .bind(sub.id)
                 .execute(pool)
                 .await?;
-                
+
                 processed.push(sub.id);
             }
             Err(e) => {
-                tracing::error!("Failed to generate invoice for subscription {}: {}", sub.id, e);
+                tracing::error!(
+                    "Failed to generate invoice for subscription {}: {}",
+                    sub.id,
+                    e
+                );
             }
         }
     }
-    
+
     Ok(processed)
 }
 

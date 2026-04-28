@@ -51,7 +51,7 @@ pub async fn create_subscription_plan(
     body: web::Json<CreatePlanBody>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     let plan = create_plan(
         &state.db,
         merchant_id,
@@ -65,7 +65,7 @@ pub async fn create_subscription_plan(
     )
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     Ok(HttpResponse::Created().json(PlanResponse {
         id: plan.id,
         name: plan.name,
@@ -82,11 +82,11 @@ pub async fn list_subscription_plans(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     let plans = list_plans(&state.db, merchant_id)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     let responses: Vec<PlanResponse> = plans
         .into_iter()
         .map(|p| PlanResponse {
@@ -98,7 +98,7 @@ pub async fn list_subscription_plans(
             trial_days: p.trial_days,
         })
         .collect();
-    
+
     Ok(HttpResponse::Ok().json(responses))
 }
 
@@ -136,7 +136,7 @@ pub async fn create_subscription_handler(
     body: web::Json<CreateSubscriptionBody>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     let sub = create_subscription(
         &state.db,
         merchant_id,
@@ -153,7 +153,7 @@ pub async fn create_subscription_handler(
     )
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     Ok(HttpResponse::Created().json(SubscriptionResponse {
         id: sub.id,
         customer_id: sub.customer_id,
@@ -203,7 +203,7 @@ pub async fn list_subscriptions_handler(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let (limit, offset) = parse_pagination(query.limit, query.offset)?;
-    
+
     let subs = list_subscriptions(
         &state.db,
         merchant_id,
@@ -213,7 +213,7 @@ pub async fn list_subscriptions_handler(
     )
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     let responses: Vec<SubscriptionResponse> = subs
         .into_iter()
         .map(|s| SubscriptionResponse {
@@ -230,7 +230,7 @@ pub async fn list_subscriptions_handler(
             cancel_at_period_end: s.cancel_at_period_end,
         })
         .collect();
-    
+
     Ok(HttpResponse::Ok().json(responses))
 }
 
@@ -242,11 +242,11 @@ pub async fn get_subscription_handler(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let subscription_id = path.into_inner();
-    
+
     let sub = get_subscription(&state.db, merchant_id, subscription_id)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     match sub {
         Some(s) => Ok(HttpResponse::Ok().json(SubscriptionResponse {
             id: s.id,
@@ -273,11 +273,11 @@ pub async fn pause_subscription_handler(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let subscription_id = path.into_inner();
-    
+
     let sub = pause_subscription(&state.db, merchant_id, subscription_id)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     Ok(HttpResponse::Ok().json(SubscriptionResponse {
         id: sub.id,
         customer_id: sub.customer_id,
@@ -301,11 +301,11 @@ pub async fn resume_subscription_handler(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let subscription_id = path.into_inner();
-    
+
     let sub = resume_subscription(&state.db, merchant_id, subscription_id)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     Ok(HttpResponse::Ok().json(SubscriptionResponse {
         id: sub.id,
         customer_id: sub.customer_id,
@@ -339,11 +339,11 @@ pub async fn cancel_subscription_handler(
         .as_ref()
         .map(|b| b.cancel_at_period_end.unwrap_or(false))
         .unwrap_or(false);
-    
+
     let sub = cancel_subscription(&state.db, merchant_id, subscription_id, cancel_at_end)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     Ok(HttpResponse::Ok().json(SubscriptionResponse {
         id: sub.id,
         customer_id: sub.customer_id,
@@ -382,11 +382,11 @@ pub async fn list_subscription_invoices(
     let subscription_id = path.into_inner();
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
-    
+
     let invoices = list_invoices(&state.db, merchant_id, Some(subscription_id), limit, offset)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
-    
+
     let responses: Vec<InvoiceResponse> = invoices
         .into_iter()
         .map(|i| InvoiceResponse {
@@ -400,7 +400,7 @@ pub async fn list_subscription_invoices(
             paid_at: i.paid_at.map(|d| d.to_rfc3339()),
         })
         .collect();
-    
+
     Ok(HttpResponse::Ok().json(responses))
 }
 

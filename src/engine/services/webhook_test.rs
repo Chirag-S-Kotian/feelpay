@@ -58,9 +58,10 @@ impl WebhookTestService {
     ) -> Result<WebhookTestResult, FeelPayError> {
         // Validate event type
         if !SUPPORTED_WEBHOOK_EVENTS.contains(&event_type) {
-            return Err(FeelPayError::BadRequest(
-                format!("Unsupported webhook event type: {}", event_type),
-            ));
+            return Err(FeelPayError::BadRequest(format!(
+                "Unsupported webhook event type: {}",
+                event_type
+            )));
         }
 
         // Generate sample payload
@@ -92,15 +93,17 @@ impl WebhookTestService {
         let (status, http_status, response_body, error_message) = match result {
             Ok(response) => {
                 let status_code = response.status().as_u16() as i32;
-                let body = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "".to_string());
+                let body = response.text().await.unwrap_or_else(|_| "".to_string());
 
                 if status_code >= 200 && status_code < 300 {
                     ("sent".to_string(), Some(status_code), Some(body), None)
                 } else {
-                    ("failed".to_string(), Some(status_code), Some(body), Some(format!("HTTP {}", status_code)))
+                    (
+                        "failed".to_string(),
+                        Some(status_code),
+                        Some(body),
+                        Some(format!("HTTP {}", status_code)),
+                    )
                 }
             }
             Err(e) => {
@@ -135,7 +138,11 @@ impl WebhookTestService {
     }
 
     /// Generate sample payload for an event type
-    pub fn generate_sample_payload(&self, event_type: &str, merchant_id: Uuid) -> serde_json::Value {
+    pub fn generate_sample_payload(
+        &self,
+        event_type: &str,
+        merchant_id: Uuid,
+    ) -> serde_json::Value {
         match event_type {
             "payment.success" => json!({
                 "event": "payment.success",
@@ -293,18 +300,21 @@ impl WebhookTestService {
         })?;
 
         // Get paginated results
-        let logs = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<i64>,
-            Option<String>,
-            Option<String>,
-            String,
-        )>(
+        let logs = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<i64>,
+                Option<String>,
+                Option<String>,
+                String,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, event_type, webhook_url, status, http_status,
@@ -328,7 +338,18 @@ impl WebhookTestService {
         let items = logs
             .into_iter()
             .map(|row| {
-                let (id, merchant_id, event_type, webhook_url, status, http_status, response_time_ms, response_body, error_message, created_at) = row;
+                let (
+                    id,
+                    merchant_id,
+                    event_type,
+                    webhook_url,
+                    status,
+                    http_status,
+                    response_time_ms,
+                    response_body,
+                    error_message,
+                    created_at,
+                ) = row;
                 WebhookTestResult {
                     test_id: Uuid::parse_str(&id).unwrap_or_default(),
                     merchant_id: Uuid::parse_str(&merchant_id).unwrap_or_default(),
@@ -391,10 +412,14 @@ mod tests {
         let secret = "test-secret";
 
         let signature = service.sign_webhook(payload, secret).unwrap();
-        let is_valid = service.verify_webhook_signature(payload, &signature, secret).unwrap();
+        let is_valid = service
+            .verify_webhook_signature(payload, &signature, secret)
+            .unwrap();
         assert!(is_valid);
 
-        let is_invalid = service.verify_webhook_signature(payload, "invalid", secret).unwrap();
+        let is_invalid = service
+            .verify_webhook_signature(payload, "invalid", secret)
+            .unwrap();
         assert!(!is_invalid);
     }
 }

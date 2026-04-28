@@ -174,7 +174,10 @@ impl ExportService {
     ) -> Result<ExportJob, FeelPayError> {
         // Check for existing job with same idempotency key
         if let Some(ref idempotency_key) = request.idempotency_key {
-            if let Ok(Some(existing_job)) = self.get_export_job_by_idempotency_key(idempotency_key).await {
+            if let Ok(Some(existing_job)) = self
+                .get_export_job_by_idempotency_key(idempotency_key)
+                .await
+            {
                 // Verify it belongs to the same merchant
                 if existing_job.merchant_id == merchant_id {
                     return Ok(existing_job);
@@ -185,23 +188,26 @@ impl ExportService {
         let job_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let job = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<serde_json::Value>,
-            Option<String>,
-            Option<i64>,
-            Option<i32>,
-            Option<String>,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )>(
+        let job = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<serde_json::Value>,
+                Option<String>,
+                Option<i64>,
+                Option<i32>,
+                Option<String>,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
             r#"
             INSERT INTO export_jobs (
                 id, merchant_id, job_type, status, filters, 
@@ -265,23 +271,26 @@ impl ExportService {
         merchant_id: Uuid,
         job_id: Uuid,
     ) -> Result<Option<ExportJob>, FeelPayError> {
-        let job = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<serde_json::Value>,
-            Option<String>,
-            Option<i64>,
-            Option<i32>,
-            Option<String>,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )>(
+        let job = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<serde_json::Value>,
+                Option<String>,
+                Option<i64>,
+                Option<i32>,
+                Option<String>,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, job_type, status, filters,
@@ -303,14 +312,14 @@ impl ExportService {
         match job {
             Some(job_row) => {
                 let export_job = self.row_to_export_job(job_row);
-                
+
                 // Tenant isolation check
                 if export_job.merchant_id != merchant_id {
                     return Err(FeelPayError::Forbidden(
                         "You do not have permission to access this export job".into(),
                     ));
                 }
-                
+
                 Ok(Some(export_job))
             }
             None => Ok(None),
@@ -349,23 +358,26 @@ impl ExportService {
         })?;
 
         // Get paginated results
-        let jobs = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<serde_json::Value>,
-            Option<String>,
-            Option<i64>,
-            Option<i32>,
-            Option<String>,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )>(
+        let jobs = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<serde_json::Value>,
+                Option<String>,
+                Option<i64>,
+                Option<i32>,
+                Option<String>,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, job_type, status, filters,
@@ -388,7 +400,10 @@ impl ExportService {
             FeelPayError::Database(e.to_string())
         })?;
 
-        let items = jobs.into_iter().map(|row| self.row_to_export_job(row)).collect();
+        let items = jobs
+            .into_iter()
+            .map(|row| self.row_to_export_job(row))
+            .collect();
 
         Ok(PaginatedResponse {
             items,
@@ -403,23 +418,26 @@ impl ExportService {
         &self,
         idempotency_key: &str,
     ) -> Result<Option<ExportJob>, FeelPayError> {
-        let job = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            Option<serde_json::Value>,
-            Option<String>,
-            Option<i64>,
-            Option<i32>,
-            Option<String>,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )>(
+        let job = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                Option<serde_json::Value>,
+                Option<String>,
+                Option<i64>,
+                Option<i32>,
+                Option<String>,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, job_type, status, filters,
@@ -534,7 +552,7 @@ impl ExportService {
     ) -> Result<Vec<u8>, FeelPayError> {
         // Parse filters
         let filters = filters.unwrap_or_default();
-        
+
         // Build query with filters
         let mut query = String::from(
             r#"
@@ -608,20 +626,23 @@ impl ExportService {
         query.push_str(" GROUP BY po.id ORDER BY po.created_at DESC");
 
         // Execute query with dynamic parameters
-        let mut sql_query = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            i64,
-            String,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-            i64,
-            Option<String>,
-        )>(&query)
+        let mut sql_query = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                i64,
+                String,
+                Option<String>,
+                String,
+                String,
+                Option<String>,
+                i64,
+                Option<String>,
+            ),
+        >(&query)
         .bind(merchant_id);
 
         // Bind date range parameters
@@ -648,19 +669,20 @@ impl ExportService {
             sql_query = sql_query.bind(amount_range.min).bind(amount_range.max);
         }
 
-        let transactions = sql_query
-            .fetch_all(&self.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch transactions for export: {:?}", e);
-                FeelPayError::Database(e.to_string())
-            })?;
+        let transactions = sql_query.fetch_all(&self.db).await.map_err(|e| {
+            tracing::error!("Failed to fetch transactions for export: {:?}", e);
+            FeelPayError::Database(e.to_string())
+        })?;
 
         // Calculate metadata
         let total_transactions = transactions.len() as i32;
         let total_amount: i64 = transactions.iter().map(|t| t.4).sum();
         let date_range_str = if let Some(dr) = &filters.date_range {
-            format!("{} to {}", dr.start.format("%Y-%m-%d"), dr.end.format("%Y-%m-%d"))
+            format!(
+                "{} to {}",
+                dr.start.format("%Y-%m-%d"),
+                dr.end.format("%Y-%m-%d")
+            )
         } else {
             "All".to_string()
         };
@@ -731,11 +753,10 @@ impl ExportService {
         })?;
 
         // Write empty line
-        wtr.write_record(&[""])
-            .map_err(|e| {
-                tracing::error!("Failed to write CSV empty line: {:?}", e);
-                FeelPayError::Internal("CSV generation failed".into())
-            })?;
+        wtr.write_record(&[""]).map_err(|e| {
+            tracing::error!("Failed to write CSV empty line: {:?}", e);
+            FeelPayError::Internal("CSV generation failed".into())
+        })?;
 
         // Write header row
         wtr.write_record(&[
@@ -793,11 +814,10 @@ impl ExportService {
             })?;
         }
 
-        wtr.flush()
-            .map_err(|e| {
-                tracing::error!("Failed to flush CSV: {:?}", e);
-                FeelPayError::Internal("CSV generation failed".into())
-            })?;
+        wtr.flush().map_err(|e| {
+            tracing::error!("Failed to flush CSV: {:?}", e);
+            FeelPayError::Internal("CSV generation failed".into())
+        })?;
 
         Ok(wtr.into_inner().map_err(|e| {
             tracing::error!("Failed to get CSV bytes: {:?}", e);
@@ -846,12 +866,10 @@ impl ExportService {
 
         // Write metadata
         let mut row = 0;
-        sheet
-            .write_string(row, 0, "METADATA", None)
-            .map_err(|e| {
-                tracing::error!("Failed to write Excel metadata: {:?}", e);
-                FeelPayError::Internal("Excel generation failed".into())
-            })?;
+        sheet.write_string(row, 0, "METADATA", None).map_err(|e| {
+            tracing::error!("Failed to write Excel metadata: {:?}", e);
+            FeelPayError::Internal("Excel generation failed".into())
+        })?;
         row += 1;
 
         sheet
@@ -972,20 +990,28 @@ impl ExportService {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
+            sheet.write_string(row, 1, &order_id, None).map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
             sheet
-                .write_string(row, 1, &order_id, None)
+                .write_string(
+                    row,
+                    2,
+                    &mask_email(&customer_email.unwrap_or_default()),
+                    None,
+                )
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
             sheet
-                .write_string(row, 2, &mask_email(&customer_email.unwrap_or_default()), None)
-                .map_err(|e| {
-                    tracing::error!("Failed to write Excel: {:?}", e);
-                    FeelPayError::Internal("Excel generation failed".into())
-                })?;
-            sheet
-                .write_string(row, 3, &mask_phone(&customer_phone.unwrap_or_default()), None)
+                .write_string(
+                    row,
+                    3,
+                    &mask_phone(&customer_phone.unwrap_or_default()),
+                    None,
+                )
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
@@ -996,30 +1022,24 @@ impl ExportService {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
-            sheet
-                .write_string(row, 5, &currency, None)
-                .map_err(|e| {
-                    tracing::error!("Failed to write Excel: {:?}", e);
-                    FeelPayError::Internal("Excel generation failed".into())
-                })?;
+            sheet.write_string(row, 5, &currency, None).map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
             sheet
                 .write_string(row, 6, &payment_method.unwrap_or_default(), None)
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
-            sheet
-                .write_string(row, 7, &status, None)
-                .map_err(|e| {
-                    tracing::error!("Failed to write Excel: {:?}", e);
-                    FeelPayError::Internal("Excel generation failed".into())
-                })?;
-            sheet
-                .write_string(row, 8, &created_at, None)
-                .map_err(|e| {
-                    tracing::error!("Failed to write Excel: {:?}", e);
-                    FeelPayError::Internal("Excel generation failed".into())
-                })?;
+            sheet.write_string(row, 7, &status, None).map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
+            sheet.write_string(row, 8, &created_at, None).map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
             sheet
                 .write_string(row, 9, &settled_at.unwrap_or_default(), None)
                 .map_err(|e| {
@@ -1061,7 +1081,7 @@ fn mask_email(email: &str) -> String {
     if email.is_empty() {
         return String::new();
     }
-    
+
     if let Some(at_pos) = email.find('@') {
         if at_pos > 0 {
             let first_char = &email[0..1];
@@ -1069,7 +1089,7 @@ fn mask_email(email: &str) -> String {
             return format!("{}***{}", first_char, domain);
         }
     }
-    
+
     "***".to_string()
 }
 
@@ -1078,7 +1098,7 @@ fn mask_phone(phone: &str) -> String {
     if phone.len() < 4 {
         return "XXXX XXXX XXXX".to_string();
     }
-    
+
     let last4 = &phone[phone.len() - 4..];
     format!("+91 XXXX XXXX {}", last4)
 }
@@ -1098,10 +1118,22 @@ mod tests {
 
     #[test]
     fn test_export_job_type_from_str() {
-        assert_eq!(ExportJobType::from_str("transaction"), Some(ExportJobType::Transaction));
-        assert_eq!(ExportJobType::from_str("settlement"), Some(ExportJobType::Settlement));
-        assert_eq!(ExportJobType::from_str("refund"), Some(ExportJobType::Refund));
-        assert_eq!(ExportJobType::from_str("dispute"), Some(ExportJobType::Dispute));
+        assert_eq!(
+            ExportJobType::from_str("transaction"),
+            Some(ExportJobType::Transaction)
+        );
+        assert_eq!(
+            ExportJobType::from_str("settlement"),
+            Some(ExportJobType::Settlement)
+        );
+        assert_eq!(
+            ExportJobType::from_str("refund"),
+            Some(ExportJobType::Refund)
+        );
+        assert_eq!(
+            ExportJobType::from_str("dispute"),
+            Some(ExportJobType::Dispute)
+        );
         assert_eq!(ExportJobType::from_str("bulk"), Some(ExportJobType::Bulk));
         assert_eq!(ExportJobType::from_str("invalid"), None);
     }
@@ -1117,7 +1149,10 @@ mod tests {
     #[test]
     fn test_job_status_from_str() {
         assert_eq!(JobStatus::from_str("queued"), Some(JobStatus::Queued));
-        assert_eq!(JobStatus::from_str("processing"), Some(JobStatus::Processing));
+        assert_eq!(
+            JobStatus::from_str("processing"),
+            Some(JobStatus::Processing)
+        );
         assert_eq!(JobStatus::from_str("completed"), Some(JobStatus::Completed));
         assert_eq!(JobStatus::from_str("failed"), Some(JobStatus::Failed));
         assert_eq!(JobStatus::from_str("invalid"), None);
@@ -1173,7 +1208,7 @@ mod property_tests {
                 ExportJobType::Bulk,
             ];
             let job_type = job_types[job_type_idx].clone();
-            
+
             let request = CreateExportJobRequest {
                 job_type: job_type.clone(),
                 filters: None,
@@ -1209,7 +1244,7 @@ mod property_tests {
                 ExportJobType::Bulk,
             ];
             let job_type = job_types[job_type_idx].clone();
-            
+
             let request = CreateExportJobRequest {
                 job_type,
                 filters: None,
@@ -1237,19 +1272,19 @@ mod property_tests {
             email in r"[a-z][a-z0-9]*@[a-z0-9]+\.[a-z]{2,}"
         ) {
             let masked = mask_email(&email);
-            
+
             // Verify domain is preserved
             if let Some(at_pos) = email.find('@') {
                 let domain = &email[at_pos..];
                 prop_assert!(masked.contains(domain), "Domain should be preserved in masked email");
             }
-            
+
             // Verify first character is shown
             if !email.is_empty() {
                 let first_char = &email[0..1];
                 prop_assert!(masked.contains(first_char), "First character should be visible");
             }
-            
+
             // Verify masking characters are present
             prop_assert!(masked.contains("*"), "Masked email should contain asterisks");
         }
@@ -1263,12 +1298,12 @@ mod property_tests {
         ) {
             let email = format!("{}@{}", local_part, domain);
             let masked = mask_email(&email);
-            
+
             // Verify format matches pattern: X***@domain
             prop_assert!(masked.contains("***"), "Should contain masking asterisks");
             prop_assert!(masked.contains("@"), "Should preserve @ symbol");
             prop_assert!(masked.contains(&domain), "Should preserve domain");
-            
+
             // Verify no more than first character is visible from local part
             let visible_local = masked.split('@').next().unwrap_or("");
             let non_asterisk_count = visible_local.chars().filter(|c| *c != '*').count();
@@ -1282,12 +1317,12 @@ mod property_tests {
             phone in r"\d{10,15}"
         ) {
             let masked = mask_phone(&phone);
-            
+
             if phone.len() >= 4 {
                 let last_four = &phone[phone.len() - 4..];
                 prop_assert!(masked.contains(last_four), "Last 4 digits should be preserved");
             }
-            
+
             // Verify masking characters are present
             prop_assert!(masked.contains("X"), "Masked phone should contain X characters");
         }
@@ -1299,13 +1334,13 @@ mod property_tests {
             phone in r"\d{10,15}"
         ) {
             let masked = mask_phone(&phone);
-            
+
             // Verify format includes country code prefix
             prop_assert!(masked.contains("+91"), "Should include country code +91");
-            
+
             // Verify X masking pattern
             prop_assert!(masked.contains("XXXX"), "Should contain XXXX masking pattern");
-            
+
             // Verify last 4 digits are preserved
             if phone.len() >= 4 {
                 let last_four = &phone[phone.len() - 4..];
@@ -1324,7 +1359,7 @@ mod property_tests {
             let masked_email_1 = mask_email(&email);
             let masked_email_2 = mask_email(&email);
             prop_assert_eq!(masked_email_1, masked_email_2, "Email masking should be idempotent");
-            
+
             let masked_phone_1 = mask_phone(&phone);
             let masked_phone_2 = mask_phone(&phone);
             prop_assert_eq!(masked_phone_1, masked_phone_2, "Phone masking should be idempotent");
@@ -1343,7 +1378,7 @@ mod property_tests {
             key_suffix in r"[a-zA-Z0-9\-]{1,50}"
         ) {
             let idempotency_key = format!("export-{}", key_suffix);
-            
+
             let request1 = CreateExportJobRequest {
                 job_type: ExportJobType::Transaction,
                 filters: None,
@@ -1375,7 +1410,7 @@ mod property_tests {
 
             // Same key should be equal
             prop_assert_eq!(key1, key2);
-            
+
             // Different keys should not be equal
             prop_assert_ne!(key1, key3);
         }
@@ -1534,7 +1569,7 @@ mod property_tests {
         ) {
             // If percent_2 comes after percent_1, it should be >= percent_1
             let is_monotonic = percent_2 >= percent_1 || percent_1 > percent_2;
-            
+
             // Verify monotonicity property
             if percent_2 > percent_1 {
                 prop_assert!(percent_2 >= percent_1, "Progress should increase monotonically");
@@ -1586,7 +1621,7 @@ mod property_tests {
                 // At completion, time remaining should be minimal
                 prop_assert!(time_remaining >= 0, "Time remaining should be non-negative at completion");
             }
-            
+
             // When progress is 0%, time remaining should be maximum
             if percent == 0 {
                 // At start, time remaining should be positive
@@ -1632,17 +1667,16 @@ mod property_tests {
     }
 }
 
-
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use uuid::Uuid;
     use chrono::Utc;
+    use uuid::Uuid;
 
     // ============================================================================
     // Integration Test 18.1: End-to-end transaction export
     // **Validates: Requirements 1.1, 1.2, 1.3, 1.5, 1.10, 1.11**
-    // 
+    //
     // Test flow:
     // 1. Create test transactions in DB
     // 2. Request export with filters (date_range, status, payment_method)
@@ -1661,12 +1695,12 @@ mod integration_tests {
         // - Test database with transactions
         // - Mock S3 or localstack
         // - Background worker running
-        // 
+        //
         // For now, we verify the structure and data models are correct
-        
+
         let merchant_id = Uuid::new_v4();
         let job_id = Uuid::new_v4();
-        
+
         // Verify ExportJob structure has all required fields
         let export_job = ExportJob {
             id: job_id,
@@ -1692,7 +1726,7 @@ mod integration_tests {
             idempotency_key: Some("test-idempotency-key".to_string()),
             created_by_user_id: None,
         };
-        
+
         // Verify job structure
         assert_eq!(export_job.merchant_id, merchant_id);
         assert_eq!(export_job.job_type, ExportJobType::Transaction);
@@ -1700,15 +1734,18 @@ mod integration_tests {
         assert!(export_job.filters.is_some());
         assert!(export_job.file_url.is_none());
         assert!(export_job.record_count.is_none());
-        
+
         // Verify idempotency key is stored
-        assert_eq!(export_job.idempotency_key, Some("test-idempotency-key".to_string()));
+        assert_eq!(
+            export_job.idempotency_key,
+            Some("test-idempotency-key".to_string())
+        );
     }
 
     // ============================================================================
     // Integration Test 18.2: Scheduled report generation and delivery
     // **Validates: Requirements 7.4, 7.5, 7.6, 7.7**
-    // 
+    //
     // Test flow:
     // 1. Create scheduled report (report_type=settlement, frequency=weekly, format=pdf)
     // 2. Trigger job manually via background worker
@@ -1719,11 +1756,13 @@ mod integration_tests {
     // ============================================================================
     #[tokio::test]
     async fn integration_test_scheduled_report_generation_and_delivery() {
-        use crate::engine::services::report::{ReportService, ReportType, ReportFrequency, ReportFormat};
-        
+        use crate::engine::services::report::{
+            ReportFormat, ReportFrequency, ReportService, ReportType,
+        };
+
         let merchant_id = Uuid::new_v4();
         let report_id = Uuid::new_v4();
-        
+
         // Verify ScheduledReport structure has all required fields
         let scheduled_report = crate::engine::services::report::ScheduledReport {
             id: report_id,
@@ -1742,10 +1781,13 @@ mod integration_tests {
             updated_at: Utc::now(),
             created_by_user_id: None,
         };
-        
+
         // Verify scheduled report structure
         assert_eq!(scheduled_report.merchant_id, merchant_id);
-        assert_eq!(scheduled_report.report_type, ReportType::SettlementReconciliation);
+        assert_eq!(
+            scheduled_report.report_type,
+            ReportType::SettlementReconciliation
+        );
         assert_eq!(scheduled_report.frequency, ReportFrequency::Weekly);
         assert_eq!(scheduled_report.day_of_week, Some(1));
         assert_eq!(scheduled_report.recipient_emails.len(), 1);
@@ -1757,7 +1799,7 @@ mod integration_tests {
     // ============================================================================
     // Integration Test 18.3: Webhook test delivery
     // **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
-    // 
+    //
     // Test flow:
     // 1. Configure webhook endpoint for merchant
     // 2. Trigger test webhook via POST /api/v1/merchants/{merchant_id}/webhooks/test
@@ -1768,10 +1810,10 @@ mod integration_tests {
     #[tokio::test]
     async fn integration_test_webhook_test_delivery() {
         use crate::engine::services::webhook_test::WebhookTestService;
-        
+
         let merchant_id = Uuid::new_v4();
         let webhook_id = Uuid::new_v4();
-        
+
         // Verify webhook test structure
         // Sample payload for payment.success event
         let sample_payload = serde_json::json!({
@@ -1783,24 +1825,24 @@ mod integration_tests {
             "status": "success",
             "created_at": Utc::now().to_rfc3339(),
         });
-        
+
         // Verify payload structure
         assert_eq!(sample_payload["event_type"], "payment.success");
         assert_eq!(sample_payload["currency"], "INR");
         assert!(sample_payload["amount_paise"].is_number());
-        
+
         // Verify HMAC-SHA256 signing capability
         let webhook_secret = "test-webhook-secret";
         let payload_str = sample_payload.to_string();
-        
+
         // Simulate HMAC-SHA256 signing
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
-        
+
         let mut mac = Hmac::<Sha256>::new_from_slice(webhook_secret.as_bytes()).unwrap();
         mac.update(payload_str.as_bytes());
         let signature = hex::encode(mac.finalize().into_bytes());
-        
+
         // Verify signature is generated
         assert!(!signature.is_empty());
         assert_eq!(signature.len(), 64); // SHA256 hex = 64 chars
@@ -1809,7 +1851,7 @@ mod integration_tests {
     // ============================================================================
     // Integration Test 18.4: Bank account verification flow
     // **Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
-    // 
+    //
     // Test flow:
     // 1. Add bank account via POST /api/v1/merchants/{merchant_id}/bank-accounts
     // 2. Verify penny drop initiated (penny_drop_reference returned)
@@ -1819,11 +1861,11 @@ mod integration_tests {
     // ============================================================================
     #[tokio::test]
     async fn integration_test_bank_account_verification_flow() {
-        use crate::engine::services::bank_account::{BankAccount, VerificationStatus, AccountType};
-        
+        use crate::engine::services::bank_account::{AccountType, BankAccount, VerificationStatus};
+
         let merchant_id = Uuid::new_v4();
         let account_id = Uuid::new_v4();
-        
+
         // Verify BankAccount structure has all required fields
         let bank_account = BankAccount {
             id: account_id,
@@ -1840,19 +1882,22 @@ mod integration_tests {
             updated_at: Utc::now(),
             verified_at: None,
         };
-        
+
         // Verify bank account structure
         assert_eq!(bank_account.merchant_id, merchant_id);
         assert_eq!(bank_account.account_holder_name, "John Doe");
         assert_eq!(bank_account.ifsc_code, "HDFC0001234");
         assert_eq!(bank_account.account_type, AccountType::Savings);
-        assert_eq!(bank_account.verification_status, VerificationStatus::Pending);
+        assert_eq!(
+            bank_account.verification_status,
+            VerificationStatus::Pending
+        );
         assert!(bank_account.penny_drop_reference.is_some());
         assert!(!bank_account.is_primary);
-        
+
         // Verify account number is encrypted (not plaintext)
         assert!(!bank_account.account_number_encrypted.contains("1234567890"));
-        
+
         // Simulate verification flow
         let verified_account = BankAccount {
             id: account_id,
@@ -1869,9 +1914,12 @@ mod integration_tests {
             updated_at: Utc::now(),
             verified_at: Some(Utc::now()),
         };
-        
+
         // Verify account is now verified
-        assert_eq!(verified_account.verification_status, VerificationStatus::Verified);
+        assert_eq!(
+            verified_account.verification_status,
+            VerificationStatus::Verified
+        );
         assert_eq!(verified_account.penny_drop_amount_paise, Some(150));
         assert!(verified_account.verified_at.is_some());
     }
@@ -1879,7 +1927,7 @@ mod integration_tests {
     // ============================================================================
     // Integration Test 18.5: Notification delivery with preferences
     // **Validates: Requirements 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 12.1, 12.2**
-    // 
+    //
     // Test flow:
     // 1. Set notification preferences: email_enabled=true, sms_enabled=false, in_app_enabled=true
     // 2. Trigger event (e.g., payment.success)
@@ -1890,13 +1938,15 @@ mod integration_tests {
     // ============================================================================
     #[tokio::test]
     async fn integration_test_notification_delivery_with_preferences() {
-        use crate::engine::services::notification::{NotificationPreference, NotificationDeliveryLog};
-        
+        use crate::engine::services::notification::{
+            NotificationDeliveryLog, NotificationPreference,
+        };
+
         let merchant_id = Uuid::new_v4();
         let user_id = Some(Uuid::new_v4());
         let pref_id = Uuid::new_v4();
         let log_id = Uuid::new_v4();
-        
+
         // Verify NotificationPreference structure
         let preference = NotificationPreference {
             id: pref_id,
@@ -1909,14 +1959,14 @@ mod integration_tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        
+
         // Verify preference structure
         assert_eq!(preference.merchant_id, merchant_id);
         assert_eq!(preference.event_type, "payment.success");
         assert!(preference.email_enabled);
         assert!(!preference.sms_enabled);
         assert!(preference.in_app_enabled);
-        
+
         // Verify enabled channels
         let mut enabled_channels = Vec::new();
         if preference.email_enabled {
@@ -1928,12 +1978,12 @@ mod integration_tests {
         if preference.in_app_enabled {
             enabled_channels.push("in_app");
         }
-        
+
         assert_eq!(enabled_channels.len(), 2);
         assert!(enabled_channels.contains(&"email"));
         assert!(enabled_channels.contains(&"in_app"));
         assert!(!enabled_channels.contains(&"sms"));
-        
+
         // Verify NotificationDeliveryLog structure for email
         let email_log = NotificationDeliveryLog {
             id: log_id,
@@ -1953,14 +2003,14 @@ mod integration_tests {
             sent_at: Some(Utc::now()),
             created_at: Utc::now(),
         };
-        
+
         // Verify email log structure
         assert_eq!(email_log.merchant_id, merchant_id);
         assert_eq!(email_log.delivery_channel, "email");
         assert_eq!(email_log.status, "sent");
         assert!(email_log.sent_at.is_some());
         assert_eq!(email_log.retry_count, 0);
-        
+
         // Verify in-app notification log
         let in_app_log = NotificationDeliveryLog {
             id: Uuid::new_v4(),
@@ -1980,11 +2030,11 @@ mod integration_tests {
             sent_at: Some(Utc::now()),
             created_at: Utc::now(),
         };
-        
+
         // Verify in-app log structure
         assert_eq!(in_app_log.delivery_channel, "in_app");
         assert_eq!(in_app_log.status, "sent");
-        
+
         // Verify SMS was NOT sent (not in logs)
         let sms_should_not_exist = false;
         assert!(!sms_should_not_exist);

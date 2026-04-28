@@ -40,9 +40,9 @@ impl PaymentMethodProcessor for WalletProcessor {
             MethodData::Wallet { wallet_name, .. } if !wallet_name.trim().is_empty() => {
                 self.simulator.authorize(txn, method_data).await
             }
-            MethodData::Wallet { .. } => {
-                Err(FeelPayError::BadRequest("Wallet name required for wallet payments".into()))
-            }
+            MethodData::Wallet { .. } => Err(FeelPayError::BadRequest(
+                "Wallet name required for wallet payments".into(),
+            )),
             _ => Err(FeelPayError::BadRequest(
                 "Expected wallet payment data".into(),
             )),

@@ -45,8 +45,11 @@ where
             let enabled = ext.get::<&bool>().copied().unwrap_or(&false);
             (data, enabled)
         };
-        
-        let client_ip = req.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+
+        let client_ip = req
+            .peer_addr()
+            .map(|a| a.ip().to_string())
+            .unwrap_or_default();
         let whitelist: Vec<String> = whitelist_data.map(|d| d.0).unwrap_or_default();
 
         if !whitelist_enabled {
@@ -93,7 +96,7 @@ pub fn extract_client_ip(req: &HttpRequest) -> Option<IpAddr> {
             }
         }
     }
-    
+
     if let Some(real_ip) = req.headers().get("X-Real-IP") {
         if let Ok(ip_str) = real_ip.to_str() {
             if let Ok(ip) = ip_str.parse() {
@@ -101,6 +104,6 @@ pub fn extract_client_ip(req: &HttpRequest) -> Option<IpAddr> {
             }
         }
     }
-    
+
     req.peer_addr().map(|a| a.ip())
 }

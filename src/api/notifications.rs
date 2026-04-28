@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::error::FeelPayError;
 use crate::middleware::auth::MerchantId;
-use crate::models::notification::{CreateNotificationRequest, CreateReportRequest, NotificationQueue, ReportJob, ReportJobResponse};
+use crate::models::notification::{
+    CreateNotificationRequest, CreateReportRequest, NotificationQueue, ReportJob, ReportJobResponse,
+};
 use crate::state::AppState;
 
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
@@ -49,7 +51,11 @@ pub async fn create_notification(
     .bind(&body.subject)
     .bind(&body.body)
     .bind(&body.template_id)
-    .bind(body.template_data.as_ref().unwrap_or(&serde_json::json!({})))
+    .bind(
+        body.template_data
+            .as_ref()
+            .unwrap_or(&serde_json::json!({})),
+    )
     .bind(body.scheduled_at)
     .bind(&body.entity_type)
     .bind(body.entity_id)
@@ -79,20 +85,24 @@ pub async fn list_notifications(
 
     let base_query = "SELECT * FROM notification_queue 
          WHERE (recipient_id = $1 OR recipient_email = $2)";
-    
-    let filter = if unread_only { " AND is_read = false" } else { "" };
+
+    let filter = if unread_only {
+        " AND is_read = false"
+    } else {
+        ""
+    };
     let order_limit = " ORDER BY created_at DESC LIMIT $3 OFFSET $4";
-    
+
     let sql = format!("{}{}{}", base_query, filter, order_limit);
 
     let notifications = sqlx::query(&sql)
-    .bind(merchant_id)
-    .bind(None::<String>)
-    .bind(per_page as i64)
-    .bind(offset)
-    .map(NotificationQueue::from)
-    .fetch_all(&mut *conn)
-    .await?;
+        .bind(merchant_id)
+        .bind(None::<String>)
+        .bind(per_page as i64)
+        .bind(offset)
+        .map(NotificationQueue::from)
+        .fetch_all(&mut *conn)
+        .await?;
 
     Ok(HttpResponse::Ok().json(notifications))
 }
@@ -137,7 +147,8 @@ pub async fn mark_all_notifications_read(
     .execute(&mut *conn)
     .await?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "message": "All notifications marked as read" })))
+    Ok(HttpResponse::Ok()
+        .json(serde_json::json!({ "message": "All notifications marked as read" })))
 }
 
 // Reports API
@@ -166,7 +177,10 @@ pub async fn create_report(
     .bind(body.filters.as_ref().unwrap_or(&serde_json::json!({})))
     .bind(body.file_format.as_deref().unwrap_or("csv"))
     .bind(body.email_on_complete.unwrap_or(false))
-    .bind(serde_json::json!(body.email_recipients.clone().unwrap_or_default()))
+    .bind(serde_json::json!(body
+        .email_recipients
+        .clone()
+        .unwrap_or_default()))
     .bind(merchant_id)
     .map(ReportJob::from)
     .fetch_one(&mut *conn)
@@ -226,13 +240,15 @@ pub async fn list_reports(
     ))
 }
 
-
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/notifications")
             .route("", web::post().to(create_notification))
             .route("", web::get().to(list_notifications))
-            .route("/mark-all-read", web::post().to(mark_all_notifications_read))
+            .route(
+                "/mark-all-read",
+                web::post().to(mark_all_notifications_read),
+            )
             .route("/{id}/read", web::post().to(mark_notification_as_read)),
     )
     .service(

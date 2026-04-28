@@ -34,9 +34,9 @@ pub async fn send_sms(
 ) -> Result<String, Box<dyn std::error::Error>> {
     // Get SMS config from environment or database
     let provider = std::env::var("SMS_PROVIDER").unwrap_or_else(|_| "simulator".to_string());
-    
+
     let message_id = Uuid::new_v4().to_string();
-    
+
     // Log SMS to notification queue
     sqlx::query(
         r#"
@@ -82,7 +82,7 @@ pub async fn send_otp_sms(
         "Your FeelPay {} OTP is {}. Valid for 5 minutes. Do not share.",
         purpose, otp
     );
-    
+
     send_sms(pool, None, to, &body, Some("otp_template")).await
 }
 
@@ -110,7 +110,7 @@ pub async fn send_payment_sms(
             amount_formatted, order_id, status
         ),
     };
-    
+
     send_sms(pool, Some(merchant_id), to, &body, Some("payment_template")).await
 }
 
@@ -124,18 +124,22 @@ pub async fn send_settlement_sms(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let amount_formatted = format_amount(amount);
     let body = if let Some(utr) = utr {
-        format!(
-            "Settlement of {} credited. UTR: {}",
-            amount_formatted, utr
-        )
+        format!("Settlement of {} credited. UTR: {}", amount_formatted, utr)
     } else {
         format!(
             "Settlement of {} will be credited within 24 hours.",
             amount_formatted
         )
     };
-    
-    send_sms(pool, Some(merchant_id), to, &body, Some("settlement_template")).await
+
+    send_sms(
+        pool,
+        Some(merchant_id),
+        to,
+        &body,
+        Some("settlement_template"),
+    )
+    .await
 }
 
 /// Send via MSG91
@@ -144,72 +148,62 @@ async fn send_via_msg91(
     body: &str,
     template_id: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("MSG91_API_KEY")
-        .map_err(|_| "MSG91_API_KEY not configured")?;
-    let sender_id = std::env::var("MSG91_SENDER_ID")
-        .unwrap_or_else(|_| "FEELPY".to_string());
-    
+    let api_key = std::env::var("MSG91_API_KEY").map_err(|_| "MSG91_API_KEY not configured")?;
+    let sender_id = std::env::var("MSG91_SENDER_ID").unwrap_or_else(|_| "FEELPY".to_string());
+
     let client = reqwest::Client::new();
-    
-    let mut form = vec![
-        ("mobile", to),
-        ("message", body),
-        ("sender", &sender_id),
-    ];
-    
+
+    let mut form = vec![("mobile", to), ("message", body), ("sender", &sender_id)];
+
     if let Some(tid) = template_id {
         form.push(("template_id", tid));
     }
-    
+
     let response = client
         .post("https://api.msg91.com/api/v2/sendsms")
         .header("authkey", &api_key)
         .form(&form)
         .send()
         .await?;
-    
+
     if !response.status().is_success() {
         let error = response.text().await?;
         tracing::error!("MSG91 error: {}", error);
         return Err(format!("MSG91 error: {}", error).into());
     }
-    
+
     Ok(())
 }
 
 /// Send via Twilio
 async fn send_via_twilio(to: &str, body: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
-        .map_err(|_| "TWILIO_ACCOUNT_SID not configured")?;
-    let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
-        .map_err(|_| "TWILIO_AUTH_TOKEN not configured")?;
-    let from_number = std::env::var("TWILIO_FROM_NUMBER")
-        .map_err(|_| "TWILIO_FROM_NUMBER not configured")?;
-    
+    let account_sid =
+        std::env::var("TWILIO_ACCOUNT_SID").map_err(|_| "TWILIO_ACCOUNT_SID not configured")?;
+    let auth_token =
+        std::env::var("TWILIO_AUTH_TOKEN").map_err(|_| "TWILIO_AUTH_TOKEN not configured")?;
+    let from_number =
+        std::env::var("TWILIO_FROM_NUMBER").map_err(|_| "TWILIO_FROM_NUMBER not configured")?;
+
     let client = reqwest::Client::new();
-    
+
     let url = format!(
         "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
         account_sid
     );
-    
+
     let response = client
         .post(&url)
         .basic_auth(&account_sid, Some(&auth_token))
-        .form(&[
-            ("To", to),
-            ("From", &from_number),
-            ("Body", body),
-        ])
+        .form(&[("To", to), ("From", &from_number), ("Body", body)])
         .send()
         .await?;
-    
+
     if !response.status().is_success() {
         let error = response.text().await?;
         tracing::error!("Twilio error: {}", error);
         return Err(format!("Twilio error: {}", error).into());
     }
-    
+
     Ok(())
 }
 

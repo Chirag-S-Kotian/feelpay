@@ -1,0 +1,14 @@
+{
+  "name": "feelpay/feelpay-php",
+  "description": "FeelPay PHP SDK",
+  "type": "library",
+  "autoload": {
+    "psr-4": {
+      "FeelPay\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=8.1",
+    "ext-curl": "*"
+  }
+}

@@ -1,4 +1,6 @@
-use crate::engine::services::export::{ExportService, CreateExportJobRequest, ExportJobType, PaginationParams};
+use crate::engine::services::export::{
+    CreateExportJobRequest, ExportJobType, ExportService, PaginationParams,
+};
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
 use actix_web::{web, HttpResponse};
@@ -145,7 +147,9 @@ pub async fn create_transaction_export(
         created_by_user_id: Some(created_by_user_id),
     };
 
-    let job = export_service.create_export_job(merchant_id, create_req).await?;
+    let job = export_service
+        .create_export_job(merchant_id, create_req)
+        .await?;
 
     Ok(HttpResponse::Ok().json(ExportJobResponse {
         job_id: job.id.to_string(),
@@ -277,7 +281,9 @@ pub async fn list_exports(
         offset: query.offset.unwrap_or(0),
     };
 
-    let result = export_service.list_export_jobs(merchant_id, pagination).await?;
+    let result = export_service
+        .list_export_jobs(merchant_id, pagination)
+        .await?;
 
     let exports = result
         .items

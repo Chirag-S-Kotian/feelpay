@@ -14,6 +14,8 @@ import {
   Search,
   Download,
   Webhook,
+  KeyRound,
+  ClipboardList,
 } from 'lucide-react';
 import { useState } from 'react';
 import AdminDashboard from './pages/AdminDashboard';
@@ -22,6 +24,16 @@ import KYCQueue from './pages/KYCQueue';
 import AdminBulkExport from './pages/AdminBulkExport';
 import AdminWebhookTesting from './pages/AdminWebhookTesting';
 import NotificationDeliveryLogs from './pages/NotificationDeliveryLogs';
+import KycAuditLog from './pages/KycAuditLog';
+import TransactionSearch from './pages/TransactionSearch';
+import TransactionDetail from './pages/TransactionDetail';
+import SettlementManagement from './pages/SettlementManagement';
+import RevenueDashboard from './pages/RevenueDashboard';
+import CredentialManagement from './pages/CredentialManagement';
+import TenantManagement from './pages/TenantManagement';
+import AdminUserManagement from './pages/AdminUserManagement';
+import AuditLogViewer from './pages/AuditLogViewer';
+import SystemConfig from './pages/SystemConfig';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
@@ -30,7 +42,15 @@ const NAV = [
   { path: '/bulk-export', label: 'Bulk Export', icon: Download },
   { path: '/webhook-testing', label: 'Webhook Testing', icon: Webhook },
   { path: '/notification-logs', label: 'Notification Logs', icon: Bell },
+  { path: '/kyc-audit', label: 'KYC Audit', icon: ClipboardList },
+  { path: '/transactions', label: 'Transactions', icon: Search },
+  { path: '/transaction-actions', label: 'Txn Actions', icon: ShieldAlert },
   { path: '/settlements', label: 'Global Settlements', icon: Wallet },
+  { path: '/revenue', label: 'Revenue', icon: PieChart },
+  { path: '/credentials', label: 'Credentials', icon: KeyRound },
+  { path: '/tenants', label: 'Tenants', icon: Building2 },
+  { path: '/admin-users', label: 'Admin Users', icon: Users },
+  { path: '/audit-logs', label: 'Audit Logs', icon: ClipboardList },
   { path: '/disputes', label: 'Global Disputes', icon: ShieldAlert },
   { path: '/system', label: 'System Health', icon: PieChart },
   { path: '/settings', label: 'Platform Settings', icon: SettingsIcon },
@@ -109,6 +129,16 @@ function Layout() {
           <Route path="/bulk-export" element={<AdminBulkExport />} />
           <Route path="/webhook-testing" element={<AdminWebhookTesting />} />
           <Route path="/notification-logs" element={<NotificationDeliveryLogs />} />
+          <Route path="/kyc-audit" element={<KycAuditLog />} />
+          <Route path="/transactions" element={<TransactionSearch />} />
+          <Route path="/transaction-actions" element={<TransactionDetail />} />
+          <Route path="/settlements" element={<SettlementManagement />} />
+          <Route path="/revenue" element={<RevenueDashboard />} />
+          <Route path="/credentials" element={<CredentialManagement />} />
+          <Route path="/tenants" element={<TenantManagement />} />
+          <Route path="/admin-users" element={<AdminUserManagement />} />
+          <Route path="/audit-logs" element={<AuditLogViewer />} />
+          <Route path="/settings" element={<SystemConfig />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

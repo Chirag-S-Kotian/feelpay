@@ -38,9 +38,9 @@ pub async fn send_email(
     body_text: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let provider = std::env::var("EMAIL_PROVIDER").unwrap_or_else(|_| "simulator".to_string());
-    
+
     let message_id = Uuid::new_v4().to_string();
-    
+
     // Log email to notification queue
     sqlx::query(
         r#"
@@ -102,7 +102,7 @@ pub async fn send_otp_email(
         "Your FeelPay {} OTP is: {}\n\nThis code is valid for 5 minutes. Do not share this code.",
         purpose, otp
     );
-    
+
     send_email(pool, None, to, &subject, Some(&body_html), Some(&body_text)).await
 }
 
@@ -119,7 +119,7 @@ pub async fn send_payment_receipt_email(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let amount_formatted = format_amount(amount, currency);
     let subject = format!("Payment Receipt - Order {}", order_id);
-    
+
     let body_html = format!(
         r#"
         <html>
@@ -140,7 +140,7 @@ pub async fn send_payment_receipt_email(
         status.to_uppercase(),
         payment_method.unwrap_or("N/A")
     );
-    
+
     let body_text = format!(
         "Payment Receipt\n\nOrder ID: {}\nAmount: {}\nStatus: {}\nPayment Method: {}\n\nThank you for your payment!",
         order_id,
@@ -148,8 +148,16 @@ pub async fn send_payment_receipt_email(
         status.to_uppercase(),
         payment_method.unwrap_or("N/A")
     );
-    
-    send_email(pool, Some(merchant_id), to, &subject, Some(&body_html), Some(&body_text)).await
+
+    send_email(
+        pool,
+        Some(merchant_id),
+        to,
+        &subject,
+        Some(&body_html),
+        Some(&body_text),
+    )
+    .await
 }
 
 /// Send settlement notification email
@@ -163,7 +171,7 @@ pub async fn send_settlement_email(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let amount_formatted = format_amount(amount, "INR");
     let subject = "Settlement Processed".to_string();
-    
+
     let body_html = format!(
         r#"
         <html>
@@ -180,15 +188,23 @@ pub async fn send_settlement_email(
         settlement_id,
         utr.unwrap_or("Pending")
     );
-    
+
     let body_text = format!(
         "Settlement Notification\n\nYour settlement of {} has been processed.\nSettlement ID: {}\nUTR: {}\n\nThe amount will be credited to your bank account within 24 hours.",
         amount_formatted,
         settlement_id,
         utr.unwrap_or("Pending")
     );
-    
-    send_email(pool, Some(merchant_id), to, &subject, Some(&body_html), Some(&body_text)).await
+
+    send_email(
+        pool,
+        Some(merchant_id),
+        to,
+        &subject,
+        Some(&body_html),
+        Some(&body_text),
+    )
+    .await
 }
 
 /// Send KYC status email
@@ -204,7 +220,7 @@ pub async fn send_kyc_status_email(
         "resubmit_required" => "KYC Documents Require Attention",
         _ => "KYC Status Update",
     };
-    
+
     let body_html = match status {
         "approved" => format!(
             r#"
@@ -245,13 +261,9 @@ pub async fn send_kyc_status_email(
             message.unwrap_or("")
         ),
     };
-    
-    let body_text = format!(
-        "KYC Status: {}\n\n{}",
-        status,
-        message.unwrap_or("")
-    );
-    
+
+    let body_text = format!("KYC Status: {}\n\n{}", status, message.unwrap_or(""));
+
     send_email(pool, None, to, subject, Some(&body_html), Some(&body_text)).await
 }
 
@@ -262,13 +274,13 @@ async fn send_via_sendgrid(
     body_html: Option<&str>,
     body_text: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("SENDGRID_API_KEY")
-        .map_err(|_| "SENDGRID_API_KEY not configured")?;
-    let from = std::env::var("EMAIL_FROM_ADDRESS")
-        .unwrap_or_else(|_| "noreply@feelpay.in".to_string());
-    
+    let api_key =
+        std::env::var("SENDGRID_API_KEY").map_err(|_| "SENDGRID_API_KEY not configured")?;
+    let from =
+        std::env::var("EMAIL_FROM_ADDRESS").unwrap_or_else(|_| "noreply@feelpay.in".to_string());
+
     let client = reqwest::Client::new();
-    
+
     let mut content = vec![];
     if let Some(html) = body_html {
         content.push(serde_json::json!({
@@ -282,7 +294,7 @@ async fn send_via_sendgrid(
             "value": text
         }));
     }
-    
+
     let body = serde_json::json!({
         "personalizations": [{
             "to": [{"email": to}]
@@ -291,20 +303,20 @@ async fn send_via_sendgrid(
         "subject": subject,
         "content": content
     });
-    
+
     let response = client
         .post("https://api.sendgrid.com/v3/mail/send")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
         .send()
         .await?;
-    
+
     if !response.status().is_success() {
         let error = response.text().await?;
         tracing::error!("SendGrid error: {}", error);
         return Err(format!("SendGrid error: {}", error).into());
     }
-    
+
     Ok(())
 }
 
@@ -331,39 +343,39 @@ async fn send_via_postmark(
     body_html: Option<&str>,
     body_text: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("POSTMARK_API_KEY")
-        .map_err(|_| "POSTMARK_API_KEY not configured")?;
-    let from = std::env::var("EMAIL_FROM_ADDRESS")
-        .unwrap_or_else(|_| "noreply@feelpay.in".to_string());
-    
+    let api_key =
+        std::env::var("POSTMARK_API_KEY").map_err(|_| "POSTMARK_API_KEY not configured")?;
+    let from =
+        std::env::var("EMAIL_FROM_ADDRESS").unwrap_or_else(|_| "noreply@feelpay.in".to_string());
+
     let client = reqwest::Client::new();
-    
+
     let mut body = serde_json::json!({
         "From": from,
         "To": to,
         "Subject": subject,
     });
-    
+
     if let Some(html) = body_html {
         body["HtmlBody"] = serde_json::json!(html);
     }
     if let Some(text) = body_text {
         body["TextBody"] = serde_json::json!(text);
     }
-    
+
     let response = client
         .post("https://api.postmarkapp.com/email")
         .header("X-Postmark-Server-Token", &api_key)
         .json(&body)
         .send()
         .await?;
-    
+
     if !response.status().is_success() {
         let error = response.text().await?;
         tracing::error!("Postmark error: {}", error);
         return Err(format!("Postmark error: {}", error).into());
     }
-    
+
     Ok(())
 }
 

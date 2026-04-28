@@ -1,4 +1,6 @@
-use crate::engine::services::report::{ReportService, CreateScheduledReportRequest, UpdateScheduledReportRequest};
+use crate::engine::services::report::{
+    CreateScheduledReportRequest, ReportService, UpdateScheduledReportRequest,
+};
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
 use actix_web::{web, HttpResponse};

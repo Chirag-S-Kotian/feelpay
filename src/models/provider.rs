@@ -61,7 +61,9 @@ impl From<PgRow> for PaymentProvider {
             success_rate: row.get("success_rate"),
             avg_latency_ms: row.get("avg_latency_ms"),
             last_health_check: row.get("last_health_check"),
-            circuit_breaker_state: CircuitBreakerState::from(row.get::<String, _>("circuit_breaker_state").as_str()),
+            circuit_breaker_state: CircuitBreakerState::from(
+                row.get::<String, _>("circuit_breaker_state").as_str(),
+            ),
             failure_count: row.get("failure_count"),
             last_failure: row.get("last_failure"),
             created_at: row.get("created_at"),

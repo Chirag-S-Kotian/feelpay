@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgRow;
 use sqlx::Row;
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,9 +125,10 @@ pub struct PaymentLinkResponse {
 
 impl From<PaymentLink> for PaymentLinkResponse {
     fn from(pl: PaymentLink) -> Self {
-        let base_url = std::env::var("PAYMENT_LINK_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let base_url = std::env::var("PAYMENT_LINK_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:8080".to_string());
         let link_id = pl.link_id.clone();
-        
+
         PaymentLinkResponse {
             id: pl.id,
             link_id: link_id.clone(),

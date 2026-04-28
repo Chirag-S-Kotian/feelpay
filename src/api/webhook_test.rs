@@ -109,10 +109,7 @@ pub async fn get_webhook_test_logs(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(WebhookTestLogsResponse {
-        logs: items,
-        total,
-    }))
+    Ok(HttpResponse::Ok().json(WebhookTestLogsResponse { logs: items, total }))
 }
 
 /// Webhook test logs response

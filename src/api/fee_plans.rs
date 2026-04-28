@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::error::FeelPayError;
 use crate::models::fee_plan::{
-    AssignFeePlanRequest, CreateFeePlanRequest, FeePlan, FeePlanResponse,
-    MerchantFeeAssignment, SettlementBatch, UpdateFeePlanRequest, VerificationLog,
+    AssignFeePlanRequest, CreateFeePlanRequest, FeePlan, FeePlanResponse, MerchantFeeAssignment,
+    SettlementBatch, UpdateFeePlanRequest, VerificationLog,
 };
 use crate::state::AppState;
 
@@ -20,15 +20,27 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}", web::delete().to(delete_fee_plan))
             // Assignments
             .route("/assign", web::post().to(assign_fee_plan))
-            .route("/merchant/{merchant_id}", web::get().to(get_merchant_fee_plan))
+            .route(
+                "/merchant/{merchant_id}",
+                web::get().to(get_merchant_fee_plan),
+            )
             // Auto-verification
             .route("/verify/{merchant_id}/pan", web::post().to(verify_pan))
             .route("/verify/{merchant_id}/gstin", web::post().to(verify_gstin))
             .route("/verify/{merchant_id}/bank", web::post().to(verify_bank))
             // Settlement batches
-            .route("/settlement-batches", web::post().to(create_settlement_batch))
-            .route("/settlement-batches", web::get().to(list_settlement_batches))
-            .route("/settlement-batches/{id}/process", web::post().to(process_settlement_batch)),
+            .route(
+                "/settlement-batches",
+                web::post().to(create_settlement_batch),
+            )
+            .route(
+                "/settlement-batches",
+                web::get().to(list_settlement_batches),
+            )
+            .route(
+                "/settlement-batches/{id}/process",
+                web::post().to(process_settlement_batch),
+            ),
     );
 }
 
@@ -112,13 +124,12 @@ pub async fn get_fee_plan(
 ) -> Result<HttpResponse, FeelPayError> {
     let plan_id = path.into_inner();
 
-    let plan: Option<FeePlan> = sqlx::query_as(
-        "SELECT * FROM fee_plans WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(plan_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let plan: Option<FeePlan> =
+        sqlx::query_as("SELECT * FROM fee_plans WHERE id = $1 AND deleted_at IS NULL")
+            .bind(plan_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match plan {
         Some(p) => Ok(HttpResponse::Ok().json(FeePlanResponse::from(p))),
@@ -178,13 +189,12 @@ pub async fn delete_fee_plan(
 ) -> Result<HttpResponse, FeelPayError> {
     let plan_id = path.into_inner();
 
-    let result = sqlx::query(
-        "UPDATE fee_plans SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(plan_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let result =
+        sqlx::query("UPDATE fee_plans SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL")
+            .bind(plan_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     if result.rows_affected() > 0 {
         Ok(HttpResponse::Ok().json(serde_json::json!({ "message": "Fee plan deleted" })))
@@ -265,7 +275,7 @@ pub async fn get_merchant_fee_plan(
         None => {
             // Return default plan
             let default: Option<FeePlan> = sqlx::query_as(
-                "SELECT * FROM fee_plans WHERE is_default = true AND deleted_at IS NULL LIMIT 1"
+                "SELECT * FROM fee_plans WHERE is_default = true AND deleted_at IS NULL LIMIT 1",
             )
             .fetch_optional(&state.db)
             .await
@@ -291,9 +301,9 @@ pub async fn verify_pan(
 
     // In production, call actual PAN verification API (NSDL, UTIITSL, etc.)
     // For now, simulate verification
-    
+
     let pan = body.document_number.trim().to_uppercase();
-    
+
     // Validate PAN format
     if !regex::Regex::new(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
         .map(|re| re.is_match(&pan))
@@ -304,7 +314,11 @@ pub async fn verify_pan(
 
     // Simulate API call
     let verification_score = 85; // Simulated confidence score
-    let status = if verification_score >= 80 { "success" } else { "manual_review" };
+    let status = if verification_score >= 80 {
+        "success"
+    } else {
+        "manual_review"
+    };
 
     // Log verification
     let log: VerificationLog = sqlx::query_as(
@@ -350,7 +364,7 @@ pub async fn verify_gstin(
     let merchant_id = path.into_inner();
 
     let gstin = body.document_number.trim().to_uppercase();
-    
+
     // Validate GSTIN format
     if !regex::Regex::new(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$")
         .map(|re| re.is_match(&gstin))
@@ -415,14 +429,14 @@ pub async fn verify_bank(
         "#,
     )
     .bind(merchant_id)
-    .bind(serde_json::json!({ 
+    .bind(serde_json::json!({
         "account_number": body.account_number,
-        "ifsc": body.ifsc_code 
+        "ifsc": body.ifsc_code
     }))
-    .bind(serde_json::json!({ 
-        "verified": true, 
+    .bind(serde_json::json!({
+        "verified": true,
         "beneficiary_name": body.account_holder_name,
-        "penny_amount": 1.00 
+        "penny_amount": 1.00
     }))
     .bind(status)
     .bind(verification_score)
@@ -459,8 +473,13 @@ pub async fn create_settlement_batch(
     body: web::Json<CreateSettlementBatchRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let user_id = user_id_from_req(&req)?;
-    let batch_date = body.batch_date.unwrap_or_else(|| chrono::Utc::now().date_naive());
-    let batch_type = body.batch_type.clone().unwrap_or_else(|| "daily".to_string());
+    let batch_date = body
+        .batch_date
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
+    let batch_type = body
+        .batch_type
+        .clone()
+        .unwrap_or_else(|| "daily".to_string());
 
     let batch: SettlementBatch = sqlx::query_as(
         r#"
@@ -517,7 +536,9 @@ pub async fn process_settlement_batch(
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     if result.rows_affected() == 0 {
-        return Err(FeelPayError::BadRequest("Batch not found or already processed".into()));
+        return Err(FeelPayError::BadRequest(
+            "Batch not found or already processed".into(),
+        ));
     }
 
     // In production, this would:

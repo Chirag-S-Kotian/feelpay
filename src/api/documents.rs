@@ -46,6 +46,32 @@ fn user_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing user context".into()))
 }
 
+async fn log_kyc_action(
+    state: &AppState,
+    merchant_id: Uuid,
+    action: &str,
+    actor_id: Uuid,
+    previous_state: Option<serde_json::Value>,
+    new_state: Option<serde_json::Value>,
+    reason: Option<&str>,
+) {
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO kyc_audit_log
+            (merchant_id, action, actor_id, previous_state, new_state, reason)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(action)
+    .bind(actor_id)
+    .bind(previous_state)
+    .bind(new_state)
+    .bind(reason)
+    .execute(&state.db)
+    .await;
+}
+
 /// Generate a presigned upload URL for document upload
 pub async fn generate_upload_url(
     req: HttpRequest,
@@ -56,7 +82,9 @@ pub async fn generate_upload_url(
 
     // Validate file size (max 10MB)
     if body.file_size > 10 * 1024 * 1024 {
-        return Err(FeelPayError::BadRequest("File size exceeds 10MB limit".into()));
+        return Err(FeelPayError::BadRequest(
+            "File size exceeds 10MB limit".into(),
+        ));
     }
 
     // Validate file type
@@ -85,10 +113,7 @@ pub async fn generate_upload_url(
 
     // In production, generate a presigned URL from S3/GCS
     // For now, return a mock URL
-    let upload_url = format!(
-        "https://storage.feelpay.example.com/upload/{}",
-        storage_key
-    );
+    let upload_url = format!("https://storage.feelpay.example.com/upload/{}", storage_key);
 
     let expires_at = chrono::Utc::now() + chrono::Duration::minutes(15);
 
@@ -139,6 +164,17 @@ pub async fn upload_document(
     .fetch_one(&state.db)
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    log_kyc_action(
+        &state,
+        merchant_id,
+        "document_upload",
+        user_id,
+        None,
+        Some(serde_json::json!({ "document_id": doc.id, "document_type": doc.document_type })),
+        None,
+    )
+    .await;
 
     Ok(HttpResponse::Created().json(DocumentResponse {
         id: doc.id,
@@ -208,14 +244,13 @@ pub async fn get_document(
     let merchant_id = merchant_id_from_req(&req)?;
     let doc_id = path.into_inner();
 
-    let doc: Option<Document> = sqlx::query_as(
-        "SELECT * FROM documents WHERE id = $1 AND merchant_id = $2",
-    )
-    .bind(doc_id)
-    .bind(merchant_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let doc: Option<Document> =
+        sqlx::query_as("SELECT * FROM documents WHERE id = $1 AND merchant_id = $2")
+            .bind(doc_id)
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match doc {
         Some(d) => {
@@ -248,7 +283,7 @@ pub async fn verify_document(
     path: web::Path<Uuid>,
     body: web::Json<VerifyDocumentRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
-    let _user_id = user_id_from_req(&req)?;
+    let user_id = user_id_from_req(&req)?;
     let doc_id = path.into_inner();
 
     if !["approved", "rejected"].contains(&body.status.as_str()) {
@@ -271,7 +306,7 @@ pub async fn verify_document(
     )
     .bind(&body.status)
     .bind(&body.rejection_reason)
-    .bind(_user_id)
+    .bind(user_id)
     .bind(doc_id)
     .fetch_optional(&state.db)
     .await
@@ -281,13 +316,28 @@ pub async fn verify_document(
         Some(row) => {
             let merchant_id: Uuid = row.get(1);
             let doc_type: String = row.get(2);
+            log_kyc_action(
+                &state,
+                merchant_id,
+                "status_change",
+                user_id,
+                None,
+                Some(serde_json::json!({
+                    "document_id": doc_id,
+                    "document_type": doc_type,
+                    "status": body.status
+                })),
+                body.rejection_reason.as_deref(),
+            )
+            .await;
 
             // Fetch merchant email for notification
-            let merchant_email: String = sqlx::query_scalar("SELECT email FROM merchants WHERE id = $1")
-                .bind(merchant_id)
-                .fetch_one(&state.db)
-                .await
-                .unwrap_or_default();
+            let merchant_email: String =
+                sqlx::query_scalar("SELECT email FROM merchants WHERE id = $1")
+                    .bind(merchant_id)
+                    .fetch_one(&state.db)
+                    .await
+                    .unwrap_or_default();
 
             if !merchant_email.is_empty() {
                 // 1. Create InApp notification
@@ -298,12 +348,17 @@ pub async fn verify_document(
                 };
 
                 let notification_message = if body.status == "approved" {
-                    format!("Your document ({}) has been successfully verified.", doc_type)
+                    format!(
+                        "Your document ({}) has been successfully verified.",
+                        doc_type
+                    )
                 } else {
                     format!(
                         "Your document ({}) was rejected. Reason: {}",
                         doc_type,
-                        body.rejection_reason.as_deref().unwrap_or("No reason provided")
+                        body.rejection_reason
+                            .as_deref()
+                            .unwrap_or("No reason provided")
                     )
                 };
 
@@ -314,7 +369,7 @@ pub async fn verify_document(
                         subject, body, status, entity_type, entity_id, metadata
                     )
                     VALUES ('in_app', 'merchant', $1, $2, $3, $4, 'sent', 'document', $5, $6)
-                    "#
+                    "#,
                 )
                 .bind(merchant_id)
                 .bind(&merchant_email)
@@ -334,8 +389,9 @@ pub async fn verify_document(
                     &state.db,
                     &merchant_email,
                     &body.status,
-                    body.rejection_reason.as_deref()
-                ).await;
+                    body.rejection_reason.as_deref(),
+                )
+                .await;
             }
 
             Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -413,7 +469,12 @@ pub async fn send_otp(
 
     // In production, send OTP via email/SMS service
     // For now, return the OTP in response (remove in production)
-    tracing::info!("OTP generated: {} for {:?} {:?}", otp, body.email, body.phone);
+    tracing::info!(
+        "OTP generated: {} for {:?} {:?}",
+        otp,
+        body.email,
+        body.phone
+    );
 
     Ok(HttpResponse::Ok().json(OtpResponse {
         message: "OTP sent successfully".to_string(),
@@ -483,13 +544,11 @@ pub async fn verify_otp(
                 })))
             } else {
                 // Increment attempts
-                sqlx::query(
-                    "UPDATE otp_verifications SET attempts = attempts + 1 WHERE id = $1"
-                )
-                .bind(otp_record.id)
-                .execute(&state.db)
-                .await
-                .ok();
+                sqlx::query("UPDATE otp_verifications SET attempts = attempts + 1 WHERE id = $1")
+                    .bind(otp_record.id)
+                    .execute(&state.db)
+                    .await
+                    .ok();
 
                 Err(FeelPayError::BadRequest("Invalid OTP".into()))
             }
@@ -579,13 +638,12 @@ pub async fn get_approval(
 ) -> Result<HttpResponse, FeelPayError> {
     let approval_id = path.into_inner();
 
-    let approval: Option<ApprovalRequest> = sqlx::query_as(
-        "SELECT * FROM approval_requests WHERE id = $1",
-    )
-    .bind(approval_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let approval: Option<ApprovalRequest> =
+        sqlx::query_as("SELECT * FROM approval_requests WHERE id = $1")
+            .bind(approval_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     match approval {
         Some(a) => Ok(HttpResponse::Ok().json(a)),

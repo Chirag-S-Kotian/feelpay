@@ -1,7 +1,7 @@
+use crate::error::FeelPayError;
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
-use crate::error::FeelPayError;
+use utoipa::{IntoParams, ToSchema};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -87,9 +87,7 @@ pub struct BnplProvider {
         (status = 200, description = "Returns available BNPL providers", body = [BnplProvider])
     )
 )]
-pub async fn get_bnpl_providers(
-    _req: HttpRequest,
-) -> Result<HttpResponse, FeelPayError> {
+pub async fn get_bnpl_providers(_req: HttpRequest) -> Result<HttpResponse, FeelPayError> {
     let providers = vec![
         BnplProvider {
             name: "Simpl".into(),

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, Calendar, Filter, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Download, Calendar, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
 interface ExportJob {

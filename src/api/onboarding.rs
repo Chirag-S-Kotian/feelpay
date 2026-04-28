@@ -14,8 +14,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/kyc", web::post().to(submit_kyc))
             .route("/status", web::get().to(onboarding_status))
             .route("/bank-account", web::post().to(submit_bank_account))
-            .route("/registration/step", web::post().to(update_registration_step))
-            .route("/registration/progress", web::get().to(get_registration_progress))
+            .route(
+                "/registration/step",
+                web::post().to(update_registration_step),
+            )
+            .route(
+                "/registration/progress",
+                web::get().to(get_registration_progress),
+            )
             .route("/business-info", web::post().to(submit_business_info))
             .route("/branding", web::post().to(update_branding))
             .route("/limits", web::get().to(get_limits))
@@ -187,7 +193,11 @@ pub async fn submit_bank_account(
         return Err(FeelPayError::BadRequest("Invalid account number".into()));
     }
 
-    let mut tx = state.db.begin().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     // 1. Insert into bank_accounts table
     sqlx::query(
@@ -229,13 +239,15 @@ pub async fn submit_bank_account(
     .execute(&mut *tx)
     .await?;
 
-    tx.commit().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     // 3. Trigger Penny Drop verification simulation
     let pool = state.db.clone();
     let _account_num = body.account_number.trim().to_string();
     let _ifsc_val = ifsc.clone();
-    
+
     tokio::spawn(async move {
         // Wait a bit to simulate async processing
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -268,20 +280,22 @@ pub async fn initiate_aadhaar_ekyc(
     body: web::Json<InitiateAadhaarRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     if body.aadhaar_number.len() != 12 || !body.aadhaar_number.chars().all(|c| c.is_ascii_digit()) {
-        return Err(FeelPayError::BadRequest("Invalid Aadhaar number. Must be 12 digits.".into()));
+        return Err(FeelPayError::BadRequest(
+            "Invalid Aadhaar number. Must be 12 digits.".into(),
+        ));
     }
 
     // Generate 6-digit OTP
     let otp = format!("{:06}", rand::random::<u32>() % 1_000_000);
-    
+
     // Hash OTP for verification
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(otp.as_bytes());
     let otp_hash = format!("{:x}", hasher.finalize());
-    
+
     let expires_at = chrono::Utc::now() + chrono::Duration::minutes(10);
 
     // Store OTP in database
@@ -289,7 +303,7 @@ pub async fn initiate_aadhaar_ekyc(
         r#"
         INSERT INTO otp_verifications (phone, otp_hash, otp_type, expires_at, metadata)
         VALUES ($1, $2, 'aadhaar_ekyc', $3, $4)
-        "#
+        "#,
     )
     .bind(&body.phone)
     .bind(&otp_hash)
@@ -299,12 +313,9 @@ pub async fn initiate_aadhaar_ekyc(
     .await?;
 
     // Simulate sending SMS
-    let _ = crate::engine::services::sms::send_otp_sms(
-        &state.db,
-        &body.phone,
-        &otp,
-        "Aadhaar eKYC"
-    ).await;
+    let _ =
+        crate::engine::services::sms::send_otp_sms(&state.db, &body.phone, &otp, "Aadhaar eKYC")
+            .await;
 
     // For simulation, we return the OTP in the response
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -333,9 +344,9 @@ pub async fn verify_aadhaar_otp(
     body: web::Json<VerifyAadhaarOtpRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     // Hash the provided OTP
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(body.otp.as_bytes());
     let otp_hash = format!("{:x}", hasher.finalize());
@@ -349,7 +360,7 @@ pub async fn verify_aadhaar_otp(
           AND status = 'pending'
           AND expires_at > NOW()
         ORDER BY created_at DESC LIMIT 1
-        "#
+        "#,
     )
     .bind(&otp_hash)
     .fetch_optional(&state.db)
@@ -362,22 +373,35 @@ pub async fn verify_aadhaar_otp(
     let otp_id: Uuid = row.get(0);
     let phone: String = row.get(1);
     let metadata: serde_json::Value = row.get(2);
-    
+
     // Validate that this OTP was for this merchant and Aadhaar
-    if metadata["merchant_id"] != serde_json::json!(merchant_id) || metadata["aadhaar_number"] != serde_json::json!(body.aadhaar_number) {
-         return Err(FeelPayError::BadRequest("OTP does not match Aadhaar session".into()));
+    if metadata["merchant_id"] != serde_json::json!(merchant_id)
+        || metadata["aadhaar_number"] != serde_json::json!(body.aadhaar_number)
+    {
+        return Err(FeelPayError::BadRequest(
+            "OTP does not match Aadhaar session".into(),
+        ));
     }
 
-    let mut tx = state.db.begin().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     // Mark OTP as verified
-    sqlx::query("UPDATE otp_verifications SET status = 'verified', verified_at = NOW() WHERE id = $1")
-        .bind(otp_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE otp_verifications SET status = 'verified', verified_at = NOW() WHERE id = $1",
+    )
+    .bind(otp_id)
+    .execute(&mut *tx)
+    .await?;
 
     // Update merchant record
-    let aadhaar_masked = format!("********{}", &body.aadhaar_number[body.aadhaar_number.len().saturating_sub(4)..]);
+    let aadhaar_masked = format!(
+        "********{}",
+        &body.aadhaar_number[body.aadhaar_number.len().saturating_sub(4)..]
+    );
     sqlx::query(
         "UPDATE merchants SET phone = $1, aadhaar_number_masked = $2, aadhaar_verified = true, registration_step = CASE WHEN registration_step < 3 THEN 3 ELSE registration_step END, updated_at = NOW() WHERE id = $3"
     )
@@ -399,7 +423,9 @@ pub async fn verify_aadhaar_otp(
     .execute(&mut *tx)
     .await?;
 
-    tx.commit().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "verified",
@@ -517,7 +543,7 @@ pub async fn update_registration_step(
     body: web::Json<RegistrationStepRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     sqlx::query(
         "UPDATE merchants SET registration_step = $1, registration_data = COALESCE(registration_data, '{}'::jsonb) || $2, updated_at = NOW() WHERE id = $3"
     )
@@ -550,7 +576,7 @@ pub async fn get_registration_progress(
     req: HttpRequest,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     let row = sqlx::query(
         "SELECT registration_step, registration_data, kyc_status FROM merchants m LEFT JOIN merchant_kyc mk ON m.id = mk.merchant_id WHERE m.id = $1"
     )
@@ -576,8 +602,8 @@ pub async fn get_registration_progress(
                     {"step": 5, "name": "Complete", "completed": step > 5}
                 ]
             })))
-        },
-        None => Err(FeelPayError::NotFound("Merchant not found".into()))
+        }
+        None => Err(FeelPayError::NotFound("Merchant not found".into())),
     }
 }
 
@@ -610,18 +636,27 @@ pub async fn submit_business_info(
     body: web::Json<BusinessInfoRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     // Validate business type
-    let valid_types = ["pvt_ltd", "llp", "sole_proprietor", "partnership", "trust", "ngo"];
+    let valid_types = [
+        "pvt_ltd",
+        "llp",
+        "sole_proprietor",
+        "partnership",
+        "trust",
+        "ngo",
+    ];
     if !valid_types.contains(&body.business_type.as_str()) {
-        return Err(FeelPayError::BadRequest("Invalid business type".to_string()));
+        return Err(FeelPayError::BadRequest(
+            "Invalid business type".to_string(),
+        ));
     }
-    
+
     // Validate PAN
     if !validate_pan(&body.pan) {
         return Err(FeelPayError::BadRequest("Invalid PAN number".to_string()));
     }
-    
+
     // Validate GSTIN if provided
     if let Some(ref gstin) = body.gstin {
         if !gstin.is_empty() && !validate_gstin(gstin) {
@@ -672,7 +707,7 @@ pub async fn update_branding(
     body: web::Json<BrandingRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     sqlx::query(
         "UPDATE merchants SET branding_logo = $1, branding_color = $2, updated_at = NOW() WHERE id = $3"
     )
@@ -712,7 +747,7 @@ pub async fn get_limits(
     req: HttpRequest,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     let row = sqlx::query(
         "SELECT per_transaction_limit, daily_limit, monthly_limit, settlement_cycle FROM merchants WHERE id = $1"
     )
@@ -727,7 +762,7 @@ pub async fn get_limits(
             "monthly_limit": row.get::<i64, _>(2),
             "settlement_cycle": row.get::<String, _>(3)
         }))),
-        None => Err(FeelPayError::NotFound("Merchant not found".into()))
+        None => Err(FeelPayError::NotFound("Merchant not found".into())),
     }
 }
 
@@ -759,12 +794,14 @@ pub async fn update_limits(
     body: web::Json<LimitsRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    
+
     // Validate settlement cycle
     if let Some(ref cycle) = body.settlement_cycle {
         let valid_cycles = ["t+1", "t+2", "instant"];
         if !valid_cycles.contains(&cycle.as_str()) {
-            return Err(FeelPayError::BadRequest("Invalid settlement cycle".to_string()));
+            return Err(FeelPayError::BadRequest(
+                "Invalid settlement cycle".to_string(),
+            ));
         }
     }
 
@@ -786,7 +823,6 @@ pub async fn update_limits(
     .bind(merchant_id)
     .execute(&state.db)
     .await?;
-
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Limits updated successfully"

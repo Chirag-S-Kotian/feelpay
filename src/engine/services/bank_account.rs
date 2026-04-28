@@ -1,5 +1,5 @@
 use crate::error::FeelPayError;
-use aes_gcm::{aead::Aead, Aes256Gcm, Key, Nonce, KeyInit};
+use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -164,23 +164,29 @@ impl BankAccountService {
         let now = Utc::now();
 
         // Generate penny drop reference
-        let penny_drop_ref = format!("PD-{}", uuid::Uuid::new_v4().to_string()[0..8].to_uppercase());
+        let penny_drop_ref = format!(
+            "PD-{}",
+            uuid::Uuid::new_v4().to_string()[0..8].to_uppercase()
+        );
 
-        let account = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<String>,
-            bool,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let account = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<String>,
+                bool,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             INSERT INTO bank_accounts (
                 id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
@@ -223,21 +229,24 @@ impl BankAccountService {
         merchant_id: Uuid,
         account_id: Uuid,
     ) -> Result<Option<BankAccount>, FeelPayError> {
-        let account = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<String>,
-            bool,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let account = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<String>,
+                bool,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
@@ -281,21 +290,24 @@ impl BankAccountService {
         })?;
 
         // Get paginated results
-        let accounts = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<String>,
-            bool,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let accounts = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<String>,
+                bool,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
@@ -317,7 +329,10 @@ impl BankAccountService {
             FeelPayError::Database(e.to_string())
         })?;
 
-        let items = accounts.into_iter().map(|row| self.row_to_bank_account(row)).collect();
+        let items = accounts
+            .into_iter()
+            .map(|row| self.row_to_bank_account(row))
+            .collect();
         Ok((items, total))
     }
 
@@ -369,21 +384,24 @@ impl BankAccountService {
         let now = Utc::now();
 
         // Mark as verified
-        let verified_account = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<String>,
-            bool,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let verified_account = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<String>,
+                bool,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             UPDATE bank_accounts
             SET verification_status = $1, verified_at = $2, updated_at = $3
@@ -470,21 +488,24 @@ impl BankAccountService {
         &self,
         merchant_id: Uuid,
     ) -> Result<Option<BankAccount>, FeelPayError> {
-        let account = sqlx::query_as::<_, (
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i32>,
-            Option<String>,
-            bool,
-            String,
-            String,
-            Option<String>,
-        )>(
+        let account = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                String,
+                Option<i32>,
+                Option<String>,
+                bool,
+                String,
+                String,
+                Option<String>,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
@@ -667,13 +688,13 @@ mod property_tests {
             branch_code in r"[A-Z0-9]{7}",
         ) {
             let ifsc = format!("{}{}", bank_code, branch_code);
-            
+
             // IFSC code should be exactly 11 characters
             prop_assert_eq!(ifsc.len(), 11, "IFSC code must be exactly 11 characters");
-            
+
             // IFSC code should be uppercase
             prop_assert_eq!(ifsc, ifsc.to_uppercase(), "IFSC code must be uppercase");
-            
+
             // First 4 characters should be alphabetic
             let first_four = &ifsc[0..4];
             prop_assert!(first_four.chars().all(|c| c.is_alphabetic()), "First 4 characters must be alphabetic");
@@ -688,7 +709,7 @@ mod property_tests {
             // Invalid IFSC codes should not pass validation
             let is_valid_length = invalid_ifsc.len() == 11;
             let is_uppercase = invalid_ifsc == invalid_ifsc.to_uppercase();
-            
+
             // If it's not 11 chars or not uppercase, it's invalid
             if !is_valid_length || !is_uppercase {
                 prop_assert!(
@@ -706,7 +727,7 @@ mod property_tests {
         ) {
             // Account number should be numeric
             prop_assert!(account_number.chars().all(|c| c.is_numeric()), "Account number must be numeric");
-            
+
             // Account number should be between 9 and 18 digits
             prop_assert!(account_number.len() >= 9 && account_number.len() <= 18, "Account number must be 9-18 digits");
         }
@@ -733,7 +754,7 @@ mod property_tests {
                 AccountType::Current,
             ];
             let account_type = account_types[account_type_idx].clone();
-            
+
             // Verify account type is valid
             let type_str = account_type.as_str();
             prop_assert!(
@@ -750,14 +771,14 @@ mod property_tests {
             account_number in r"[0-9]{9,18}",
         ) {
             let ifsc = "HDFC0001234";
-            
+
             let request = AddBankAccountRequest {
                 account_holder_name: account_holder_name.clone(),
                 account_number: account_number.clone(),
                 ifsc_code: ifsc.to_string(),
                 account_type: AccountType::Savings,
             };
-            
+
             // Verify request structure
             prop_assert_eq!(request.account_holder_name, account_holder_name);
             prop_assert_eq!(request.account_number, account_number);
@@ -772,13 +793,13 @@ mod property_tests {
             account_number in r"[0-9]{9,18}",
         ) {
             let masked = mask_bank_account(&account_number);
-            
+
             // Verify last 4 digits are preserved
             if account_number.len() >= 4 {
                 let last_four = &account_number[account_number.len() - 4..];
                 prop_assert!(masked.contains(last_four), "Last 4 digits should be preserved in masked account");
             }
-            
+
             // Verify masking characters are present
             prop_assert!(masked.contains("X"), "Masked account should contain X characters");
         }
@@ -790,11 +811,11 @@ mod property_tests {
             account_number in r"[0-9]{9,18}",
         ) {
             let masked = mask_bank_account(&account_number);
-            
+
             // Verify format matches pattern: XXXX...{last4}
             prop_assert!(masked.contains("XXXX"), "Should contain XXXX masking pattern");
             prop_assert!(masked.contains("..."), "Should contain ellipsis");
-            
+
             // Verify no more than last 4 digits are visible
             let visible_digits = masked.chars().filter(|c| c.is_numeric()).count();
             prop_assert!(visible_digits <= 4, "Only last 4 digits should be visible");
@@ -824,7 +845,7 @@ mod property_tests {
                 VerificationStatus::Failed,
             ];
             let status = statuses[status_idx].clone();
-            
+
             // Verify status is valid
             let status_str = status.as_str();
             prop_assert!(

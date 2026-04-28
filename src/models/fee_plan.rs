@@ -8,30 +8,30 @@ pub struct FeePlan {
     pub tenant_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
-    
+
     pub card_debit_bps: i32,
     pub card_credit_bps: i32,
     pub upi_bps: i32,
     pub netbanking_bps: i32,
     pub wallet_bps: i32,
     pub emi_bps: i32,
-    
+
     pub card_flat_fee: i32,
     pub upi_flat_fee: i32,
     pub netbanking_flat_fee: i32,
     pub wallet_flat_fee: i32,
-    
+
     pub gst_percentage: f64,
     pub gst_inclusive: bool,
-    
+
     pub min_transaction_amount: i32,
     pub max_transaction_amount: i32,
-    
+
     pub is_active: bool,
     pub is_default: bool,
     pub version: i32,
     pub parent_plan_id: Option<Uuid>,
-    
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -42,25 +42,25 @@ pub struct CreateFeePlanRequest {
     pub name: String,
     pub description: Option<String>,
     pub tenant_id: Option<Uuid>,
-    
+
     pub card_debit_bps: Option<i32>,
     pub card_credit_bps: Option<i32>,
     pub upi_bps: Option<i32>,
     pub netbanking_bps: Option<i32>,
     pub wallet_bps: Option<i32>,
     pub emi_bps: Option<i32>,
-    
+
     pub card_flat_fee: Option<i32>,
     pub upi_flat_fee: Option<i32>,
     pub netbanking_flat_fee: Option<i32>,
     pub wallet_flat_fee: Option<i32>,
-    
+
     pub gst_percentage: Option<f64>,
     pub gst_inclusive: Option<bool>,
-    
+
     pub min_transaction_amount: Option<i32>,
     pub max_transaction_amount: Option<i32>,
-    
+
     pub is_default: Option<bool>,
 }
 
@@ -82,16 +82,16 @@ pub struct MerchantFeeAssignment {
     pub id: Uuid,
     pub merchant_id: Uuid,
     pub fee_plan_id: Uuid,
-    
+
     pub custom_card_debit_bps: Option<i32>,
     pub custom_card_credit_bps: Option<i32>,
     pub custom_upi_bps: Option<i32>,
     pub custom_netbanking_bps: Option<i32>,
     pub custom_wallet_bps: Option<i32>,
-    
+
     pub effective_from: DateTime<Utc>,
     pub effective_until: Option<DateTime<Utc>>,
-    
+
     pub assigned_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }

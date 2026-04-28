@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../hooks/useApi';
-import { Clock, CheckCircle, XCircle, FileText, AlertTriangle } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, FileText } from 'lucide-react';
 
 interface KYCSubmission {
   id: string;

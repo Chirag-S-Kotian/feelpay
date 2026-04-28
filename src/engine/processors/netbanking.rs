@@ -40,9 +40,9 @@ impl PaymentMethodProcessor for NetBankingProcessor {
             MethodData::NetBanking { bank_code } if !bank_code.trim().is_empty() => {
                 self.simulator.authorize(txn, method_data).await
             }
-            MethodData::NetBanking { .. } => {
-                Err(FeelPayError::BadRequest("Bank code required for netbanking".into()))
-            }
+            MethodData::NetBanking { .. } => Err(FeelPayError::BadRequest(
+                "Bank code required for netbanking".into(),
+            )),
             _ => Err(FeelPayError::BadRequest(
                 "Expected netbanking payment data".into(),
             )),

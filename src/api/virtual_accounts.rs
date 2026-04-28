@@ -1,8 +1,8 @@
+use crate::error::FeelPayError;
+use crate::models::virtual_account::{CreateVirtualAccountRequest, VirtualAccount};
+use crate::state::AppState;
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use uuid::Uuid;
-use crate::error::FeelPayError;
-use crate::state::AppState;
-use crate::models::virtual_account::{CreateVirtualAccountRequest, VirtualAccount};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -44,7 +44,7 @@ pub async fn create_virtual_account(
     let merchant_prefix = &merchant_id.to_string()[..8].to_uppercase();
     let random_suffix: u32 = rand::random::<u32>() % 1_000_000;
     let account_number = format!("FEELP{}{:06}", merchant_prefix, random_suffix);
-    
+
     // Static IFSC for FeelPay Virtual Bank (Simulated)
     let ifsc_code = "FEEL0000001";
     let bank_name = "FeelPay Virtual Bank";
@@ -89,7 +89,7 @@ pub async fn list_virtual_accounts(
     let merchant_id = merchant_id_from_req(&req)?;
 
     let accounts = sqlx::query_as::<_, VirtualAccount>(
-        "SELECT * FROM virtual_accounts WHERE merchant_id = $1 ORDER BY created_at DESC"
+        "SELECT * FROM virtual_accounts WHERE merchant_id = $1 ORDER BY created_at DESC",
     )
     .bind(merchant_id)
     .fetch_all(&state.db)
@@ -122,7 +122,7 @@ pub async fn get_virtual_account(
     let va_id = path.into_inner();
 
     let account = sqlx::query_as::<_, VirtualAccount>(
-        "SELECT * FROM virtual_accounts WHERE id = $1 AND merchant_id = $2"
+        "SELECT * FROM virtual_accounts WHERE id = $1 AND merchant_id = $2",
     )
     .bind(va_id)
     .bind(merchant_id)

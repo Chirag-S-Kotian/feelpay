@@ -99,13 +99,19 @@ impl NotificationService {
     ) -> Result<NotificationPreference, FeelPayError> {
         // Try user-level preference first
         if let Some(uid) = user_id {
-            if let Ok(Some(pref)) = self.get_preference_from_db(merchant_id, Some(uid), event_type).await {
+            if let Ok(Some(pref)) = self
+                .get_preference_from_db(merchant_id, Some(uid), event_type)
+                .await
+            {
                 return Ok(pref);
             }
         }
 
         // Try merchant-level preference
-        if let Ok(Some(pref)) = self.get_preference_from_db(merchant_id, None, event_type).await {
+        if let Ok(Some(pref)) = self
+            .get_preference_from_db(merchant_id, None, event_type)
+            .await
+        {
             return Ok(pref);
         }
 
@@ -123,13 +129,16 @@ impl NotificationService {
     ) -> Result<NotificationPreference, FeelPayError> {
         // Validate event type
         if !SUPPORTED_EVENT_TYPES.contains(&event_type) {
-            return Err(FeelPayError::BadRequest(
-                format!("Unsupported event type: {}", event_type),
-            ));
+            return Err(FeelPayError::BadRequest(format!(
+                "Unsupported event type: {}",
+                event_type
+            )));
         }
 
         // Get current preference or default
-        let current = self.get_notification_preferences(merchant_id, user_id, event_type).await?;
+        let current = self
+            .get_notification_preferences(merchant_id, user_id, event_type)
+            .await?;
 
         let email_enabled = request.email_enabled.unwrap_or(current.email_enabled);
         let sms_enabled = request.sms_enabled.unwrap_or(current.sms_enabled);
@@ -138,17 +147,20 @@ impl NotificationService {
         let pref_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let pref = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            String,
-            bool,
-            bool,
-            bool,
-            String,
-            String,
-        )>(
+        let pref = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                bool,
+                bool,
+                bool,
+                String,
+                String,
+            ),
+        >(
             r#"
             INSERT INTO notification_preferences (
                 id, merchant_id, user_id, event_type, email_enabled, sms_enabled, in_app_enabled,
@@ -187,17 +199,20 @@ impl NotificationService {
         merchant_id: Uuid,
         user_id: Option<Uuid>,
     ) -> Result<Vec<NotificationPreference>, FeelPayError> {
-        let prefs = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            String,
-            bool,
-            bool,
-            bool,
-            String,
-            String,
-        )>(
+        let prefs = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                bool,
+                bool,
+                bool,
+                String,
+                String,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, user_id, event_type, email_enabled, sms_enabled, in_app_enabled,
@@ -216,7 +231,10 @@ impl NotificationService {
             FeelPayError::Database(e.to_string())
         })?;
 
-        Ok(prefs.into_iter().map(|row| self.row_to_preference(row)).collect())
+        Ok(prefs
+            .into_iter()
+            .map(|row| self.row_to_preference(row))
+            .collect())
     }
 
     /// Evaluate which channels are enabled for an event
@@ -226,7 +244,9 @@ impl NotificationService {
         user_id: Option<Uuid>,
         event_type: &str,
     ) -> Result<Vec<String>, FeelPayError> {
-        let pref = self.get_notification_preferences(merchant_id, user_id, event_type).await?;
+        let pref = self
+            .get_notification_preferences(merchant_id, user_id, event_type)
+            .await?;
 
         let mut channels = Vec::new();
         if pref.email_enabled {
@@ -258,20 +278,23 @@ impl NotificationService {
         let log_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let log = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            String,
-            String,
-            String,
-            serde_json::Value,
-            String,
-            Option<String>,
-            i32,
-            Option<String>,
-            String,
-        )>(
+        let log = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                String,
+                String,
+                serde_json::Value,
+                String,
+                Option<String>,
+                i32,
+                Option<String>,
+                String,
+            ),
+        >(
             r#"
             INSERT INTO notification_delivery_logs (
                 id, merchant_id, user_id, event_type, delivery_channel, recipient,
@@ -367,13 +390,10 @@ impl NotificationService {
             count_sql = count_sql.bind(st);
         }
 
-        let total = count_sql
-            .fetch_one(&self.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to count notification delivery logs: {:?}", e);
-                FeelPayError::Database(e.to_string())
-            })?;
+        let total = count_sql.fetch_one(&self.db).await.map_err(|e| {
+            tracing::error!("Failed to count notification delivery logs: {:?}", e);
+            FeelPayError::Database(e.to_string())
+        })?;
 
         // Get paginated results
         query.push_str(" ORDER BY created_at DESC");
@@ -382,20 +402,23 @@ impl NotificationService {
         param_count += 1;
         query.push_str(&format!(" OFFSET ${}", param_count));
 
-        let mut sql = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            String,
-            String,
-            String,
-            serde_json::Value,
-            String,
-            Option<String>,
-            i32,
-            Option<String>,
-            String,
-        )>(&query);
+        let mut sql = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                String,
+                String,
+                serde_json::Value,
+                String,
+                Option<String>,
+                i32,
+                Option<String>,
+                String,
+            ),
+        >(&query);
 
         if let Some(mid) = merchant_id {
             sql = sql.bind(mid);
@@ -420,7 +443,12 @@ impl NotificationService {
                 FeelPayError::Database(e.to_string())
             })?;
 
-        Ok((logs.into_iter().map(|row| self.row_to_delivery_log(row)).collect(), total))
+        Ok((
+            logs.into_iter()
+                .map(|row| self.row_to_delivery_log(row))
+                .collect(),
+            total,
+        ))
     }
 
     /// Get a specific notification delivery log
@@ -428,20 +456,23 @@ impl NotificationService {
         &self,
         log_id: Uuid,
     ) -> Result<Option<NotificationDeliveryLog>, FeelPayError> {
-        let log = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            String,
-            String,
-            String,
-            serde_json::Value,
-            String,
-            Option<String>,
-            i32,
-            Option<String>,
-            String,
-        )>(
+        let log = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                String,
+                String,
+                serde_json::Value,
+                String,
+                Option<String>,
+                i32,
+                Option<String>,
+                String,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, user_id, event_type, delivery_channel, recipient,
@@ -469,17 +500,20 @@ impl NotificationService {
         user_id: Option<Uuid>,
         event_type: &str,
     ) -> Result<Option<NotificationPreference>, FeelPayError> {
-        let pref = sqlx::query_as::<_, (
-            String,
-            String,
-            Option<String>,
-            String,
-            bool,
-            bool,
-            bool,
-            String,
-            String,
-        )>(
+        let pref = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                bool,
+                bool,
+                bool,
+                String,
+                String,
+            ),
+        >(
             r#"
             SELECT 
                 id, merchant_id, user_id, event_type, email_enabled, sms_enabled, in_app_enabled,
@@ -541,7 +575,17 @@ impl NotificationService {
             String,
         ),
     ) -> NotificationPreference {
-        let (id, merchant_id, user_id, event_type, email_enabled, sms_enabled, in_app_enabled, created_at, updated_at) = row;
+        let (
+            id,
+            merchant_id,
+            user_id,
+            event_type,
+            email_enabled,
+            sms_enabled,
+            in_app_enabled,
+            created_at,
+            updated_at,
+        ) = row;
 
         NotificationPreference {
             id: Uuid::parse_str(&id).unwrap_or_default(),
@@ -577,7 +621,20 @@ impl NotificationService {
             String,
         ),
     ) -> NotificationDeliveryLog {
-        let (id, merchant_id, user_id, event_type, delivery_channel, recipient, payload, status, error_message, retry_count, sent_at, created_at) = row;
+        let (
+            id,
+            merchant_id,
+            user_id,
+            event_type,
+            delivery_channel,
+            recipient,
+            payload,
+            status,
+            error_message,
+            retry_count,
+            sent_at,
+            created_at,
+        ) = row;
 
         NotificationDeliveryLog {
             id: Uuid::parse_str(&id).unwrap_or_default(),
@@ -643,7 +700,7 @@ mod property_tests {
         ) {
             let event_type = SUPPORTED_EVENT_TYPES[event_type_idx].to_string();
             let merchant_id = Uuid::new_v4();
-            
+
             // Create preference
             let preference = NotificationPreference {
                 id: Uuid::new_v4(),
@@ -656,7 +713,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             // Verify round-trip equivalence
             prop_assert_eq!(preference.event_type, event_type);
             prop_assert_eq!(preference.merchant_id, merchant_id);
@@ -685,7 +742,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             // Each channel state should be independent
             prop_assert_eq!(preference.email_enabled, email_enabled);
             prop_assert_eq!(preference.sms_enabled, sms_enabled);
@@ -701,10 +758,10 @@ mod property_tests {
         ) {
             let merchant_id_1 = Uuid::new_v4();
             let merchant_id_2 = Uuid::new_v4();
-            
+
             // Verify different merchants have different preferences
             prop_assert_ne!(merchant_id_1, merchant_id_2);
-            
+
             let pref1 = NotificationPreference {
                 id: Uuid::new_v4(),
                 merchant_id: merchant_id_1,
@@ -716,7 +773,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             let pref2 = NotificationPreference {
                 id: Uuid::new_v4(),
                 merchant_id: merchant_id_2,
@@ -728,7 +785,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             prop_assert_ne!(pref1.merchant_id, pref2.merchant_id);
         }
     }
@@ -756,7 +813,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             // If email is enabled, it should be in the enabled channels
             if email_enabled {
                 prop_assert!(preference.email_enabled);
@@ -782,7 +839,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             // If SMS is enabled, it should be in the enabled channels
             if sms_enabled {
                 prop_assert!(preference.sms_enabled);
@@ -808,7 +865,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             // If in-app is enabled, it should be in the enabled channels
             if in_app_enabled {
                 prop_assert!(preference.in_app_enabled);
@@ -834,7 +891,7 @@ mod property_tests {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
-            
+
             // When all channels are disabled, no notifications should be sent
             let any_enabled = preference.email_enabled || preference.sms_enabled || preference.in_app_enabled;
             prop_assert!(!any_enabled, "At least one channel should be disabled");
@@ -856,7 +913,7 @@ mod property_tests {
         ) {
             let event_type = SUPPORTED_EVENT_TYPES[event_type_idx].to_string();
             let recipient = format!("recipient{}@example.com", recipient_suffix);
-            
+
             let log = NotificationDeliveryLog {
                 id: Uuid::new_v4(),
                 merchant_id: Uuid::new_v4(),
@@ -871,7 +928,7 @@ mod property_tests {
                 sent_at: Some(chrono::Utc::now()),
                 created_at: chrono::Utc::now(),
             };
-            
+
             // Verify all required fields are present
             prop_assert!(!log.id.to_string().is_empty(), "notification_id must not be empty");
             prop_assert!(!log.merchant_id.to_string().is_empty(), "merchant_id must not be empty");
@@ -889,7 +946,7 @@ mod property_tests {
         ) {
             let statuses = vec!["sent", "failed", "bounced"];
             let status = statuses[status_idx];
-            
+
             let log = NotificationDeliveryLog {
                 id: Uuid::new_v4(),
                 merchant_id: Uuid::new_v4(),
@@ -904,7 +961,7 @@ mod property_tests {
                 sent_at: Some(chrono::Utc::now()),
                 created_at: chrono::Utc::now(),
             };
-            
+
             // Verify status is one of valid values
             prop_assert!(
                 log.status == "sent" || log.status == "failed" || log.status == "bounced",
@@ -923,7 +980,7 @@ mod property_tests {
             } else {
                 None
             };
-            
+
             let log = NotificationDeliveryLog {
                 id: Uuid::new_v4(),
                 merchant_id: Uuid::new_v4(),
@@ -938,7 +995,7 @@ mod property_tests {
                 sent_at: Some(chrono::Utc::now()),
                 created_at: chrono::Utc::now(),
             };
-            
+
             // Verify error_message is present when status is failed
             if log.status == "failed" {
                 prop_assert_eq!(log.error_message.is_some(), has_error_message);
@@ -965,7 +1022,7 @@ mod property_tests {
                 sent_at: Some(chrono::Utc::now()),
                 created_at: chrono::Utc::now(),
             };
-            
+
             // Verify retry_count is non-negative
             prop_assert!(log.retry_count >= 0, "retry_count must be non-negative");
         }
@@ -978,7 +1035,7 @@ mod property_tests {
         ) {
             let channels = vec!["email", "sms", "in_app"];
             let channel = channels[channel_idx];
-            
+
             let log = NotificationDeliveryLog {
                 id: Uuid::new_v4(),
                 merchant_id: Uuid::new_v4(),
@@ -993,7 +1050,7 @@ mod property_tests {
                 sent_at: Some(chrono::Utc::now()),
                 created_at: chrono::Utc::now(),
             };
-            
+
             // Verify delivery_channel is one of valid values
             prop_assert!(
                 log.delivery_channel == "email" || log.delivery_channel == "sms" || log.delivery_channel == "in_app",
