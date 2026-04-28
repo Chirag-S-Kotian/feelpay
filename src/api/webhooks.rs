@@ -154,7 +154,7 @@ async fn handle_dispute_event(
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use sha2::{Sha256, Sha512, Digest};
+use sha2::Sha512;
 
 /// Request for webhook verification endpoint
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -292,9 +292,11 @@ pub async fn verify_webhook(
     let event_type = if valid {
         serde_json::from_slice::<serde_json::Value>(&payload_bytes)
             .ok()
-            .and_then(|v| v.get("event").or_else(|| v.get("type")))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+            .and_then(|v| {
+                v.get("event")
+                    .and_then(|x| x.as_str().map(|s| s.to_string()))
+                    .or_else(|| v.get("type").and_then(|x| x.as_str().map(|s| s.to_string())))
+            })
     } else {
         None
     };

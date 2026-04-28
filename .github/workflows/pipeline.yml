@@ -1,0 +1,80 @@
+# name: feelpay-ci
+
+# on:
+#   push:
+#     branches: [main, master]
+#   pull_request:
+
+# jobs:
+#   rust-tests:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: dtolnay/rust-toolchain@stable
+#       - uses: Swatinem/rust-cache@v2
+#       - name: Cargo check
+#         run: cargo check --all-targets
+#       - name: Unit and property tests
+#         run: cargo test --lib -- --nocapture
+#       - name: API cycle tests
+#         run: cargo test --test api_cycle -- --nocapture
+
+#   frontend-tests:
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         app: [dashboard, admin]
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: pnpm/action-setup@v4
+#         with:
+#           version: 10
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#           cache: pnpm
+#       - name: Install
+#         working-directory: ${{ matrix.app }}
+#         run: pnpm install
+#       - name: Unit tests
+#         working-directory: ${{ matrix.app }}
+#         run: pnpm test -- --run
+#       - name: Build
+#         working-directory: ${{ matrix.app }}
+#         run: pnpm build
+
+#   playwright:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#       - name: Install dashboard deps
+#         working-directory: dashboard
+#         run: npm ci
+#       - name: Install playwright deps
+#         working-directory: dashboard
+#         run: npx playwright install --with-deps
+#       - name: Run responsive + cross-browser + a11y
+#         working-directory: dashboard
+#         run: npm run test:e2e
+
+#   dependency-audit:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: dtolnay/rust-toolchain@stable
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#       - name: Install cargo-audit
+#         run: cargo install cargo-audit --locked
+#       - name: Rust dependency audit
+#         run: cargo audit
+#       - name: Dashboard npm audit
+#         working-directory: dashboard
+#         run: npm audit --audit-level=high
+#       - name: Admin npm audit
+#         working-directory: admin
+#         run: npm audit --audit-level=high

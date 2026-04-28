@@ -1,12 +1,12 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-04-28)
 
 ## Corpus Check
-- 183 files · ~197,909 words
+- 183 files · ~210,138 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1454 nodes · 2449 edges · 116 communities detected
-- Extraction: 68% EXTRACTED · 32% INFERRED · 0% AMBIGUOUS · INFERRED: 784 edges (avg confidence: 0.8)
+- 1457 nodes · 2455 edges · 116 communities detected
+- Extraction: 68% EXTRACTED · 32% INFERRED · 0% AMBIGUOUS · INFERRED: 786 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -129,7 +129,7 @@
 
 ## God Nodes (most connected - your core abstractions)
 1. `main()` - 27 edges
-2. `apiRequest()` - 26 edges
+2. `apiRequest()` - 27 edges
 3. `BlacklistService` - 14 edges
 4. `NotificationService` - 13 edges
 5. `create_payment()` - 13 edges
@@ -155,7 +155,7 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (137): get_actionable_alerts(), check_password_history(), mask_bank_account(), add_bank_account(), AddBankAccountApiRequest, AddBankAccountApiResponse, BankAccountResponse, BankAccountsListResponse (+129 more)
+Nodes (136): get_actionable_alerts(), check_password_history(), mask_bank_account(), add_bank_account(), AddBankAccountApiRequest, AddBankAccountApiResponse, BankAccountResponse, BankAccountsListResponse (+128 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.03
@@ -171,7 +171,7 @@ Nodes (36): AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse
 
 ### Community 4 - "Community 4"
 Cohesion: 0.04
-Nodes (38): fetchData(), create(), load(), fetchBankAccounts(), handleDelete(), handleFormClose(), handleSetPrimaryClose(), handleVerifyClose() (+30 more)
+Nodes (39): fetchData(), create(), load(), fetchBankAccounts(), handleDelete(), handleFormClose(), handleSetPrimaryClose(), handleVerifyClose() (+31 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.06
@@ -183,11 +183,11 @@ Nodes (20): CheckoutSessionResponse, configure(), create_checkout_session(), Cre
 
 ### Community 7 - "Community 7"
 Cohesion: 0.07
-Nodes (36): BillingCycle, cancel_subscription(), create_plan(), create_subscription(), CreatePlanRequest, CreateSubscriptionRequest, generate_invoice(), get_subscription() (+28 more)
+Nodes (30): AdminUserRequest, create_admin_user(), deactivate_admin_user(), update_admin_user(), admin_id_from_claims(), log_audit(), configure(), apply_bulk_utrs() (+22 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.08
-Nodes (29): AdminUserRequest, create_admin_user(), deactivate_admin_user(), update_admin_user(), admin_id_from_claims(), log_audit(), configure(), apply_bulk_utrs() (+21 more)
+Cohesion: 0.07
+Nodes (36): BillingCycle, cancel_subscription(), create_plan(), create_subscription(), CreatePlanRequest, CreateSubscriptionRequest, generate_invoice(), get_subscription() (+28 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.12
@@ -198,12 +198,12 @@ Cohesion: 0.1
 Nodes (24): AnalyticsQuery, AnalyticsSummary, AnalyticsSummaryRow, configure(), DateRange, DayVolume, DayVolumeRow, extract_merchant_id() (+16 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.09
-Nodes (12): AmountRange, CreateExportJobRequest, DateRange, ExportJob, ExportJobType, integration_test_bank_account_verification_flow(), integration_test_end_to_end_transaction_export(), integration_test_webhook_test_delivery() (+4 more)
-
-### Community 12 - "Community 12"
 Cohesion: 0.12
 Nodes (19): CreateMerchantRequestInput, extract_merchant_id_internal(), get_keys(), get_merchant(), get_profile(), InviteTeamMemberRequest, list_payment_methods(), list_team_members() (+11 more)
+
+### Community 12 - "Community 12"
+Cohesion: 0.09
+Nodes (12): AmountRange, CreateExportJobRequest, DateRange, ExportJob, ExportJobType, integration_test_bank_account_verification_flow(), integration_test_end_to_end_transaction_export(), integration_test_webhook_test_delivery() (+4 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.09
@@ -238,8 +238,8 @@ Cohesion: 0.17
 Nodes (6): DeviceFingerprint, DeviceFingerprintService, StoredDeviceFingerprint, test_fingerprint_consistency(), test_fingerprint_difference(), test_fingerprint_generation()
 
 ### Community 21 - "Community 21"
-Cohesion: 0.14
-Nodes (14): CardProcessor, LedgerService, Merchant Dashboard, PaymentEngine, SettlementService, UpiProcessor, Vault, configure() (+6 more)
+Cohesion: 0.15
+Nodes (14): CardProcessor, LedgerService, Merchant Dashboard, PaymentEngine, SettlementService, UpiProcessor, Vault, get_settlement() (+6 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.22
@@ -699,13 +699,13 @@ Nodes (1): Phase_6_Dashboard
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `apiRequest()` connect `Community 4` to `Community 5`?**
-  _High betweenness centrality (0.119) - this node is a cross-community bridge._
+  _High betweenness centrality (0.069) - this node is a cross-community bridge._
 - **Why does `handleSubmit()` connect `Community 5` to `Community 4`?**
-  _High betweenness centrality (0.114) - this node is a cross-community bridge._
+  _High betweenness centrality (0.067) - this node is a cross-community bridge._
 - **Are the 22 inferred relationships involving `main()` (e.g. with `.new()` and `.from_env()`) actually correct?**
   _`main()` has 22 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 22 inferred relationships involving `apiRequest()` (e.g. with `handleSubmit()` and `createLink()`) actually correct?**
-  _`apiRequest()` has 22 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 23 inferred relationships involving `apiRequest()` (e.g. with `handleSubmit()` and `createLink()`) actually correct?**
+  _`apiRequest()` has 23 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 8 inferred relationships involving `create_payment()` (e.g. with `.to_string()` and `.vault_card()`) actually correct?**
   _`create_payment()` has 8 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `AppState`, `ApiKey`, `CreateApiKeyRequest` to the rest of the system?**

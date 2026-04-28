@@ -1,0 +1,21 @@
+# name: zap-staging-scan
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       target_url:
+#         description: "Staging URL"
+#         required: true
+#         default: "https://staging.feelpay.in"
+
+# jobs:
+#   zap-baseline:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: ZAP baseline scan
+#         uses: zaproxy/action-baseline@v0.12.0
+#         with:
+#           target: ${{ github.event.inputs.target_url }}
+#           cmd_options: "-a -j -m 5"
+

@@ -23,6 +23,7 @@ pub mod reports;
 pub mod settlements;
 pub mod subscriptions;
 pub mod virtual_accounts;
+pub mod webhooks;
 pub mod webhook_test;
 
 use utoipa::OpenApi;
