@@ -882,8 +882,8 @@ mod property_tests {
             gross_amount_paise in 100i64..1000000000i64,
         ) {
             let settlement_id = format!("settlement-{}", settlement_id_suffix);
-            let settlement_date = chrono::Utc::now();
-            let transfer_date = chrono::Utc::now();
+            let _settlement_date = chrono::Utc::now();
+            let _transfer_date = chrono::Utc::now();
             let utr = format!("UTR{}", Uuid::new_v4());
             let bank_account = "XXXX...1234";
 

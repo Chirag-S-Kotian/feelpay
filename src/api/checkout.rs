@@ -70,24 +70,66 @@ pub async fn create_checkout_session(
             .query(&mut conn);
     }
 
-    let checkout_url = format!(
-        "{}/checkout/{}",
-        state
-            .config
-            .cors_allowed_origins
-            .first()
-            .unwrap_or(&"https://checkout.feelpay.com".to_string()),
-        session_id
-    );
-    let embed_url = format!(
-        "{}/checkout/embed/{}",
-        state
-            .config
-            .cors_allowed_origins
-            .first()
-            .unwrap_or(&"https://checkout.feelpay.com".to_string()),
-        session_id
-    );
+    let tenant_row: Option<(Option<String>, Option<serde_json::Value>, Option<serde_json::Value>)> =
+        sqlx::query_as(
+            r#"
+            SELECT t.domain, t.branding, t.config
+            FROM merchants m
+            LEFT JOIN tenants t ON t.id = m.tenant_id
+            WHERE m.id = $1
+            "#,
+        )
+        .bind(body.merchant_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let default_base = state
+        .config
+        .cors_allowed_origins
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "https://checkout.feelpay.com".to_string());
+
+    let tenant_domain = tenant_row
+        .as_ref()
+        .and_then(|(domain, _, config)| {
+            domain.clone().or_else(|| {
+                config
+                    .as_ref()
+                    .and_then(|c| c.get("custom_domain"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .map(|d| {
+            if d.starts_with("http://") || d.starts_with("https://") {
+                d
+            } else {
+                format!("https://{}", d)
+            }
+        })
+        .unwrap_or(default_base);
+
+    let checkout_url = format!("{}/checkout/{}", tenant_domain, session_id);
+    let embed_url = format!("{}/checkout/embed/{}", tenant_domain, session_id);
+
+    if let Some((_, branding, config)) = tenant_row {
+        let tenant_branding = branding.unwrap_or_else(|| serde_json::json!({}));
+        let tenant_config = config.unwrap_or_else(|| serde_json::json!({}));
+        if let Ok(mut conn) = state.redis.get_connection() {
+            let style_key = format!("checkout:theme:{}", session_id);
+            let style_payload = serde_json::json!({
+                "session_id": session_id,
+                "branding": tenant_branding,
+                "config": tenant_config,
+            });
+            let _: Result<(), _> = redis::cmd("SETEX")
+                .arg(style_key)
+                .arg(1800)
+                .arg(style_payload.to_string())
+                .query(&mut conn);
+        }
+    }
 
     Ok(HttpResponse::Created().json(CheckoutSessionResponse {
         session_id: session_id.clone(),

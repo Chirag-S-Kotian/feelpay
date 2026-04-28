@@ -246,7 +246,9 @@ mod tests {
 
     #[test]
     fn test_template_rendering() {
-        let service = NotificationTemplateService::new(sqlx::PgPool::connect("").await.unwrap());
+        let service = NotificationTemplateService::new(
+            sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+        );
         let template = NotificationTemplate {
             id: Uuid::new_v4(),
             event_type: "payment_receipt".to_string(),
@@ -271,7 +273,9 @@ mod tests {
 
     #[test]
     fn test_missing_variables() {
-        let service = NotificationTemplateService::new(sqlx::PgPool::connect("").await.unwrap());
+        let service = NotificationTemplateService::new(
+            sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+        );
         let template = NotificationTemplate {
             id: Uuid::new_v4(),
             event_type: "payment_receipt".to_string(),

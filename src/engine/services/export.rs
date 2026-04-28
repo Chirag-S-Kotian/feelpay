@@ -1394,8 +1394,8 @@ mod property_tests {
             };
 
             // Verify both requests have identical idempotency keys
-            prop_assert_eq!(request1.idempotency_key, request2.idempotency_key);
-            prop_assert_eq!(request1.idempotency_key, Some(idempotency_key));
+            prop_assert_eq!(request1.idempotency_key.as_deref(), request2.idempotency_key.as_deref());
+            prop_assert_eq!(request1.idempotency_key.as_deref(), Some(idempotency_key.as_str()));
         }
     }
 
@@ -1409,10 +1409,10 @@ mod property_tests {
             let key3 = format!("export-{}-different", key_base);
 
             // Same key should be equal
-            prop_assert_eq!(key1, key2);
+            prop_assert_eq!(key1.as_str(), key2.as_str());
 
             // Different keys should not be equal
-            prop_assert_ne!(key1, key3);
+            prop_assert_ne!(key1.as_str(), key3.as_str());
         }
     }
 
@@ -1568,8 +1568,6 @@ mod property_tests {
             percent_2 in 0i32..100i32,
         ) {
             // If percent_2 comes after percent_1, it should be >= percent_1
-            let is_monotonic = percent_2 >= percent_1 || percent_1 > percent_2;
-
             // Verify monotonicity property
             if percent_2 > percent_1 {
                 prop_assert!(percent_2 >= percent_1, "Progress should increase monotonically");
@@ -1756,9 +1754,7 @@ mod integration_tests {
     // ============================================================================
     #[tokio::test]
     async fn integration_test_scheduled_report_generation_and_delivery() {
-        use crate::engine::services::report::{
-            ReportFormat, ReportFrequency, ReportService, ReportType,
-        };
+        use crate::engine::services::report::{ReportFormat, ReportFrequency, ReportType};
 
         let merchant_id = Uuid::new_v4();
         let report_id = Uuid::new_v4();
@@ -1809,10 +1805,8 @@ mod integration_tests {
     // ============================================================================
     #[tokio::test]
     async fn integration_test_webhook_test_delivery() {
-        use crate::engine::services::webhook_test::WebhookTestService;
-
         let merchant_id = Uuid::new_v4();
-        let webhook_id = Uuid::new_v4();
+        let _webhook_id = Uuid::new_v4();
 
         // Verify webhook test structure
         // Sample payload for payment.success event

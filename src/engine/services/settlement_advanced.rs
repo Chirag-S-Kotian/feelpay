@@ -275,7 +275,9 @@ mod tests {
 
     #[test]
     fn test_tds_calculation() {
-        let service = SettlementAdvancedService::new(sqlx::PgPool::connect("").await.unwrap());
+        let service = SettlementAdvancedService::new(
+            sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+        );
         let amount = 100000; // 1000 INR
         let tds = service.calculate_tds(amount);
         assert_eq!(tds, 1000); // 1% = 10 INR
@@ -283,7 +285,9 @@ mod tests {
 
     #[test]
     fn test_financial_year_april() {
-        let service = SettlementAdvancedService::new(sqlx::PgPool::connect("").await.unwrap());
+        let service = SettlementAdvancedService::new(
+            sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+        );
         let fy = service.get_financial_year();
         // Should be FY 2025-26 or similar
         assert!(fy.contains("FY"));

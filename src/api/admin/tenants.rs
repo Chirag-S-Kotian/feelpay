@@ -22,7 +22,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_tenants))
             .route("", web::post().to(create_tenant))
             .route("/{id}", web::put().to(update_tenant))
-            .route("/{id}", web::delete().to(delete_tenant)),
+            .route("/{id}", web::delete().to(delete_tenant))
+            .route("/{id}/merchants", web::get().to(list_tenant_merchants)),
     );
 }
 
@@ -143,4 +144,26 @@ pub async fn delete_tenant(
     )
     .await?;
     Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn list_tenant_merchants(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let tenant_id = path.into_inner();
+    let rows: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        SELECT to_jsonb(t)
+        FROM (
+            SELECT id, tenant_id, name, email, business_name, status, created_at, updated_at
+            FROM merchants
+            WHERE tenant_id = $1
+            ORDER BY created_at DESC
+        ) t
+        "#,
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(HttpResponse::Ok().json(rows))
 }

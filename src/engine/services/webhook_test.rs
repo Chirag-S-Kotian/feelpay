@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn test_sign_webhook() {
         let service = WebhookTestService::new(
-            sqlx::PgPoolOptions::new()
+            sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)
                 .connect_lazy("postgres://localhost/test")
                 .unwrap(),
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn test_verify_webhook_signature() {
         let service = WebhookTestService::new(
-            sqlx::PgPoolOptions::new()
+            sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)
                 .connect_lazy("postgres://localhost/test")
                 .unwrap(),

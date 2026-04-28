@@ -693,7 +693,8 @@ mod property_tests {
             prop_assert_eq!(ifsc.len(), 11, "IFSC code must be exactly 11 characters");
 
             // IFSC code should be uppercase
-            prop_assert_eq!(ifsc, ifsc.to_uppercase(), "IFSC code must be uppercase");
+            let ifsc_upper = ifsc.to_uppercase();
+            prop_assert_eq!(ifsc.as_str(), ifsc_upper.as_str(), "IFSC code must be uppercase");
 
             // First 4 characters should be alphabetic
             let first_four = &ifsc[0..4];
@@ -776,14 +777,14 @@ mod property_tests {
                 account_holder_name: account_holder_name.clone(),
                 account_number: account_number.clone(),
                 ifsc_code: ifsc.to_string(),
-                account_type: AccountType::Savings,
+                account_type: AccountType::Savings.as_str().to_string(),
             };
 
             // Verify request structure
             prop_assert_eq!(request.account_holder_name, account_holder_name);
             prop_assert_eq!(request.account_number, account_number);
             prop_assert_eq!(request.ifsc_code, ifsc);
-            prop_assert_eq!(request.account_type, AccountType::Savings);
+            prop_assert_eq!(request.account_type, AccountType::Savings.as_str());
         }
     }
 

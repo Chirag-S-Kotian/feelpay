@@ -248,8 +248,6 @@ impl BlacklistService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_bin_extraction() {
         let bin = "411111";

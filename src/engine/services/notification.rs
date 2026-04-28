@@ -753,8 +753,8 @@ mod property_tests {
     proptest! {
         #[test]
         fn prop_notification_preference_merchant_isolation(
-            merchant_id_1_suffix in r"[a-zA-Z0-9]{5,20}",
-            merchant_id_2_suffix in r"[a-zA-Z0-9]{5,20}",
+            _merchant_id_1_suffix in r"[a-zA-Z0-9]{5,20}",
+            _merchant_id_2_suffix in r"[a-zA-Z0-9]{5,20}",
         ) {
             let merchant_id_1 = Uuid::new_v4();
             let merchant_id_2 = Uuid::new_v4();

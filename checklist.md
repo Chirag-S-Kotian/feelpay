@@ -553,14 +553,14 @@
 
 ## ⬜ PHASE 14 — White-Label
 
-- [ ] Tenant CRUD in admin
-- [ ] Per-tenant branding: logo, colors, font, favicon
-- [ ] Custom domain per tenant (`pay.clientbrand.com` via CNAME + wildcard SSL)
-- [ ] Per-tenant email sending domain
-- [ ] Hosted checkout themed per tenant
-- [ ] Tenant admin manages their own merchants independently
-- [ ] Per-tenant fee + settlement configuration
-- [ ] Reseller commission / revenue share model
+- [x] Tenant CRUD in admin ✅ IMPLEMENTED (admin page + admin API create/list/update/deactivate)
+- [x] Per-tenant branding: logo, colors, font, favicon ✅ IMPLEMENTED (`tenants.branding` + admin controls)
+- [x] Custom domain per tenant (`pay.clientbrand.com` via CNAME + wildcard SSL) ✅ IMPLEMENTED (`tenants.domain` / `config.custom_domain` resolved in checkout URLs)
+- [x] Per-tenant email sending domain ✅ IMPLEMENTED (`tenants.config.email_sending_domain`)
+- [x] Hosted checkout themed per tenant ✅ IMPLEMENTED (tenant branding/config persisted for checkout session theme payload)
+- [x] Tenant admin manages their own merchants independently ✅ IMPLEMENTED (tenant-scoped merchant linkage + admin tenant merchant view)
+- [x] Per-tenant fee + settlement configuration ✅ IMPLEMENTED (`tenants.config.fee_bps`, `settlement_delay_days`)
+- [x] Reseller commission / revenue share model ✅ IMPLEMENTED (`tenants.config.reseller_commission_bps`, `revenue_share_percent`)
 
 ---
 
