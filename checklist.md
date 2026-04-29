@@ -142,7 +142,7 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ✅ PHASE 0 — Project Setup
+## ⬜ PHASE 0 — Project Setup
 
 - [x] Monorepo structure with merchant dashboard, admin panel, hosted checkout, backend, shared types, shared UI component library
 - [x] Environment variable files for all apps
@@ -156,7 +156,7 @@ Use this block as source of truth before marking more `[x]`.
 - [ ] Point-in-time recovery verified enabled ⬜ EXTERNAL (DB infra setting)
 - [ ] DB region confirmed as Mumbai (`ap-south-1`) — required for RBI data localization ⬜ EXTERNAL (infra/account setting)
 - [x] DB migration system set up and versioned
-- [x] Object storage for KYC docs and reports (never in DB) ✅ BACKEND READY
+- [ ] Object storage for KYC docs and reports (never in DB) ⬜ PARTIAL (document metadata stored; upload URL currently mock in `src/api/documents.rs`)
 - [ ] CDN configured ⬜ EXTERNAL (infra setting)
 
 ---
@@ -218,13 +218,13 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ✅ PHASE 3 — Merchant Onboarding & KYC
+## ⬜ PHASE 3 — Merchant Onboarding & KYC
 
 - [x] Multi-step registration form with per-step validation ✅ IMPLEMENTED
 - [x] Business info: name, email, phone, PAN, GSTIN ✅ IMPLEMENTED
 - [x] Business type selection: Pvt Ltd, LLP, Sole Proprietor, Partnership, Trust, NGO ✅ IMPLEMENTED
 - [x] Document upload with drag-and-drop and preview (frontend) ✅ BACKEND IMPLEMENTED
-- [x] Upload direct to object storage (not through backend memory) ✅ BACKEND IMPLEMENTED
+- [ ] Upload direct to object storage (not through backend memory) ⬜ PARTIAL (presigned upload endpoint exists but returns mock URL; real S3/GCS signing not wired)
 - [x] Email + phone OTP verification during registration ✅ BACKEND IMPLEMENTED
 - [x] Registration progress saved — can resume incomplete ✅ IMPLEMENTED
 - [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ IMPLEMENTED
@@ -243,7 +243,7 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ✅ PHASE 4 — Payment Gateway Core
+## ⬜ PHASE 4 — Payment Gateway Core
 
 ### Payment Methods (India)
 - [x] UPI — Intent, QR collect, VPA push ✅ IMPLEMENTED
@@ -286,7 +286,7 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ✅ PHASE 5 — Merchant Dashboard
+## ⬜ PHASE 5 — Merchant Dashboard
 
 ### Layout
 - [x] Collapsible sidebar, mobile-responsive ✅ IMPLEMENTED
@@ -490,7 +490,7 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ✅ PHASE 9 — Security
+## ⬜ PHASE 9 — Security
 
 - [ ] TLS 1.3 everywhere (1.2 minimum) ⬜ EXTERNAL CONFIG
 - [ ] HSTS with preload ⬜ EXTERNAL CONFIG
@@ -548,7 +548,7 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ✅ PHASE 11 — Notifications & Communications
+## ⬜ PHASE 11 — Notifications & Communications
 
 - [ ] Transactional email (payment receipt, settlement, dispute alert, KYC status) ⬜ PARTIAL (provider code exists, live delivery proof missing)
 - [ ] SMS (OTP, payment confirmation) ⬜ PARTIAL (provider code exists, live delivery proof missing)
@@ -675,6 +675,11 @@ Audit corrections (same run):
 - Upgraded `subscriptions + subscription_invoices` from `SCHEMA ONLY` to `IMPLEMENTED` after code proof in:
   - `src/engine/services/subscription.rs`
   - `src/api/subscriptions.rs`
+- Unchecked object-storage implementation claims after code audit:
+  - `generate_upload_url` currently returns mock URL in `src/api/documents.rs` (no real S3/GCS presign in current code)
+- Added real presign integration path:
+  - `src/api/documents.rs` now calls `STORAGE_SIGNER_URL` (if set) to fetch real presigned upload URL.
+  - Fallback mock URL kept when signer not configured.
 
 ---
 
@@ -712,3 +717,34 @@ Audit corrections (same run):
   - Proof: `src/api/admin/tenants.rs`, `src/api/admin/merchants.rs`, `admin/src/pages/TenantManagement.tsx`
 - Phase 15 — Docs `VERIFIED`; Legal/Go-live mostly external.
   - Proof: `docs/API_REFERENCE.md`, `docs/WEBHOOK_INTEGRATION_GUIDE.md`, `docs/MERCHANT_DASHBOARD_USER_GUIDE.md`, `docs/ADMIN_PANEL_RUNBOOK.md`, `docs/adrs/*`
+
+---
+
+## ✅ One-Shot Codebase Confirmation (2026-04-29)
+
+Codebase checks executed:
+- `cargo check` → PASS
+- Checklist phase counts recalculated from file.
+
+Phase completion from checklist (checked|open):
+- Phase 0: `6|8`
+- Phase 1: `25|0`
+- Phase 2: `19|0`
+- Phase 3: `16|4`
+- Phase 4: `27|4`
+- Phase 5: `58|2`
+- Phase 6: `52|0`
+- Phase 7: `20|0`
+- Phase 8: `6|0`
+- Phase 9: `22|13`
+- Phase 10: `11|0`
+- Phase 11: `4|3`
+- Phase 12: `6|0`
+- Phase 13: `13|2`
+- Phase 14: `8|0`
+- Phase 15: `10|10`
+
+Header consistency fixed:
+- Changed to `⬜`: Phase 0, 3, 4, 5, 9, 11 (had open items).
+- Kept `✅`: Phase 1, 2, 6, 7, 8, 10, 12.
+- Kept `⬜`: Phase 13, 14, 15.

@@ -1,4 +1,5 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
@@ -11,6 +12,21 @@ use crate::models::document::{
     UploadUrlResponse, VerifyDocumentRequest, VerifyOtpRequest,
 };
 use crate::state::AppState;
+
+#[derive(Debug, serde::Serialize)]
+struct PresignRequestBody<'a> {
+    storage_key: &'a str,
+    content_type: &'a str,
+    file_size: i64,
+    expires_in_seconds: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PresignResponseBody {
+    upload_url: String,
+    #[serde(default)]
+    expires_at: Option<DateTime<Utc>>,
+}
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -111,16 +127,51 @@ pub async fn generate_upload_url(
         sanitize_filename(&body.file_name)
     );
 
-    // In production, generate a presigned URL from S3/GCS
-    // For now, return a mock URL
-    let upload_url = format!("https://storage.feelpay.example.com/upload/{}", storage_key);
-
     let expires_at = chrono::Utc::now() + chrono::Duration::minutes(15);
+    let mut upload_url = format!("https://storage.feelpay.example.com/upload/{}", storage_key);
+    let mut final_expires_at = expires_at;
+
+    // Real presign integration path:
+    // If STORAGE_SIGNER_URL configured, ask signer service for S3/GCS presigned URL.
+    if let Ok(signer_url) = std::env::var("STORAGE_SIGNER_URL") {
+        let signer_url = signer_url.trim().to_string();
+        if !signer_url.is_empty() {
+            let client = reqwest::Client::new();
+            let signer_resp = client
+                .post(signer_url)
+                .json(&PresignRequestBody {
+                    storage_key: &storage_key,
+                    content_type: &body.file_type,
+                    file_size: body.file_size,
+                    expires_in_seconds: 15 * 60,
+                })
+                .send()
+                .await
+                .map_err(|e| FeelPayError::Internal(format!("Presign service call failed: {}", e)))?;
+
+            if !signer_resp.status().is_success() {
+                return Err(FeelPayError::Internal(format!(
+                    "Presign service returned status {}",
+                    signer_resp.status()
+                )));
+            }
+
+            let payload: PresignResponseBody = signer_resp
+                .json()
+                .await
+                .map_err(|e| FeelPayError::Internal(format!("Presign response parse failed: {}", e)))?;
+
+            upload_url = payload.upload_url;
+            if let Some(ts) = payload.expires_at {
+                final_expires_at = ts;
+            }
+        }
+    }
 
     Ok(HttpResponse::Ok().json(UploadUrlResponse {
         upload_url,
         storage_key: storage_key.clone(),
-        expires_at,
+        expires_at: final_expires_at,
     }))
 }
 
