@@ -66,7 +66,7 @@ async fn run_startup_preflight(
             return Err(format!("Redis preflight failed to connect: {e}"));
         }
         Err(e) => {
-            tracing::warn!(error = %e, "Redis unavailable; continuing startup in test mode");
+            tracing::info!(error = %e, "Redis unavailable; continuing startup in test mode");
         }
     }
 

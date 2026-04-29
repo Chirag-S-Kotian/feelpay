@@ -5,7 +5,9 @@ use std::str::FromStr;
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let cleaned_url = database_url
         .replace("?channel_binding=require", "")
-        .replace("&channel_binding=require", "");
+        .replace("&channel_binding=require", "")
+        .replace("?statement_cache_size=0", "")
+        .replace("&statement_cache_size=0", "");
     let mut connect_options = PgConnectOptions::from_str(&cleaned_url)?;
 
     // Neon pooled endpoints (PgBouncer transaction mode) are safest with disabled client-side statement cache.
@@ -38,7 +40,7 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
             .unwrap_or(false);
 
         if is_checksum_mismatch && !is_production {
-            tracing::warn!(
+            tracing::info!(
                 "Migration checksum mismatch detected in non-production environment; continuing startup without applying migrations. \
                  Restore original migration file or create new migration to reconcile schema history."
             );
