@@ -797,11 +797,11 @@ Nodes (1): HTTP Strict Transport Security
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 18`, `Community 20`, `Community 21`, `Community 22`, `Community 26`, `Community 33`, `Community 35`, `Community 37`, `Community 39`, `Community 41`, `Community 47`, `Community 48`?**
-  _High betweenness centrality (0.198) - this node is a cross-community bridge._
+  _High betweenness centrality (0.183) - this node is a cross-community bridge._
 - **Why does `apiRequest()` connect `Community 4` to `Community 5`?**
-  _High betweenness centrality (0.078) - this node is a cross-community bridge._
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
 - **Why does `fetchTemplates()` connect `Community 4` to `Community 0`?**
-  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+  _High betweenness centrality (0.080) - this node is a cross-community bridge._
 - **Are the 198 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 198 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 24 inferred relationships involving `main()` (e.g. with `.new()` and `.from_env()`) actually correct?**

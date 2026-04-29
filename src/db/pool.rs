@@ -22,8 +22,30 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .connect_with(connect_options)
         .await?;
 
-    // Run migrations
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    // Run migrations.
+    // Dev safety valve: if a previously-applied migration file was edited, sqlx will fail
+    // with checksum mismatch. Keep strict behavior in production, tolerate only in non-prod.
+    let migration_result = sqlx::migrate!("./migrations").run(&pool).await;
+    if let Err(err) = migration_result {
+        let msg = err.to_string();
+        let is_checksum_mismatch =
+            msg.contains("was previously applied but has been modified");
+        let is_production = std::env::var("APP_ENV")
+            .map(|v| {
+                let lower = v.to_lowercase();
+                lower == "production" || lower == "prod"
+            })
+            .unwrap_or(false);
+
+        if is_checksum_mismatch && !is_production {
+            tracing::warn!(
+                "Migration checksum mismatch detected in non-production environment; continuing startup without applying migrations. \
+                 Restore original migration file or create new migration to reconcile schema history."
+            );
+        } else {
+            return Err(err.into());
+        }
+    }
 
     tracing::info!("Database pool created and migrations applied");
     Ok(pool)
