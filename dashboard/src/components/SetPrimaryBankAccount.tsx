@@ -12,7 +12,15 @@ export default function SetPrimaryBankAccount({ accountId, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   const handleSetPrimary = async () => {
     setLoading(true);
@@ -21,7 +29,7 @@ export default function SetPrimaryBankAccount({ accountId, onClose }: Props) {
     try {
       await apiRequest(
         'PUT',
-        `/api/v1/merchants/${merchantId}/bank-accounts/${accountId}/set-primary`,
+        `/v1/merchants/${merchantId}/bank-accounts/${accountId}/set-primary`,
         {}
       );
       setSuccess(true);

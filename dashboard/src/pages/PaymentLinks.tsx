@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, Plus, Copy, ExternalLink, Trash2, Clock, DollarSign } from 'lucide-react';
+import { Link, Plus, Copy, ExternalLink, Trash2 } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
 interface PaymentLink {

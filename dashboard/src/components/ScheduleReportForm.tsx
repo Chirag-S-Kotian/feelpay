@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
@@ -33,7 +33,15 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -81,13 +89,13 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
       if (report) {
         await apiRequest(
           'PUT',
-          `/api/v1/merchants/${merchantId}/scheduled-reports/${report.id}`,
+          `/v1/merchants/${merchantId}/scheduled-reports/${report.id}`,
           payload
         );
       } else {
         await apiRequest(
           'POST',
-          `/api/v1/merchants/${merchantId}/scheduled-reports`,
+          `/v1/merchants/${merchantId}/scheduled-reports`,
           payload
         );
       }

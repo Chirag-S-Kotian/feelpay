@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { apiRequest } from '../hooks/useApi';
 
 const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444'];
 
@@ -15,30 +16,41 @@ export default function Analytics() {
   const [methodData, setMethodData] = useState<{ name: string; value: number }[]>([]);
 
   useEffect(() => {
-    // Simulated data - in production this would be an API call
-    setStats({
-      totalRevenue: 2845000,
-      transactionCount: 1247,
-      successRate: 98.2,
-      avgTransaction: 2281,
-    });
+    const load = async () => {
+      const [summary, volume, payments] = await Promise.all([
+        apiRequest<{
+          total_volume: number;
+          total_transactions: number;
+          success_rate: number;
+        }>('GET', '/v1/analytics/summary', undefined, undefined, { useApiKey: true }),
+        apiRequest<{ chart: { day: string; volume: number }[] }>('GET', '/v1/analytics/volume', undefined, undefined, { useApiKey: true }),
+        apiRequest<{ data: { payment_method?: string | null }[] }>('GET', '/v1/payments?limit=200', undefined, undefined, { useApiKey: true }),
+      ]);
 
-    setRevenueData([
-      { date: 'Mon', revenue: 45000 },
-      { date: 'Tue', revenue: 52000 },
-      { date: 'Wed', revenue: 48000 },
-      { date: 'Thu', revenue: 61000 },
-      { date: 'Fri', revenue: 55000 },
-      { date: 'Sat', revenue: 42000 },
-      { date: 'Sun', revenue: 38000 },
-    ]);
+      const transactionCount = summary.total_transactions || 0;
+      const totalRevenue = summary.total_volume || 0;
+      setStats({
+        totalRevenue,
+        transactionCount,
+        successRate: Number(summary.success_rate || 0),
+        avgTransaction: transactionCount > 0 ? Math.round(totalRevenue / transactionCount) : 0,
+      });
 
-    setMethodData([
-      { name: 'UPI', value: 45 },
-      { name: 'Card', value: 30 },
-      { name: 'Net Banking', value: 15 },
-      { name: 'Wallet', value: 10 },
-    ]);
+      setRevenueData((volume.chart || []).map((point) => ({ date: point.day, revenue: point.volume })));
+
+      const methodCounts = new Map<string, number>();
+      for (const p of payments.data || []) {
+        const method = (p.payment_method || 'unknown').replaceAll('_', ' ');
+        methodCounts.set(method, (methodCounts.get(method) || 0) + 1);
+      }
+      const total = (payments.data || []).length || 1;
+      const methods = [...methodCounts.entries()].map(([name, value]) => ({
+        name: name.toUpperCase(),
+        value: Math.round((value / total) * 100),
+      }));
+      setMethodData(methods.length > 0 ? methods : [{ name: 'NO DATA', value: 100 }]);
+    };
+    void load();
   }, [period]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);

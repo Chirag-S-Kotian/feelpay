@@ -1,14 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { apiRequest } from '../hooks/useApi';
 
 export default function Settings() {
-  const [apiKey] = useState('fp_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6');
+  const [apiKey, setApiKey] = useState('');
+  const [name, setName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const [profile, keys] = await Promise.all([
+        apiRequest<{ name: string; business_name?: string; webhook_url?: string }>('GET', '/v1/merchants/profile'),
+        apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys'),
+      ]);
+      setName(profile.name || '');
+      setBusinessName(profile.business_name || '');
+      setWebhookUrl(profile.webhook_url || '');
+      setApiKey(keys.api_key || '');
+    };
+    void load();
+  }, []);
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const rotateKeys = async () => {
+    await apiRequest('POST', '/v1/merchants/keys/roll', {});
+    const keys = await apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys');
+    setApiKey(keys.api_key);
+  };
+
+  const saveProfile = async () => {
+    await apiRequest('PUT', '/v1/merchants/profile', {
+      name,
+      business_name: businessName,
+      webhook_url: webhookUrl || null,
+    });
   };
 
   return (
@@ -36,9 +68,9 @@ export default function Settings() {
           </div>
           <div className="input-group">
             <label>API Secret (Hidden)</label>
-            <input type="password" value="fp_secret_xxxxxxxxxxxxxxxxxxxx" readOnly />
+            <input type="password" value="Only shown at creation/rotation" readOnly />
           </div>
-          <button className="btn btn-primary" style={{ marginTop: 8 }}>
+          <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={() => void rotateKeys()}>
             <RefreshCw size={16} /> Rotate Keys
           </button>
           <p style={{ fontSize: 12, color: 'var(--fp-text-dim)', marginTop: 12 }}>
@@ -51,7 +83,7 @@ export default function Settings() {
           <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Webhook Configuration</h3>
           <div className="input-group">
             <label>Webhook URL</label>
-            <input type="url" placeholder="https://your-domain.com/webhooks/feelpay" />
+            <input type="url" placeholder="https://your-domain.com/webhooks/feelpay" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
           </div>
           <div className="input-group">
             <label>Webhook Secret</label>
@@ -69,7 +101,7 @@ export default function Settings() {
               </label>
             ))}
           </div>
-          <button className="btn btn-primary">Save Webhook</button>
+          <button className="btn btn-primary" onClick={() => void saveProfile()}>Save Webhook</button>
         </div>
 
         {/* Business Info */}
@@ -78,7 +110,7 @@ export default function Settings() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div className="input-group">
               <label>Business Name</label>
-              <input type="text" placeholder="Your Business Pvt Ltd" />
+              <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Your Business Pvt Ltd" />
             </div>
             <div className="input-group">
               <label>Business Type</label>
@@ -91,14 +123,14 @@ export default function Settings() {
             </div>
             <div className="input-group">
               <label>Email</label>
-              <input type="email" placeholder="finance@yourbusiness.com" />
+              <input type="email" placeholder="finance@yourbusiness.com" readOnly />
             </div>
             <div className="input-group">
               <label>Website</label>
-              <input type="url" placeholder="https://yourbusiness.com" />
+              <input type="url" placeholder="https://yourbusiness.com" readOnly />
             </div>
           </div>
-          <button className="btn btn-primary" style={{ marginTop: 8 }}>Update Business Info</button>
+          <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={() => void saveProfile()}>Update Business Info</button>
         </div>
       </div>
     </div>

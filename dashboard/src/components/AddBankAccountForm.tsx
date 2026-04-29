@@ -17,7 +17,15 @@ export default function AddBankAccountForm({ onClose }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -52,7 +60,7 @@ export default function AddBankAccountForm({ onClose }: Props) {
     try {
       await apiRequest(
         'POST',
-        `/api/v1/merchants/${merchantId}/bank-accounts`,
+        `/v1/merchants/${merchantId}/bank-accounts`,
         formData
       );
       onClose();

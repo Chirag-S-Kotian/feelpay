@@ -23,7 +23,15 @@ export default function ScheduledReports() {
   const [showForm, setShowForm] = useState(false);
   const [editingReport, setEditingReport] = useState<ScheduledReport | null>(null);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchScheduledReports();
@@ -33,7 +41,7 @@ export default function ScheduledReports() {
     try {
       const data = await apiRequest<{ scheduled_reports: ScheduledReport[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/scheduled-reports`
+        `/v1/merchants/${merchantId}/scheduled-reports`
       );
       setReports(data.scheduled_reports || []);
     } catch (err) {
@@ -47,7 +55,7 @@ export default function ScheduledReports() {
     if (!confirm('Delete this scheduled report?')) return;
 
     try {
-      await apiRequest('DELETE', `/api/v1/merchants/${merchantId}/scheduled-reports/${reportId}`);
+      await apiRequest('DELETE', `/v1/merchants/${merchantId}/scheduled-reports/${reportId}`);
       setReports(reports.filter(r => r.id !== reportId));
     } catch (err) {
       console.error('Failed to delete report:', err);

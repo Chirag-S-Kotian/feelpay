@@ -7,14 +7,33 @@ function getToken() {
 }
 
 function getApiKey() {
+  const mode = getEnvironmentMode();
   const raw = localStorage.getItem('feelpay_merchant');
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { api_key?: string };
-    return parsed.api_key || null;
+    const parsed = JSON.parse(raw) as {
+      api_key?: string;
+      api_key_test?: string;
+      api_key_live?: string;
+    };
+    if (mode === 'live') return parsed.api_key_live || parsed.api_key || null;
+    return parsed.api_key_test || parsed.api_key || null;
   } catch {
     return null;
   }
+}
+
+export type EnvironmentMode = 'test' | 'live';
+
+const ENV_KEY = 'feelpay_environment_mode';
+
+export function getEnvironmentMode(): EnvironmentMode {
+  const value = localStorage.getItem(ENV_KEY);
+  return value === 'live' ? 'live' : 'test';
+}
+
+export function setEnvironmentMode(mode: EnvironmentMode) {
+  localStorage.setItem(ENV_KEY, mode);
 }
 
 export async function apiRequest<T = unknown>(
@@ -44,6 +63,8 @@ export async function apiRequest<T = unknown>(
     headers['idempotency-key'] = opts.idempotencyKey;
   }
 
+  headers['x-feelpay-environment'] = getEnvironmentMode();
+
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
@@ -57,7 +78,9 @@ export async function apiRequest<T = unknown>(
     if (res.status === 401) {
       localStorage.removeItem('feelpay_token');
     }
-    throw new Error(data?.message || `API request failed (${res.status})`);
+    throw new Error(
+      data?.error?.message || data?.message || `API request failed (${res.status})`,
+    );
   }
 
   return data as T;

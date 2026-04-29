@@ -35,7 +35,15 @@ export default function PerUserNotificationPreferences() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchUsers();
@@ -49,13 +57,15 @@ export default function PerUserNotificationPreferences() {
 
   const fetchUsers = async () => {
     try {
-      const data = await apiRequest<{ users: User[] }>(
+      const data = await apiRequest<{ members: User[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/users`
+        '/v1/merchants/team'
       );
-      setUsers(data.users || []);
-      if (data.users && data.users.length > 0) {
-        setSelectedUserId(data.users[0].id);
+      const team = data.members || [];
+      setUsers(team);
+      const firstUser = team.at(0);
+      if (firstUser) {
+        setSelectedUserId(firstUser.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load users');
@@ -68,7 +78,7 @@ export default function PerUserNotificationPreferences() {
     try {
       const data = await apiRequest<{ preferences: UserPreference[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/notification-preferences/user/${userId}`
+        `/v1/merchants/${merchantId}/notification-preferences/user/${userId}`
       );
 
       const prefs: Record<string, UserPreference> = {};
@@ -90,11 +100,13 @@ export default function PerUserNotificationPreferences() {
   };
 
   const handleToggle = (eventType: string, channel: typeof CHANNELS[number]) => {
+    const current = preferences[eventType];
+    if (!current) return;
     setPreferences(prev => ({
       ...prev,
       [eventType]: {
-        ...prev[eventType],
-        [`${channel}_enabled`]: !prev[eventType][`${channel}_enabled` as keyof UserPreference],
+        ...current,
+        [`${channel}_enabled`]: !current[`${channel}_enabled`],
       },
     }));
     setSuccess(false);
@@ -113,7 +125,7 @@ export default function PerUserNotificationPreferences() {
         updates.map(pref =>
           apiRequest(
             'PUT',
-            `/api/v1/merchants/${merchantId}/notification-preferences/user/${selectedUserId}/${pref.event_type}`,
+            `/v1/merchants/${merchantId}/notification-preferences/user/${selectedUserId}/${pref.event_type}`,
             {
               email_enabled: pref.email_enabled,
               sms_enabled: pref.sms_enabled,
@@ -196,7 +208,7 @@ export default function PerUserNotificationPreferences() {
                     <label className="toggle-switch">
                       <input
                         type="checkbox"
-                        checked={preferences[eventType]?.[`${channel}_enabled` as keyof UserPreference] || false}
+                        checked={Boolean(preferences[eventType]?.[`${channel}_enabled`])}
                         onChange={() => handleToggle(eventType, channel)}
                       />
                       <span className="toggle-slider"></span>

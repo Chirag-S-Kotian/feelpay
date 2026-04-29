@@ -41,7 +41,15 @@ export default function WebhookTesting() {
   const [showPayload, setShowPayload] = useState(false);
   const [samplePayload, setSamplePayload] = useState<SamplePayload | null>(null);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchWebhookEndpoints();
@@ -51,13 +59,11 @@ export default function WebhookTesting() {
     try {
       const data = await apiRequest<{ webhooks: WebhookEndpoint[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/webhooks`
+        '/v1/developers/webhooks'
       );
       const webhooks = data.webhooks || [];
       setEndpoints(webhooks);
-      if (webhooks.length > 0) {
-        setSelectedEndpoint(webhooks[0]);
-      }
+      setSelectedEndpoint(webhooks[0] ?? null);
     } catch (err) {
       console.error('Failed to fetch webhook endpoints:', err);
     } finally {
@@ -74,7 +80,7 @@ export default function WebhookTesting() {
     try {
       const data = await apiRequest<TestResult>(
         'POST',
-        `/api/v1/merchants/${merchantId}/webhooks/test`,
+        `/v1/merchants/${merchantId}/webhooks/test`,
         {
           event_type: selectedEventType,
           webhook_endpoint_id: selectedEndpoint.id,
@@ -94,11 +100,15 @@ export default function WebhookTesting() {
 
   const handleViewPayload = async () => {
     try {
-      const data = await apiRequest<SamplePayload>(
-        'GET',
-        `/api/v1/merchants/${merchantId}/webhooks/sample-payload?event_type=${selectedEventType}`
-      );
-      setSamplePayload(data);
+      setSamplePayload({
+        event_type: selectedEventType,
+        payload: {
+          id: `evt_${Date.now()}`,
+          created_at: new Date().toISOString(),
+          merchant_id: merchantId,
+          event_type: selectedEventType,
+        },
+      });
       setShowPayload(true);
     } catch (err) {
       console.error('Failed to fetch sample payload:', err);

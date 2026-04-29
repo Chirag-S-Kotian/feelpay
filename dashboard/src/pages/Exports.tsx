@@ -51,7 +51,15 @@ export default function Exports() {
   const [successJobId, setSuccessJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchExportJobs();
@@ -63,7 +71,7 @@ export default function Exports() {
     try {
       const data = await apiRequest<{ exports: ExportJob[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/exports?limit=20&offset=0`
+        `/v1/merchants/${merchantId}/exports?limit=20&offset=0`
       );
       setJobs(data.exports || []);
     } catch (err) {
@@ -100,7 +108,7 @@ export default function Exports() {
 
       const response = await apiRequest<{ job_id: string; status: string }>(
         'POST',
-        `/api/v1/merchants/${merchantId}/exports/transactions`,
+        `/v1/merchants/${merchantId}/exports/transactions`,
         payload
       );
 
@@ -117,7 +125,7 @@ export default function Exports() {
     try {
       const response = await apiRequest<{ download_url: string }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/exports/${jobId}/download`
+        `/v1/merchants/${merchantId}/exports/${jobId}/download`
       );
       window.location.href = response.download_url;
     } catch (err) {

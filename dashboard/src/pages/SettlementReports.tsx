@@ -37,7 +37,15 @@ export default function SettlementReports() {
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
   const [reportPreview, setReportPreview] = useState<SettlementReport | null>(null);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchSettlements();
@@ -47,7 +55,7 @@ export default function SettlementReports() {
     try {
       const data = await apiRequest<{ settlements: Settlement[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/settlements?limit=50&offset=0`
+        `/v1/merchants/${merchantId}/settlements?limit=50&offset=0`
       );
       setSettlements(data.settlements || []);
     } catch (err) {
@@ -62,7 +70,7 @@ export default function SettlementReports() {
     try {
       const data = await apiRequest<SettlementReport>(
         'GET',
-        `/api/v1/merchants/${merchantId}/settlements/${settlement.id}/report?format=json`
+        `/v1/merchants/${merchantId}/settlements/${settlement.id}/report?format=json`
       );
       setReportPreview(data);
     } catch (err) {
@@ -75,7 +83,7 @@ export default function SettlementReports() {
     try {
       const response = await apiRequest<{ download_url: string }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/settlements/${settlementId}/report?format=${format}`
+        `/v1/merchants/${merchantId}/settlements/${settlementId}/report?format=${format}`
       );
       window.location.href = response.download_url;
     } catch (err) {

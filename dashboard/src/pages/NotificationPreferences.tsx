@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bell, Save, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import PerUserNotificationPreferences from '../components/PerUserNotificationPreferences';
 
@@ -34,7 +34,15 @@ export default function NotificationPreferences() {
   const [success, setSuccess] = useState(false);
   const [showPerUser, setShowPerUser] = useState(false);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchPreferences();
@@ -44,7 +52,7 @@ export default function NotificationPreferences() {
     try {
       const data = await apiRequest<{ preferences: NotificationPreference[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/notification-preferences`
+        `/v1/merchants/${merchantId}/notification-preferences`
       );
 
       const prefs: Record<string, NotificationPreference> = {};
@@ -67,11 +75,13 @@ export default function NotificationPreferences() {
   };
 
   const handleToggle = (eventType: string, channel: typeof CHANNELS[number]) => {
+    const current = preferences[eventType];
+    if (!current) return;
     setPreferences(prev => ({
       ...prev,
       [eventType]: {
-        ...prev[eventType],
-        [`${channel}_enabled`]: !prev[eventType][`${channel}_enabled` as keyof NotificationPreference],
+        ...current,
+        [`${channel}_enabled`]: !current[`${channel}_enabled`],
       },
     }));
     setSuccess(false);
@@ -88,7 +98,7 @@ export default function NotificationPreferences() {
         updates.map(pref =>
           apiRequest(
             'PUT',
-            `/api/v1/merchants/${merchantId}/notification-preferences/${pref.event_type}`,
+            `/v1/merchants/${merchantId}/notification-preferences/${pref.event_type}`,
             {
               email_enabled: pref.email_enabled,
               sms_enabled: pref.sms_enabled,
@@ -172,7 +182,7 @@ export default function NotificationPreferences() {
                     <label className="toggle-switch">
                       <input
                         type="checkbox"
-                        checked={preferences[eventType]?.[`${channel}_enabled` as keyof NotificationPreference] || false}
+                        checked={Boolean(preferences[eventType]?.[`${channel}_enabled`])}
                         onChange={() => handleToggle(eventType, channel)}
                       />
                       <span className="toggle-slider"></span>

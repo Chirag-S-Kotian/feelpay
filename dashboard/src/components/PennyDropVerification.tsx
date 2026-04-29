@@ -20,7 +20,15 @@ export default function PennyDropVerification({ accountId, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchVerificationData();
@@ -30,7 +38,7 @@ export default function PennyDropVerification({ accountId, onClose }: Props) {
     try {
       const data = await apiRequest<VerificationData>(
         'GET',
-        `/api/v1/merchants/${merchantId}/bank-accounts/${accountId}/verification-data`
+        `/v1/merchants/${merchantId}/bank-accounts/${accountId}/verification-data`
       );
       setVerificationData(data);
     } catch (err) {
@@ -54,7 +62,7 @@ export default function PennyDropVerification({ accountId, onClose }: Props) {
     try {
       await apiRequest(
         'POST',
-        `/api/v1/merchants/${merchantId}/bank-accounts/${accountId}/verify`,
+        `/v1/merchants/${merchantId}/bank-accounts/${accountId}/verify`,
         {
           penny_drop_amount_paise: parseInt(verifyAmount),
         }

@@ -46,7 +46,15 @@ export default function Customers() {
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel'>('csv');
   
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
   
   // Form state
   const [refType, setRefType] = useState('email');
@@ -121,10 +129,10 @@ export default function Customers() {
     try {
       const res = await apiRequest<{ job_id: string }>(
         'POST',
-        `/api/v1/merchants/${merchantId}/exports/customers`,
+        `/v1/merchants/${merchantId}/exports/customers`,
         { format: exportFormat }
       );
-      window.location.href = `/api/v1/merchants/${merchantId}/exports/${res.job_id}/file`;
+      window.location.href = `/v1/merchants/${merchantId}/exports/${res.job_id}/file`;
     } catch (err) {
       console.error('Failed to export customers:', err);
     } finally {

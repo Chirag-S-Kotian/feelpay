@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import AddBankAccountForm from '../components/AddBankAccountForm';
 import PennyDropVerification from '../components/PennyDropVerification';
@@ -24,7 +24,15 @@ export default function BankAccounts() {
   const [verifyingAccountId, setVerifyingAccountId] = useState<string | null>(null);
   const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null);
 
-  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
+  const merchantId = (() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  })();
 
   useEffect(() => {
     fetchBankAccounts();
@@ -34,7 +42,7 @@ export default function BankAccounts() {
     try {
       const data = await apiRequest<{ bank_accounts: BankAccount[] }>(
         'GET',
-        `/api/v1/merchants/${merchantId}/bank-accounts`
+        `/v1/merchants/${merchantId}/bank-accounts`
       );
       setAccounts(data.bank_accounts || []);
     } catch (err) {
@@ -48,7 +56,7 @@ export default function BankAccounts() {
     if (!confirm('Delete this bank account?')) return;
 
     try {
-      await apiRequest('DELETE', `/api/v1/merchants/${merchantId}/bank-accounts/${accountId}`);
+      await apiRequest('DELETE', `/v1/merchants/${merchantId}/bank-accounts/${accountId}`);
       setAccounts(accounts.filter(a => a.id !== accountId));
     } catch (err) {
       console.error('Failed to delete account:', err);

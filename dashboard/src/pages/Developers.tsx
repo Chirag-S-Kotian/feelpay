@@ -1,12 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Copy, Check, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { apiRequest, getEnvironmentMode, setEnvironmentMode, type EnvironmentMode } from '../hooks/useApi';
 
 export default function Developers() {
-  const [apiKey, setApiKey] = useState('fp_live_xxxxxxxxxxxxxxxxxxxx');
-  const [secretKey, setSecretKey] = useState('fs_secret_xxxxxxxxxxxxxxxx');
+  const [apiKey, setApiKey] = useState('Loading...');
+  const [secretKey] = useState('Hidden for security');
   const [showSecret, setShowSecret] = useState(false);
-  const [mode, setMode] = useState('test');
+  const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
   const [copied, setCopied] = useState<string | null>(null);
+
+  const loadKeys = async () => {
+    const data = await apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys');
+    setApiKey(data.api_key);
+    const merchantRaw = localStorage.getItem('feelpay_merchant');
+    if (merchantRaw) {
+      const merchant = JSON.parse(merchantRaw) as Record<string, string>;
+      merchant[mode === 'live' ? 'api_key_live' : 'api_key_test'] = data.api_key;
+      merchant.api_key = data.api_key;
+      localStorage.setItem('feelpay_merchant', JSON.stringify(merchant));
+    }
+  };
+
+  useEffect(() => {
+    setEnvironmentMode(mode);
+    void loadKeys();
+  }, [mode]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -14,9 +32,9 @@ export default function Developers() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const regenerateKeys = () => {
-    setApiKey('fp_live_' + Math.random().toString(36).substring(2, 15));
-    setSecretKey('fs_secret_' + Math.random().toString(36).substring(2, 15));
+  const regenerateKeys = async () => {
+    await apiRequest('POST', '/v1/merchants/keys/roll', {});
+    await loadKeys();
   };
 
   const codeExamples: Record<string, string> = {

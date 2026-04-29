@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   CreditCard,
@@ -35,6 +35,7 @@ import NotificationPreferences from './pages/NotificationPreferences';
 import WebhookTesting from './pages/WebhookTesting';
 import BankAccounts from './pages/BankAccounts';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { EnvironmentMode, getEnvironmentMode, setEnvironmentMode } from './hooks/useApi';
 
 const NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -55,7 +56,15 @@ const NAV = [
   { path: '/onboarding', label: 'Onboarding', icon: Building2 },
 ];
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({
+  onNavigate,
+  mode,
+  onModeChange,
+}: {
+  onNavigate?: () => void;
+  mode: EnvironmentMode;
+  onModeChange: (mode: EnvironmentMode) => void;
+}) {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -78,9 +87,25 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
       <div className="env-panel">
         <div className="env-label">Environment</div>
-        <div className="env-badge">
+        <div className="env-badge" style={{ marginBottom: 8 }}>
           <span className="env-dot"></span>
-          Test Mode
+          {mode === 'live' ? 'Live Mode' : 'Test Mode'}
+        </div>
+        <div className="pill-tabs">
+          <button
+            className={`pill-tab ${mode === 'test' ? 'active' : ''}`}
+            onClick={() => onModeChange('test')}
+            type="button"
+          >
+            Test
+          </button>
+          <button
+            className={`pill-tab ${mode === 'live' ? 'active' : ''}`}
+            onClick={() => onModeChange('live')}
+            type="button"
+          >
+            Live
+          </button>
         </div>
       </div>
     </aside>
@@ -88,8 +113,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Layout() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(3); // TODO: fetch from API
+  const [notificationCount] = useState(0);
+  const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
+
+  useEffect(() => {
+    setEnvironmentMode(mode);
+  }, [mode]);
 
   return (
     <div className="app-layout">
@@ -102,10 +133,10 @@ function Layout() {
       </button>
       {open && <div className="mobile-overlay" onClick={() => setOpen(false)}></div>}
       <div className={`mobile-sidebar ${open ? 'open' : ''}`}>
-        <Sidebar onNavigate={() => setOpen(false)} />
+        <Sidebar onNavigate={() => setOpen(false)} mode={mode} onModeChange={setMode} />
       </div>
       <div className="desktop-sidebar">
-        <Sidebar />
+        <Sidebar mode={mode} onModeChange={setMode} />
       </div>
       <main className="main-content">
         <ErrorBoundary>
@@ -114,7 +145,7 @@ function Layout() {
             <button 
               className="notification-bell" 
               aria-label="Notifications"
-              onClick={() => {/* TODO: open notification panel */}}
+              onClick={() => navigate('/notifications')}
             >
               <Bell size={20} />
               {notificationCount > 0 && (

@@ -1,31 +1,56 @@
-const DISPUTES = [
-  {
-    id: 'dsp_001',
-    paymentId: 'fp_7e4f5a6b',
-    amount: 15999,
-    reason: 'fraudulent',
-    status: 'needs_response',
-    dueBy: '2026-05-01',
-  },
-  {
-    id: 'dsp_002',
-    paymentId: 'fp_3a2b1c0d',
-    amount: 7499,
-    reason: 'service_not_received',
-    status: 'under_review',
-    dueBy: '2026-04-29',
-  },
-  {
-    id: 'dsp_003',
-    paymentId: 'fp_1a0b9c8d',
-    amount: 4999,
-    reason: 'duplicate',
-    status: 'won',
-    dueBy: '2026-04-20',
-  },
-];
+import { useEffect, useState } from 'react';
+import { apiRequest } from '../hooks/useApi';
+
+type Dispute = {
+  id: string;
+  payment_order_id: string;
+  amount: number;
+  reason_code?: string | null;
+  reason_message?: string | null;
+  status: string;
+  evidence_due_by?: string | null;
+};
 
 export default function Disputes() {
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await apiRequest<{ disputes: Dispute[] }>(
+        'GET',
+        '/v1/disputes',
+        undefined,
+        undefined,
+        { useApiKey: true },
+      );
+      setDisputes(res.disputes || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const acceptDispute = async (id: string) => {
+    await apiRequest('POST', `/v1/disputes/${id}/accept`, {}, undefined, { useApiKey: true });
+    await load();
+  };
+
+  const respondDispute = async (id: string) => {
+    await apiRequest(
+      'POST',
+      `/v1/disputes/${id}/evidence`,
+      { text: 'Evidence submitted from merchant dashboard.' },
+      undefined,
+      { useApiKey: true },
+    );
+    await load();
+  };
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -42,7 +67,7 @@ export default function Disputes() {
       </div>
 
       <div className="dispute-grid">
-        {DISPUTES.map((d) => (
+        {!loading && disputes.map((d) => (
           <div key={d.id} className="dispute-card">
             <div className="dispute-card__head">
               <span className={`badge ${d.status}`}>{d.status}</span>
@@ -51,22 +76,23 @@ export default function Disputes() {
             <div className="dispute-card__amount">₹{d.amount.toLocaleString('en-IN')}</div>
             <div className="dispute-card__row">
               <span>Payment</span>
-              <code>{d.paymentId}</code>
+              <code>{d.payment_order_id}</code>
             </div>
             <div className="dispute-card__row">
               <span>Reason</span>
-              <strong>{d.reason.replaceAll('_', ' ')}</strong>
+              <strong>{(d.reason_message || d.reason_code || 'unknown').replaceAll('_', ' ')}</strong>
             </div>
             <div className="dispute-card__row">
               <span>Evidence due</span>
-              <strong>{d.dueBy}</strong>
+              <strong>{d.evidence_due_by ? new Date(d.evidence_due_by).toLocaleDateString('en-IN') : '-'}</strong>
             </div>
             <div className="dispute-card__actions">
-              <button className="btn btn-secondary">Accept</button>
-              <button className="btn btn-primary">Respond</button>
+              <button className="btn btn-secondary" onClick={() => void acceptDispute(d.id)}>Accept</button>
+              <button className="btn btn-primary" onClick={() => void respondDispute(d.id)}>Respond</button>
             </div>
           </div>
         ))}
+        {!loading && disputes.length === 0 && <div>No disputes found.</div>}
       </div>
     </div>
   );
