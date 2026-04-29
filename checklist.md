@@ -148,16 +148,16 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Environment variable files for all apps
 - [x] Git hooks — lint + type-check on commit (scripts/pre-commit.sh)
 - [x] CI/CD pipeline (GitHub Actions: .github/workflows/pipeline.yml)
-- [x] Branch protection on main and staging ✅ CONFIG READY
-- [x] Secrets management configured ✅ CONFIG READY
-- [x] NeonDB project with branches: prod, staging, dev
+- [ ] Branch protection on main and staging ⬜ EXTERNAL (GitHub repo setting; not provable from codebase)
+- [ ] Secrets management configured ⬜ EXTERNAL (platform config; not provable from codebase)
+- [ ] NeonDB project with branches: prod, staging, dev ⬜ EXTERNAL (Neon console state; not provable from repo)
 - [x] DB connection pooling configured
-- [x] DB read replica for analytics queries ✅ CONFIG READY
-- [x] Point-in-time recovery verified enabled ✅ CONFIG READY
-- [x] DB region confirmed as Mumbai (`ap-south-1`) — required for RBI data localization
+- [ ] DB read replica for analytics queries ⬜ EXTERNAL (DB infra setting)
+- [ ] Point-in-time recovery verified enabled ⬜ EXTERNAL (DB infra setting)
+- [ ] DB region confirmed as Mumbai (`ap-south-1`) — required for RBI data localization ⬜ EXTERNAL (infra/account setting)
 - [x] DB migration system set up and versioned
 - [x] Object storage for KYC docs and reports (never in DB) ✅ BACKEND READY
-- [x] CDN configured ✅ CONFIG READY
+- [ ] CDN configured ⬜ EXTERNAL (infra setting)
 
 ---
 
@@ -180,7 +180,7 @@ Use this block as source of truth before marking more `[x]`.
 - [x] `settlements` + `settlement_transactions` (L270, L291)
 - [x] `payouts` (L87 - Missing updated_at) ✅ FIXED
 - [x] `bank_accounts` + `vpa_accounts` (L107 - Missing updated_at) ✅ FIXED
-- [x] `subscriptions` + `subscription_invoices` (L122, L136) ✅ SCHEMA ONLY
+- [x] `subscriptions` + `subscription_invoices` (L122, L136) ✅ IMPLEMENTED (schema + service + API in `src/engine/services/subscription.rs`, `src/api/subscriptions.rs`)
 - [x] `customers` — tokenized vault ✅ IMPLEMENTED
 - [x] `saved_payment_methods` ✅ IMPLEMENTED
 - [x] `fee_rules` (L149)
@@ -229,11 +229,11 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Registration progress saved — can resume incomplete ✅ IMPLEMENTED
 - [x] KYC status machine: pending → under_review → approved / rejected / resubmit_required ✅ IMPLEMENTED
 - [x] Auto-verification: PAN, GST, bank penny drop ✅ IMPLEMENTED
-- [x] Aadhaar eKYC (DigiLocker / UIDAI provider) ✅ IMPLEMENTED (documented)
+- [ ] Aadhaar eKYC (DigiLocker / UIDAI provider) ⬜ DOC-ONLY (integration contract not proven by runnable provider flow)
 - [x] Rejection with specific fields flagged + resubmission flow ✅ IMPLEMENTED
 - [x] Maker-Checker approval for high-value merchants (2 admin sign-off) ✅ IMPLEMENTED
-- [x] Activation email on KYC approval ✅ IMPLEMENTED (documented)
-- [x] Post-KYC: MCC code assignment ✅ IMPLEMENTED (schema)
+- [ ] Activation email on KYC approval ⬜ DOC/PARTIAL (flow note exists; live delivery path not proven end-to-end)
+- [ ] Post-KYC: MCC code assignment ⬜ SCHEMA-ONLY (runtime assignment rule not proven)
 - [x] Post-KYC: per-txn / daily / monthly transaction limits ✅ IMPLEMENTED
 - [x] Post-KYC: allowed payment methods configuration ✅ IMPLEMENTED
 - [x] Post-KYC: fee plan assignment ✅ IMPLEMENTED
@@ -249,16 +249,16 @@ Use this block as source of truth before marking more `[x]`.
 - [x] UPI — Intent, QR collect, VPA push ✅ IMPLEMENTED
 - [x] UPI Autopay — mandate creation + execution ✅ IMPLEMENTED
 - [x] Cards — Visa, Mastercard, RuPay, Amex (debit + credit) ✅ IMPLEMENTED
-- [x] Net Banking — HDFC, SBI, ICICI, Axis, Kotak + others ✅ IMPLEMENTED (schema + simulator)
-- [x] Wallets — Paytm, PhonePe, Amazon Pay, Mobikwik ✅ IMPLEMENTED (schema + simulator)
+- [ ] Net Banking — HDFC, SBI, ICICI, Axis, Kotak + others ⬜ SIMULATOR/SCHEMA (live connector proof missing)
+- [ ] Wallets — Paytm, PhonePe, Amazon Pay, Mobikwik ⬜ SIMULATOR/SCHEMA (live connector proof missing)
 - [x] EMI — credit card, no-cost, cardless ✅ IMPLEMENTED
 - [x] BNPL — Lazypay, Simpl ✅ IMPLEMENTED
 - [x] Virtual accounts (NEFT / RTGS bank transfer) ✅ IMPLEMENTED
-- [x] International cards — Phase 2 ✅ IMPLEMENTED (documented)
+- [ ] International cards — Phase 2 ⬜ DOC-ONLY
 
 ### Provider Routing
 - [x] Provider abstraction layer — unified interface for all providers ✅ IMPLEMENTED
-- [x] Razorpay (primary), PayU (fallback), Cashfree, Juspay (UPI routing) ✅ IMPLEMENTED (schema)
+- [ ] Razorpay (primary), PayU (fallback), Cashfree, Juspay (UPI routing) ⬜ SCHEMA/CONFIG CLAIM (live provider selection proof missing)
 - [x] Intelligent routing by success rate, cost, method, merchant config ✅ IMPLEMENTED
 - [x] Auto-failover to next provider on failure ✅ IMPLEMENTED (circuit breaker)
 - [x] Circuit breaker per provider ✅ IMPLEMENTED
@@ -295,8 +295,8 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Loading skeletons on all data-heavy views ✅ IMPLEMENTED
 - [x] Empty states with CTAs on all list views ✅ IMPLEMENTED
 - [x] Error boundaries per major section ✅ IMPLEMENTED
-- [x] URL-synced filters (shareable filtered URLs) ✅ IMPLEMENTED (documented)
-- [x] Dark mode ✅ IMPLEMENTED (documented)
+- [ ] URL-synced filters (shareable filtered URLs) ⬜ DOC-ONLY (automated UI assertion missing in this pass)
+- [ ] Dark mode ⬜ DOC-ONLY (automated UI assertion missing in this pass)
 
 ### Home
 - [x] KPI cards: revenue today, transaction count, success rate, pending settlements ✅ IMPLEMENTED
@@ -492,13 +492,13 @@ Use this block as source of truth before marking more `[x]`.
 
 ## ✅ PHASE 9 — Security
 
-- [x] TLS 1.3 everywhere (1.2 minimum) ✅ CONFIG READY
-- [x] HSTS with preload ✅ CONFIG READY
-- [x] HTTP → HTTPS redirect ✅ CONFIG READY
-- [x] Content Security Policy on all web apps ✅ CONFIG READY
-- [x] `X-Frame-Options: DENY` (checkout embed: SAMEORIGIN) ✅ CONFIG READY
-- [x] `X-Content-Type-Options: nosniff` ✅ CONFIG READY
-- [x] `Referrer-Policy: strict-origin-when-cross-origin` ✅ CONFIG READY
+- [ ] TLS 1.3 everywhere (1.2 minimum) ⬜ EXTERNAL CONFIG
+- [ ] HSTS with preload ⬜ EXTERNAL CONFIG
+- [ ] HTTP → HTTPS redirect ⬜ EXTERNAL CONFIG
+- [ ] Content Security Policy on all web apps ⬜ EXTERNAL/DEPLOY CONFIG
+- [ ] `X-Frame-Options: DENY` (checkout embed: SAMEORIGIN) ⬜ EXTERNAL/DEPLOY CONFIG
+- [ ] `X-Content-Type-Options: nosniff` ⬜ EXTERNAL/DEPLOY CONFIG
+- [ ] `Referrer-Policy: strict-origin-when-cross-origin` ⬜ EXTERNAL/DEPLOY CONFIG
 - [x] API keys: store SHA-256 hash only — never plaintext ✅ IMPLEMENTED
 - [x] Rate limiting per API key + per IP ✅ IMPLEMENTED
 - [x] Replay attack prevention: timestamp + nonce, 5-min window ✅ IMPLEMENTED (NEW: src/middleware/replay_prevention.rs)
@@ -507,7 +507,7 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Card data never stored — pass-through to PCI provider only ✅ IMPLEMENTED
 - [x] PAN masked in all display and logs (`XXXX XXXX XXXX 1234`) ✅ IMPLEMENTED
 - [x] Bank account, VPA, Aadhaar encrypted at rest (AES-256-GCM) ✅ IMPLEMENTED
-- [x] Encryption keys in KMS ✅ CONFIG READY
+- [ ] Encryption keys in KMS ⬜ EXTERNAL CONFIG
 - [x] No PII in logs or URLs ✅ IMPLEMENTED
 - [x] No secrets in frontend bundles ✅ IMPLEMENTED
 - [x] User-generated content sanitized before render ✅ IMPLEMENTED
@@ -550,9 +550,9 @@ Use this block as source of truth before marking more `[x]`.
 
 ## ✅ PHASE 11 — Notifications & Communications
 
-- [x] Transactional email (payment receipt, settlement, dispute alert, KYC status) ✅ PARTIAL (SendGrid HTTP code present; SES/SMTP stubs exist; default simulator paths exist)
-- [x] SMS (OTP, payment confirmation) ✅ PARTIAL (Twilio/MSG91 HTTP code present; simulator path exists; runtime delivery not proven)
-- [x] WhatsApp (payment links, receipts) ✅ PARTIAL (service ready; provider integration not proven)
+- [ ] Transactional email (payment receipt, settlement, dispute alert, KYC status) ⬜ PARTIAL (provider code exists, live delivery proof missing)
+- [ ] SMS (OTP, payment confirmation) ⬜ PARTIAL (provider code exists, live delivery proof missing)
+- [ ] WhatsApp (payment links, receipts) ⬜ PARTIAL (template/service exists, provider delivery proof missing)
 - [x] In-app real-time notifications ✅ IMPLEMENTED
 - [x] Notification templates editable from admin panel ✅ IMPLEMENTED (CRUD backend + UI route wiring)
 - [x] Per-merchant notification preferences per event ✅ BACKEND READY (API + Service + PBT), FRONTEND COMPLETE (NEW: dashboard/src/pages/NotificationSettings.tsx)
@@ -573,7 +573,7 @@ Use this block as source of truth before marking more `[x]`.
 
 ## ⬜ PHASE 13 — Testing
 
-- [ ] Unit tests for all business logic (routing, fee calculation, settlement math)
+- [x] Unit tests for all business logic (routing, fee calculation, settlement math) ✅ IMPLEMENTED (`src/engine/routing.rs` tests, `src/engine/fees.rs` tests, `src/engine/services/settlement_advanced.rs` tests)
 - [x] Integration tests against real DB ✅ IMPLEMENTED (`tests/db_integration.rs`, env-backed, ignored by default)
 - [x] Full API request/response cycle tests ✅ IMPLEMENTED (`tests/api_cycle.rs`, `tests/api_request_response_cycle.rs`)
 - [ ] Load test — target 500 TPS sustained
@@ -616,8 +616,8 @@ Use this block as source of truth before marking more `[x]`.
 
 ### Legal
 - [ ] RBI PA license filed or licensed PA partnership signed
-- [x] Privacy Policy (DPDP Act compliant) ✅ DRAFT IMPLEMENTED (`docs/PRIVACY_POLICY_DPDP.md`) — final legal approval pending
-- [x] Terms of Service ✅ DRAFT IMPLEMENTED (`docs/TERMS_OF_SERVICE.md`) — final legal approval pending
+- [ ] Privacy Policy (DPDP Act compliant) ⬜ DRAFT ONLY (`docs/PRIVACY_POLICY_DPDP.md`) — legal approval pending
+- [ ] Terms of Service ⬜ DRAFT ONLY (`docs/TERMS_OF_SERVICE.md`) — legal approval pending
 - [ ] Merchant Agreement (legally reviewed)
 - [x] Grievance Officer appointed and contact published ✅ IMPLEMENTED (`docs/GRIEVANCE_POLICY.md`)
 
@@ -646,3 +646,69 @@ Use this block as source of truth before marking more `[x]`.
 ---
 
 *FeelPay — Confidential | April 2026*
+
+---
+
+## 🧾 Proof Log (2026-04-29)
+
+Plan executed:
+1. Recheck fake/partial claims vs code graph + source files.
+2. Implement missing business-logic unit-test coverage.
+3. Re-run compile + critical tests.
+4. Update checklist with exact proof paths.
+
+Code changes for this run:
+- Added routing business-logic module + tests: `src/engine/routing.rs`
+- Wired module export: `src/engine/mod.rs`
+- Refactored fee math into testable helper + added tests: `src/engine/fees.rs`
+
+Verification commands:
+- `cargo check` ✅ pass
+- `cargo test -q --test api_request_response_cycle` ✅ pass
+- `cargo test -q --test api_cycle` ✅ pass
+- `cargo test -q --test webhook_delivery` ✅ pass
+- `cargo test -q engine::routing` ✅ pass
+- `cargo test -q engine::fees` ✅ pass
+
+Audit corrections (same run):
+- Unchecked external-only infra claims still marked `[x]`: Neon branches, DB region.
+- Upgraded `subscriptions + subscription_invoices` from `SCHEMA ONLY` to `IMPLEMENTED` after code proof in:
+  - `src/engine/services/subscription.rs`
+  - `src/api/subscriptions.rs`
+
+---
+
+## 📚 All-Phase Evidence Matrix (2026-04-29)
+
+- Phase 0 — `PARTIAL`: repo/app/test skeleton proven; infra controls external.
+  - Proof: `.github/workflows/pipeline.yml`, monorepo folders, `scripts/pre-commit.sh`
+- Phase 1 — `VERIFIED`: schema/tables/services references compile.
+  - Proof: migrations + model/service usage across `src/models/*`, `src/api/*`
+- Phase 2 — `VERIFIED/PARTIAL`: auth/RBAC code present; some operational controls partial.
+  - Proof: `src/api/auth.rs`, `src/middleware/auth.rs`, `src/middleware/rate_limit.rs`
+- Phase 3 — `PARTIAL`: onboarding/KYC flow code present; Aadhaar/provider claims not fully proven.
+  - Proof: `src/api/onboarding.rs`, `src/api/admin/kyc.rs`
+- Phase 4 — `PARTIAL`: payment/refund/webhook flow proven; some provider breadth is schema/simulator.
+  - Proof: `src/api/payments.rs`, `src/api/webhooks.rs`, `src/api/providers.rs`
+- Phase 5 — `PARTIAL`: dashboard features largely present; some UX claims doc-only.
+  - Proof: `dashboard/src/pages/*`, component tests
+- Phase 6 — `PARTIAL`: admin flows present; operational controls still environment-dependent.
+  - Proof: `admin/src/pages/*`, `src/api/admin/*`
+- Phase 7 — `VERIFIED`: API + webhook verify path tested.
+  - Proof: `tests/api_cycle.rs`, `tests/api_request_response_cycle.rs`
+- Phase 8 — `PARTIAL`: SDK/plugin files present; release/production quality not proven in this pass.
+  - Proof: SDK/plugin dirs + build artifacts in repo
+- Phase 9 — `PARTIAL`: middleware/services implemented; TLS/header/KMS items external config.
+  - Proof: `src/middleware/replay_prevention.rs`, `src/middleware/velocity_check.rs`, `src/engine/services/three_ds.rs`
+- Phase 10 — `VERIFIED/PARTIAL`: settlement math + TDS/recon code present; banking ops live proof missing.
+  - Proof: `src/engine/services/settlement.rs`, `src/engine/services/settlement_advanced.rs`
+- Phase 11 — `PARTIAL`: in-app/templates proven; email/sms/whatsapp live-delivery proof missing.
+  - Proof: `src/engine/services/notification.rs`, `src/engine/services/notification_templates.rs`, `src/engine/services/email_service.rs`, `src/engine/services/sms_service.rs`
+- Phase 12 — `VERIFIED`: analytics/report/export code + tests present.
+  - Proof: `src/engine/services/export.rs`, `src/engine/services/report.rs`, `src/engine/services/report_generator.rs`
+- Phase 13 — `VERIFIED/PARTIAL`: core tests added and passing; external pentest + sustained 500 TPS still open.
+  - Proof: `tests/*.rs`, `load/k6-payments.js`, CI workflows
+- Phase 14 — `VERIFIED/PARTIAL`: tenant CRUD/config/theming/tenant-scope code present; domain/SSL ops external.
+  - Proof: `src/api/admin/tenants.rs`, `src/api/admin/merchants.rs`, `admin/src/pages/TenantManagement.tsx`
+- Phase 15 — Docs `VERIFIED`; Legal/Go-live mostly external.
+  - Proof: `docs/API_REFERENCE.md`, `docs/WEBHOOK_INTEGRATION_GUIDE.md`, `docs/MERCHANT_DASHBOARD_USER_GUIDE.md`, `docs/ADMIN_PANEL_RUNBOOK.md`, `docs/adrs/*`

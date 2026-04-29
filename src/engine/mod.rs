@@ -4,5 +4,6 @@ pub mod payout;
 pub mod pipeline;
 pub mod processor;
 pub mod processors;
+pub mod routing;
 pub mod services;
 pub mod vault;

@@ -13,6 +13,52 @@ pub struct FeeCalculation {
     pub fee_rule_id: Uuid,
 }
 
+fn calculate_fee_components_for_rule(
+    amount: i64,
+    percentage_fee_val: Option<Decimal>,
+    flat_fee_val: Option<i64>,
+    min_fee_val: Option<i64>,
+    max_fee_val: Option<i64>,
+    gst_inclusive_val: Option<bool>,
+) -> (i64, i64, i64) {
+    let amount_dec = Decimal::from_i64(amount).unwrap_or(Decimal::ZERO);
+    let percentage_fee = percentage_fee_val.unwrap_or(Decimal::ZERO);
+    let flat_fee = Decimal::from_i64(flat_fee_val.unwrap_or(0)).unwrap_or(Decimal::ZERO);
+
+    // Base fee = (amount * percentage / 100) + flat_fee
+    let mut fee = (amount_dec * percentage_fee / Decimal::from(100)) + flat_fee;
+
+    // Apply caps
+    if let Some(min_fee) = min_fee_val {
+        let min_dec = Decimal::from_i64(min_fee).unwrap_or(Decimal::ZERO);
+        if fee < min_dec {
+            fee = min_dec;
+        }
+    }
+    if let Some(max_fee) = max_fee_val {
+        let max_dec = Decimal::from_i64(max_fee).unwrap_or(Decimal::ZERO);
+        if fee > max_dec {
+            fee = max_dec;
+        }
+    }
+
+    let gst_rate = Decimal::from_str("0.18").unwrap_or(Decimal::ZERO); // 18% GST standard in India for services
+    let (fee, gst_amount) = if !gst_inclusive_val.unwrap_or(true) {
+        (fee, fee * gst_rate)
+    } else {
+        // If inclusive, fee already contains GST.
+        // GST = total_fee - (total_fee / 1.18)
+        let total_fee = fee;
+        let base_fee = total_fee / (Decimal::ONE + gst_rate);
+        (base_fee, total_fee - base_fee)
+    };
+
+    let fee_rounded = fee.to_i64().unwrap_or(0);
+    let gst_rounded = gst_amount.to_i64().unwrap_or(0);
+    let net_amount = amount - fee_rounded - gst_rounded;
+    (fee_rounded, gst_rounded, net_amount)
+}
+
 pub async fn calculate_fees(
     pool: &PgPool,
     merchant_id: Uuid,
@@ -69,41 +115,14 @@ pub async fn calculate_fees(
         .try_get("gst_inclusive")
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    let amount_dec = Decimal::from_i64(amount).unwrap();
-    let percentage_fee = percentage_fee_val.unwrap_or(Decimal::ZERO);
-    let flat_fee = Decimal::from_i64(flat_fee_val.unwrap_or(0)).unwrap();
-
-    // Base fee = (amount * percentage / 100) + flat_fee
-    let mut fee = (amount_dec * percentage_fee / Decimal::from(100)) + flat_fee;
-
-    // Apply caps
-    if let Some(min_fee) = min_fee_val {
-        let min_dec = Decimal::from_i64(min_fee).unwrap();
-        if fee < min_dec {
-            fee = min_dec;
-        }
-    }
-    if let Some(max_fee) = max_fee_val {
-        let max_dec = Decimal::from_i64(max_fee).unwrap();
-        if fee > max_dec {
-            fee = max_dec;
-        }
-    }
-
-    let gst_rate = Decimal::from_str("0.18").unwrap(); // 18% GST standard in India for services
-    let (fee, gst_amount) = if !gst_inclusive_val.unwrap_or(true) {
-        (fee, fee * gst_rate)
-    } else {
-        // If inclusive, fee already contains GST.
-        // GST = total_fee - (total_fee / 1.18)
-        let total_fee = fee;
-        let base_fee = total_fee / (Decimal::ONE + gst_rate);
-        (base_fee, total_fee - base_fee)
-    };
-
-    let fee_rounded = fee.to_i64().unwrap_or(0);
-    let gst_rounded = gst_amount.to_i64().unwrap_or(0);
-    let net_amount = amount - fee_rounded - gst_rounded;
+    let (fee_rounded, gst_rounded, net_amount) = calculate_fee_components_for_rule(
+        amount,
+        percentage_fee_val,
+        flat_fee_val,
+        min_fee_val,
+        max_fee_val,
+        gst_inclusive_val,
+    );
 
     Ok(FeeCalculation {
         gross_amount: amount,
@@ -112,4 +131,40 @@ pub async fn calculate_fees(
         net_amount,
         fee_rule_id: id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calculate_fee_components_for_rule;
+    use rust_decimal::Decimal;
+
+    #[test]
+    fn fee_math_exclusive_gst_with_caps() {
+        let (fee, gst, net) = calculate_fee_components_for_rule(
+            100_000,
+            Some(Decimal::new(200, 2)), // 2%
+            Some(0),
+            Some(500),
+            Some(5_000),
+            Some(false),
+        );
+        assert_eq!(fee, 2_000);
+        assert_eq!(gst, 360);
+        assert_eq!(net, 97_640);
+    }
+
+    #[test]
+    fn fee_math_inclusive_gst_split() {
+        let (fee, gst, net) = calculate_fee_components_for_rule(
+            10_000,
+            Some(Decimal::new(300, 2)), // 3%
+            Some(0),
+            None,
+            None,
+            Some(true),
+        );
+        assert!(fee > 0);
+        assert!(gst > 0);
+        assert_eq!(net, 10_000 - fee - gst);
+    }
 }
