@@ -6,6 +6,7 @@ use crate::middleware::auth::JwtClaims;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Request to create a transaction export
@@ -15,6 +16,12 @@ pub struct CreateTransactionExportRequest {
     pub format: String, // "csv" or "excel"
     pub filters: Option<serde_json::Value>,
     pub columns: Option<Vec<String>>,
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCustomerExportRequest {
+    pub format: String, // "csv" or "excel"
     pub idempotency_key: Option<String>,
 }
 
@@ -156,6 +163,101 @@ pub async fn create_transaction_export(
         status: job.status.as_str().to_string(),
         created_at: job.created_at.to_rfc3339(),
     }))
+}
+
+pub async fn create_customer_export(
+    merchant_id: web::Path<Uuid>,
+    req: web::Json<CreateCustomerExportRequest>,
+    claims: JwtClaims,
+    db: web::Data<PgPool>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id.into_inner();
+    if claims.merchant_id != Some(merchant_id) {
+        return Err(FeelPayError::Forbidden(
+            "You do not have permission to access this merchant".into(),
+        ));
+    }
+
+    let export_service = ExportService::new(db.get_ref().clone());
+    let created_by_user_id = Uuid::parse_str(&claims.sub)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid user identity in token".into()))?;
+
+    let job = export_service
+        .create_export_job(
+            merchant_id,
+            CreateExportJobRequest {
+                job_type: ExportJobType::Customer,
+                filters: None,
+                idempotency_key: req.idempotency_key.clone(),
+                created_by_user_id: Some(created_by_user_id),
+            },
+        )
+        .await?;
+
+    let (bytes, record_count) = export_service
+        .generate_customer_export(merchant_id, req.format.as_str())
+        .await?;
+
+    let dir = export_artifacts_dir();
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| FeelPayError::Internal(format!("Failed to create export dir: {}", e)))?;
+    let ext = if req.format == "excel" { "xlsx" } else { "csv" };
+    let file_path = dir.join(format!("{}.{}", job.id, ext));
+    std::fs::write(&file_path, &bytes)
+        .map_err(|e| FeelPayError::Internal(format!("Failed to write export file: {}", e)))?;
+
+    let file_url = format!(
+        "/v1/merchants/{}/exports/{}/file",
+        merchant_id,
+        job.id.to_string()
+    );
+    export_service
+        .mark_export_job_completed(
+            merchant_id,
+            job.id,
+            file_url,
+            bytes.len() as i64,
+            record_count,
+        )
+        .await?;
+
+    Ok(HttpResponse::Ok().json(ExportJobResponse {
+        job_id: job.id.to_string(),
+        status: "completed".to_string(),
+        created_at: job.created_at.to_rfc3339(),
+    }))
+}
+
+pub async fn serve_export_file(
+    path: web::Path<(Uuid, Uuid)>,
+    claims: JwtClaims,
+) -> Result<HttpResponse, FeelPayError> {
+    let (merchant_id, job_id) = path.into_inner();
+    if claims.merchant_id != Some(merchant_id) {
+        return Err(FeelPayError::Forbidden(
+            "You do not have permission to access this merchant".into(),
+        ));
+    }
+
+    let dir = export_artifacts_dir();
+    let csv_path = dir.join(format!("{}.csv", job_id));
+    let xlsx_path = dir.join(format!("{}.xlsx", job_id));
+
+    let (file_path, content_type, filename) = if xlsx_path.exists() {
+        (xlsx_path, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "customers.xlsx")
+    } else if csv_path.exists() {
+        (csv_path, "text/csv; charset=utf-8", "customers.csv")
+    } else {
+        return Err(FeelPayError::NotFound("Export file not found".into()));
+    };
+
+    let bytes = std::fs::read(&file_path)
+        .map_err(|e| FeelPayError::Internal(format!("Failed to read export file: {}", e)))?;
+
+    Ok(HttpResponse::Ok()
+        .insert_header(("Content-Type", content_type))
+        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+        .body(bytes))
 }
 
 /// Get export job status endpoint
@@ -310,4 +412,10 @@ pub async fn list_exports(
 pub struct PaginationQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+}
+
+fn export_artifacts_dir() -> PathBuf {
+    std::env::var("EXPORT_ARTIFACTS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("export_artifacts"))
 }

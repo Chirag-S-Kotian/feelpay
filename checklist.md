@@ -10,6 +10,7 @@ Legend:
 - `VERIFIED`: code/tests/build evidence present now
 - `PARTIAL`: implemented pieces exist, but launch-grade proof missing
 - `CLAIM-ONLY`: checkbox marked, but only docs/config-claim/proxy evidence
+- `MISSING`: item explicitly not present / no evidence file / no route
 
 Phase truth (all phases rechecked):
 - Phase 0: `PARTIAL` (core repos/apps exist, infra items like branch protection/secrets/CDN still external claims)
@@ -33,10 +34,11 @@ Phase truth (all phases rechecked):
   - Go-live sign-off: `CLAIM-ONLY` for unchecked operational items
 
 Hard evidence run this pass:
-- `cargo check` passed
-- `cargo test --test api_request_response_cycle` passed
-- `cargo test --test api_cycle` passed
-- `cargo test --test webhook_delivery` passed
+- `SQLX_OFFLINE=true cargo check` passed
+- `SQLX_OFFLINE=true cargo test --test api_request_response_cycle` passed
+- `SQLX_OFFLINE=true cargo test --test api_cycle` passed
+- `SQLX_OFFLINE=true cargo test --test webhook_delivery` passed
+- Load-test evidence file `load/summary-500tps.json`: `MISSING`
 
 Use this block as source of truth before marking more `[x]`.
 
@@ -334,7 +336,7 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Customer list (tokenized, consent-based) ✅ IMPLEMENTED
 - [x] Transaction history per customer ✅ IMPLEMENTED (via API)
 - [x] Saved payment methods view ✅ IMPLEMENTED
-- [ ] Export ⬜ NOT IMPLEMENTED
+- [x] Export ✅ IMPLEMENTED (`POST /v1/merchants/{merchant_id}/exports/customers` + `dashboard/src/pages/Customers.tsx` export action)
 
 ### Subscriptions
 - [x] Create plan: billing cycle, amount, trial period ✅ IMPLEMENTED
@@ -431,7 +433,7 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Tenant CRUD ✅ IMPLEMENTED
 - [x] Branding + custom domain config per tenant ✅ IMPLEMENTED
 - [x] Per-tenant fee + settlement config ✅ IMPLEMENTED
-- [ ] Tenant admin can manage their own merchants ⬜ NOT IMPLEMENTED
+- [x] Tenant admin can manage their own merchants ✅ IMPLEMENTED (`GET /v1/admin/merchants`, `POST /v1/admin/merchants/{merchant_id}/approve|reject|suspend` with tenant-scope enforcement for `tenant_admin` in `src/api/admin/merchants.rs`)
 
 ### User & Role Management
 - [x] Admin user list + role assignment ✅ IMPLEMENTED
@@ -447,8 +449,8 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Global payment method toggle ✅ IMPLEMENTED
 - [x] Feature flags ✅ IMPLEMENTED
 - [x] Rate limit configuration ✅ IMPLEMENTED
-- [ ] Notification template editor (email + SMS) ⬜ NOT IMPLEMENTED
-- [ ] Maintenance mode per feature ⬜ NOT IMPLEMENTED
+- [x] Notification template editor (email + SMS) ✅ IMPLEMENTED (admin UI + backend CRUD routes at `/v1/admin/notification-templates`)
+- [x] Maintenance mode per feature ✅ IMPLEMENTED (`maintenance_mode` middleware + `system_config:maintenance_mode` control)
 
 ---
 
@@ -548,11 +550,11 @@ Use this block as source of truth before marking more `[x]`.
 
 ## ✅ PHASE 11 — Notifications & Communications
 
-- [x] Transactional email (payment receipt, settlement, dispute alert, KYC status) ✅ IMPLEMENTED (NEW: src/engine/services/email_service.rs - SendGrid, AWS SES, SMTP)
-- [x] SMS (OTP, payment confirmation) ✅ IMPLEMENTED (NEW: src/engine/services/sms_service.rs - Twilio, AWS SNS, Exotel)
-- [x] WhatsApp (payment links, receipts) ✅ IMPLEMENTED (service ready, provider integration stub)
+- [x] Transactional email (payment receipt, settlement, dispute alert, KYC status) ✅ PARTIAL (SendGrid HTTP code present; SES/SMTP stubs exist; default simulator paths exist)
+- [x] SMS (OTP, payment confirmation) ✅ PARTIAL (Twilio/MSG91 HTTP code present; simulator path exists; runtime delivery not proven)
+- [x] WhatsApp (payment links, receipts) ✅ PARTIAL (service ready; provider integration not proven)
 - [x] In-app real-time notifications ✅ IMPLEMENTED
-- [x] Notification templates editable from admin panel ✅ IMPLEMENTED (NEW: admin/src/pages/NotificationTemplateEditor.tsx)
+- [x] Notification templates editable from admin panel ✅ IMPLEMENTED (CRUD backend + UI route wiring)
 - [x] Per-merchant notification preferences per event ✅ BACKEND READY (API + Service + PBT), FRONTEND COMPLETE (NEW: dashboard/src/pages/NotificationSettings.tsx)
 - [x] Customer receipt email (merchant-configurable on/off) ✅ IMPLEMENTED (NEW: send_customer_receipt_email, send_customer_receipt_sms columns)
 
@@ -596,7 +598,7 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Custom domain per tenant (`pay.clientbrand.com` via CNAME + wildcard SSL) ✅ IMPLEMENTED (`tenants.domain` / `config.custom_domain` resolved in checkout URLs)
 - [x] Per-tenant email sending domain ✅ IMPLEMENTED (`tenants.config.email_sending_domain`)
 - [x] Hosted checkout themed per tenant ✅ IMPLEMENTED (tenant branding/config persisted for checkout session theme payload)
-- [x] Tenant admin manages their own merchants independently ✅ IMPLEMENTED (tenant-scoped merchant linkage + admin tenant merchant view)
+- [x] Tenant admin manages their own merchants independently ✅ IMPLEMENTED (`tenant_admin` role restricted to own `tenant_id` in admin merchant list/action endpoints; UI already wired in `admin/src/pages/Merchants.tsx`)
 - [x] Per-tenant fee + settlement configuration ✅ IMPLEMENTED (`tenants.config.fee_bps`, `settlement_delay_days`)
 - [x] Reseller commission / revenue share model ✅ IMPLEMENTED (`tenants.config.reseller_commission_bps`, `revenue_share_percent`)
 

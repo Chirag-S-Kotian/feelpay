@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Search, CreditCard, Mail, Phone } from 'lucide-react';
+import { Users, Plus, Search, CreditCard, Mail, Phone, Download } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
 interface Customer {
@@ -43,6 +43,10 @@ export default function Customers() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'excel'>('csv');
+  
+  const merchantId = localStorage.getItem('feelpay_merchant_id') || 'test-merchant';
   
   // Form state
   const [refType, setRefType] = useState('email');
@@ -112,6 +116,22 @@ export default function Customers() {
     }
   };
 
+  const exportCustomers = async () => {
+    setExporting(true);
+    try {
+      const res = await apiRequest<{ job_id: string }>(
+        'POST',
+        `/api/v1/merchants/${merchantId}/exports/customers`,
+        { format: exportFormat }
+      );
+      window.location.href = `/api/v1/merchants/${merchantId}/exports/${res.job_id}/file`;
+    } catch (err) {
+      console.error('Failed to export customers:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-IN', {
       day: 'numeric',
@@ -138,9 +158,24 @@ export default function Customers() {
           <h1>Customers</h1>
           <p>Manage your customer database and saved payment methods</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          <Plus size={18} /> Add Customer
-        </button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <select
+            className="form-input"
+            value={exportFormat}
+            onChange={e => setExportFormat(e.target.value as 'csv' | 'excel')}
+            aria-label="Export format"
+            style={{ width: 140 }}
+          >
+            <option value="csv">CSV</option>
+            <option value="excel">Excel</option>
+          </select>
+          <button className="btn btn-secondary" onClick={exportCustomers} disabled={exporting}>
+            <Download size={18} /> {exporting ? 'Exporting...' : 'Export'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <Plus size={18} /> Add Customer
+          </button>
+        </div>
       </div>
 
       {showCreate && (

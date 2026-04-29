@@ -13,3 +13,4 @@ admin/node_modules
 .kilocode
 .kiro
 payment/.sqlx
+.pnpm-store

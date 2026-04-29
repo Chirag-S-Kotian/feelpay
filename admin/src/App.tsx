@@ -24,6 +24,7 @@ import KYCQueue from './pages/KYCQueue';
 import AdminBulkExport from './pages/AdminBulkExport';
 import AdminWebhookTesting from './pages/AdminWebhookTesting';
 import NotificationDeliveryLogs from './pages/NotificationDeliveryLogs';
+import NotificationTemplateEditor from './pages/NotificationTemplateEditor';
 import KycAuditLog from './pages/KycAuditLog';
 import TransactionSearch from './pages/TransactionSearch';
 import TransactionDetail from './pages/TransactionDetail';
@@ -42,6 +43,7 @@ const NAV = [
   { path: '/bulk-export', label: 'Bulk Export', icon: Download },
   { path: '/webhook-testing', label: 'Webhook Testing', icon: Webhook },
   { path: '/notification-logs', label: 'Notification Logs', icon: Bell },
+  { path: '/notification-templates', label: 'Notif Templates', icon: Bell },
   { path: '/kyc-audit', label: 'KYC Audit', icon: ClipboardList },
   { path: '/transactions', label: 'Transactions', icon: Search },
   { path: '/transaction-actions', label: 'Txn Actions', icon: ShieldAlert },
@@ -129,6 +131,7 @@ function Layout() {
           <Route path="/bulk-export" element={<AdminBulkExport />} />
           <Route path="/webhook-testing" element={<AdminWebhookTesting />} />
           <Route path="/notification-logs" element={<NotificationDeliveryLogs />} />
+          <Route path="/notification-templates" element={<NotificationTemplateEditor />} />
           <Route path="/kyc-audit" element={<KycAuditLog />} />
           <Route path="/transactions" element={<TransactionSearch />} />
           <Route path="/transaction-actions" element={<TransactionDetail />} />

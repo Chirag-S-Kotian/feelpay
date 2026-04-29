@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, MessageSquare, Save, Plus, Edit2, Trash2, AlertCircle } from 'lucide-react';
+import { apiRequest } from '../hooks/useApi';
 
 interface NotificationTemplate {
   id: string;
@@ -63,11 +64,10 @@ export const NotificationTemplateEditor: React.FC = () => {
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/admin/notification-templates', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (!response.ok) throw new Error('Failed to fetch templates');
-      const data = await response.json();
+      const data = await apiRequest<{ data: NotificationTemplate[] }>(
+        'GET',
+        '/v1/admin/notification-templates'
+      );
       setTemplates(data.data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load templates');
@@ -82,21 +82,12 @@ export const NotificationTemplateEditor: React.FC = () => {
       setError(null);
 
       const url = editingId
-        ? `/api/v1/admin/notification-templates/${editingId}`
-        : '/api/v1/admin/notification-templates';
+        ? `/v1/admin/notification-templates/${editingId}`
+        : '/v1/admin/notification-templates';
 
       const method = editingId ? 'PUT' : 'POST';
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) throw new Error('Failed to save template');
+      await apiRequest(method, url, formData);
 
       await fetchTemplates();
       setShowForm(false);
@@ -118,12 +109,7 @@ export const NotificationTemplateEditor: React.FC = () => {
     if (!confirm('Are you sure you want to delete this template?')) return;
 
     try {
-      const response = await fetch(`/api/v1/admin/notification-templates/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-      });
-
-      if (!response.ok) throw new Error('Failed to delete template');
+      await apiRequest('DELETE', `/v1/admin/notification-templates/${id}`);
       await fetchTemplates();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete template');

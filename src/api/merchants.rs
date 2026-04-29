@@ -167,12 +167,22 @@ pub async fn create_merchant(
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    Ok(HttpResponse::Created().json(serde_json::json!({
+    let allow_secret_reveal =
+        std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
+
+    let mut resp = serde_json::json!({
         "id": id, "name": body.name, "email": body.email,
-        "api_key": api_key, "api_secret": api_secret,
-        "webhook_secret": webhook_secret,
-        "message": "Store your API secret safely."
-    })))
+        "api_key": api_key,
+        "message": "Merchant created. Use key rotation or support flow to set secrets."
+    });
+
+    if allow_secret_reveal {
+        resp["api_secret"] = serde_json::json!(api_secret);
+        resp["webhook_secret"] = serde_json::json!(webhook_secret);
+        resp["message"] = serde_json::json!("Store secrets safely. They may not be shown again.");
+    }
+
+    Ok(HttpResponse::Created().json(resp))
 }
 
 pub async fn get_merchant(
@@ -367,11 +377,20 @@ pub async fn roll_keys(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    let allow_secret_reveal =
+        std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
+
+    let mut resp = serde_json::json!({
         "api_key": api_key,
-        "api_secret": api_secret,
-        "message": "Store your new API secret safely. It will not be shown again."
-    })))
+        "message": "API key rotated."
+    });
+
+    if allow_secret_reveal {
+        resp["api_secret"] = serde_json::json!(api_secret);
+        resp["message"] = serde_json::json!("Store your new API secret safely. It may not be shown again.");
+    }
+
+    Ok(HttpResponse::Ok().json(resp))
 }
 
 #[utoipa::path(
@@ -641,7 +660,7 @@ pub async fn invite_team_member(
         ));
     }
 
-    // Generate a temporary password
+    // Generate a temporary password (never returned)
     let temp_password = format!("temp_{}", Uuid::new_v4().simple());
     let salt = SaltString::generate(&mut OsRng);
     let password_hash = Argon2::default()
@@ -684,16 +703,14 @@ pub async fn invite_team_member(
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    // In a real app, send invitation email here
-    // For now, return the temp password (in production, this would be a reset link)
+    // In a real app, send invitation email here (password setup link).
     Ok(HttpResponse::Created().json(serde_json::json!({
         "id": user_id,
         "email": body.email,
         "full_name": body.full_name,
         "role": body.role,
         "status": "pending",
-        "message": "Invitation sent. User must set their password on first login.",
-        "temp_password": temp_password // Remove in production
+        "message": "Invitation created. User must set password via reset flow."
     })))
 }
 

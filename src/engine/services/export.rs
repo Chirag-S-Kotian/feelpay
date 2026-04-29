@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportJobType {
     Transaction,
+    Customer,
     Settlement,
     Refund,
     Dispute,
@@ -18,6 +19,7 @@ impl ExportJobType {
     pub fn as_str(&self) -> &str {
         match self {
             Self::Transaction => "transaction",
+            Self::Customer => "customer",
             Self::Settlement => "settlement",
             Self::Refund => "refund",
             Self::Dispute => "dispute",
@@ -28,6 +30,7 @@ impl ExportJobType {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "transaction" => Some(Self::Transaction),
+            "customer" => Some(Self::Customer),
             "settlement" => Some(Self::Settlement),
             "refund" => Some(Self::Refund),
             "dispute" => Some(Self::Dispute),
@@ -251,6 +254,234 @@ impl ExportService {
         })?;
 
         Ok(self.row_to_export_job(job))
+    }
+
+    pub async fn mark_export_job_completed(
+        &self,
+        merchant_id: Uuid,
+        job_id: Uuid,
+        file_url: String,
+        file_size_bytes: i64,
+        record_count: i32,
+    ) -> Result<(), FeelPayError> {
+        let updated = sqlx::query(
+            r#"
+            UPDATE export_jobs
+            SET status = 'completed',
+                file_url = $3,
+                file_size_bytes = $4,
+                record_count = $5,
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1 AND merchant_id = $2
+            "#,
+        )
+        .bind(job_id)
+        .bind(merchant_id)
+        .bind(&file_url)
+        .bind(file_size_bytes)
+        .bind(record_count)
+        .execute(&self.db)
+        .await?;
+
+        if updated.rows_affected() == 0 {
+            return Err(FeelPayError::NotFound("Export job not found".into()));
+        }
+        Ok(())
+    }
+
+    pub async fn mark_export_job_failed(
+        &self,
+        merchant_id: Uuid,
+        job_id: Uuid,
+        error_message: String,
+    ) -> Result<(), FeelPayError> {
+        let updated = sqlx::query(
+            r#"
+            UPDATE export_jobs
+            SET status = 'failed',
+                error_message = $3,
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1 AND merchant_id = $2
+            "#,
+        )
+        .bind(job_id)
+        .bind(merchant_id)
+        .bind(&error_message)
+        .execute(&self.db)
+        .await?;
+
+        if updated.rows_affected() == 0 {
+            return Err(FeelPayError::NotFound("Export job not found".into()));
+        }
+        Ok(())
+    }
+
+    pub async fn generate_customer_export(
+        &self,
+        merchant_id: Uuid,
+        format: &str,
+    ) -> Result<(Vec<u8>, i32), FeelPayError> {
+        let customers = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                bool,
+                String,
+            ),
+        >(
+            r#"
+            SELECT
+                c.id::text,
+                c.customer_reference,
+                c.customer_reference_type,
+                c.email,
+                c.phone,
+                c.name,
+                COALESCE(c.consent_given, FALSE) as consent_given,
+                c.created_at::text
+            FROM customers c
+            WHERE c.merchant_id = $1 AND c.deleted_at IS NULL
+            ORDER BY c.created_at DESC
+            "#,
+        )
+        .bind(merchant_id)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        let record_count = customers.len() as i32;
+
+        let bytes = match format {
+            "csv" => self.generate_customer_csv(customers)?,
+            "excel" => self.generate_customer_excel(customers)?,
+            _ => {
+                return Err(FeelPayError::BadRequest(
+                    "Invalid format. Supported formats: csv, excel".into(),
+                ))
+            }
+        };
+
+        Ok((bytes, record_count))
+    }
+
+    fn generate_customer_csv(
+        &self,
+        customers: Vec<(
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            bool,
+            String,
+        )>,
+    ) -> Result<Vec<u8>, FeelPayError> {
+        let mut wtr = csv::Writer::from_writer(vec![]);
+        wtr.write_record([
+            "customer_id",
+            "customer_reference",
+            "customer_reference_type",
+            "email",
+            "phone",
+            "name",
+            "consent_given",
+            "created_at",
+        ])
+        .map_err(|e| FeelPayError::Internal(format!("CSV write error: {}", e)))?;
+
+        for c in customers {
+            wtr.write_record([
+                c.0,
+                c.1,
+                c.2,
+                c.3.unwrap_or_default(),
+                c.4.unwrap_or_default(),
+                c.5.unwrap_or_default(),
+                c.6.to_string(),
+                c.7,
+            ])
+            .map_err(|e| FeelPayError::Internal(format!("CSV write error: {}", e)))?;
+        }
+
+        wtr.into_inner()
+            .map_err(|e| FeelPayError::Internal(format!("CSV finalize error: {}", e)))
+    }
+
+    fn generate_customer_excel(
+        &self,
+        customers: Vec<(
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            bool,
+            String,
+        )>,
+    ) -> Result<Vec<u8>, FeelPayError> {
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join(format!("feelpay_customers_{}.xlsx", Uuid::new_v4()));
+        let temp_path_string = temp_path.to_string_lossy().to_string();
+
+        let workbook = xlsxwriter::Workbook::new(&temp_path_string)
+            .map_err(|e| FeelPayError::Internal(format!("Excel create error: {}", e)))?;
+        let mut sheet = workbook
+            .add_worksheet(None)
+            .map_err(|e| FeelPayError::Internal(format!("Excel sheet error: {}", e)))?;
+
+        let headers = [
+            "customer_id",
+            "customer_reference",
+            "customer_reference_type",
+            "email",
+            "phone",
+            "name",
+            "consent_given",
+            "created_at",
+        ];
+
+        for (col, header) in headers.iter().enumerate() {
+            sheet
+                .write_string(0, col as u16, header, None)
+                .map_err(|e| FeelPayError::Internal(format!("Excel write error: {}", e)))?;
+        }
+
+        for (idx, c) in customers.into_iter().enumerate() {
+            let row = (idx + 1) as u32;
+            let values = [
+                c.0,
+                c.1,
+                c.2,
+                c.3.unwrap_or_default(),
+                c.4.unwrap_or_default(),
+                c.5.unwrap_or_default(),
+                c.6.to_string(),
+                c.7,
+            ];
+            for (col, value) in values.into_iter().enumerate() {
+                sheet
+                    .write_string(row, col as u16, &value, None)
+                    .map_err(|e| FeelPayError::Internal(format!("Excel write error: {}", e)))?;
+            }
+        }
+
+        workbook
+            .close()
+            .map_err(|e| FeelPayError::Internal(format!("Excel close error: {}", e)))?;
+
+        let bytes = fs::read(&temp_path)
+            .map_err(|e| FeelPayError::Internal(format!("Excel read error: {}", e)))?;
+        let _ = fs::remove_file(&temp_path);
+        Ok(bytes)
     }
 
     /// Get an export job by ID with tenant isolation check
@@ -1110,6 +1341,7 @@ mod tests {
     #[test]
     fn test_export_job_type_as_str() {
         assert_eq!(ExportJobType::Transaction.as_str(), "transaction");
+        assert_eq!(ExportJobType::Customer.as_str(), "customer");
         assert_eq!(ExportJobType::Settlement.as_str(), "settlement");
         assert_eq!(ExportJobType::Refund.as_str(), "refund");
         assert_eq!(ExportJobType::Dispute.as_str(), "dispute");
@@ -1121,6 +1353,10 @@ mod tests {
         assert_eq!(
             ExportJobType::from_str("transaction"),
             Some(ExportJobType::Transaction)
+        );
+        assert_eq!(
+            ExportJobType::from_str("customer"),
+            Some(ExportJobType::Customer)
         );
         assert_eq!(
             ExportJobType::from_str("settlement"),

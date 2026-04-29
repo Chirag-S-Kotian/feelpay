@@ -205,6 +205,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(pool_for_handler.clone()))
             .wrap(actix_web::middleware::Logger::default())
+            .wrap(crate::middleware::maintenance_mode::MaintenanceMode)
             .wrap(
                 actix_web::middleware::DefaultHeaders::new()
                     .add(("x-api-version", "2026-04-28"))
@@ -377,12 +378,20 @@ async fn main() -> std::io::Result<()> {
                         web::post().to(api::exports::create_transaction_export),
                     )
                     .route(
+                        "/exports/customers",
+                        web::post().to(api::exports::create_customer_export),
+                    )
+                    .route(
                         "/exports/{job_id}",
                         web::get().to(api::exports::get_export_status),
                     )
                     .route(
                         "/exports/{job_id}/download",
                         web::get().to(api::exports::download_export),
+                    )
+                    .route(
+                        "/exports/{job_id}/file",
+                        web::get().to(api::exports::serve_export_file),
                     )
                     .route("/exports", web::get().to(api::exports::list_exports))
                     // Notification preferences

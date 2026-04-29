@@ -1,7 +1,7 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-04-28)
 
 ## Corpus Check
-- 199 files · ~222,321 words
+- 199 files · ~220,322 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -747,9 +747,9 @@ Nodes (1): HTTP Strict Transport Security
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `json()` connect `Community 0` to `Community 32`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 34`, `Community 7`, `Community 36`, `Community 9`, `Community 10`, `Community 12`, `Community 22`, `Community 23`, `Community 24`?**
-  _High betweenness centrality (0.127) - this node is a cross-community bridge._
+  _High betweenness centrality (0.144) - this node is a cross-community bridge._
 - **Why does `apiRequest()` connect `Community 6` to `Community 8`?**
-  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+  _High betweenness centrality (0.085) - this node is a cross-community bridge._
 - **Are the 189 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 189 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 22 inferred relationships involving `main()` (e.g. with `.new()` and `.from_env()`) actually correct?**

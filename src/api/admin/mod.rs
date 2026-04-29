@@ -15,7 +15,9 @@ pub mod analytics;
 pub mod audit_logs;
 mod audit_support;
 pub mod kyc_viewer;
+pub mod merchants;
 pub mod notes;
+pub mod notification_templates;
 pub mod provider_credentials;
 pub mod revenue;
 pub mod search;
@@ -28,7 +30,9 @@ pub use admin_users::*;
 pub use analytics::*;
 pub use audit_logs::*;
 pub use kyc_viewer::*;
+pub use merchants::*;
 pub use notes::*;
+pub use notification_templates::*;
 pub use provider_credentials::*;
 pub use revenue::*;
 pub use search::*;
@@ -56,6 +60,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(analytics::configure)
             // KYC document viewer routes
             .configure(kyc_viewer::configure)
+            .configure(merchants::configure)
             .configure(search::configure)
             .configure(transactions::configure)
             .configure(settlements::configure)
@@ -64,6 +69,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(tenants::configure)
             .configure(admin_users::configure)
             .configure(audit_logs::configure)
-            .configure(system_config::configure),
+            .configure(system_config::configure)
+            .configure(notification_templates::configure),
     );
 }
