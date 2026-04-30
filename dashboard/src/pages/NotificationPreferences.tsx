@@ -49,6 +49,11 @@ export default function NotificationPreferences() {
   }, []);
 
   const fetchPreferences = async () => {
+    if (!merchantId) {
+      setError('Merchant session missing. Login again.');
+      setLoading(false);
+      return;
+    }
     try {
       const data = await apiRequest<{ preferences: NotificationPreference[] }>(
         'GET',
@@ -211,25 +216,76 @@ export default function NotificationPreferences() {
       )}
 
       <style>{`
+        .tabs {
+          display: inline-flex;
+          gap: 8px;
+          margin-bottom: 14px;
+          padding: 4px;
+          border: 1px solid rgba(77, 141, 235, 0.25);
+          background: rgba(10, 25, 48, 0.6);
+          border-radius: 12px;
+        }
+        .tab {
+          border: 1px solid transparent;
+          background: transparent;
+          color: #9ebbe6;
+          border-radius: 9px;
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .tab.active {
+          border-color: rgba(94, 155, 247, 0.45);
+          background: linear-gradient(180deg, rgba(25, 55, 96, 0.95), rgba(17, 41, 74, 0.95));
+          color: #edf5ff;
+        }
+        .card {
+          border-radius: 14px;
+          border: 1px solid rgba(77, 141, 235, 0.3);
+          background: linear-gradient(180deg, rgba(17, 39, 72, 0.96), rgba(10, 25, 47, 0.96));
+        }
+        .alert {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 10px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .alert-error {
+          border: 1px solid rgba(247, 83, 96, 0.45);
+          background: rgba(247, 83, 96, 0.14);
+          color: #ffadb6;
+        }
+        .alert-success {
+          border: 1px solid rgba(55, 198, 130, 0.42);
+          background: rgba(55, 198, 130, 0.12);
+          color: #aaf4ce;
+        }
         .preferences-matrix {
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
+          border: 1px solid rgba(91, 154, 247, 0.3);
+          border-radius: 12px;
           overflow: hidden;
           margin-bottom: 20px;
         }
         .matrix-header {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
-          background: var(--bg-secondary);
-          border-bottom: 2px solid var(--border-color);
+          background: rgba(21, 49, 87, 0.82);
+          border-bottom: 1px solid rgba(91, 154, 247, 0.34);
           font-weight: 600;
           font-size: 13px;
+          color: #d9e9ff;
         }
         .matrix-row {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
-          border-bottom: 1px solid var(--border-color);
+          border-bottom: 1px solid rgba(91, 154, 247, 0.22);
           align-items: center;
+          background: rgba(9, 24, 45, 0.45);
         }
         .matrix-row:last-child {
           border-bottom: none;
@@ -240,7 +296,8 @@ export default function NotificationPreferences() {
         }
         .event-label {
           font-size: 13px;
-          font-family: monospace;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          color: #d2e4ff;
         }
         .channel-column {
           display: flex;
@@ -264,7 +321,7 @@ export default function NotificationPreferences() {
           left: 0;
           right: 0;
           bottom: 0;
-          background-color: #ccc;
+          background-color: #8a98ac;
           transition: 0.3s;
           border-radius: 24px;
         }
@@ -280,7 +337,7 @@ export default function NotificationPreferences() {
           border-radius: 50%;
         }
         input:checked + .toggle-slider {
-          background-color: var(--primary);
+          background: linear-gradient(135deg, #f8a429, #9f5cff);
         }
         input:checked + .toggle-slider:before {
           transform: translateX(16px);

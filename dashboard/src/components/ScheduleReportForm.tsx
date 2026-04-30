@@ -72,6 +72,10 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
     e.preventDefault();
 
     if (!validate()) return;
+    if (!merchantId) {
+      setErrors({ submit: 'Merchant session missing. Login again.' });
+      return;
+    }
 
     setLoading(true);
 
@@ -238,80 +242,122 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
+          background: rgba(3, 8, 20, 0.78);
+          backdrop-filter: blur(5px);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
+          z-index: 2000;
+          padding: 16px;
         }
         .modal-content {
-          background: var(--bg-primary);
-          border-radius: 8px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-          max-width: 500px;
+          background: #132747;
+          border-radius: 16px;
+          border: 1px solid rgba(77, 141, 235, 0.35);
+          box-shadow: 0 18px 70px rgba(2, 8, 24, 0.58);
+          max-width: 620px;
           width: 90%;
           max-height: 90vh;
           overflow-y: auto;
+          isolation: isolate;
         }
         .modal-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 20px;
-          border-bottom: 1px solid var(--border-color);
+          padding: 20px 22px;
+          border-bottom: 1px solid rgba(77, 141, 235, 0.25);
         }
         .modal-header h2 {
           margin: 0;
-          font-size: 18px;
+          font-size: 20px;
+          font-weight: 800;
+          color: #eef5ff;
         }
         .btn-close {
-          background: none;
-          border: none;
+          background: rgba(15, 36, 67, 0.8);
+          border: 1px solid rgba(77, 141, 235, 0.35);
+          border-radius: 10px;
           cursor: pointer;
-          padding: 4px;
+          padding: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: var(--text-secondary);
+          color: #c5dcff;
+        }
+        .btn-close:hover {
+          border-color: rgba(114, 177, 255, 0.65);
+          color: #edf5ff;
         }
         .form {
-          padding: 20px;
+          padding: 20px 22px 24px;
         }
         .form-group {
-          margin-bottom: 16px;
+          margin-bottom: 18px;
         }
         .form-group label {
           display: block;
-          margin-bottom: 6px;
-          font-weight: 500;
-          font-size: 14px;
+          margin-bottom: 7px;
+          font-weight: 700;
+          font-size: 13px;
+          letter-spacing: 0.02em;
+          color: #c8dbfb;
         }
         .form-group input,
         .form-group select,
         .form-group textarea {
           width: 100%;
-          padding: 8px 12px;
-          border: 1px solid var(--border-color);
-          border-radius: 4px;
+          padding: 11px 13px;
+          border: 1px solid rgba(91, 154, 247, 0.34);
+          border-radius: 12px;
           font-size: 14px;
           font-family: inherit;
+          color: #eaf3ff;
+          background: linear-gradient(180deg, rgba(17, 41, 77, 0.94), rgba(12, 29, 56, 0.94));
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+          border-color: rgba(128, 189, 255, 0.9);
+          box-shadow: 0 0 0 3px rgba(64, 140, 255, 0.2);
         }
         .form-group textarea {
+          min-height: 92px;
           resize: vertical;
+        }
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+          color: #9db7dd;
         }
         .error-text {
           display: block;
-          color: #f00;
+          color: #ff9fa8;
           font-size: 12px;
-          margin-top: 4px;
+          margin-top: 6px;
         }
         .form-actions {
           display: flex;
           gap: 12px;
-          margin-top: 24px;
+          margin-top: 26px;
         }
         .form-actions button {
           flex: 1;
+          min-height: 40px;
+        }
+        .alert.alert-error {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid rgba(247, 83, 96, 0.4);
+          background: rgba(247, 83, 96, 0.12);
+          color: #ffb3ba;
+          border-radius: 10px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          font-size: 13px;
+          font-weight: 600;
         }
       `}</style>
     </div>

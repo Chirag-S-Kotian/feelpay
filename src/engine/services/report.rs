@@ -149,6 +149,55 @@ impl ReportService {
         Self { db }
     }
 
+    async fn ensure_schema(&self) -> Result<(), FeelPayError> {
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS scheduled_reports (
+                id UUID PRIMARY KEY,
+                merchant_id UUID NOT NULL,
+                report_type TEXT NOT NULL,
+                frequency TEXT NOT NULL,
+                day_of_week INT NULL,
+                day_of_month INT NULL,
+                time_of_day TIME NOT NULL,
+                recipient_emails TEXT[] NOT NULL,
+                format TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                last_run_at TIMESTAMPTZ NULL,
+                next_run_at TIMESTAMPTZ NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                created_by_user_id UUID NULL
+            )
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_scheduled_reports_merchant_created
+            ON scheduled_reports (merchant_id, created_at DESC)
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_scheduled_reports_next_run
+            ON scheduled_reports (is_active, next_run_at)
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     /// Create a scheduled report with validation
     pub async fn create_scheduled_report(
         &self,
@@ -156,6 +205,7 @@ impl ReportService {
         request: CreateScheduledReportRequest,
         created_by_user_id: Option<Uuid>,
     ) -> Result<ScheduledReport, FeelPayError> {
+        self.ensure_schema().await?;
         // Validate report type
         let report_type = ReportType::from_str(&request.report_type)
             .ok_or_else(|| FeelPayError::BadRequest("Invalid report type".into()))?;
@@ -281,6 +331,7 @@ impl ReportService {
         merchant_id: Uuid,
         report_id: Uuid,
     ) -> Result<Option<ScheduledReport>, FeelPayError> {
+        self.ensure_schema().await?;
         let report = sqlx::query_as::<
             _,
             (
@@ -329,6 +380,7 @@ impl ReportService {
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<ScheduledReport>, i64), FeelPayError> {
+        self.ensure_schema().await?;
         // Get total count
         let (total,): (i64,) = sqlx::query_as(
             r#"
@@ -399,6 +451,7 @@ impl ReportService {
         report_id: Uuid,
         request: UpdateScheduledReportRequest,
     ) -> Result<ScheduledReport, FeelPayError> {
+        self.ensure_schema().await?;
         // Get existing report
         let existing = self
             .get_scheduled_report(merchant_id, report_id)
@@ -515,6 +568,7 @@ impl ReportService {
         merchant_id: Uuid,
         report_id: Uuid,
     ) -> Result<(), FeelPayError> {
+        self.ensure_schema().await?;
         let result = sqlx::query(
             r#"
             DELETE FROM scheduled_reports
@@ -542,6 +596,7 @@ impl ReportService {
         &self,
         now: &DateTime<Utc>,
     ) -> Result<Vec<ScheduledReport>, FeelPayError> {
+        self.ensure_schema().await?;
         let reports = sqlx::query_as::<
             _,
             (
@@ -591,6 +646,7 @@ impl ReportService {
         &self,
         report_id: Uuid,
     ) -> Result<(), FeelPayError> {
+        self.ensure_schema().await?;
         // Get the report to calculate next run
         let report = sqlx::query_as::<
             _,
@@ -756,13 +812,13 @@ impl ReportService {
             ReportFrequency::Weekly => {
                 if let Some(target_dow) = day_of_week {
                     let target_weekday = match target_dow {
-                        0 => Weekday::Mon,
-                        1 => Weekday::Tue,
-                        2 => Weekday::Wed,
-                        3 => Weekday::Thu,
-                        4 => Weekday::Fri,
-                        5 => Weekday::Sat,
-                        6 => Weekday::Sun,
+                        0 => Weekday::Sun,
+                        1 => Weekday::Mon,
+                        2 => Weekday::Tue,
+                        3 => Weekday::Wed,
+                        4 => Weekday::Thu,
+                        5 => Weekday::Fri,
+                        6 => Weekday::Sat,
                         _ => Weekday::Mon,
                     };
 

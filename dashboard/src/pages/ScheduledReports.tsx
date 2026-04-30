@@ -22,6 +22,7 @@ export default function ScheduledReports() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingReport, setEditingReport] = useState<ScheduledReport | null>(null);
+  const [error, setError] = useState('');
 
   const merchantId = (() => {
     const raw = localStorage.getItem('feelpay_merchant');
@@ -38,14 +39,21 @@ export default function ScheduledReports() {
   }, []);
 
   const fetchScheduledReports = async () => {
+    if (!merchantId) {
+      setError('Merchant session missing. Login again.');
+      setLoading(false);
+      return;
+    }
     try {
-      const data = await apiRequest<{ scheduled_reports: ScheduledReport[] }>(
+      setError('');
+      const data = await apiRequest<{ reports?: ScheduledReport[]; scheduled_reports?: ScheduledReport[] }>(
         'GET',
         `/v1/merchants/${merchantId}/scheduled-reports`
       );
-      setReports(data.scheduled_reports || []);
+      setReports(data.reports || data.scheduled_reports || []);
     } catch (err) {
       console.error('Failed to fetch scheduled reports:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch scheduled reports');
     } finally {
       setLoading(false);
     }
@@ -91,6 +99,7 @@ export default function ScheduledReports() {
         <h1>Scheduled Reports</h1>
         <p>Manage recurring report generation and delivery</p>
       </div>
+      {error && <div className="error-banner">{error}</div>}
 
       {showForm && (
         <ScheduleReportForm
@@ -117,7 +126,8 @@ export default function ScheduledReports() {
         {reports.length === 0 ? (
           <div className="empty-state">
             <Clock size={32} />
-            <p>No scheduled reports</p>
+            <p>No scheduled reports yet</p>
+            <span className="empty-sub">Create recurring report for finance, settlement, GST.</span>
             <button
               className="btn-primary"
               onClick={() => {
@@ -196,10 +206,34 @@ export default function ScheduledReports() {
       </div>
 
       <style>{`
+        .error-banner {
+          margin-bottom: 16px;
+          border: 1px solid rgba(247, 83, 96, 0.45);
+          background: rgba(247, 83, 96, 0.14);
+          color: #ffadb6;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-size: 13px;
+          font-weight: 600;
+        }
         .recipients-list {
           display: flex;
           flex-wrap: wrap;
           gap: 4px;
+        }
+        .empty-state {
+          min-height: 220px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 10px 2px;
+        }
+        .empty-sub {
+          color: #9eb9df;
+          font-size: 13px;
+          max-width: 480px;
         }
         .recipient-badge {
           display: inline-block;

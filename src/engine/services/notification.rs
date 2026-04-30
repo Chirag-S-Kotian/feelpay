@@ -89,6 +89,83 @@ impl NotificationService {
         Self { db }
     }
 
+    async fn ensure_schema(&self) -> Result<(), FeelPayError> {
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS notification_preferences (
+                id UUID PRIMARY KEY,
+                merchant_id UUID NOT NULL,
+                user_id UUID NULL,
+                event_type TEXT NOT NULL,
+                email_enabled BOOLEAN NOT NULL DEFAULT true,
+                sms_enabled BOOLEAN NOT NULL DEFAULT false,
+                in_app_enabled BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_pref_merchant_level
+            ON notification_preferences (merchant_id, event_type)
+            WHERE user_id IS NULL
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_pref_user_level
+            ON notification_preferences (merchant_id, user_id, event_type)
+            WHERE user_id IS NOT NULL
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS notification_delivery_logs (
+                id UUID PRIMARY KEY,
+                merchant_id UUID NOT NULL,
+                user_id UUID NULL,
+                event_type TEXT NOT NULL,
+                delivery_channel TEXT NOT NULL,
+                recipient TEXT NOT NULL,
+                payload JSONB NOT NULL,
+                status TEXT NOT NULL,
+                error_message TEXT NULL,
+                retry_count INT NOT NULL DEFAULT 0,
+                sent_at TIMESTAMPTZ NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_notification_delivery_logs_merchant_created
+            ON notification_delivery_logs (merchant_id, created_at DESC)
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     /// Get notification preferences for a merchant and event type
     /// Returns user-level preference if exists, otherwise merchant-level, otherwise default
     pub async fn get_notification_preferences(
@@ -97,6 +174,7 @@ impl NotificationService {
         user_id: Option<Uuid>,
         event_type: &str,
     ) -> Result<NotificationPreference, FeelPayError> {
+        self.ensure_schema().await?;
         // Try user-level preference first
         if let Some(uid) = user_id {
             if let Ok(Some(pref)) = self
@@ -127,6 +205,7 @@ impl NotificationService {
         event_type: &str,
         request: SetNotificationPreferenceRequest,
     ) -> Result<NotificationPreference, FeelPayError> {
+        self.ensure_schema().await?;
         // Validate event type
         if !SUPPORTED_EVENT_TYPES.contains(&event_type) {
             return Err(FeelPayError::BadRequest(format!(
@@ -144,10 +223,57 @@ impl NotificationService {
         let sms_enabled = request.sms_enabled.unwrap_or(current.sms_enabled);
         let in_app_enabled = request.in_app_enabled.unwrap_or(current.in_app_enabled);
 
-        let pref_id = Uuid::new_v4();
         let now = Utc::now();
 
-        let pref = sqlx::query_as::<
+        // Update existing preference first (works for both NULL and non-NULL user_id).
+        let updated = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                String,
+                bool,
+                bool,
+                bool,
+                String,
+                String,
+            ),
+        >(
+            r#"
+            UPDATE notification_preferences
+            SET email_enabled = $1,
+                sms_enabled = $2,
+                in_app_enabled = $3,
+                updated_at = $4
+            WHERE merchant_id = $5
+              AND user_id IS NOT DISTINCT FROM $6
+              AND event_type = $7
+            RETURNING
+                id, merchant_id, user_id, event_type, email_enabled, sms_enabled, in_app_enabled,
+                created_at, updated_at
+            "#,
+        )
+        .bind(email_enabled)
+        .bind(sms_enabled)
+        .bind(in_app_enabled)
+        .bind(now)
+        .bind(merchant_id)
+        .bind(user_id)
+        .bind(event_type)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update notification preference: {:?}", e);
+            FeelPayError::Database(e.to_string())
+        })?;
+
+        if let Some(pref) = updated {
+            return Ok(self.row_to_preference(pref));
+        }
+
+        let pref_id = Uuid::new_v4();
+        let inserted = sqlx::query_as::<
             _,
             (
                 String,
@@ -167,9 +293,7 @@ impl NotificationService {
                 created_at, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (merchant_id, user_id, event_type) DO UPDATE
-            SET email_enabled = $5, sms_enabled = $6, in_app_enabled = $7, updated_at = $9
-            RETURNING 
+            RETURNING
                 id, merchant_id, user_id, event_type, email_enabled, sms_enabled, in_app_enabled,
                 created_at, updated_at
             "#,
@@ -186,11 +310,11 @@ impl NotificationService {
         .fetch_one(&self.db)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to set notification preference: {:?}", e);
+            tracing::error!("Failed to insert notification preference: {:?}", e);
             FeelPayError::Database(e.to_string())
         })?;
 
-        Ok(self.row_to_preference(pref))
+        Ok(self.row_to_preference(inserted))
     }
 
     /// List all notification preferences for a merchant
@@ -199,6 +323,7 @@ impl NotificationService {
         merchant_id: Uuid,
         user_id: Option<Uuid>,
     ) -> Result<Vec<NotificationPreference>, FeelPayError> {
+        self.ensure_schema().await?;
         let prefs = sqlx::query_as::<
             _,
             (
@@ -275,6 +400,7 @@ impl NotificationService {
         error_message: Option<String>,
         retry_count: i32,
     ) -> Result<NotificationDeliveryLog, FeelPayError> {
+        self.ensure_schema().await?;
         let log_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -338,6 +464,7 @@ impl NotificationService {
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<NotificationDeliveryLog>, i64), FeelPayError> {
+        self.ensure_schema().await?;
         let mut query = String::from(
             r#"
             SELECT 
@@ -456,6 +583,7 @@ impl NotificationService {
         &self,
         log_id: Uuid,
     ) -> Result<Option<NotificationDeliveryLog>, FeelPayError> {
+        self.ensure_schema().await?;
         let log = sqlx::query_as::<
             _,
             (

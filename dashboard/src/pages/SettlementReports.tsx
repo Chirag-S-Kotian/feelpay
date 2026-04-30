@@ -1,32 +1,38 @@
 import { useState, useEffect } from 'react';
-import { Download, FileText, Loader } from 'lucide-react';
+import { Download, FileText, Loader, RefreshCw } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
 interface Settlement {
   id: string;
-  settlement_date: string;
-  gross_amount: number;
-  fees_deducted: number;
+  settlement_date?: string;
+  amount: number;
+  fee_amount: number;
+  tax_amount: number;
   net_amount: number;
-  transaction_count: number;
   status: string;
-  bank_account?: string;
-  transfer_date?: string;
+  created_at: string;
   utr?: string;
 }
 
-interface SettlementReport {
-  settlement_id: string;
-  settlement_date: string;
-  transaction_count: number;
-  gross_amount: number;
-  mdr_fee: number;
-  gst_on_fee: number;
-  refund_deductions: number;
+interface SettlementItem {
+  transaction_id: string;
+  amount: number;
+  fee: number;
+}
+
+interface SettlementDetail {
+  id: string;
+  settlement_date?: string;
+  amount: number;
+  fee_amount: number;
+  tax_amount: number;
   net_amount: number;
-  bank_account: string;
-  transfer_date: string;
-  utr: string;
+  status: string;
+  utr?: string;
+  bank_reference?: string;
+  processed_at?: string;
+  created_at: string;
+  items: SettlementItem[];
 }
 
 export default function SettlementReports() {
@@ -35,17 +41,8 @@ export default function SettlementReports() {
   const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'csv' | 'excel'>('pdf');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
-  const [reportPreview, setReportPreview] = useState<SettlementReport | null>(null);
-
-  const merchantId = (() => {
-    const raw = localStorage.getItem('feelpay_merchant');
-    if (!raw) return '';
-    try {
-      return (JSON.parse(raw) as { id?: string }).id || '';
-    } catch {
-      return '';
-    }
-  })();
+  const [reportPreview, setReportPreview] = useState<SettlementDetail | null>(null);
+  const [error, setError] = useState<string>('');
 
   useEffect(() => {
     fetchSettlements();
@@ -53,13 +50,16 @@ export default function SettlementReports() {
 
   const fetchSettlements = async () => {
     try {
+      setError('');
       const data = await apiRequest<{ settlements: Settlement[] }>(
         'GET',
-        `/v1/merchants/${merchantId}/settlements?limit=50&offset=0`
+        '/v1/settlements?page=1&per_page=50'
       );
       setSettlements(data.settlements || []);
     } catch (err) {
       console.error('Failed to fetch settlements:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load settlements';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -68,26 +68,96 @@ export default function SettlementReports() {
   const handlePreview = async (settlement: Settlement) => {
     setSelectedSettlement(settlement);
     try {
-      const data = await apiRequest<SettlementReport>(
+      setError('');
+      const data = await apiRequest<SettlementDetail>(
         'GET',
-        `/v1/merchants/${merchantId}/settlements/${settlement.id}/report?format=json`
+        `/v1/settlements/${settlement.id}`
       );
       setReportPreview(data);
     } catch (err) {
       console.error('Failed to fetch report preview:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load settlement detail';
+      setError(message);
     }
+  };
+
+  const buildCsv = (detail: SettlementDetail) => {
+    const rows = [
+      ['Settlement ID', detail.id],
+      ['Settlement Date', detail.settlement_date || 'N/A'],
+      ['Status', detail.status],
+      ['UTR', detail.utr || 'N/A'],
+      ['Gross Amount (INR)', (detail.amount / 100).toFixed(2)],
+      ['Fee Amount (INR)', (detail.fee_amount / 100).toFixed(2)],
+      ['Tax Amount (INR)', (detail.tax_amount / 100).toFixed(2)],
+      ['Net Amount (INR)', (detail.net_amount / 100).toFixed(2)],
+      ['Transaction Count', `${detail.items?.length || 0}`],
+      [],
+      ['Transaction ID', 'Amount (INR)', 'Fee (INR)'],
+      ...(detail.items || []).map(item => [
+        item.transaction_id,
+        (item.amount / 100).toFixed(2),
+        (item.fee / 100).toFixed(2),
+      ]),
+    ];
+
+    return rows
+      .map(row =>
+        row
+          .map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`)
+          .join(',')
+      )
+      .join('\n');
+  };
+
+  const downloadTextFile = (fileName: string, content: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   };
 
   const handleDownload = async (settlementId: string, format: 'pdf' | 'csv' | 'excel') => {
     setDownloadingId(settlementId);
     try {
-      const response = await apiRequest<{ download_url: string }>(
-        'GET',
-        `/v1/merchants/${merchantId}/settlements/${settlementId}/report?format=${format}`
-      );
-      window.location.href = response.download_url;
+      setError('');
+      let detail = reportPreview;
+
+      if (!detail || detail.id !== settlementId) {
+        detail = await apiRequest<SettlementDetail>('GET', `/v1/settlements/${settlementId}`);
+        setReportPreview(detail);
+      }
+
+      if (!detail) {
+        throw new Error('Settlement detail unavailable');
+      }
+
+      const csvContent = buildCsv(detail);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const baseName = `settlement-${detail.id}-${timestamp}`;
+
+      if (format === 'csv') {
+        downloadTextFile(`${baseName}.csv`, csvContent, 'text/csv;charset=utf-8');
+      } else if (format === 'excel') {
+        downloadTextFile(
+          `${baseName}.xls`,
+          csvContent,
+          'application/vnd.ms-excel;charset=utf-8'
+        );
+      } else {
+        // Lightweight fallback until backend PDF endpoint is ready.
+        const pdfFallback = `Settlement Summary\n\n${csvContent.replace(/,/g, ' | ')}`;
+        downloadTextFile(`${baseName}.txt`, pdfFallback, 'text/plain;charset=utf-8');
+      }
     } catch (err) {
       console.error('Download failed:', err);
+      const message = err instanceof Error ? err.message : 'Download failed';
+      setError(message);
     } finally {
       setDownloadingId(null);
     }
@@ -107,10 +177,21 @@ export default function SettlementReports() {
         <h1>Settlement Reports</h1>
         <p>Download detailed settlement reports</p>
       </div>
+      {error && (
+        <div className="error-banner" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-2">
         <div className="card">
-          <h2>Settlements</h2>
+          <div className="card-title-row">
+            <h2>Settlements</h2>
+            <button className="refresh-btn" onClick={fetchSettlements} type="button">
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          </div>
           {settlements.length === 0 ? (
             <div className="empty-state">
               <FileText size={32} />
@@ -122,9 +203,10 @@ export default function SettlementReports() {
                 <thead>
                   <tr>
                     <th>Date</th>
+                    <th>Status</th>
                     <th>Transactions</th>
                     <th>Gross Amount</th>
-                    <th>Fees</th>
+                    <th>Fee + Tax</th>
                     <th>Net Amount</th>
                     <th>Action</th>
                   </tr>
@@ -132,10 +214,19 @@ export default function SettlementReports() {
                 <tbody>
                   {settlements.map(settlement => (
                     <tr key={settlement.id}>
-                      <td>{new Date(settlement.settlement_date).toLocaleDateString()}</td>
-                      <td>{settlement.transaction_count}</td>
-                      <td>₹{(settlement.gross_amount / 100).toFixed(2)}</td>
-                      <td>₹{(settlement.fees_deducted / 100).toFixed(2)}</td>
+                      <td>
+                        {new Date(
+                          settlement.settlement_date || settlement.created_at
+                        ).toLocaleDateString()}
+                      </td>
+                      <td>
+                        <span className={`status-pill status-${settlement.status.toLowerCase()}`}>
+                          {settlement.status}
+                        </span>
+                      </td>
+                      <td>-</td>
+                      <td>₹{(settlement.amount / 100).toFixed(2)}</td>
+                      <td>₹{((settlement.fee_amount + settlement.tax_amount) / 100).toFixed(2)}</td>
                       <td className="font-bold">₹{(settlement.net_amount / 100).toFixed(2)}</td>
                       <td>
                         <button
@@ -161,11 +252,15 @@ export default function SettlementReports() {
                 <h3>Settlement Summary</h3>
                 <div className="preview-row">
                   <span>Settlement Date:</span>
-                  <strong>{new Date(reportPreview.settlement_date).toLocaleDateString()}</strong>
+                  <strong>
+                    {new Date(
+                      reportPreview.settlement_date || reportPreview.created_at
+                    ).toLocaleDateString()}
+                  </strong>
                 </div>
                 <div className="preview-row">
                   <span>Transactions:</span>
-                  <strong>{reportPreview.transaction_count}</strong>
+                  <strong>{reportPreview.items?.length || 0}</strong>
                 </div>
               </div>
 
@@ -173,21 +268,17 @@ export default function SettlementReports() {
                 <h3>Financial Breakdown</h3>
                 <div className="preview-row">
                   <span>Gross Amount:</span>
-                  <strong>₹{(reportPreview.gross_amount / 100).toFixed(2)}</strong>
+                  <strong>₹{(reportPreview.amount / 100).toFixed(2)}</strong>
                 </div>
                 <div className="preview-row">
-                  <span>MDR Fee:</span>
-                  <strong>₹{(reportPreview.mdr_fee / 100).toFixed(2)}</strong>
+                  <span>Fee:</span>
+                  <strong>₹{(reportPreview.fee_amount / 100).toFixed(2)}</strong>
                 </div>
                 <div className="preview-row">
-                  <span>GST on Fee:</span>
-                  <strong>₹{(reportPreview.gst_on_fee / 100).toFixed(2)}</strong>
+                  <span>Tax on Fee:</span>
+                  <strong>₹{(reportPreview.tax_amount / 100).toFixed(2)}</strong>
                 </div>
                 <div className="preview-row">
-                  <span>Refund Deductions:</span>
-                  <strong>₹{(reportPreview.refund_deductions / 100).toFixed(2)}</strong>
-                </div>
-                <div className="preview-row highlight">
                   <span>Net Amount:</span>
                   <strong>₹{(reportPreview.net_amount / 100).toFixed(2)}</strong>
                 </div>
@@ -196,16 +287,20 @@ export default function SettlementReports() {
               <div className="preview-section">
                 <h3>Bank Transfer</h3>
                 <div className="preview-row">
-                  <span>Bank Account:</span>
-                  <strong>{reportPreview.bank_account}</strong>
+                  <span>Status:</span>
+                  <strong>{reportPreview.status}</strong>
                 </div>
                 <div className="preview-row">
                   <span>Transfer Date:</span>
-                  <strong>{new Date(reportPreview.transfer_date).toLocaleDateString()}</strong>
+                  <strong>
+                    {reportPreview.processed_at
+                      ? new Date(reportPreview.processed_at).toLocaleDateString()
+                      : 'N/A'}
+                  </strong>
                 </div>
                 <div className="preview-row">
                   <span>UTR:</span>
-                  <strong className="mono">{reportPreview.utr}</strong>
+                  <strong className="mono">{reportPreview.utr || 'N/A'}</strong>
                 </div>
               </div>
 
@@ -247,6 +342,40 @@ export default function SettlementReports() {
       </div>
 
       <style>{`
+        .error-banner {
+          margin-bottom: 16px;
+          border: 1px solid rgba(247, 83, 96, 0.45);
+          background: rgba(247, 83, 96, 0.14);
+          color: #ffadb6;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .card-title-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 6px;
+        }
+        .refresh-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: 1px solid rgba(102, 172, 255, 0.35);
+          color: #bcdfff;
+          background: linear-gradient(135deg, rgba(26, 58, 103, 0.85), rgba(22, 41, 79, 0.85));
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .refresh-btn:hover {
+          border-color: rgba(102, 172, 255, 0.6);
+          color: #d7ebff;
+        }
         .grid-2 {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -290,6 +419,29 @@ export default function SettlementReports() {
           border-radius: 4px;
           font-weight: 600;
         }
+        .status-pill {
+          display: inline-flex;
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .status-processed,
+        .status-completed,
+        .status-success {
+          background: rgba(36, 201, 132, 0.22);
+          color: #89f7c0;
+        }
+        .status-pending {
+          background: rgba(255, 183, 3, 0.2);
+          color: #ffe199;
+        }
+        .status-failed {
+          background: rgba(255, 107, 107, 0.2);
+          color: #ffb3b3;
+        }
         .format-selector {
           margin-top: 12px;
         }
@@ -300,19 +452,20 @@ export default function SettlementReports() {
         }
         .btn-format {
           flex: 1;
-          padding: 8px 12px;
-          border: 1px solid var(--border-color);
-          background: var(--bg-secondary);
-          border-radius: 4px;
+          padding: 10px 12px;
+          border: 1px solid rgba(102, 172, 255, 0.35);
+          background: linear-gradient(180deg, rgba(20, 42, 78, 0.9), rgba(14, 31, 60, 0.9));
+          border-radius: 10px;
           cursor: pointer;
           font-size: 12px;
           font-weight: 600;
-          transition: all 0.2s;
+          color: #c2d8ff;
+          transition: all 0.2s ease;
         }
         .btn-format.active {
-          background: var(--primary);
-          color: white;
-          border-color: var(--primary);
+          background: linear-gradient(135deg, #f8a429, #9f5cff);
+          color: #fff;
+          border-color: transparent;
         }
         .spin {
           animation: spin 1s linear infinite;

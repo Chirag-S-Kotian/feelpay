@@ -219,29 +219,6 @@ async fn main() -> std::io::Result<()> {
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", api::ApiDoc::openapi()),
             )
-            // Merchants API
-            .service(
-                web::scope("/v1/merchants")
-                    .route("/register", web::post().to(api::merchants::create_merchant))
-                    .route("/login", web::post().to(api::merchants::login_merchant))
-                    .route(
-                        "/forgot-password",
-                        web::post().to(api::merchants::forgot_password),
-                    )
-                    .route(
-                        "/reset-password",
-                        web::post().to(api::merchants::reset_password),
-                    )
-                    // Protected merchant routes
-                    .service(
-                        web::scope("")
-                            .wrap(crate::middleware::auth::JwtMiddleware)
-                            .route("/profile", web::get().to(api::merchants::get_profile))
-                            .route("/profile", web::put().to(api::merchants::update_profile))
-                            .route("/keys", web::get().to(api::merchants::get_keys))
-                            .route("/keys/roll", web::post().to(api::merchants::roll_keys)),
-                    ),
-            )
             // Payment Links API
             .service(
                 web::scope("/v1/payment-links")
@@ -435,6 +412,54 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/webhooks/test-logs",
                         web::get().to(api::webhook_test::get_webhook_test_logs),
+                    ),
+            )
+            // Merchants API (registered after /v1/merchants/{merchant_id} scope to avoid route shadowing)
+            .service(
+                web::scope("/v1/merchants")
+                    .route("/register", web::post().to(api::merchants::create_merchant))
+                    .route("/login", web::post().to(api::merchants::login_merchant))
+                    .route(
+                        "/forgot-password",
+                        web::post().to(api::merchants::forgot_password),
+                    )
+                    .route(
+                        "/reset-password",
+                        web::post().to(api::merchants::reset_password),
+                    )
+                    // Protected merchant routes
+                    .service(
+                        web::scope("")
+                            .wrap(crate::middleware::auth::JwtMiddleware)
+                            .route("/profile", web::get().to(api::merchants::get_profile))
+                            .route("/profile", web::put().to(api::merchants::update_profile))
+                            .route("/keys", web::get().to(api::merchants::get_keys))
+                            .route("/keys/roll", web::post().to(api::merchants::roll_keys))
+                            // Export aliases under /v1/merchants to avoid scope shadow 404s
+                            .route(
+                                "/{merchant_id}/exports/transactions",
+                                web::post().to(api::exports::create_transaction_export),
+                            )
+                            .route(
+                                "/{merchant_id}/exports/customers",
+                                web::post().to(api::exports::create_customer_export),
+                            )
+                            .route(
+                                "/{merchant_id}/exports/{job_id}",
+                                web::get().to(api::exports::get_export_status),
+                            )
+                            .route(
+                                "/{merchant_id}/exports/{job_id}/download",
+                                web::get().to(api::exports::download_export),
+                            )
+                            .route(
+                                "/{merchant_id}/exports/{job_id}/file",
+                                web::get().to(api::exports::serve_export_file),
+                            )
+                            .route(
+                                "/{merchant_id}/exports",
+                                web::get().to(api::exports::list_exports),
+                            ),
                     ),
             )
             // Analytics API

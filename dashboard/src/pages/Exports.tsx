@@ -76,6 +76,11 @@ export default function Exports() {
       setJobs(data.exports || []);
     } catch (err) {
       console.error('Failed to fetch export jobs:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to fetch export jobs. Check backend is running.'
+      );
     } finally {
       setJobsLoading(false);
     }
@@ -149,7 +154,7 @@ export default function Exports() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container exports-page">
       <div className="page-header">
         <h1>Transaction Exports</h1>
         <p>Export transactions for reconciliation and analysis</p>
@@ -407,6 +412,246 @@ export default function Exports() {
           )}
         </div>
       )}
+
+      <style>{`
+        .exports-page .tabs {
+          display: inline-flex;
+          gap: 8px;
+          padding: 6px;
+          border-radius: 12px;
+          border: 1px solid var(--fp-border);
+          background: rgba(13, 24, 48, 0.7);
+          margin-bottom: 18px;
+        }
+
+        .exports-page .tab {
+          border: 0;
+          border-radius: 8px;
+          padding: 9px 14px;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--fp-text-muted);
+          background: transparent;
+          cursor: pointer;
+        }
+
+        .exports-page .tab.active {
+          color: #f8fafc;
+          background: linear-gradient(135deg, #f59e0b 0%, #8b5cf6 100%);
+        }
+
+        .exports-page .card {
+          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 25%, transparent);
+          background:
+            radial-gradient(120% 120% at 0% 0%, rgba(34, 197, 94, 0.08) 0%, transparent 45%),
+            linear-gradient(160deg, rgba(13, 24, 48, 0.95), rgba(8, 18, 39, 0.95));
+        }
+
+        .exports-page h2 {
+          margin: 0 0 14px;
+          font-size: 21px;
+        }
+
+        .exports-page .form-group {
+          margin-bottom: 14px;
+        }
+
+        .exports-page .form-group > label {
+          display: block;
+          margin-bottom: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          color: color-mix(in srgb, var(--fp-text) 82%, #c7e2ff 18%);
+        }
+
+        .exports-page .date-range {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .exports-page .date-range span {
+          color: var(--fp-text-muted);
+          font-size: 13px;
+        }
+
+        .exports-page input,
+        .exports-page select {
+          height: 42px;
+          width: 100%;
+          min-width: 0;
+          padding: 0 12px;
+          font-size: 14px;
+          border-radius: 10px;
+          border: 1px solid color-mix(in srgb, var(--fp-border) 65%, #7dd3fc 35%);
+          background: rgba(9, 18, 38, 0.7);
+          color: var(--fp-text);
+        }
+
+        .exports-page input:focus,
+        .exports-page select:focus {
+          border-color: color-mix(in srgb, var(--fp-primary) 60%, #ffffff 40%);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .exports-page select {
+          appearance: none;
+          background-image:
+            linear-gradient(45deg, transparent 50%, #8bb8f7 50%),
+            linear-gradient(135deg, #8bb8f7 50%, transparent 50%);
+          background-position:
+            calc(100% - 16px) calc(50% + 1px),
+            calc(100% - 11px) calc(50% + 1px);
+          background-size: 5px 5px, 5px 5px;
+          background-repeat: no-repeat;
+          padding-right: 30px;
+        }
+
+        .exports-page .form-actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin: 12px 0;
+        }
+
+        .exports-page .btn-primary,
+        .exports-page .btn-secondary {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-radius: 10px;
+          font-weight: 600;
+          border: 1px solid var(--fp-border);
+          cursor: pointer;
+        }
+
+        .exports-page .btn-primary {
+          height: 44px;
+          padding: 0 16px;
+          border: 0;
+          color: #fff;
+          background: linear-gradient(135deg, #f59e0b 0%, #8b5cf6 100%);
+        }
+
+        .exports-page .btn-secondary {
+          height: 40px;
+          padding: 0 12px;
+          color: var(--fp-text);
+          background: rgba(17, 34, 63, 0.8);
+        }
+
+        .exports-page .filter-panel,
+        .exports-page .columns-panel {
+          margin: 12px 0;
+          padding: 14px;
+          border-radius: 12px;
+          border: 1px solid var(--fp-border);
+          background: rgba(12, 22, 44, 0.72);
+        }
+
+        .exports-page .checkbox-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .exports-page .checkbox {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: var(--fp-text-muted);
+          padding: 6px 10px;
+          border: 1px solid var(--fp-border);
+          border-radius: 8px;
+          background: rgba(17, 34, 63, 0.6);
+        }
+
+        .exports-page .checkbox input {
+          width: 14px;
+          height: 14px;
+        }
+
+        .exports-page .amount-range {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .exports-page .alert {
+          margin-bottom: 12px;
+          border-radius: 10px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+        }
+
+        .exports-page .alert-error {
+          border: 1px solid rgba(239, 68, 68, 0.45);
+          color: #fecaca;
+          background: rgba(127, 29, 29, 0.24);
+        }
+
+        .exports-page .alert-success {
+          border: 1px solid rgba(34, 197, 94, 0.4);
+          color: #bbf7d0;
+          background: rgba(20, 83, 45, 0.28);
+        }
+
+        .exports-page .btn-copy {
+          margin-left: auto;
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          background: rgba(15, 23, 42, 0.7);
+          color: #e2e8f0;
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          display: grid;
+          place-items: center;
+          cursor: pointer;
+        }
+
+        .exports-page .mono {
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          color: var(--fp-primary-soft);
+        }
+
+        .exports-page .btn-small {
+          border: 1px solid var(--fp-border);
+          background: rgba(15, 23, 42, 0.7);
+          color: var(--fp-text);
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          display: grid;
+          place-items: center;
+          cursor: pointer;
+        }
+
+        .exports-page .error-text {
+          color: #fca5a5;
+          font-size: 12px;
+        }
+
+        @media (max-width: 900px) {
+          .exports-page .date-range {
+            grid-template-columns: 1fr;
+          }
+
+          .exports-page .form-actions {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
+
+          .exports-page .amount-range {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }

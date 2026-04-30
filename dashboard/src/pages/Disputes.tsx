@@ -14,6 +14,12 @@ type Dispute = {
 export default function Disputes() {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showEvidenceModal, setShowEvidenceModal] = useState(false);
+  const [targetDisputeId, setTargetDisputeId] = useState<string | null>(null);
+  const [evidenceText, setEvidenceText] = useState('');
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [submittingEvidence, setSubmittingEvidence] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -40,15 +46,45 @@ export default function Disputes() {
     await load();
   };
 
-  const respondDispute = async (id: string) => {
-    await apiRequest(
-      'POST',
-      `/v1/disputes/${id}/evidence`,
-      { text: 'Evidence submitted from merchant dashboard.' },
-      undefined,
-      { useApiKey: true },
-    );
-    await load();
+  const openEvidenceModal = (id: string) => {
+    setTargetDisputeId(id);
+    setEvidenceText('');
+    setEvidenceFiles([]);
+    setError(null);
+    setShowEvidenceModal(true);
+  };
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+
+  const submitEvidence = async () => {
+    if (!targetDisputeId) return;
+    setSubmittingEvidence(true);
+    setError(null);
+    try {
+      const docs = await Promise.all(evidenceFiles.map(fileToDataUrl));
+      await apiRequest(
+        'POST',
+        `/v1/disputes/${targetDisputeId}/evidence`,
+        {
+          text: evidenceText || 'Evidence submitted from merchant dashboard.',
+          documents: docs,
+        },
+        undefined,
+        { useApiKey: true },
+      );
+      setShowEvidenceModal(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Evidence upload failed');
+    } finally {
+      setSubmittingEvidence(false);
+    }
   };
 
   return (
@@ -58,7 +94,16 @@ export default function Disputes() {
           <h1>Disputes</h1>
           <p>Chargeback defense command center</p>
         </div>
-        <button className="btn btn-primary">Upload Evidence</button>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            const candidate = disputes.find(d => ['needs_response', 'under_review'].includes(d.status));
+            if (candidate) openEvidenceModal(candidate.id);
+          }}
+          disabled={disputes.length === 0}
+        >
+          Upload Evidence
+        </button>
       </div>
 
       <div className="dispute-banner">
@@ -88,12 +133,108 @@ export default function Disputes() {
             </div>
             <div className="dispute-card__actions">
               <button className="btn btn-secondary" onClick={() => void acceptDispute(d.id)}>Accept</button>
-              <button className="btn btn-primary" onClick={() => void respondDispute(d.id)}>Respond</button>
+              <button className="btn btn-primary" onClick={() => openEvidenceModal(d.id)}>Respond</button>
             </div>
           </div>
         ))}
         {!loading && disputes.length === 0 && <div>No disputes found.</div>}
       </div>
+
+      {showEvidenceModal && (
+        <div className="modal-overlay" onClick={() => setShowEvidenceModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3>Upload Evidence</h3>
+            {error && <div className="modal-error">{error}</div>}
+            <label>Evidence note</label>
+            <textarea
+              value={evidenceText}
+              onChange={e => setEvidenceText(e.target.value)}
+              placeholder="Explain why charge is valid."
+              rows={4}
+            />
+            <label>Evidence files</label>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.png,.jpg,.jpeg,.txt"
+              onChange={e => setEvidenceFiles(Array.from(e.target.files || []))}
+            />
+            <div className="file-count">{evidenceFiles.length} file(s) selected</div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowEvidenceModal(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={() => void submitEvidence()} disabled={submittingEvidence}>
+                {submittingEvidence ? 'Submitting...' : 'Submit Evidence'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(3, 8, 20, 0.74);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2200;
+          padding: 16px;
+        }
+        .modal-content {
+          width: min(620px, 100%);
+          background: #142746;
+          border: 1px solid rgba(77, 141, 235, 0.35);
+          border-radius: 14px;
+          padding: 18px;
+          color: #e8f2ff;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .modal-content h3 {
+          margin: 0 0 2px;
+        }
+        .modal-content label {
+          font-size: 13px;
+          font-weight: 700;
+          color: #c8dbfb;
+        }
+        .modal-content textarea,
+        .modal-content input[type="file"] {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid rgba(91, 154, 247, 0.34);
+          background: linear-gradient(180deg, rgba(17, 41, 77, 0.94), rgba(12, 29, 56, 0.94));
+          color: #eaf3ff;
+        }
+        .modal-content textarea {
+          resize: vertical;
+          min-height: 100px;
+        }
+        .file-count {
+          font-size: 12px;
+          color: #a8c3ea;
+        }
+        .modal-actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin-top: 6px;
+        }
+        .modal-error {
+          border: 1px solid rgba(247, 83, 96, 0.45);
+          background: rgba(247, 83, 96, 0.14);
+          color: #ffadb6;
+          border-radius: 10px;
+          padding: 8px 10px;
+          font-size: 13px;
+          font-weight: 600;
+        }
+      `}</style>
     </div>
   );
 }
