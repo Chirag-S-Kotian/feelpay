@@ -33,7 +33,9 @@ export default function PaymentLinks() {
   const [links, setLinks] = useState<PaymentLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
+  const [createError, setCreateError] = useState('');
   const [description, setDescription] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -55,7 +57,11 @@ export default function PaymentLinks() {
   };
 
   const createLink = async () => {
-    if (!amount) return;
+    setCreateError('');
+    if (!amount || Number(amount) <= 0) {
+      setCreateError('Enter valid amount greater than 0');
+      return;
+    }
     
     try {
       const expiresAt = new Date();
@@ -74,9 +80,11 @@ export default function PaymentLinks() {
       setDescription('');
       setCustomerEmail('');
       setCustomerName('');
+      setCreateError('');
       fetchLinks();
     } catch (err) {
       console.error('Failed to create payment link:', err);
+      setCreateError(err instanceof Error ? err.message : 'Failed to create payment link');
     }
   };
 
@@ -91,8 +99,10 @@ export default function PaymentLinks() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((curr) => (curr === id ? null : curr)), 1200);
   };
 
   const formatCurrency = (amount: number) => {
@@ -135,20 +145,29 @@ export default function PaymentLinks() {
       </div>
 
       {showCreate && (
-        <div className="card" style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Create Payment Link</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-            <div>
+        <div className="card payment-link-create-card">
+          <div className="payment-link-create-header">
+            <h3>Create Payment Link</h3>
+            <p>Generate branded checkout URL for quick payment collection.</p>
+          </div>
+          {createError && (
+            <div className="payment-link-create-error">{createError}</div>
+          )}
+          <div className="payment-link-form-grid">
+            <div className="payment-link-field">
               <label className="form-label">Amount (₹)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount"
-              />
+              <div className="payment-link-input-wrap">
+                <span className="payment-link-input-prefix">₹</span>
+                <input
+                  type="number"
+                  className="form-input payment-link-input-with-prefix"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Enter amount"
+                />
+              </div>
             </div>
-            <div>
+            <div className="payment-link-field">
               <label className="form-label">Expiry (hours)</label>
               <select
                 className="form-input"
@@ -163,7 +182,7 @@ export default function PaymentLinks() {
                 <option value="168">7 days</option>
               </select>
             </div>
-            <div style={{ gridColumn: 'span 2' }}>
+            <div className="payment-link-field payment-link-span-2">
               <label className="form-label">Description</label>
               <input
                 type="text"
@@ -173,7 +192,7 @@ export default function PaymentLinks() {
                 placeholder="What is this payment for?"
               />
             </div>
-            <div>
+            <div className="payment-link-field">
               <label className="form-label">Customer Name (optional)</label>
               <input
                 type="text"
@@ -183,7 +202,7 @@ export default function PaymentLinks() {
                 placeholder="Customer name"
               />
             </div>
-            <div>
+            <div className="payment-link-field">
               <label className="form-label">Customer Email (optional)</label>
               <input
                 type="email"
@@ -194,7 +213,7 @@ export default function PaymentLinks() {
               />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+          <div className="payment-link-form-actions">
             <button className="btn btn-primary" onClick={createLink}>
               Create Link
             </button>
@@ -208,10 +227,12 @@ export default function PaymentLinks() {
       {loading ? (
         <div className="card">Loading...</div>
       ) : links.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 48 }}>
-          <Link size={48} style={{ color: 'var(--fp-text-dim)', marginBottom: 16 }} />
-          <h3 style={{ marginBottom: 8 }}>No Payment Links Yet</h3>
-          <p style={{ color: 'var(--fp-text-muted)', marginBottom: 24 }}>
+        <div className="card payment-link-empty-state">
+          <div className="payment-link-empty-icon-wrap">
+            <Link size={40} style={{ color: 'var(--fp-primary-soft)' }} />
+          </div>
+          <h3>No Payment Links Yet</h3>
+          <p>
             Create your first payment link to start accepting payments
           </p>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
@@ -219,7 +240,14 @@ export default function PaymentLinks() {
           </button>
         </div>
       ) : (
-        <div className="card">
+        <div className="card payment-link-list-card">
+          <div className="payment-link-list-header">
+            <h3>Active + Historical Links</h3>
+            <div className="payment-link-list-stats">
+              <span>{links.length} total</span>
+              <span>{links.filter((l) => l.status === 'active').length} active</span>
+            </div>
+          </div>
           <table className="data-table">
             <thead>
               <tr>
@@ -236,18 +264,21 @@ export default function PaymentLinks() {
             <tbody>
               {links.map((link) => (
                 <tr key={link.id}>
-                  <td style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                    {link.link_id}
+                  <td>
+                    <div className="payment-link-id-cell">
+                      <code>{link.link_id}</code>
+                      {link.short_url && <small>{link.short_url}</small>}
+                    </div>
                   </td>
-                  <td style={{ fontWeight: 600 }}>{formatCurrency(link.amount)}</td>
+                  <td>
+                    <span className="payment-link-amount">{formatCurrency(link.amount)}</span>
+                  </td>
                   <td>{link.description || '-'}</td>
                   <td>
                     {link.customer_name || link.customer_email ? (
-                      <div>
+                      <div className="payment-link-customer-cell">
                         <div>{link.customer_name}</div>
-                        <div style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>
-                          {link.customer_email}
-                        </div>
+                        <small>{link.customer_email}</small>
                       </div>
                     ) : '-'}
                   </td>
@@ -264,10 +295,10 @@ export default function PaymentLinks() {
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button
                         className="btn btn-sm btn-secondary"
-                        title="Copy link"
-                        onClick={() => copyToClipboard(link.full_url)}
+                        title={copiedId === link.id ? 'Copied' : 'Copy link'}
+                        onClick={() => copyToClipboard(link.full_url, link.id)}
                       >
-                        <Copy size={14} />
+                        {copiedId === link.id ? 'Copied' : <Copy size={14} />}
                       </button>
                       <a
                         href={link.full_url}
@@ -295,6 +326,218 @@ export default function PaymentLinks() {
           </table>
         </div>
       )}
+
+      <style>{`
+        .payment-link-create-card {
+          margin-bottom: 24px;
+          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 30%, transparent);
+          background:
+            radial-gradient(120% 120% at 0% 0%, rgba(34, 197, 94, 0.14) 0%, transparent 45%),
+            linear-gradient(160deg, rgba(13, 24, 48, 0.95), rgba(8, 18, 39, 0.95));
+        }
+
+        .payment-link-create-header h3 {
+          font-size: 18px;
+          font-weight: 700;
+          margin-bottom: 6px;
+          letter-spacing: 0.01em;
+        }
+
+        .payment-link-create-header p {
+          color: var(--fp-text-muted);
+          font-size: 14px;
+          margin-bottom: 18px;
+        }
+
+        .payment-link-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .payment-link-create-error {
+          margin: 0 0 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 13px;
+          border: 1px solid color-mix(in srgb, #ef4444 55%, transparent);
+          background: rgba(127, 29, 29, 0.24);
+          color: #fecaca;
+        }
+
+        .payment-link-field {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .payment-link-field .form-label {
+          display: block;
+          font-size: 13px;
+          font-weight: 600;
+          color: color-mix(in srgb, var(--fp-text) 82%, #c7e2ff 18%);
+          margin: 0;
+          letter-spacing: 0.01em;
+        }
+
+        .payment-link-field .form-input {
+          height: 42px;
+          width: 100%;
+          min-width: 0;
+          padding: 0 12px;
+          font-size: 14px;
+          border-radius: 10px;
+          border: 1px solid color-mix(in srgb, var(--fp-border) 65%, #7dd3fc 35%);
+          background: rgba(9, 18, 38, 0.7);
+          color: var(--fp-text);
+        }
+
+        .payment-link-field .form-input:focus {
+          border-color: color-mix(in srgb, var(--fp-primary) 60%, #ffffff 40%);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .payment-link-field .form-input::placeholder {
+          color: color-mix(in srgb, var(--fp-text-muted) 88%, #ffffff 12%);
+        }
+
+        .payment-link-input-wrap {
+          position: relative;
+        }
+
+        .payment-link-input-prefix {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 13px;
+          color: var(--fp-text-muted);
+          pointer-events: none;
+        }
+
+        .payment-link-input-with-prefix {
+          padding-left: 28px !important;
+        }
+
+        .payment-link-field select.form-input {
+          appearance: none;
+          background-image:
+            linear-gradient(45deg, transparent 50%, #8bb8f7 50%),
+            linear-gradient(135deg, #8bb8f7 50%, transparent 50%);
+          background-position:
+            calc(100% - 16px) calc(50% + 1px),
+            calc(100% - 11px) calc(50% + 1px);
+          background-size: 5px 5px, 5px 5px;
+          background-repeat: no-repeat;
+          padding-right: 30px;
+        }
+
+        .payment-link-span-2 {
+          grid-column: span 2;
+        }
+
+        .payment-link-form-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 20px;
+        }
+
+        .payment-link-empty-state {
+          text-align: center;
+          padding: 56px 20px;
+          background:
+            radial-gradient(80% 120% at 50% 0%, rgba(56, 189, 248, 0.14) 0%, transparent 56%),
+            linear-gradient(180deg, rgba(11, 23, 46, 0.95), rgba(8, 18, 39, 0.95));
+        }
+
+        .payment-link-empty-icon-wrap {
+          width: 74px;
+          height: 74px;
+          margin: 0 auto 16px;
+          border-radius: 18px;
+          display: grid;
+          place-items: center;
+          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 45%, transparent);
+          background: rgba(19, 37, 70, 0.72);
+        }
+
+        .payment-link-empty-state h3 {
+          margin-bottom: 8px;
+          font-size: 22px;
+          letter-spacing: 0.01em;
+        }
+
+        .payment-link-empty-state p {
+          color: var(--fp-text-muted);
+          margin-bottom: 22px;
+        }
+
+        .payment-link-list-card {
+          overflow: hidden;
+        }
+
+        .payment-link-list-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+
+        .payment-link-list-header h3 {
+          margin: 0;
+          font-size: 16px;
+          letter-spacing: 0.01em;
+        }
+
+        .payment-link-list-stats {
+          display: flex;
+          gap: 8px;
+        }
+
+        .payment-link-list-stats span {
+          padding: 5px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          color: var(--fp-text-muted);
+          border: 1px solid var(--fp-border);
+          background: rgba(15, 28, 56, 0.72);
+        }
+
+        .payment-link-id-cell code {
+          display: block;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 12px;
+          color: var(--fp-primary-soft);
+          margin-bottom: 2px;
+        }
+
+        .payment-link-id-cell small,
+        .payment-link-customer-cell small {
+          color: var(--fp-text-muted);
+          font-size: 12px;
+        }
+
+        .payment-link-amount {
+          font-weight: 700;
+        }
+
+        @media (max-width: 960px) {
+          .payment-link-form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .payment-link-span-2 {
+            grid-column: span 1;
+          }
+
+          .payment-link-list-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

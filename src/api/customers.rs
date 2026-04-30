@@ -19,6 +19,12 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Merchant ID not found".to_string()))
 }
 
+fn tenant_id_from_req(req: &HttpRequest) -> Option<Uuid> {
+    req.extensions()
+        .get::<crate::middleware::auth::TenantId>()
+        .map(|id| id.0)
+}
+
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct PaginationParams {
     pub page: Option<i32>,
@@ -58,20 +64,22 @@ pub async fn create_customer(
     body: web::Json<CreateCustomerRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let tenant_id = tenant_id_from_req(&req);
     let mut conn = state.db.acquire().await?;
 
     let result = sqlx::query(
         r#"
         INSERT INTO customers (
-            merchant_id, customer_reference, customer_reference_type,
+            merchant_id, tenant_id, customer_reference, customer_reference_type,
             email, phone, name, consent_given, consent_purpose, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (merchant_id, customer_reference, customer_reference_type) 
         DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone, name = EXCLUDED.name, updated_at = NOW()
         RETURNING *
         "#,
     )
     .bind(merchant_id)
+    .bind(tenant_id)
     .bind(&body.customer_reference)
     .bind(&body.customer_reference_type)
     .bind(&body.email)

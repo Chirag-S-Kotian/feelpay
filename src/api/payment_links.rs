@@ -17,6 +17,12 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Merchant ID not found".to_string()))
 }
 
+fn tenant_id_from_req(req: &HttpRequest) -> Option<Uuid> {
+    req.extensions()
+        .get::<crate::middleware::auth::TenantId>()
+        .map(|id| id.0)
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PaymentLinkListResponse {
     pub data: Vec<PaymentLinkResponse>,
@@ -50,6 +56,7 @@ pub async fn create_payment_link(
     body: web::Json<CreatePaymentLinkRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let tenant_id = tenant_id_from_req(&req);
     let mut conn = state
         .db
         .acquire()
@@ -70,14 +77,15 @@ pub async fn create_payment_link(
     let row = sqlx::query(
         r#"
         INSERT INTO payment_links (
-            merchant_id, link_id, amount, currency, description, short_url,
+            merchant_id, tenant_id, link_id, amount, currency, description, short_url,
             expires_at, status, customer_name, customer_email, customer_phone,
             allow_partial, min_partial_amount, max_partial_amount, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9, $10, $11, $12, $13, $14)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10, $11, $12, $13, $14, $15)
         RETURNING *
         "#,
     )
     .bind(merchant_id)
+    .bind(tenant_id)
     .bind(&link_id)
     .bind(body.amount)
     .bind(body.currency.as_deref().unwrap_or("INR"))

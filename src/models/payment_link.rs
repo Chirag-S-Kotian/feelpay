@@ -66,12 +66,20 @@ impl ToString for PaymentLinkStatus {
 
 impl From<PgRow> for PaymentLink {
     fn from(row: PgRow) -> Self {
+        let amount = row.get::<i32, _>("amount") as i64;
+        let min_partial_amount = row
+            .get::<Option<i32>, _>("min_partial_amount")
+            .map(i64::from);
+        let max_partial_amount = row
+            .get::<Option<i32>, _>("max_partial_amount")
+            .map(i64::from);
+
         PaymentLink {
             id: row.get("id"),
             merchant_id: row.get("merchant_id"),
             tenant_id: row.get("tenant_id"),
             link_id: row.get("link_id"),
-            amount: row.get("amount"),
+            amount,
             currency: row.get("currency"),
             description: row.get("description"),
             short_url: row.get("short_url"),
@@ -82,8 +90,8 @@ impl From<PgRow> for PaymentLink {
             customer_email: row.get("customer_email"),
             customer_phone: row.get("customer_phone"),
             allow_partial: row.get("allow_partial"),
-            min_partial_amount: row.get("min_partial_amount"),
-            max_partial_amount: row.get("max_partial_amount"),
+            min_partial_amount,
+            max_partial_amount,
             view_count: row.get("view_count"),
             attempt_count: row.get("attempt_count"),
             metadata: row.get("metadata"),

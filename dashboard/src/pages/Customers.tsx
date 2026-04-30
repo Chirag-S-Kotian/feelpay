@@ -45,7 +45,8 @@ export default function Customers() {
   const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([]);
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel'>('csv');
-  
+  const [createError, setCreateError] = useState('');
+
   const merchantId = (() => {
     const raw = localStorage.getItem('feelpay_merchant');
     if (!raw) return '';
@@ -55,7 +56,7 @@ export default function Customers() {
       return '';
     }
   })();
-  
+
   // Form state
   const [refType, setRefType] = useState('email');
   const [refValue, setRefValue] = useState('');
@@ -80,10 +81,7 @@ export default function Customers() {
 
   const fetchPaymentMethods = async (customerId: string) => {
     try {
-      const data = await apiRequest<SavedPaymentMethod[]>(
-        'GET',
-        `/v1/customers/${customerId}/payment-methods`
-      );
+      const data = await apiRequest<SavedPaymentMethod[]>('GET', `/v1/customers/${customerId}/payment-methods`);
       setPaymentMethods(data || []);
     } catch (err) {
       console.error('Failed to fetch payment methods:', err);
@@ -91,31 +89,48 @@ export default function Customers() {
   };
 
   const createCustomer = async () => {
-    if (!refValue) return;
-    
+    setCreateError('');
+
+    if (!refValue.trim()) {
+      setCreateError('Reference value required');
+      return;
+    }
+
+    if (refType === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(refValue.trim())) {
+      setCreateError('Enter valid email reference');
+      return;
+    }
+
+    if (refType === 'phone' && !/^\+?[0-9\s-]{8,20}$/.test(refValue.trim())) {
+      setCreateError('Enter valid phone reference');
+      return;
+    }
+
     try {
       await apiRequest('POST', '/v1/customers', {
-        customer_reference: refValue,
+        customer_reference: refValue.trim(),
         customer_reference_type: refType,
         name: name || undefined,
         email: email || undefined,
         phone: phone || undefined,
       });
-      
+
       setShowCreate(false);
       setRefValue('');
       setName('');
       setEmail('');
       setPhone('');
+      setCreateError('');
       fetchCustomers();
     } catch (err) {
       console.error('Failed to create customer:', err);
+      setCreateError(err instanceof Error ? err.message : 'Failed to create customer');
     }
   };
 
   const deleteCustomer = async (id: string) => {
     if (!confirm('Are you sure you want to delete this customer?')) return;
-    
+
     try {
       await apiRequest('DELETE', `/v1/customers/${id}`);
       fetchCustomers();
@@ -125,13 +140,12 @@ export default function Customers() {
   };
 
   const exportCustomers = async () => {
+    if (!merchantId) return;
     setExporting(true);
     try {
-      const res = await apiRequest<{ job_id: string }>(
-        'POST',
-        `/v1/merchants/${merchantId}/exports/customers`,
-        { format: exportFormat }
-      );
+      const res = await apiRequest<{ job_id: string }>('POST', `/v1/merchants/${merchantId}/exports/customers`, {
+        format: exportFormat,
+      });
       window.location.href = `/v1/merchants/${merchantId}/exports/${res.job_id}/file`;
     } catch (err) {
       console.error('Failed to export customers:', err);
@@ -166,18 +180,17 @@ export default function Customers() {
           <h1>Customers</h1>
           <p>Manage your customer database and saved payment methods</p>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div className="customers-toolbar">
           <select
-            className="form-input"
+            className="form-input customers-toolbar-select"
             value={exportFormat}
-            onChange={e => setExportFormat(e.target.value as 'csv' | 'excel')}
+            onChange={(e) => setExportFormat(e.target.value as 'csv' | 'excel')}
             aria-label="Export format"
-            style={{ width: 140 }}
           >
             <option value="csv">CSV</option>
             <option value="excel">Excel</option>
           </select>
-          <button className="btn btn-secondary" onClick={exportCustomers} disabled={exporting}>
+          <button className="btn btn-secondary" onClick={exportCustomers} disabled={exporting || !merchantId}>
             <Download size={18} /> {exporting ? 'Exporting...' : 'Export'}
           </button>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
@@ -187,32 +200,33 @@ export default function Customers() {
       </div>
 
       {showCreate && (
-        <div className="card" style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Add Customer</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-            <div>
+        <div className="card customers-create-card">
+          <div className="customers-create-header">
+            <h3>Add Customer</h3>
+            <p>Use strong reference values to dedupe and track returning buyers.</p>
+          </div>
+          {createError && <div className="customers-create-error">{createError}</div>}
+
+          <div className="customers-form-grid">
+            <div className="customers-field">
               <label className="form-label">Reference Type</label>
-              <select
-                className="form-input"
-                value={refType}
-                onChange={(e) => setRefType(e.target.value)}
-              >
+              <select className="form-input" value={refType} onChange={(e) => setRefType(e.target.value)}>
                 <option value="email">Email</option>
                 <option value="phone">Phone</option>
                 <option value="external_id">External ID</option>
               </select>
             </div>
-            <div>
+            <div className="customers-field">
               <label className="form-label">Reference Value</label>
               <input
                 type="text"
                 className="form-input"
                 value={refValue}
                 onChange={(e) => setRefValue(e.target.value)}
-                placeholder={refType === 'email' ? 'customer@example.com' : refType === 'phone' ? '+91...' : 'External ID'}
+                placeholder={refType === 'email' ? 'customer@example.com' : refType === 'phone' ? '+91 98765 43210' : 'EXT-1001'}
               />
             </div>
-            <div>
+            <div className="customers-field">
               <label className="form-label">Name (optional)</label>
               <input
                 type="text"
@@ -222,7 +236,7 @@ export default function Customers() {
                 placeholder="Customer name"
               />
             </div>
-            <div>
+            <div className="customers-field">
               <label className="form-label">Email (optional)</label>
               <input
                 type="email"
@@ -232,7 +246,7 @@ export default function Customers() {
                 placeholder="customer@example.com"
               />
             </div>
-            <div>
+            <div className="customers-field customers-span-2">
               <label className="form-label">Phone (optional)</label>
               <input
                 type="tel"
@@ -243,7 +257,8 @@ export default function Customers() {
               />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+
+          <div className="customers-form-actions">
             <button className="btn btn-primary" onClick={createCustomer}>
               Add Customer
             </button>
@@ -254,40 +269,42 @@ export default function Customers() {
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <Search
-              size={18}
-              style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--fp-text-dim)' }}
-            />
-            <input
-              type="text"
-              className="form-input"
-              style={{ paddingLeft: 40 }}
-              placeholder="Search customers..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+      <div className="card customers-search-card">
+        <div className="customers-search-wrap">
+          <Search size={18} className="customers-search-icon" />
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Search customers by reference, name, email, phone"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
       </div>
 
       {loading ? (
         <div className="card">Loading...</div>
       ) : filteredCustomers.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 48 }}>
-          <Users size={48} style={{ color: 'var(--fp-text-dim)', marginBottom: 16 }} />
-          <h3 style={{ marginBottom: 8 }}>No Customers Yet</h3>
-          <p style={{ color: 'var(--fp-text-muted)', marginBottom: 24 }}>
-            Add your first customer to start tracking their payment methods
-          </p>
+        <div className="card customers-empty-state">
+          <div className="customers-empty-icon">
+            <Users size={42} style={{ color: 'var(--fp-primary-soft)' }} />
+          </div>
+          <h3>No Customers Yet</h3>
+          <p>Add your first customer to start tracking payment methods and repeat payments.</p>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
             <Plus size={18} /> Add Customer
           </button>
         </div>
       ) : (
-        <div className="card">
+        <div className="card customers-list-card">
+          <div className="customers-list-header">
+            <h3>Customer Records</h3>
+            <div className="customers-list-stats">
+              <span>{filteredCustomers.length} shown</span>
+              <span>{customers.length} total</span>
+            </div>
+          </div>
+
           <table className="data-table">
             <thead>
               <tr>
@@ -302,35 +319,31 @@ export default function Customers() {
               {filteredCustomers.map((customer) => (
                 <tr key={customer.id}>
                   <td>
-                    <div style={{ fontWeight: 500 }}>{customer.name || 'N/A'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>
-                      ID: {customer.id.slice(0, 8)}...
-                    </div>
+                    <div className="customers-name">{customer.name || 'N/A'}</div>
+                    <div className="customers-sub">ID: {customer.id.slice(0, 8)}...</div>
                   </td>
                   <td>
                     {customer.email && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <Mail size={14} style={{ color: 'var(--fp-text-dim)' }} />
-                        <span style={{ fontSize: 13 }}>{customer.email}</span>
+                      <div className="customers-contact-row">
+                        <Mail size={14} className="customers-contact-ico" />
+                        <span>{customer.email}</span>
                       </div>
                     )}
                     {customer.phone && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Phone size={14} style={{ color: 'var(--fp-text-dim)' }} />
-                        <span style={{ fontSize: 13 }}>{customer.phone}</span>
+                      <div className="customers-contact-row">
+                        <Phone size={14} className="customers-contact-ico" />
+                        <span>{customer.phone}</span>
                       </div>
                     )}
                     {!customer.email && !customer.phone && '-'}
                   </td>
                   <td>
                     <span className="badge">{customer.customer_reference_type}</span>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>{customer.customer_reference}</div>
+                    <div className="customers-sub" style={{ marginTop: 4 }}>{customer.customer_reference}</div>
                   </td>
-                  <td style={{ fontSize: 13, color: 'var(--fp-text-muted)' }}>
-                    {formatDate(customer.created_at)}
-                  </td>
+                  <td className="customers-date">{formatDate(customer.created_at)}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="customers-action-row">
                       <button
                         className="btn btn-sm btn-secondary"
                         onClick={() => {
@@ -340,10 +353,7 @@ export default function Customers() {
                       >
                         <CreditCard size={14} /> Payment Methods
                       </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => deleteCustomer(customer.id)}
-                      >
+                      <button className="btn btn-sm btn-danger" onClick={() => deleteCustomer(customer.id)}>
                         Delete
                       </button>
                     </div>
@@ -355,90 +365,334 @@ export default function Customers() {
         </div>
       )}
 
-      {/* Payment Methods Modal */}
       {selectedCustomer && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setSelectedCustomer(null)}
-        >
-          <div
-            className="card"
-            style={{ width: 500, maxHeight: '80vh', overflow: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>
+        <div className="customers-modal-overlay" onClick={() => setSelectedCustomer(null)}>
+          <div className="card customers-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="customers-modal-title">
               Payment Methods - {selectedCustomer.name || selectedCustomer.customer_reference}
             </h3>
             {paymentMethods.length === 0 ? (
-              <p style={{ color: 'var(--fp-text-muted)', textAlign: 'center', padding: 24 }}>
-                No saved payment methods
-              </p>
+              <p className="customers-modal-empty">No saved payment methods</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="customers-pm-list">
                 {paymentMethods.map((pm) => (
-                  <div
-                    key={pm.id}
-                    style={{
-                      padding: 12,
-                      border: '1px solid var(--fp-border)',
-                      borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                    }}
-                  >
+                  <div key={pm.id} className="customers-pm-item">
                     <CreditCard size={24} style={{ color: 'var(--fp-primary)' }} />
                     <div style={{ flex: 1 }}>
                       {pm.method_type === 'card' && (
                         <>
-                          <div style={{ fontWeight: 500 }}>
-                            {pm.card_brand} •••• {pm.card_last4}
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>
-                            Expires {pm.card_expiry_month}/{pm.card_expiry_year}
-                          </div>
+                          <div className="customers-name">{pm.card_brand} •••• {pm.card_last4}</div>
+                          <div className="customers-sub">Expires {pm.card_expiry_month}/{pm.card_expiry_year}</div>
                         </>
                       )}
                       {pm.method_type === 'upi' && (
                         <>
-                          <div style={{ fontWeight: 500 }}>UPI</div>
-                          <div style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>{pm.vpa}</div>
+                          <div className="customers-name">UPI</div>
+                          <div className="customers-sub">{pm.vpa}</div>
                         </>
                       )}
                       {pm.method_type === 'bank_account' && (
                         <>
-                          <div style={{ fontWeight: 500 }}>{pm.bank_name}</div>
-                          <div style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>
-                            •••• {pm.bank_account_last4}
-                          </div>
+                          <div className="customers-name">{pm.bank_name}</div>
+                          <div className="customers-sub">•••• {pm.bank_account_last4}</div>
                         </>
                       )}
                     </div>
-                    {pm.is_default && (
-                      <span className="badge success">Default</span>
-                    )}
+                    {pm.is_default && <span className="badge success">Default</span>}
                   </div>
                 ))}
               </div>
             )}
-            <button
-              className="btn btn-secondary"
-              style={{ marginTop: 16, width: '100%' }}
-              onClick={() => setSelectedCustomer(null)}
-            >
+            <button className="btn btn-secondary" style={{ marginTop: 16, width: '100%' }} onClick={() => setSelectedCustomer(null)}>
               Close
             </button>
           </div>
         </div>
       )}
+
+      <style>{`
+        .customers-toolbar {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .customers-toolbar-select {
+          width: 140px;
+        }
+
+        .customers-create-card {
+          margin-bottom: 24px;
+          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 30%, transparent);
+          background:
+            radial-gradient(120% 120% at 0% 0%, rgba(34, 197, 94, 0.12) 0%, transparent 45%),
+            linear-gradient(160deg, rgba(13, 24, 48, 0.95), rgba(8, 18, 39, 0.95));
+        }
+
+        .customers-create-header h3 {
+          font-size: 18px;
+          margin-bottom: 6px;
+        }
+
+        .customers-create-header p {
+          color: var(--fp-text-muted);
+          margin-bottom: 16px;
+          font-size: 14px;
+        }
+
+        .customers-create-error {
+          margin: 0 0 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 13px;
+          border: 1px solid color-mix(in srgb, #ef4444 55%, transparent);
+          background: rgba(127, 29, 29, 0.24);
+          color: #fecaca;
+        }
+
+        .customers-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .customers-field {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .customers-field .form-label {
+          margin: 0;
+          font-size: 13px;
+          font-weight: 600;
+          color: color-mix(in srgb, var(--fp-text) 82%, #c7e2ff 18%);
+        }
+
+        .customers-field .form-input,
+        .customers-toolbar-select,
+        .customers-search-wrap .form-input {
+          height: 42px;
+          width: 100%;
+          min-width: 0;
+          padding: 0 12px;
+          font-size: 14px;
+          border-radius: 10px;
+          border: 1px solid color-mix(in srgb, var(--fp-border) 65%, #7dd3fc 35%);
+          background: rgba(9, 18, 38, 0.7);
+          color: var(--fp-text);
+        }
+
+        .customers-field .form-input::placeholder,
+        .customers-search-wrap .form-input::placeholder {
+          color: color-mix(in srgb, var(--fp-text-muted) 88%, #ffffff 12%);
+        }
+
+        .customers-field .form-input:focus,
+        .customers-toolbar-select:focus,
+        .customers-search-wrap .form-input:focus {
+          border-color: color-mix(in srgb, var(--fp-primary) 60%, #ffffff 40%);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .customers-field select.form-input,
+        .customers-toolbar-select {
+          appearance: none;
+          background-image:
+            linear-gradient(45deg, transparent 50%, #8bb8f7 50%),
+            linear-gradient(135deg, #8bb8f7 50%, transparent 50%);
+          background-position:
+            calc(100% - 16px) calc(50% + 1px),
+            calc(100% - 11px) calc(50% + 1px);
+          background-size: 5px 5px, 5px 5px;
+          background-repeat: no-repeat;
+          padding-right: 30px;
+        }
+
+        .customers-span-2 {
+          grid-column: span 2;
+        }
+
+        .customers-form-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 20px;
+        }
+
+        .customers-search-card {
+          margin-bottom: 24px;
+          padding: 14px;
+        }
+
+        .customers-search-wrap {
+          position: relative;
+        }
+
+        .customers-search-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--fp-text-dim);
+          pointer-events: none;
+        }
+
+        .customers-search-wrap .form-input {
+          padding-left: 40px;
+        }
+
+        .customers-empty-state {
+          text-align: center;
+          padding: 56px 20px;
+          background:
+            radial-gradient(80% 120% at 50% 0%, rgba(56, 189, 248, 0.14) 0%, transparent 56%),
+            linear-gradient(180deg, rgba(11, 23, 46, 0.95), rgba(8, 18, 39, 0.95));
+        }
+
+        .customers-empty-icon {
+          width: 74px;
+          height: 74px;
+          margin: 0 auto 16px;
+          border-radius: 18px;
+          display: grid;
+          place-items: center;
+          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 45%, transparent);
+          background: rgba(19, 37, 70, 0.72);
+        }
+
+        .customers-empty-state h3 {
+          margin-bottom: 8px;
+        }
+
+        .customers-empty-state p {
+          color: var(--fp-text-muted);
+          margin-bottom: 22px;
+        }
+
+        .customers-list-card {
+          overflow: hidden;
+        }
+
+        .customers-list-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          gap: 10px;
+        }
+
+        .customers-list-header h3 {
+          margin: 0;
+          font-size: 16px;
+        }
+
+        .customers-list-stats {
+          display: flex;
+          gap: 8px;
+        }
+
+        .customers-list-stats span {
+          padding: 5px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          color: var(--fp-text-muted);
+          border: 1px solid var(--fp-border);
+          background: rgba(15, 28, 56, 0.72);
+        }
+
+        .customers-name {
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .customers-sub,
+        .customers-date {
+          font-size: 12px;
+          color: var(--fp-text-muted);
+        }
+
+        .customers-contact-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 4px;
+          font-size: 13px;
+        }
+
+        .customers-contact-ico {
+          color: var(--fp-text-dim);
+        }
+
+        .customers-action-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .customers-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .customers-modal {
+          width: 520px;
+          max-height: 80vh;
+          overflow: auto;
+        }
+
+        .customers-modal-title {
+          font-size: 16px;
+          font-weight: 600;
+          margin-bottom: 20px;
+        }
+
+        .customers-modal-empty {
+          color: var(--fp-text-muted);
+          text-align: center;
+          padding: 24px;
+        }
+
+        .customers-pm-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .customers-pm-item {
+          padding: 12px;
+          border: 1px solid var(--fp-border);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        @media (max-width: 960px) {
+          .customers-form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .customers-span-2 {
+            grid-column: span 1;
+          }
+
+          .customers-list-header {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .customers-modal {
+            width: min(92vw, 520px);
+          }
+        }
+      `}</style>
     </div>
   );
 }
