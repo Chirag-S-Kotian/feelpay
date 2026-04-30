@@ -98,19 +98,15 @@ pub struct PaginationParams {
     pub cursor: Option<String>,
     /// Number of records per page (default 20, max 100)
     #[param(example = 20, minimum = 1, maximum = 100)]
-    #[serde(default = "default_limit")]
-    pub limit: i64,
+    pub limit: Option<i64>,
 }
 
-fn default_limit() -> i64 {
-    20
-}
 
 impl Default for PaginationParams {
     fn default() -> Self {
         Self {
             cursor: None,
-            limit: 20,
+            limit: Some(20),
         }
     }
 }
@@ -120,7 +116,7 @@ impl PaginationParams {
     pub fn normalize(&self) -> Self {
         Self {
             cursor: self.cursor.clone(),
-            limit: self.limit.clamp(1, 100),
+            limit: Some(self.limit.unwrap_or(20).clamp(1, 100)),
         }
     }
 
@@ -171,19 +167,19 @@ mod tests {
     fn test_pagination_params_normalize() {
         let params = PaginationParams {
             cursor: None,
-            limit: 150,
+            limit: Some(150),
         };
 
         let normalized = params.normalize();
-        assert_eq!(normalized.limit, 100);
+        assert_eq!(normalized.limit, Some(100));
 
         let params2 = PaginationParams {
             cursor: None,
-            limit: -5,
+            limit: Some(-5),
         };
 
         let normalized2 = params2.normalize();
-        assert_eq!(normalized2.limit, 1);
+        assert_eq!(normalized2.limit, Some(1));
     }
 
     #[test]

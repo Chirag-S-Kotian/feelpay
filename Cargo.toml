@@ -98,3 +98,4 @@ tempfile = "3"
 [dev-dependencies]
 actix-test = "0.1"
 proptest = "1"
+serde_urlencoded = "0.7.1"

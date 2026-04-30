@@ -99,6 +99,10 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
 
+        if req.method() == actix_web::http::Method::OPTIONS {
+            return Box::pin(async move { service.call(req).await });
+        }
+
         Box::pin(async move {
             let api_key = req
                 .headers()
@@ -159,12 +163,12 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(JwtMiddlewareService { service }))
+        ready(Ok(JwtMiddlewareService { service: Rc::new(service) }))
     }
 }
 
 pub struct JwtMiddlewareService<S> {
-    service: S,
+    service: Rc<S>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtMiddlewareService<S>
@@ -180,6 +184,11 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        let service = self.service.clone();
+        if req.method() == actix_web::http::Method::OPTIONS {
+            return Box::pin(async move { service.call(req).await });
+        }
+
         let auth_header = req
             .headers()
             .get("authorization")
@@ -292,6 +301,10 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
+
+        if req.method() == actix_web::http::Method::OPTIONS {
+            return Box::pin(async move { service.call(req).await });
+        }
 
         Box::pin(async move {
             // 1. Try API Key Auth first

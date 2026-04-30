@@ -76,9 +76,9 @@ pub struct ListPaymentsQuery {
     // Legacy pagination (deprecated)
     pub page: Option<i64>,
     pub per_page: Option<i64>,
-    // Cursor-based pagination
-    #[serde(flatten)]
-    pub pagination: PaginationParams,
+    // Cursor-based pagination (flat params for reliability with query extractors)
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -408,13 +408,17 @@ pub async fn list_payments(
     let merchant_id = merchant_id_from_req(&req)?;
 
     // Use cursor-based pagination if cursor provided, otherwise use legacy
-    let use_cursor = query.pagination.cursor.is_some();
-    let limit = query.pagination.limit.clamp(1, 100);
+    let pagination = PaginationParams {
+        cursor: query.cursor.clone(),
+        limit: query.limit,
+    }
+    .normalize();
+    let use_cursor = pagination.cursor.is_some();
+    let limit = pagination.limit.unwrap_or(20);
 
     let orders: Vec<PaymentOrder> = if use_cursor {
         // Cursor-based pagination
-        let cursor = query
-            .pagination
+        let cursor = pagination
             .decode_cursor()?
             .ok_or_else(|| FeelPayError::BadRequest("Invalid cursor".into()))?;
 
@@ -433,7 +437,7 @@ pub async fn list_payments(
         .bind(&query.status)
         .bind(&cursor.sort_key)
         .bind(&cursor.last_id)
-        .bind(limit)
+        .bind(limit + 1)
         .fetch_all(&state.db)
         .await
         .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?

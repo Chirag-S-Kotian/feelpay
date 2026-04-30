@@ -1,7 +1,7 @@
 #![allow(clippy::all)]
 
 use actix_cors::Cors;
-use actix_web::http::header;
+
 use actix_web::{web, App, HttpServer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
@@ -185,12 +185,7 @@ async fn main() -> std::io::Result<()> {
         let mut cors = Cors::default()
             .supports_credentials()
             .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![
-                header::AUTHORIZATION,
-                header::CONTENT_TYPE,
-                header::HeaderName::from_static("x-api-key"),
-                header::HeaderName::from_static("idempotency-key"),
-            ])
+            .allow_any_header() // Allow all headers to prevent issues with custom headers like x-feelpay-environment
             .max_age(3600);
 
         if cors_allowed_origins.iter().any(|o| o == "*") {
