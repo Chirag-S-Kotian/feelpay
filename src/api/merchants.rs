@@ -55,6 +55,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/profile", web::put().to(update_profile))
             .route("/keys", web::get().to(get_keys))
             .route("/keys/roll", web::post().to(roll_keys))
+            .route("/settings/security", web::get().to(get_security_settings))
+            .route(
+                "/webhook-secret/roll",
+                web::post().to(roll_webhook_secret),
+            )
             .route("/{merchant_id}", web::get().to(get_merchant))
             // Team management
             .route("/team", web::get().to(list_team_members))
@@ -75,6 +80,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::put().to(update_kyc_status),
             ),
     );
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateSettingsRequest {
+    pub name: Option<String>,
+    pub business_name: Option<String>,
+    pub business_type: Option<String>,
+    pub webhook_url: Option<String>,
+    pub settlement_account: Option<serde_json::Value>,
 }
 
 #[utoipa::path(
@@ -270,7 +284,7 @@ pub async fn get_profile(
 #[utoipa::path(
     put,
     path = "/v1/merchants/profile",
-    request_body = crate::models::merchant::UpdateMerchantRequest,
+    request_body = UpdateSettingsRequest,
     responses(
         (status = 200, description = "Profile updated successfully", body = MerchantResponse),
         (status = 401, description = "Unauthorized")
@@ -282,9 +296,17 @@ pub async fn get_profile(
 pub async fn update_profile(
     req: HttpRequest,
     state: web::Data<AppState>,
-    body: web::Json<crate::models::merchant::UpdateMerchantRequest>,
+    body: web::Json<UpdateSettingsRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+
+    if let Some(url) = body.webhook_url.as_ref() {
+        if !url.starts_with("https://") {
+            return Err(FeelPayError::BadRequest(
+                "Webhook URL must start with https://".into(),
+            ));
+        }
+    }
 
     sqlx::query(
         r#"
@@ -294,6 +316,7 @@ pub async fn update_profile(
             business_name = COALESCE($3, business_name),
             webhook_url = COALESCE($4, webhook_url),
             settlement_account = COALESCE($5, settlement_account),
+            business_type = COALESCE($6, business_type),
             updated_at = NOW()
         WHERE id = $1
         "#,
@@ -303,11 +326,117 @@ pub async fn update_profile(
     .bind(&body.business_name)
     .bind(&body.webhook_url)
     .bind(&body.settlement_account)
+    .bind(&body.business_type)
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     get_profile(req, state).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/merchants/settings/security",
+    responses(
+        (status = 200, description = "Merchant security settings snapshot"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_security_settings(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let row = sqlx::query(
+        r#"
+        SELECT
+            webhook_secret,
+            mfa_enabled,
+            settlement_cycle,
+            per_transaction_limit,
+            daily_limit,
+            monthly_limit,
+            allowed_payment_methods,
+            updated_at
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let Some(row) = row else {
+        return Err(FeelPayError::NotFound("Merchant not found".into()));
+    };
+
+    let webhook_secret = row.get::<Option<String>, _>(0);
+    let webhook_hint = webhook_secret
+        .as_deref()
+        .map(|s| {
+            if s.len() > 8 {
+                format!("{}...{}", &s[..6], &s[s.len() - 4..])
+            } else {
+                "configured".to_string()
+            }
+        })
+        .unwrap_or_else(|| "not_set".to_string());
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "mfa_enabled": row.get::<bool, _>(1),
+        "settlement_cycle": row.get::<String, _>(2),
+        "per_transaction_limit": row.get::<i64, _>(3),
+        "daily_limit": row.get::<i64, _>(4),
+        "monthly_limit": row.get::<i64, _>(5),
+        "allowed_payment_methods": row.get::<serde_json::Value, _>(6),
+        "webhook_secret_hint": webhook_hint,
+        "updated_at": row.get::<chrono::DateTime<chrono::Utc>, _>(7)
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/merchants/webhook-secret/roll",
+    responses(
+        (status = 200, description = "Webhook secret rotated successfully"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn roll_webhook_secret(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let new_secret = format!("whsec_{}", Uuid::new_v4().simple());
+
+    sqlx::query("UPDATE merchants SET webhook_secret = $2, updated_at = NOW() WHERE id = $1")
+        .bind(merchant_id)
+        .bind(&new_secret)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let allow_secret_reveal =
+        std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
+    let hint = format!("{}...{}", &new_secret[..6], &new_secret[new_secret.len() - 4..]);
+
+    let mut response = serde_json::json!({
+        "message": "Webhook secret rotated. Update receiver verification key.",
+        "webhook_secret_hint": hint
+    });
+
+    if allow_secret_reveal {
+        response["webhook_secret"] = serde_json::json!(new_secret);
+    }
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 #[utoipa::path(

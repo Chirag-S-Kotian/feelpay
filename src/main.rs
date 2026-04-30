@@ -316,12 +316,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/v1/onboarding")
                     .wrap(crate::middleware::auth::JwtMiddleware)
-                    .route("/kyc", web::post().to(api::onboarding::submit_kyc))
-                    .route("/status", web::get().to(api::onboarding::onboarding_status))
-                    .route(
-                        "/bank-account",
-                        web::post().to(api::onboarding::submit_bank_account),
-                    ),
+                    .configure(api::onboarding::configure),
             )
             // Merchant settings and operational APIs
             .service(
@@ -435,6 +430,14 @@ async fn main() -> std::io::Result<()> {
                             .route("/profile", web::put().to(api::merchants::update_profile))
                             .route("/keys", web::get().to(api::merchants::get_keys))
                             .route("/keys/roll", web::post().to(api::merchants::roll_keys))
+                            .route(
+                                "/settings/security",
+                                web::get().to(api::merchants::get_security_settings),
+                            )
+                            .route(
+                                "/webhook-secret/roll",
+                                web::post().to(api::merchants::roll_webhook_secret),
+                            )
                             .route("/team", web::get().to(api::merchants::list_team_members))
                             .route("/team/invite", web::post().to(api::merchants::invite_team_member))
                             .route("/team/{user_id}", web::delete().to(api::merchants::remove_team_member))

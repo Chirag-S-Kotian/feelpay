@@ -4,6 +4,7 @@ use crate::middleware::auth::JwtClaims;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use sqlx::Row;
 use uuid::Uuid;
 
 /// Test webhook request
@@ -11,6 +12,7 @@ use uuid::Uuid;
 pub struct TestWebhookRequest {
     pub event_type: String,
     pub webhook_endpoint_id: Option<String>,
+    pub webhook_url: Option<String>,
 }
 
 /// Test webhook response
@@ -40,9 +42,9 @@ pub struct TestWebhookResponse {
 )]
 pub async fn send_test_webhook(
     merchant_id: web::Path<Uuid>,
-    _req: web::Json<TestWebhookRequest>,
+    req: web::Json<TestWebhookRequest>,
     claims: JwtClaims,
-    _db: web::Data<PgPool>,
+    db: web::Data<PgPool>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id.into_inner();
 
@@ -53,11 +55,83 @@ pub async fn send_test_webhook(
         ));
     }
 
-    // TODO: Get merchant's webhook endpoint and secret from database
-    // For now, return error
-    Err(FeelPayError::NotImplemented(
-        "Webhook test endpoint not yet fully implemented".into(),
-    ))
+    let event_type = req.event_type.trim();
+    if event_type.is_empty() {
+        return Err(FeelPayError::BadRequest("event_type is required".into()));
+    }
+
+    let row = sqlx::query("SELECT webhook_url, webhook_secret FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_optional(db.get_ref())
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    let Some(row) = row else {
+        return Err(FeelPayError::NotFound("Merchant not found".into()));
+    };
+
+    let payload_webhook_url = req
+        .webhook_url
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let webhook_url = payload_webhook_url
+        .clone()
+        .or_else(|| row.get::<Option<String>, _>(0));
+    let mut webhook_secret = row.get::<Option<String>, _>(1);
+
+    if let Some(url) = webhook_url.as_ref() {
+        if !url.starts_with("https://") {
+            return Err(FeelPayError::BadRequest(
+                "Webhook URL must start with https://".into(),
+            ));
+        }
+    }
+
+    if webhook_url.is_none() {
+        return Err(FeelPayError::BadRequest(
+            "Webhook URL not configured. Save webhook URL first.".into(),
+        ));
+    }
+
+    if webhook_secret.is_none() {
+        let new_secret = format!("whsec_{}", Uuid::new_v4().simple());
+        sqlx::query("UPDATE merchants SET webhook_secret = $2, updated_at = NOW() WHERE id = $1")
+            .bind(merchant_id)
+            .bind(&new_secret)
+            .execute(db.get_ref())
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        webhook_secret = Some(new_secret);
+    }
+
+    if payload_webhook_url.is_some() {
+        sqlx::query("UPDATE merchants SET webhook_url = $2, updated_at = NOW() WHERE id = $1")
+            .bind(merchant_id)
+            .bind(webhook_url.as_ref())
+            .execute(db.get_ref())
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    }
+
+    let webhook_service = WebhookTestService::new(db.get_ref().clone());
+    let result = webhook_service
+        .send_test_webhook(
+            merchant_id,
+            webhook_url.as_deref().unwrap_or_default(),
+            event_type,
+            webhook_secret.as_deref().unwrap_or_default(),
+        )
+        .await?;
+
+    Ok(HttpResponse::Ok().json(TestWebhookResponse {
+        test_id: result.test_id.to_string(),
+        status: result.status,
+        http_status: result.http_status,
+        response_time_ms: result.response_time_ms,
+        response_body: result.response_body,
+        error_message: result.error_message,
+    }))
 }
 
 /// Get webhook test logs endpoint

@@ -37,6 +37,16 @@ pub struct AppConfig {
     pub database_provider: String,
     pub database_url_docker: Option<String>,
     pub database_url_neon: Option<String>,
+
+    // DigiLocker (optional enterprise onboarding integration)
+    pub digilocker_enabled: bool,
+    pub digilocker_client_id: Option<String>,
+    pub digilocker_client_secret: Option<String>,
+    pub digilocker_redirect_uri: Option<String>,
+    pub digilocker_auth_base_url: String,
+    pub digilocker_token_url: String,
+    pub digilocker_docs_url: String,
+    pub digilocker_timeout_secs: u64,
 }
 
 impl AppConfig {
@@ -100,6 +110,23 @@ impl AppConfig {
             database_provider: std::env::var("DATABASE_PROVIDER").unwrap_or_else(|_| "auto".into()),
             database_url_docker: std::env::var("DATABASE_URL_DOCKER").ok(),
             database_url_neon: std::env::var("DATABASE_URL_NEON").ok(),
+            digilocker_enabled: std::env::var("DIGILOCKER_ENABLED")
+                .unwrap_or_else(|_| "false".into())
+                .parse()
+                .unwrap_or(false),
+            digilocker_client_id: std::env::var("DIGILOCKER_CLIENT_ID").ok(),
+            digilocker_client_secret: std::env::var("DIGILOCKER_CLIENT_SECRET").ok(),
+            digilocker_redirect_uri: std::env::var("DIGILOCKER_REDIRECT_URI").ok(),
+            digilocker_auth_base_url: std::env::var("DIGILOCKER_AUTH_BASE_URL")
+                .unwrap_or_else(|_| "https://api.digitallocker.gov.in/public/oauth2/1/authorize".into()),
+            digilocker_token_url: std::env::var("DIGILOCKER_TOKEN_URL")
+                .unwrap_or_else(|_| "https://api.digitallocker.gov.in/public/oauth2/1/token".into()),
+            digilocker_docs_url: std::env::var("DIGILOCKER_DOCS_URL")
+                .unwrap_or_else(|_| "https://api.digitallocker.gov.in/public/oauth2/2/files".into()),
+            digilocker_timeout_secs: std::env::var("DIGILOCKER_TIMEOUT_SECS")
+                .unwrap_or_else(|_| "12".into())
+                .parse()
+                .unwrap_or(12),
         })
     }
 

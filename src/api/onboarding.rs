@@ -1,7 +1,10 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
+use hmac::{Hmac, Mac};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::Row;
+use std::time::Duration;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -27,7 +30,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/limits", web::get().to(get_limits))
             .route("/limits", web::put().to(update_limits))
             .route("/aadhaar/initiate", web::post().to(initiate_aadhaar_ekyc))
-            .route("/aadhaar/verify", web::post().to(verify_aadhaar_otp)),
+            .route("/aadhaar/verify", web::post().to(verify_aadhaar_otp))
+            .route("/digilocker/initiate", web::post().to(initiate_digilocker))
+            .route("/digilocker/callback", web::post().to(handle_digilocker_callback))
+            .route("/digilocker/status", web::get().to(get_digilocker_status)),
     );
 }
 
@@ -58,6 +64,17 @@ pub struct VerifyAadhaarOtpRequest {
     pub otp: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DigiLockerInitiateRequest {
+    pub purpose: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DigiLockerCallbackRequest {
+    pub code: Option<String>,
+    pub state: Option<String>,
+}
+
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
     req.extensions()
         .get::<crate::middleware::auth::MerchantId>()
@@ -84,6 +101,178 @@ fn validate_ifsc(ifsc: &str) -> bool {
         .ok()
         .map(|re| re.is_match(ifsc))
         .unwrap_or(false)
+}
+
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Debug, Deserialize)]
+struct DigiLockerTokenResponse {
+    access_token: Option<String>,
+    _token_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DigiLockerDocsResponse {
+    files: Option<Vec<serde_json::Value>>,
+    items: Option<Vec<serde_json::Value>>,
+}
+
+fn sign_state(secret: &str, merchant_id: Uuid, nonce: &str) -> Result<String, FeelPayError> {
+    let payload = format!("{merchant_id}:{nonce}");
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| FeelPayError::Internal("Invalid state signing secret".into()))?;
+    mac.update(payload.as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+fn with_retry_delays() -> [u64; 3] {
+    [200, 600, 1400]
+}
+
+async fn exchange_digilocker_code_with_retry(
+    state: &crate::state::AppState,
+    code: &str,
+) -> Result<String, FeelPayError> {
+    let client_id = state
+        .config
+        .digilocker_client_id
+        .clone()
+        .ok_or_else(|| FeelPayError::BadRequest("DigiLocker client ID missing".into()))?;
+    let client_secret = state
+        .config
+        .digilocker_client_secret
+        .clone()
+        .ok_or_else(|| FeelPayError::BadRequest("DigiLocker client secret missing".into()))?;
+    let redirect_uri = state
+        .config
+        .digilocker_redirect_uri
+        .clone()
+        .ok_or_else(|| FeelPayError::BadRequest("DigiLocker redirect URI missing".into()))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(state.config.digilocker_timeout_secs))
+        .build()
+        .map_err(|e| FeelPayError::ConnectorError(e.to_string()))?;
+
+    let mut last_err = "unknown token exchange error".to_string();
+    for delay_ms in with_retry_delays() {
+        let res = client
+            .post(&state.config.digilocker_token_url)
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("code", code),
+                ("client_id", &client_id),
+                ("client_secret", &client_secret),
+                ("redirect_uri", &redirect_uri),
+            ])
+            .send()
+            .await;
+
+        match res {
+            Ok(resp) if resp.status().is_success() => {
+                let parsed = resp
+                    .json::<DigiLockerTokenResponse>()
+                    .await
+                    .map_err(|e| FeelPayError::ConnectorError(e.to_string()))?;
+                if let Some(token) = parsed.access_token {
+                    return Ok(token);
+                }
+                last_err = "token response missing access_token".to_string();
+            }
+            Ok(resp) => {
+                last_err = format!("token exchange failed with status {}", resp.status());
+            }
+            Err(e) => {
+                last_err = format!("token exchange transport error: {e}");
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+    }
+
+    Err(FeelPayError::ConnectorError(last_err))
+}
+
+async fn fetch_digilocker_documents_with_retry(
+    state: &crate::state::AppState,
+    access_token: &str,
+) -> Result<Vec<serde_json::Value>, FeelPayError> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(state.config.digilocker_timeout_secs))
+        .build()
+        .map_err(|e| FeelPayError::ConnectorError(e.to_string()))?;
+
+    let mut last_err = "unknown docs fetch error".to_string();
+    for delay_ms in with_retry_delays() {
+        let res = client
+            .get(&state.config.digilocker_docs_url)
+            .bearer_auth(access_token)
+            .send()
+            .await;
+
+        match res {
+            Ok(resp) if resp.status().is_success() => {
+                let parsed = resp
+                    .json::<DigiLockerDocsResponse>()
+                    .await
+                    .map_err(|e| FeelPayError::ConnectorError(e.to_string()))?;
+                let files = parsed.files.or(parsed.items).unwrap_or_default();
+                return Ok(files);
+            }
+            Ok(resp) => {
+                last_err = format!("docs fetch failed with status {}", resp.status());
+            }
+            Err(e) => {
+                last_err = format!("docs fetch transport error: {e}");
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+    }
+
+    Err(FeelPayError::ConnectorError(last_err))
+}
+
+fn evaluate_digilocker_rules(docs: &[serde_json::Value]) -> (String, serde_json::Value) {
+    let mut has_pan = false;
+    let mut has_address = false;
+    let mut has_business_proof = false;
+    let mut risk_score = 50i32;
+
+    for doc in docs {
+        let s = doc.to_string().to_lowercase();
+        if s.contains("pan") {
+            has_pan = true;
+            risk_score -= 20;
+        }
+        if s.contains("address") || s.contains("aadhaar") {
+            has_address = true;
+            risk_score -= 15;
+        }
+        if s.contains("gst") || s.contains("incorporation") || s.contains("registration") {
+            has_business_proof = true;
+            risk_score -= 15;
+        }
+    }
+
+    let status = if has_pan && has_address && has_business_proof {
+        "verified"
+    } else if has_pan && (has_address || has_business_proof) {
+        "manual_review"
+    } else {
+        "rejected"
+    };
+
+    (
+        status.to_string(),
+        serde_json::json!({
+            "rules": {
+                "has_pan": has_pan,
+                "has_address": has_address,
+                "has_business_proof": has_business_proof
+            },
+            "risk_score": risk_score.max(0),
+            "doc_count": docs.len()
+        }),
+    )
 }
 
 #[utoipa::path(
@@ -827,4 +1016,304 @@ pub async fn update_limits(
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Limits updated successfully"
     })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/digilocker/initiate",
+    request_body = DigiLockerInitiateRequest,
+    responses(
+        (status = 200, description = "DigiLocker redirect URL generated"),
+        (status = 400, description = "DigiLocker not configured"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn initiate_digilocker(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<DigiLockerInitiateRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    if !state.config.digilocker_enabled {
+        return Err(FeelPayError::BadRequest(
+            "DigiLocker integration disabled for this environment".into(),
+        ));
+    }
+
+    let client_id = state
+        .config
+        .digilocker_client_id
+        .clone()
+        .ok_or_else(|| FeelPayError::BadRequest("DigiLocker client ID missing".into()))?;
+    let redirect_uri = state
+        .config
+        .digilocker_redirect_uri
+        .clone()
+        .ok_or_else(|| FeelPayError::BadRequest("DigiLocker redirect URI missing".into()))?;
+
+    let nonce = Uuid::new_v4().to_string();
+    let signature = sign_state(&state.config.jwt_secret, merchant_id, &nonce)?;
+    let state_token = format!("{nonce}.{signature}");
+    let purpose = body.purpose.clone().unwrap_or_else(|| "kyc".to_string());
+    let request_meta = serde_json::json!({
+        "nonce": nonce,
+        "purpose": purpose,
+        "provider": "digilocker",
+        "redirect_uri": redirect_uri
+    });
+
+    sqlx::query(
+        r#"
+        INSERT INTO kyc_verifications
+            (merchant_id, verification_type, document_number, document_data, status)
+        VALUES
+            ($1, 'digilocker', $2, $3, 'pending')
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(format!("dlr_{}", &state_token[..8]))
+    .bind(&request_meta)
+    .execute(&state.db)
+    .await?;
+
+    // Stateful CSRF protection: store hashed OAuth state token with expiry.
+    let mut hasher = Sha256::new();
+    hasher.update(state_token.as_bytes());
+    let state_hash = format!("{:x}", hasher.finalize());
+    let expires_at = chrono::Utc::now() + chrono::Duration::minutes(15);
+    sqlx::query(
+        r#"
+        INSERT INTO otp_verifications (phone, otp_hash, otp_type, expires_at, metadata)
+        VALUES ($1, $2, 'digilocker_state', $3, $4)
+        "#,
+    )
+    .bind(merchant_id.to_string())
+    .bind(state_hash)
+    .bind(expires_at)
+    .bind(serde_json::json!({
+        "merchant_id": merchant_id,
+        "provider": "digilocker",
+        "purpose": purpose
+    }))
+    .execute(&state.db)
+    .await?;
+
+    let redirect_url = format!(
+        "{}?response_type=code&client_id={}&redirect_uri={}&state={}",
+        state.config.digilocker_auth_base_url,
+        urlencoding::encode(&client_id),
+        urlencoding::encode(&redirect_uri),
+        urlencoding::encode(&state_token)
+    );
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "provider": "digilocker",
+        "status": "pending_redirect",
+        "redirect_url": redirect_url,
+        "state": state_token
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/onboarding/digilocker/callback",
+    request_body = DigiLockerCallbackRequest,
+    responses(
+        (status = 200, description = "DigiLocker callback processed"),
+        (status = 400, description = "Invalid callback payload"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn handle_digilocker_callback(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<DigiLockerCallbackRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    let code = body.code.clone().unwrap_or_default().trim().to_string();
+    let state_val = body.state.clone().unwrap_or_default().trim().to_string();
+    if code.is_empty() || state_val.is_empty() {
+        return Err(FeelPayError::BadRequest(
+            "Missing DigiLocker callback code/state".into(),
+        ));
+    }
+
+    // Verify signed state token
+    let mut parts = state_val.splitn(2, '.');
+    let nonce = parts.next().unwrap_or_default();
+    let sig = parts.next().unwrap_or_default();
+    if nonce.is_empty() || sig.is_empty() {
+        return Err(FeelPayError::BadRequest(
+            "Invalid DigiLocker state token format".into(),
+        ));
+    }
+    let expected_sig = sign_state(&state.config.jwt_secret, merchant_id, nonce)?;
+    if expected_sig != sig {
+        return Err(FeelPayError::BadRequest(
+            "Invalid DigiLocker state signature".into(),
+        ));
+    }
+
+    // Check state nonce exists and unused
+    let mut hasher = Sha256::new();
+    hasher.update(state_val.as_bytes());
+    let state_hash = format!("{:x}", hasher.finalize());
+    let state_row = sqlx::query(
+        r#"
+        SELECT id
+        FROM otp_verifications
+        WHERE phone = $1
+          AND otp_hash = $2
+          AND otp_type = 'digilocker_state'
+          AND status = 'pending'
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(merchant_id.to_string())
+    .bind(state_hash)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some(state_row) = state_row else {
+        return Err(FeelPayError::BadRequest(
+            "DigiLocker state expired or already used".into(),
+        ));
+    };
+    let state_id: Uuid = state_row.get(0);
+
+    // Mark state as consumed (single use).
+    sqlx::query("UPDATE otp_verifications SET status = 'verified', verified_at = NOW() WHERE id = $1")
+        .bind(state_id)
+        .execute(&state.db)
+        .await?;
+
+    // Exchange code -> token; fetch docs; evaluate rules.
+    let access_token = exchange_digilocker_code_with_retry(&state, &code).await?;
+    let docs = fetch_digilocker_documents_with_retry(&state, &access_token).await?;
+    let (decision, rule_summary) = evaluate_digilocker_rules(&docs);
+    let now = chrono::Utc::now();
+    let response_meta = serde_json::json!({
+        "state_nonce": nonce,
+        "verified_via": "digilocker_oauth",
+        "rule_engine": rule_summary,
+        "docs_preview": docs.iter().take(8).cloned().collect::<Vec<_>>(),
+        "verified_at": now
+    });
+
+    sqlx::query(
+        r#"
+        UPDATE kyc_verifications
+        SET status = $2,
+            verified_at = CASE WHEN $2 = 'verified' THEN NOW() ELSE verified_at END,
+            document_data = COALESCE(document_data, '{}'::jsonb) || $3::jsonb
+        WHERE merchant_id = $1
+          AND verification_type = 'digilocker'
+          AND status = 'pending'
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(&decision)
+    .bind(&response_meta)
+    .execute(&state.db)
+    .await?;
+
+    // Store explicit audit trail as additional verification record version for forensics.
+    sqlx::query(
+        r#"
+        INSERT INTO kyc_verifications
+            (merchant_id, verification_type, document_number, document_data, status, verified_at)
+        VALUES
+            ($1, 'digilocker_audit', $2, $3, $4, CASE WHEN $4 = 'verified' THEN NOW() ELSE NULL END)
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(format!("dlr_audit_{}", &nonce[..8]))
+    .bind(&response_meta)
+    .bind(&decision)
+    .execute(&state.db)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE merchants
+        SET onboarding_status = CASE
+                WHEN $2 = 'verified' THEN 'in_progress'
+                WHEN $2 = 'manual_review' THEN 'in_progress'
+                ELSE onboarding_status
+            END,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(&decision)
+    .execute(&state.db)
+    .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": decision,
+        "provider": "digilocker",
+        "message": "DigiLocker callback processed",
+        "rule_summary": rule_summary
+    })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/onboarding/digilocker/status",
+    responses(
+        (status = 200, description = "DigiLocker verification status"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_digilocker_status(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    if !state.config.digilocker_enabled {
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "provider": "digilocker",
+            "status": "disabled"
+        })));
+    }
+
+    let row = sqlx::query(
+        r#"
+        SELECT status, verified_at, document_data
+        FROM kyc_verifications
+        WHERE merchant_id = $1 AND verification_type = 'digilocker'
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match row {
+        Some(row) => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "provider": "digilocker",
+            "status": row.get::<String, _>(0),
+            "verified_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(1),
+            "metadata": row.get::<Option<serde_json::Value>, _>(2),
+        }))),
+        None => Ok(HttpResponse::Ok().json(serde_json::json!({
+            "provider": "digilocker",
+            "status": "not_started"
+        }))),
+    }
 }
