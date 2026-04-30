@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, CheckCircle, AlertCircle, ShieldCheck, Landmark } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import AddBankAccountForm from '../components/AddBankAccountForm';
@@ -24,7 +24,7 @@ export default function BankAccounts() {
   const [verifyingAccountId, setVerifyingAccountId] = useState<string | null>(null);
   const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null);
 
-  const merchantId = (() => {
+  const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
     if (!raw) return '';
     try {
@@ -32,17 +32,24 @@ export default function BankAccounts() {
     } catch {
       return '';
     }
-  })();
+  }, []);
 
   useEffect(() => {
     fetchBankAccounts();
   }, []);
 
   const fetchBankAccounts = async () => {
+    if (!merchantId) {
+      setLoading(false);
+      return;
+    }
     try {
       const data = await apiRequest<{ bank_accounts?: BankAccount[]; accounts?: BankAccount[] }>(
         'GET',
-        `/v1/merchants/${merchantId}/bank-accounts`
+        `/v1/merchants/${merchantId}/bank-accounts`,
+        undefined,
+        undefined,
+        { cacheMs: 45_000 }
       );
       setAccounts(data.bank_accounts || data.accounts || []);
     } catch (err) {

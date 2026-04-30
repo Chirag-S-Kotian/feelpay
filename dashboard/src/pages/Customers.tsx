@@ -424,10 +424,8 @@ export default function Customers() {
 
         .customers-create-card {
           margin-bottom: 24px;
-          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 30%, transparent);
-          background:
-            radial-gradient(120% 120% at 0% 0%, rgba(34, 197, 94, 0.12) 0%, transparent 45%),
-            linear-gradient(160deg, rgba(13, 24, 48, 0.95), rgba(8, 18, 39, 0.95));
+          border: 1px solid var(--fp-border);
+          background: #fff9ec;
         }
 
         .customers-create-header h3 {
@@ -447,8 +445,8 @@ export default function Customers() {
           border-radius: 10px;
           font-size: 13px;
           border: 1px solid color-mix(in srgb, #ef4444 55%, transparent);
-          background: rgba(127, 29, 29, 0.24);
-          color: #fecaca;
+          background: rgba(200, 31, 47, 0.1);
+          color: #991627;
         }
 
         .customers-form-grid {
@@ -468,7 +466,7 @@ export default function Customers() {
           margin: 0;
           font-size: 13px;
           font-weight: 600;
-          color: color-mix(in srgb, var(--fp-text) 82%, #c7e2ff 18%);
+          color: var(--fp-text-muted);
         }
 
         .customers-field .form-input,
@@ -479,9 +477,9 @@ export default function Customers() {
           min-width: 0;
           padding: 0 12px;
           font-size: 14px;
-          border-radius: 10px;
-          border: 1px solid color-mix(in srgb, var(--fp-border) 65%, #7dd3fc 35%);
-          background: rgba(9, 18, 38, 0.7);
+          border-radius: 999px;
+          border: 1px solid var(--fp-border);
+          background: #fff9ec;
           color: var(--fp-text);
         }
 
@@ -493,16 +491,16 @@ export default function Customers() {
         .customers-field .form-input:focus,
         .customers-toolbar-select:focus,
         .customers-search-wrap .form-input:focus {
-          border-color: color-mix(in srgb, var(--fp-primary) 60%, #ffffff 40%);
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+          border-color: var(--fp-cta);
+          box-shadow: 0 0 0 3px rgba(235, 0, 27, 0.14);
         }
 
         .customers-field select.form-input,
         .customers-toolbar-select {
           appearance: none;
           background-image:
-            linear-gradient(45deg, transparent 50%, #8bb8f7 50%),
-            linear-gradient(135deg, #8bb8f7 50%, transparent 50%);
+            linear-gradient(45deg, transparent 50%, #8a857d 50%),
+            linear-gradient(135deg, #8a857d 50%, transparent 50%);
           background-position:
             calc(100% - 16px) calc(50% + 1px),
             calc(100% - 11px) calc(50% + 1px);
@@ -546,20 +544,18 @@ export default function Customers() {
         .customers-empty-state {
           text-align: center;
           padding: 56px 20px;
-          background:
-            radial-gradient(80% 120% at 50% 0%, rgba(56, 189, 248, 0.14) 0%, transparent 56%),
-            linear-gradient(180deg, rgba(11, 23, 46, 0.95), rgba(8, 18, 39, 0.95));
+          background: #fff9ec;
         }
 
         .customers-empty-icon {
           width: 74px;
           height: 74px;
           margin: 0 auto 16px;
-          border-radius: 18px;
+          border-radius: 20px;
           display: grid;
           place-items: center;
-          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 45%, transparent);
-          background: rgba(19, 37, 70, 0.72);
+          border: 1px solid var(--fp-border);
+          background: #f2ead8;
         }
 
         .customers-empty-state h3 {
@@ -599,7 +595,7 @@ export default function Customers() {
           font-size: 12px;
           color: var(--fp-text-muted);
           border: 1px solid var(--fp-border);
-          background: rgba(15, 28, 56, 0.72);
+          background: #f2ead8;
         }
 
         .customers-name {

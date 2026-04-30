@@ -26,6 +26,9 @@ function getApiKey() {
 export type EnvironmentMode = 'test' | 'live';
 
 const ENV_KEY = 'feelpay_environment_mode';
+const DEFAULT_GET_CACHE_MS = 15_000;
+const getCache = new Map<string, { expiresAt: number; data: unknown }>();
+const inFlight = new Map<string, Promise<unknown>>();
 
 export function getEnvironmentMode(): EnvironmentMode {
   const value = localStorage.getItem(ENV_KEY);
@@ -41,7 +44,7 @@ export async function apiRequest<T = unknown>(
   path: string,
   body?: unknown,
   customToken?: string | null,
-  opts?: { useApiKey?: boolean; idempotencyKey?: string },
+  opts?: { useApiKey?: boolean; idempotencyKey?: string; cacheMs?: number },
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -63,7 +66,26 @@ export async function apiRequest<T = unknown>(
     headers['idempotency-key'] = opts.idempotencyKey;
   }
 
-  headers['x-feelpay-environment'] = getEnvironmentMode();
+  const envMode = getEnvironmentMode();
+  headers['x-feelpay-environment'] = envMode;
+  const isGet = method === 'GET';
+  const cacheKey =
+    isGet
+      ? `${envMode}:${opts?.useApiKey ? 'key' : 'auth'}:${path}`
+      : '';
+  const cacheMs = opts?.cacheMs ?? DEFAULT_GET_CACHE_MS;
+
+  if (isGet && cacheMs > 0) {
+    const now = Date.now();
+    const cached = getCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data as T;
+    }
+    const pending = inFlight.get(cacheKey);
+    if (pending) {
+      return pending as Promise<T>;
+    }
+  }
 
   const doFetch = () =>
     fetch(`${API_BASE}${path}`, {
@@ -72,31 +94,59 @@ export async function apiRequest<T = unknown>(
       body: body ? JSON.stringify(body) : undefined,
     });
 
-  let res = await doFetch();
-  // Smooth dev experience under strict-mode duplicate effects.
-  if (res.status === 429 && method === 'GET') {
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    res = await doFetch();
+  const requestPromise = (async () => {
+    let res = await doFetch();
+    // Smooth rate-limit spikes in dev/refresh storms.
+    if (res.status === 429 && method === 'GET') {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      res = await doFetch();
+    }
+    if (res.status === 429 && method === 'GET') {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      res = await doFetch();
+    }
+
+    const text = await res.text();
+    let data: any = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { message: text };
+      }
+    }
+
+    if (!res.ok) {
+      if (isGet) {
+        const stale = getCache.get(cacheKey);
+        if (stale?.data) {
+          return stale.data as T;
+        }
+      }
+      if (res.status === 401) {
+        localStorage.removeItem('feelpay_token');
+      }
+      throw new Error(
+        data?.error?.message || data?.message || `API request failed (${res.status})`,
+      );
+    }
+
+    if (isGet && cacheMs > 0) {
+      getCache.set(cacheKey, { expiresAt: Date.now() + cacheMs, data });
+    }
+
+    return data as T;
+  })();
+
+  if (isGet && cacheMs > 0) {
+    inFlight.set(cacheKey, requestPromise);
   }
 
-  const text = await res.text();
-  let data: any = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
+  try {
+    return await requestPromise;
+  } finally {
+    if (isGet && cacheMs > 0) {
+      inFlight.delete(cacheKey);
     }
   }
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem('feelpay_token');
-    }
-    throw new Error(
-      data?.error?.message || data?.message || `API request failed (${res.status})`,
-    );
-  }
-
-  return data as T;
 }

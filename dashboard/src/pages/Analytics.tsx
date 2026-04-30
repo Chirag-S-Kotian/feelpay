@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { apiRequest } from '../hooks/useApi';
 
-const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444'];
+const AnalyticsCharts = lazy(() =>
+  import('../components/AnalyticsCharts').then((mod) => ({ default: mod.AnalyticsCharts })),
+);
 
 export default function Analytics() {
   const [period, setPeriod] = useState('7d');
@@ -22,9 +23,9 @@ export default function Analytics() {
           total_volume: number;
           total_transactions: number;
           success_rate: number;
-        }>('GET', '/v1/analytics/summary', undefined, undefined, { useApiKey: true }),
-        apiRequest<{ chart: { day: string; volume: number }[] }>('GET', '/v1/analytics/volume', undefined, undefined, { useApiKey: true }),
-        apiRequest<{ data: { payment_method?: string | null }[] }>('GET', '/v1/payments?limit=200', undefined, undefined, { useApiKey: true }),
+        }>('GET', '/v1/analytics/summary', undefined, undefined, { useApiKey: true, cacheMs: 20_000 }),
+        apiRequest<{ chart: { day: string; volume: number }[] }>('GET', '/v1/analytics/volume', undefined, undefined, { useApiKey: true, cacheMs: 20_000 }),
+        apiRequest<{ data: { payment_method?: string | null }[] }>('GET', '/v1/payments?limit=120', undefined, undefined, { useApiKey: true, cacheMs: 20_000 }),
       ]);
 
       const transactionCount = summary.total_transactions || 0;
@@ -85,53 +86,16 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="charts-grid">
-        <div className="chart-card">
-          <h3>Revenue Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="date" stroke="#9ca3af" />
-              <YAxis stroke="#9ca3af" tickFormatter={(v) => `₹${v/1000}k`} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
-                formatter={(val: number) => [formatCurrency(val), 'Revenue']}
-              />
-              <Line type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="chart-card">
-          <h3>Payment Methods</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={methodData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={2}
-                dataKey="value"
-              >
-{methodData.map((_entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="legend">
-            {methodData.map((entry, index) => (
-              <div key={entry.name} className="legend-item">
-                <span className="legend-color" style={{ backgroundColor: COLORS[index] }}></span>
-                {entry.name}: {entry.value}%
-              </div>
-            ))}
+      <Suspense
+        fallback={
+          <div className="charts-grid">
+            <div className="chart-card"><div className="skeleton" style={{ height: 300 }}></div></div>
+            <div className="chart-card"><div className="skeleton" style={{ height: 300 }}></div></div>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <AnalyticsCharts revenueData={revenueData} methodData={methodData} formatCurrency={formatCurrency} />
+      </Suspense>
     </div>
   );
 }

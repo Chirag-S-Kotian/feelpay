@@ -3,6 +3,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 /// Bank account type
@@ -105,6 +106,8 @@ pub struct BankAccountService {
     encryption_key: [u8; 32],
 }
 
+static BANK_ACCOUNT_SCHEMA_INIT: OnceLock<()> = OnceLock::new();
+
 impl BankAccountService {
     /// Create a new BankAccountService instance
     pub fn new(db: PgPool, encryption_key: &str) -> Result<Self, FeelPayError> {
@@ -128,6 +131,9 @@ impl BankAccountService {
     }
 
     async fn ensure_schema(&self) -> Result<(), FeelPayError> {
+        if BANK_ACCOUNT_SCHEMA_INIT.get().is_some() {
+            return Ok(());
+        }
         // Create table if missing with encrypted column.
         sqlx::query(
             r#"
@@ -215,6 +221,7 @@ impl BankAccountService {
             .map_err(|e| FeelPayError::Database(e.to_string()))?;
         }
 
+        let _ = BANK_ACCOUNT_SCHEMA_INIT.set(());
         Ok(())
     }
 

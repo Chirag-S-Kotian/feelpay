@@ -91,12 +91,12 @@ export default function Settlements() {
         </div>
       </div>
 
-      <div className="filter-bar">
-        <div className="search-box">
+      <div className="filter-bar settlements-filter-bar">
+        <div className="search-box settlements-search-box">
           <Search size={16} />
           <input type="text" placeholder="Search by ID or UTR..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+        <select className="settlements-filter-select" value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value="all">All Status</option>
           <option value="pending">Pending</option>
           <option value="completed">Completed</option>

@@ -2,6 +2,7 @@ use crate::error::FeelPayError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 /// Notification preference data model
@@ -83,6 +84,8 @@ pub struct NotificationService {
     db: PgPool,
 }
 
+static NOTIFICATION_SCHEMA_INIT: OnceLock<()> = OnceLock::new();
+
 impl NotificationService {
     /// Create a new NotificationService instance
     pub fn new(db: PgPool) -> Self {
@@ -90,6 +93,9 @@ impl NotificationService {
     }
 
     async fn ensure_schema(&self) -> Result<(), FeelPayError> {
+        if NOTIFICATION_SCHEMA_INIT.get().is_some() {
+            return Ok(());
+        }
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -163,6 +169,7 @@ impl NotificationService {
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
+        let _ = NOTIFICATION_SCHEMA_INIT.set(());
         Ok(())
     }
 

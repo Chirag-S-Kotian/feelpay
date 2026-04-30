@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Save, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import PerUserNotificationPreferences from '../components/PerUserNotificationPreferences';
@@ -34,7 +34,7 @@ export default function NotificationPreferences() {
   const [success, setSuccess] = useState(false);
   const [showPerUser, setShowPerUser] = useState(false);
 
-  const merchantId = (() => {
+  const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
     if (!raw) return '';
     try {
@@ -42,7 +42,7 @@ export default function NotificationPreferences() {
     } catch {
       return '';
     }
-  })();
+  }, []);
 
   useEffect(() => {
     fetchPreferences();
@@ -57,7 +57,10 @@ export default function NotificationPreferences() {
     try {
       const data = await apiRequest<{ preferences: NotificationPreference[] }>(
         'GET',
-        `/v1/merchants/${merchantId}/notification-preferences`
+        `/v1/merchants/${merchantId}/notification-preferences`,
+        undefined,
+        undefined,
+        { cacheMs: 45_000 }
       );
 
       const prefs: Record<string, NotificationPreference> = {};
@@ -221,29 +224,29 @@ export default function NotificationPreferences() {
           gap: 8px;
           margin-bottom: 14px;
           padding: 4px;
-          border: 1px solid rgba(77, 141, 235, 0.25);
-          background: rgba(10, 25, 48, 0.6);
-          border-radius: 12px;
+          border: 1px solid var(--fp-border);
+          background: #e7decb;
+          border-radius: 999px;
         }
         .tab {
           border: 1px solid transparent;
           background: transparent;
-          color: #9ebbe6;
-          border-radius: 9px;
-          padding: 8px 12px;
+          color: var(--fp-text-muted) !important;
+          border-radius: 999px;
+          padding: 8px 14px;
           font-size: 12px;
           font-weight: 700;
           cursor: pointer;
         }
         .tab.active {
-          border-color: rgba(94, 155, 247, 0.45);
-          background: linear-gradient(180deg, rgba(25, 55, 96, 0.95), rgba(17, 41, 74, 0.95));
-          color: #edf5ff;
+          border-color: var(--fp-border);
+          background: #fff9ec;
+          color: var(--fp-text) !important;
         }
         .card {
-          border-radius: 14px;
-          border: 1px solid rgba(77, 141, 235, 0.3);
-          background: linear-gradient(180deg, rgba(17, 39, 72, 0.96), rgba(10, 25, 47, 0.96));
+          border-radius: 28px;
+          border: 1px solid var(--fp-border);
+          background: #fff9ec;
         }
         .alert {
           display: flex;
@@ -256,36 +259,37 @@ export default function NotificationPreferences() {
           font-weight: 600;
         }
         .alert-error {
-          border: 1px solid rgba(247, 83, 96, 0.45);
-          background: rgba(247, 83, 96, 0.14);
-          color: #ffadb6;
+          border: 1px solid rgba(200, 31, 47, 0.35);
+          background: rgba(200, 31, 47, 0.1);
+          color: #991627;
         }
         .alert-success {
-          border: 1px solid rgba(55, 198, 130, 0.42);
-          background: rgba(55, 198, 130, 0.12);
-          color: #aaf4ce;
+          border: 1px solid rgba(52, 122, 71, 0.34);
+          background: rgba(52, 122, 71, 0.1);
+          color: #2f6b40;
         }
         .preferences-matrix {
-          border: 1px solid rgba(91, 154, 247, 0.3);
-          border-radius: 12px;
+          border: 1px solid var(--fp-border);
+          border-radius: 20px;
           overflow: hidden;
           margin-bottom: 20px;
+          background: #fffdf5;
         }
         .matrix-header {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
-          background: rgba(21, 49, 87, 0.82);
-          border-bottom: 1px solid rgba(91, 154, 247, 0.34);
+          background: #f2ead8;
+          border-bottom: 1px solid var(--fp-border);
           font-weight: 600;
           font-size: 13px;
-          color: #d9e9ff;
+          color: var(--fp-text-muted);
         }
         .matrix-row {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
-          border-bottom: 1px solid rgba(91, 154, 247, 0.22);
+          border-bottom: 1px solid #ece2cc;
           align-items: center;
-          background: rgba(9, 24, 45, 0.45);
+          background: #fff9ec;
         }
         .matrix-row:last-child {
           border-bottom: none;
@@ -297,7 +301,7 @@ export default function NotificationPreferences() {
         .event-label {
           font-size: 13px;
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-          color: #d2e4ff;
+          color: var(--fp-text);
         }
         .channel-column {
           display: flex;
@@ -321,7 +325,7 @@ export default function NotificationPreferences() {
           left: 0;
           right: 0;
           bottom: 0;
-          background-color: #8a98ac;
+          background-color: #c7baa0;
           transition: 0.3s;
           border-radius: 24px;
         }
@@ -337,7 +341,7 @@ export default function NotificationPreferences() {
           border-radius: 50%;
         }
         input:checked + .toggle-slider {
-          background: linear-gradient(135deg, #f8a429, #9f5cff);
+          background: linear-gradient(135deg, #eb001b, #f57b88);
         }
         input:checked + .toggle-slider:before {
           transform: translateX(16px);

@@ -86,27 +86,29 @@ export default function Onboarding() {
     setLoading(true);
     setError('');
     try {
-      const [statusRes, profileRes] = await Promise.all([
-        apiRequest<OnboardingStatus>('GET', '/v1/onboarding/status'),
-        apiRequest<{ business_name?: string; business_type?: string }>('GET', '/v1/merchants/profile'),
+      const [statusRes, profileRes, limitsResult, digiResult] = await Promise.all([
+        apiRequest<OnboardingStatus>('GET', '/v1/onboarding/status', undefined, undefined, { cacheMs: 20_000 }),
+        apiRequest<{ business_name?: string; business_type?: string }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 30_000 }),
+        apiRequest<Limits>('GET', '/v1/onboarding/limits', undefined, undefined, { cacheMs: 20_000 })
+          .then((value) => ({ ok: true as const, value }))
+          .catch(() => ({ ok: false as const })),
+        apiRequest<{ status: string }>('GET', '/v1/onboarding/digilocker/status', undefined, undefined, { cacheMs: 20_000 })
+          .then((value) => ({ ok: true as const, value }))
+          .catch((err: unknown) => ({ ok: false as const, err })),
       ]);
-      let limitsRes: Limits = {
-        per_transaction_limit: 0,
-        daily_limit: statusRes.daily_limit || 0,
-        monthly_limit: statusRes.monthly_limit || 0,
-        settlement_cycle: 'T+2',
-      };
-      try {
-        limitsRes = await apiRequest<Limits>('GET', '/v1/onboarding/limits');
-      } catch {
-        // Older backend route not wired; use fallback from onboarding status.
-      }
-      try {
-        const digi = await apiRequest<{ status: string }>('GET', '/v1/onboarding/digilocker/status');
-        setDigilockerStatus(digi.status || 'not_started');
+      const limitsRes: Limits = limitsResult.ok
+        ? limitsResult.value
+        : {
+            per_transaction_limit: 0,
+            daily_limit: statusRes.daily_limit || 0,
+            monthly_limit: statusRes.monthly_limit || 0,
+            settlement_cycle: 'T+2',
+          };
+      if (digiResult.ok) {
+        setDigilockerStatus(digiResult.value.status || 'not_started');
         setDigilockerEnabled(true);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
+      } else {
+        const msg = digiResult.err instanceof Error ? digiResult.err.message : '';
         if (msg.includes('disabled')) {
           setDigilockerEnabled(false);
           setDigilockerStatus('disabled');

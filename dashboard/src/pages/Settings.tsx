@@ -70,32 +70,33 @@ export default function Settings() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [profileRes, keysRes] = await Promise.all([
-        apiRequest<MerchantProfile>('GET', '/v1/merchants/profile'),
-        apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys'),
+      const [profileRes, keysRes, securityResult] = await Promise.all([
+        apiRequest<MerchantProfile>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 30_000 }),
+        apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys', undefined, undefined, { cacheMs: 30_000 }),
+        apiRequest<SecuritySettings>('GET', '/v1/merchants/settings/security', undefined, undefined, { cacheMs: 30_000 })
+          .then((value) => ({ ok: true as const, value }))
+          .catch((err: unknown) => ({ ok: false as const, err })),
       ]);
       let securityRes: SecuritySettings;
-      try {
-        securityRes = await apiRequest<SecuritySettings>('GET', '/v1/merchants/settings/security');
+      if (securityResult.ok) {
+        securityRes = securityResult.value;
         setWarning('');
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        // Backward compatibility: backend route not deployed yet.
-        if (msg.includes('(404)')) {
-          securityRes = {
-            mfa_enabled: false,
-            settlement_cycle: 'T+2',
-            per_transaction_limit: 0,
-            daily_limit: profileRes.daily_limit || 0,
-            monthly_limit: profileRes.monthly_limit || 0,
-            allowed_payment_methods: {},
-            webhook_secret_hint: 'unsupported_on_current_backend',
-            updated_at: new Date().toISOString(),
-          };
-          setWarning('Security endpoint unavailable on running backend. Restart/update API server to enable full controls.');
-        } else {
-          throw err;
+      } else {
+        const msg = securityResult.err instanceof Error ? securityResult.err.message : '';
+        if (!msg.includes('(404)')) {
+          throw securityResult.err;
         }
+        securityRes = {
+          mfa_enabled: false,
+          settlement_cycle: 'T+2',
+          per_transaction_limit: 0,
+          daily_limit: profileRes.daily_limit || 0,
+          monthly_limit: profileRes.monthly_limit || 0,
+          allowed_payment_methods: {},
+          webhook_secret_hint: 'unsupported_on_current_backend',
+          updated_at: new Date().toISOString(),
+        };
+        setWarning('Security endpoint unavailable on running backend. Restart/update API server to enable full controls.');
       }
       setProfile(profileRes);
       setSecurity(securityRes);

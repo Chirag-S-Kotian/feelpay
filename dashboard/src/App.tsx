@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,27 +15,50 @@ import {
   Users,
   Bell,
 } from 'lucide-react';
-import Dashboard from './pages/Dashboard';
-import Payments from './pages/Payments';
-import Settlements from './pages/Settlements';
-import Analytics from './pages/Analytics';
-import Developers from './pages/Developers';
-import Disputes from './pages/Disputes';
-import Settings from './pages/Settings';
-import Onboarding from './pages/Onboarding';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import ForgotPassword from './pages/ForgotPassword';
-import PaymentLinks from './pages/PaymentLinks';
-import Customers from './pages/Customers';
-import Exports from './pages/Exports';
-import SettlementReports from './pages/SettlementReports';
-import ScheduledReports from './pages/ScheduledReports';
-import NotificationPreferences from './pages/NotificationPreferences';
-import WebhookTesting from './pages/WebhookTesting';
-import BankAccounts from './pages/BankAccounts';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { EnvironmentMode, getEnvironmentMode, setEnvironmentMode } from './hooks/useApi';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Payments = lazy(() => import('./pages/Payments'));
+const Settlements = lazy(() => import('./pages/Settlements'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Developers = lazy(() => import('./pages/Developers'));
+const Disputes = lazy(() => import('./pages/Disputes'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Login = lazy(() => import('./pages/Login'));
+const Signup = lazy(() => import('./pages/Signup'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const PaymentLinks = lazy(() => import('./pages/PaymentLinks'));
+const Customers = lazy(() => import('./pages/Customers'));
+const Exports = lazy(() => import('./pages/Exports'));
+const SettlementReports = lazy(() => import('./pages/SettlementReports'));
+const ScheduledReports = lazy(() => import('./pages/ScheduledReports'));
+const NotificationPreferences = lazy(() => import('./pages/NotificationPreferences'));
+const WebhookTesting = lazy(() => import('./pages/WebhookTesting'));
+const BankAccounts = lazy(() => import('./pages/BankAccounts'));
+
+const routePreloaders: Record<string, () => Promise<unknown>> = {
+  '/': () => import('./pages/Dashboard'),
+  '/payments': () => import('./pages/Payments'),
+  '/payment-links': () => import('./pages/PaymentLinks'),
+  '/customers': () => import('./pages/Customers'),
+  '/settlements': () => import('./pages/Settlements'),
+  '/exports': () => import('./pages/Exports'),
+  '/settlement-reports': () => import('./pages/SettlementReports'),
+  '/scheduled-reports': () => import('./pages/ScheduledReports'),
+  '/analytics': () => import('./pages/Analytics'),
+  '/disputes': () => import('./pages/Disputes'),
+  '/notifications': () => import('./pages/NotificationPreferences'),
+  '/webhooks': () => import('./pages/WebhookTesting'),
+  '/bank-accounts': () => import('./pages/BankAccounts'),
+  '/developers': () => import('./pages/Developers'),
+  '/settings': () => import('./pages/Settings'),
+  '/onboarding': () => import('./pages/Onboarding'),
+  '/login': () => import('./pages/Login'),
+  '/signup': () => import('./pages/Signup'),
+  '/forgot-password': () => import('./pages/ForgotPassword'),
+};
 
 const NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -65,6 +88,10 @@ function Sidebar({
   mode: EnvironmentMode;
   onModeChange: (mode: EnvironmentMode) => void;
 }) {
+  const preloadRoute = (path: string) => {
+    routePreloaders[path]?.();
+  };
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -78,6 +105,8 @@ function Sidebar({
             to={n.path}
             end={n.path === '/'}
             onClick={onNavigate}
+            onMouseEnter={() => preloadRoute(n.path)}
+            onFocus={() => preloadRoute(n.path)}
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
             <n.icon size={18} aria-hidden="true" />
@@ -153,27 +182,40 @@ function Layout() {
               )}
             </button>
           </header>
-          <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/payments" element={<Payments />} />
-          <Route path="/payment-links" element={<PaymentLinks />} />
-          <Route path="/customers" element={<Customers />} />
-          <Route path="/settlements" element={<Settlements />} />
-          <Route path="/exports" element={<Exports />} />
-          <Route path="/settlement-reports" element={<SettlementReports />} />
-          <Route path="/scheduled-reports" element={<ScheduledReports />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/disputes" element={<Disputes />} />
-          <Route path="/notifications" element={<NotificationPreferences />} />
-          <Route path="/webhooks" element={<WebhookTesting />} />
-          <Route path="/bank-accounts" element={<BankAccounts />} />
-          <Route path="/developers" element={<Developers />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+          <Suspense fallback={<RouteLoader />}>
+            <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/payments" element={<Payments />} />
+            <Route path="/payment-links" element={<PaymentLinks />} />
+            <Route path="/customers" element={<Customers />} />
+            <Route path="/settlements" element={<Settlements />} />
+            <Route path="/exports" element={<Exports />} />
+            <Route path="/settlement-reports" element={<SettlementReports />} />
+            <Route path="/scheduled-reports" element={<ScheduledReports />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/disputes" element={<Disputes />} />
+            <Route path="/notifications" element={<NotificationPreferences />} />
+            <Route path="/webhooks" element={<WebhookTesting />} />
+            <Route path="/bank-accounts" element={<BankAccounts />} />
+            <Route path="/developers" element={<Developers />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
         </ErrorBoundary>
       </main>
+    </div>
+  );
+}
+
+function RouteLoader() {
+  return (
+    <div className="card" style={{ minHeight: 260 }}>
+      <div className="skeleton" style={{ height: 24, width: 220, marginBottom: 16 }}></div>
+      <div className="skeleton" style={{ height: 46, width: '100%', marginBottom: 12 }}></div>
+      <div className="skeleton" style={{ height: 46, width: '100%', marginBottom: 12 }}></div>
+      <div className="skeleton" style={{ height: 180, width: '100%' }}></div>
     </div>
   );
 }
@@ -189,12 +231,14 @@ function ProtectedLayout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/*" element={<ProtectedLayout />} />
-      </Routes>
+      <Suspense fallback={<RouteLoader />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/*" element={<ProtectedLayout />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

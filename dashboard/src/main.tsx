@@ -8,7 +8,11 @@ if (!rootElement) {
   throw new Error('Root element not found');
 }
 ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
+  import.meta.env.DEV ? (
     <App />
-  </React.StrictMode>
+  ) : (
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  )
 );

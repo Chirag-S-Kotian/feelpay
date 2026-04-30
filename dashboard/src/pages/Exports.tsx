@@ -418,33 +418,33 @@ export default function Exports() {
           display: inline-flex;
           gap: 8px;
           padding: 6px;
-          border-radius: 12px;
+          border-radius: 16px;
           border: 1px solid var(--fp-border);
-          background: rgba(13, 24, 48, 0.7);
+          background: #e7decb;
           margin-bottom: 18px;
         }
 
         .exports-page .tab {
           border: 0;
-          border-radius: 8px;
+          border-radius: 12px;
           padding: 9px 14px;
           font-size: 13px;
           font-weight: 600;
-          color: var(--fp-text-muted);
+          color: var(--fp-text-muted) !important;
           background: transparent;
           cursor: pointer;
         }
 
         .exports-page .tab.active {
-          color: #f8fafc;
-          background: linear-gradient(135deg, #f59e0b 0%, #8b5cf6 100%);
+          color: #fff9ec !important;
+          background: var(--fp-cta);
+          border: 1px solid #d74a58;
+          box-shadow: 0 8px 14px rgba(235, 0, 27, 0.24);
         }
 
         .exports-page .card {
-          border: 1px solid color-mix(in srgb, var(--fp-primary-soft) 25%, transparent);
-          background:
-            radial-gradient(120% 120% at 0% 0%, rgba(34, 197, 94, 0.08) 0%, transparent 45%),
-            linear-gradient(160deg, rgba(13, 24, 48, 0.95), rgba(8, 18, 39, 0.95));
+          border: 1px solid var(--fp-border);
+          background: #fff9ec;
         }
 
         .exports-page h2 {
@@ -461,7 +461,7 @@ export default function Exports() {
           margin-bottom: 8px;
           font-size: 13px;
           font-weight: 600;
-          color: color-mix(in srgb, var(--fp-text) 82%, #c7e2ff 18%);
+          color: var(--fp-text-muted);
         }
 
         .exports-page .date-range {
@@ -483,23 +483,23 @@ export default function Exports() {
           min-width: 0;
           padding: 0 12px;
           font-size: 14px;
-          border-radius: 10px;
-          border: 1px solid color-mix(in srgb, var(--fp-border) 65%, #7dd3fc 35%);
-          background: rgba(9, 18, 38, 0.7);
+          border-radius: 999px;
+          border: 1px solid var(--fp-border);
+          background: #fff9ec;
           color: var(--fp-text);
         }
 
         .exports-page input:focus,
         .exports-page select:focus {
-          border-color: color-mix(in srgb, var(--fp-primary) 60%, #ffffff 40%);
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+          border-color: var(--fp-cta);
+          box-shadow: 0 0 0 3px rgba(235, 0, 27, 0.14);
         }
 
         .exports-page select {
           appearance: none;
           background-image:
-            linear-gradient(45deg, transparent 50%, #8bb8f7 50%),
-            linear-gradient(135deg, #8bb8f7 50%, transparent 50%);
+            linear-gradient(45deg, transparent 50%, #8a857d 50%),
+            linear-gradient(135deg, #8a857d 50%, transparent 50%);
           background-position:
             calc(100% - 16px) calc(50% + 1px),
             calc(100% - 11px) calc(50% + 1px);
@@ -531,15 +531,15 @@ export default function Exports() {
           height: 44px;
           padding: 0 16px;
           border: 0;
-          color: #fff;
-          background: linear-gradient(135deg, #f59e0b 0%, #8b5cf6 100%);
+          color: #fff9ec;
+          background: var(--fp-cta);
         }
 
         .exports-page .btn-secondary {
           height: 40px;
           padding: 0 12px;
           color: var(--fp-text);
-          background: rgba(17, 34, 63, 0.8);
+          background: #f2ead8;
         }
 
         .exports-page .filter-panel,
@@ -548,7 +548,7 @@ export default function Exports() {
           padding: 14px;
           border-radius: 12px;
           border: 1px solid var(--fp-border);
-          background: rgba(12, 22, 44, 0.72);
+          background: #f7f0e1;
         }
 
         .exports-page .checkbox-group {
@@ -566,7 +566,7 @@ export default function Exports() {
           padding: 6px 10px;
           border: 1px solid var(--fp-border);
           border-radius: 8px;
-          background: rgba(17, 34, 63, 0.6);
+          background: #f2ead8;
         }
 
         .exports-page .checkbox input {
@@ -592,21 +592,21 @@ export default function Exports() {
 
         .exports-page .alert-error {
           border: 1px solid rgba(239, 68, 68, 0.45);
-          color: #fecaca;
-          background: rgba(127, 29, 29, 0.24);
+          color: #991627;
+          background: rgba(200, 31, 47, 0.1);
         }
 
         .exports-page .alert-success {
           border: 1px solid rgba(34, 197, 94, 0.4);
-          color: #bbf7d0;
-          background: rgba(20, 83, 45, 0.28);
+          color: #2f6b40;
+          background: rgba(52, 122, 71, 0.1);
         }
 
         .exports-page .btn-copy {
           margin-left: auto;
           border: 1px solid rgba(148, 163, 184, 0.3);
-          background: rgba(15, 23, 42, 0.7);
-          color: #e2e8f0;
+          background: #f2ead8;
+          color: var(--fp-text);
           width: 28px;
           height: 28px;
           border-radius: 8px;
@@ -622,7 +622,7 @@ export default function Exports() {
 
         .exports-page .btn-small {
           border: 1px solid var(--fp-border);
-          background: rgba(15, 23, 42, 0.7);
+          background: #f2ead8;
           color: var(--fp-text);
           width: 30px;
           height: 30px;

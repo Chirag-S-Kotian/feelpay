@@ -242,7 +242,7 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(3, 8, 20, 0.78);
+          background: rgba(20, 20, 19, 0.38);
           backdrop-filter: blur(5px);
           display: flex;
           align-items: center;
@@ -251,10 +251,10 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
           padding: 16px;
         }
         .modal-content {
-          background: #132747;
-          border-radius: 16px;
-          border: 1px solid rgba(77, 141, 235, 0.35);
-          box-shadow: 0 18px 70px rgba(2, 8, 24, 0.58);
+          background: #fff9ec;
+          border-radius: 28px;
+          border: 1px solid var(--fp-border);
+          box-shadow: 0 18px 70px rgba(20, 20, 19, 0.2);
           max-width: 620px;
           width: 90%;
           max-height: 90vh;
@@ -266,28 +266,28 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
           justify-content: space-between;
           align-items: center;
           padding: 20px 22px;
-          border-bottom: 1px solid rgba(77, 141, 235, 0.25);
+          border-bottom: 1px solid var(--fp-border);
         }
         .modal-header h2 {
           margin: 0;
           font-size: 20px;
           font-weight: 800;
-          color: #eef5ff;
+          color: var(--fp-text);
         }
         .btn-close {
-          background: rgba(15, 36, 67, 0.8);
-          border: 1px solid rgba(77, 141, 235, 0.35);
-          border-radius: 10px;
+          background: #f2ead8;
+          border: 1px solid var(--fp-border);
+          border-radius: 999px;
           cursor: pointer;
           padding: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #c5dcff;
+          color: var(--fp-text-muted);
         }
         .btn-close:hover {
-          border-color: rgba(114, 177, 255, 0.65);
-          color: #edf5ff;
+          border-color: var(--fp-cta);
+          color: var(--fp-text);
         }
         .form {
           padding: 20px 22px 24px;
@@ -301,39 +301,40 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
           font-weight: 700;
           font-size: 13px;
           letter-spacing: 0.02em;
-          color: #c8dbfb;
+          color: var(--fp-text-muted);
         }
         .form-group input,
         .form-group select,
         .form-group textarea {
           width: 100%;
           padding: 11px 13px;
-          border: 1px solid rgba(91, 154, 247, 0.34);
-          border-radius: 12px;
+          border: 1px solid var(--fp-border);
+          border-radius: 999px;
           font-size: 14px;
           font-family: inherit;
-          color: #eaf3ff;
-          background: linear-gradient(180deg, rgba(17, 41, 77, 0.94), rgba(12, 29, 56, 0.94));
+          color: var(--fp-text);
+          background: #fff9ec;
           outline: none;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         .form-group input:focus,
         .form-group select:focus,
         .form-group textarea:focus {
-          border-color: rgba(128, 189, 255, 0.9);
-          box-shadow: 0 0 0 3px rgba(64, 140, 255, 0.2);
+          border-color: var(--fp-cta);
+          box-shadow: 0 0 0 3px rgba(235, 0, 27, 0.14);
         }
         .form-group textarea {
           min-height: 92px;
           resize: vertical;
+          border-radius: 20px;
         }
         .form-group input::placeholder,
         .form-group textarea::placeholder {
-          color: #9db7dd;
+          color: var(--fp-text-dim);
         }
         .error-text {
           display: block;
-          color: #ff9fa8;
+          color: #991627;
           font-size: 12px;
           margin-top: 6px;
         }
@@ -350,10 +351,10 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
           display: flex;
           align-items: center;
           gap: 8px;
-          border: 1px solid rgba(247, 83, 96, 0.4);
-          background: rgba(247, 83, 96, 0.12);
-          color: #ffb3ba;
-          border-radius: 10px;
+          border: 1px solid rgba(200, 31, 47, 0.35);
+          background: rgba(200, 31, 47, 0.1);
+          color: #991627;
+          border-radius: 16px;
           padding: 10px 12px;
           margin-bottom: 12px;
           font-size: 13px;
