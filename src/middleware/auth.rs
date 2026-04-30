@@ -13,8 +13,44 @@ pub struct MerchantId(pub Uuid);
 pub struct TenantId(pub Uuid);
 pub struct UserId(pub Uuid);
 pub struct UserRole(pub String);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EnvironmentMode {
+    Test,
+    Live,
+}
+pub struct RequestEnvironment(pub EnvironmentMode);
 
 pub type JwtClaims = Claims;
+
+fn request_environment(req: &ServiceRequest) -> EnvironmentMode {
+    let value = req
+        .headers()
+        .get("x-feelpay-environment")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| "test".to_string());
+    if value == "live" {
+        EnvironmentMode::Live
+    } else {
+        EnvironmentMode::Test
+    }
+}
+
+async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, actix_web::Error> {
+    let count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'merchants'
+          AND column_name IN ('api_key_test', 'api_key_live')
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to inspect schema"))?;
+    Ok(count == 2)
+}
 
 impl FromRequest for Claims {
     type Error = Error;
@@ -104,6 +140,7 @@ where
         }
 
         Box::pin(async move {
+            let env_mode = request_environment(&req);
             let api_key = req
                 .headers()
                 .get("x-api-key")
@@ -123,16 +160,38 @@ where
                 ));
             };
 
-            // Unified check for API Keys
-            let merchant = sqlx::query_as::<_, (Uuid, Uuid)>(
-                "SELECT id, tenant_id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
-            )
-            .bind(api_key)
-            .fetch_optional(pool.get_ref())
-            .await
-            .map_err(|_| {
-                actix_web::error::ErrorInternalServerError("Failed to validate api key")
-            })?;
+            let dual_cols = has_dual_api_key_columns(pool.get_ref()).await?;
+            let merchant = if dual_cols {
+                let env_name = match env_mode {
+                    EnvironmentMode::Live => "live",
+                    EnvironmentMode::Test => "test",
+                };
+                sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+                    r#"
+                    SELECT id, tenant_id
+                    FROM merchants
+                    WHERE status = 'active'
+                      AND (
+                        ($2 = 'live' AND COALESCE(api_key_live, api_key) = $1)
+                        OR
+                        ($2 = 'test' AND COALESCE(api_key_test, api_key) = $1)
+                      )
+                    LIMIT 1
+                    "#,
+                )
+                .bind(api_key)
+                .bind(env_name)
+                .fetch_optional(pool.get_ref())
+                .await
+            } else {
+                sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+                    "SELECT id, tenant_id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
+                )
+                .bind(api_key)
+                .fetch_optional(pool.get_ref())
+                .await
+            }
+            .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to validate api key"))?;
 
             let Some((merchant_id, tenant_id)) = merchant else {
                 return Err(actix_web::error::ErrorUnauthorized("Invalid API key"));
@@ -140,7 +199,10 @@ where
 
             // Set context for RLS and logging using wrapper types
             req.extensions_mut().insert(MerchantId(merchant_id));
-            req.extensions_mut().insert(TenantId(tenant_id));
+            if let Some(tid) = tenant_id {
+                req.extensions_mut().insert(TenantId(tid));
+            }
+            req.extensions_mut().insert(RequestEnvironment(env_mode));
 
             service.call(req).await
         })
@@ -307,6 +369,7 @@ where
         }
 
         Box::pin(async move {
+            let env_mode = request_environment(&req);
             // 1. Try API Key Auth first
             let api_key = req
                 .headers()
@@ -317,17 +380,45 @@ where
 
             if let Some(key) = api_key {
                 if let Some(pool) = req.app_data::<web::Data<sqlx::PgPool>>() {
-                    let merchant = sqlx::query_as::<_, (Uuid, Uuid)>(
-                        "SELECT id, tenant_id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
-                    )
-                    .bind(key)
-                    .fetch_optional(pool.get_ref())
-                    .await
+                    let dual_cols = has_dual_api_key_columns(pool.get_ref()).await?;
+                    let merchant = if dual_cols {
+                        let env_name = match env_mode {
+                            EnvironmentMode::Live => "live",
+                            EnvironmentMode::Test => "test",
+                        };
+                        sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+                            r#"
+                            SELECT id, tenant_id
+                            FROM merchants
+                            WHERE status = 'active'
+                              AND (
+                                ($2 = 'live' AND COALESCE(api_key_live, api_key) = $1)
+                                OR
+                                ($2 = 'test' AND COALESCE(api_key_test, api_key) = $1)
+                              )
+                            LIMIT 1
+                            "#,
+                        )
+                        .bind(key)
+                        .bind(env_name)
+                        .fetch_optional(pool.get_ref())
+                        .await
+                    } else {
+                        sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
+                            "SELECT id, tenant_id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
+                        )
+                        .bind(key)
+                        .fetch_optional(pool.get_ref())
+                        .await
+                    }
                     .map_err(|_| actix_web::error::ErrorInternalServerError("Auth validation failed"))?;
 
                     if let Some((mid, tid)) = merchant {
                         req.extensions_mut().insert(MerchantId(mid));
-                        req.extensions_mut().insert(TenantId(tid));
+                        if let Some(tenant_id) = tid {
+                            req.extensions_mut().insert(TenantId(tenant_id));
+                        }
+                        req.extensions_mut().insert(RequestEnvironment(env_mode));
                         return service.call(req).await;
                     }
                 }

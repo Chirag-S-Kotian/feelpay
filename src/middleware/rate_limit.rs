@@ -69,6 +69,21 @@ where
             return Box::pin(async move { fut.await.map(|res| res.map_into_left_body()) });
         }
 
+        // Dev UX: avoid localhost throttle loops from React StrictMode double effects + HMR.
+        let is_dev_env = std::env::var("APP_ENV")
+            .map(|v| {
+                let v = v.to_ascii_lowercase();
+                v != "production" && v != "prod"
+            })
+            .unwrap_or(true);
+        if is_dev_env {
+            let host = req.connection_info().host().to_ascii_lowercase();
+            if host.contains("localhost") || host.contains("127.0.0.1") || host.contains("[::1]") {
+                let fut = self.service.call(req);
+                return Box::pin(async move { fut.await.map(|res| res.map_into_left_body()) });
+            }
+        }
+
         let ip = req.peer_addr().map(|a| a.ip().to_string());
 
         // If caller identity cannot be resolved, skip limiter to avoid shared "unknown" bucket.

@@ -14,3 +14,7 @@ admin/node_modules
 .kiro
 payment/.sqlx
 .pnpm-store
+.codex/config.toml
+.cursor/mcp.json
+.gemini/settings.json
+.vscode/mcp.json

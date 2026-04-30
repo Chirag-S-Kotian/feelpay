@@ -65,14 +65,29 @@ export async function apiRequest<T = unknown>(
 
   headers['x-feelpay-environment'] = getEnvironmentMode();
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const doFetch = () =>
+    fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+  let res = await doFetch();
+  // Smooth dev experience under strict-mode duplicate effects.
+  if (res.status === 429 && method === 'GET') {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    res = await doFetch();
+  }
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
 
   if (!res.ok) {
     if (res.status === 401) {

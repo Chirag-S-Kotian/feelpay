@@ -233,6 +233,35 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
+fn request_environment(req: &HttpRequest) -> &'static str {
+    match req
+        .headers()
+        .get("x-feelpay-environment")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("live") => "live",
+        _ => "test",
+    }
+}
+
+async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, FeelPayError> {
+    let count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'merchants'
+          AND column_name IN ('api_key_test', 'api_key_live')
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    Ok(count == 2)
+}
+
 #[utoipa::path(
     get,
     path = "/v1/merchants/profile",
@@ -455,18 +484,68 @@ pub async fn get_keys(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let row = sqlx::query("SELECT api_key FROM merchants WHERE id = $1")
-        .bind(merchant_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    let env = request_environment(&req);
+    let dual_cols = has_dual_api_key_columns(&state.db).await?;
+    let row = if dual_cols {
+        sqlx::query("SELECT api_key, api_key_test, api_key_live FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+    } else {
+        sqlx::query("SELECT api_key FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+    }
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let Some(row) = row else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
+    let selected = if dual_cols {
+        let api_key_legacy = row.get::<String, _>(0);
+        let api_key_test = row.get::<Option<String>, _>(1);
+        let api_key_live = row.get::<Option<String>, _>(2);
+        let mut selected = if env == "live" {
+            api_key_live.unwrap_or_else(|| api_key_legacy.clone())
+        } else {
+            api_key_test.unwrap_or_else(|| api_key_legacy.clone())
+        };
+
+        // Self-heal legacy backfill mismatch: keep env-prefixed keys consistent.
+        let expected_prefix = if env == "live" { "fp_live_" } else { "fp_test_" };
+        if !selected.starts_with(expected_prefix) {
+            let regenerated = if env == "live" {
+                format!("fp_live_{}", Uuid::new_v4().simple())
+            } else {
+                format!("fp_test_{}", Uuid::new_v4().simple())
+            };
+
+            let sql = if env == "live" {
+                "UPDATE merchants SET api_key_live = $2, updated_at = NOW() WHERE id = $1"
+            } else {
+                "UPDATE merchants SET api_key_test = $2, updated_at = NOW() WHERE id = $1"
+            };
+
+            sqlx::query(sql)
+                .bind(merchant_id)
+                .bind(&regenerated)
+                .execute(&state.db)
+                .await
+                .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+            selected = regenerated;
+        }
+
+        selected
+    } else {
+        row.get::<String, _>(0)
+    };
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "api_key": row.get::<String, _>(0)
+        "api_key": selected,
+        "environment": env
     })))
 }
 
@@ -486,7 +565,13 @@ pub async fn roll_keys(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
-    let api_key = format!("fp_live_{}", Uuid::new_v4().simple());
+    let env = request_environment(&req);
+    let dual_cols = has_dual_api_key_columns(&state.db).await?;
+    let api_key = if env == "live" {
+        format!("fp_live_{}", Uuid::new_v4().simple())
+    } else {
+        format!("fp_test_{}", Uuid::new_v4().simple())
+    };
     let api_secret = format!("fp_secret_{}", Uuid::new_v4().simple());
 
     let argon2 = Argon2::default();
@@ -496,21 +581,44 @@ pub async fn roll_keys(
         .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
         .to_string();
 
-    sqlx::query(
-        "UPDATE merchants SET api_key = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
-    )
-    .bind(merchant_id)
-    .bind(&api_key)
-    .bind(&api_secret_hash)
-    .execute(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    if dual_cols && env == "live" {
+        sqlx::query(
+            "UPDATE merchants SET api_key_live = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .bind(&api_key)
+        .bind(&api_secret_hash)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    } else if dual_cols {
+        sqlx::query(
+            "UPDATE merchants SET api_key_test = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .bind(&api_key)
+        .bind(&api_secret_hash)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    } else {
+        sqlx::query(
+            "UPDATE merchants SET api_key = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .bind(&api_key)
+        .bind(&api_secret_hash)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    }
 
     let allow_secret_reveal =
         std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
 
     let mut resp = serde_json::json!({
         "api_key": api_key,
+        "environment": env,
         "message": "API key rotated."
     });
 
