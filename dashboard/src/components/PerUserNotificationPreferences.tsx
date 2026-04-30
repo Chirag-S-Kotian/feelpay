@@ -5,7 +5,8 @@ import { apiRequest } from '../hooks/useApi';
 interface User {
   id: string;
   email: string;
-  name: string;
+  name?: string;
+  full_name?: string;
 }
 
 interface UserPreference {
@@ -57,11 +58,11 @@ export default function PerUserNotificationPreferences() {
 
   const fetchUsers = async () => {
     try {
-      const data = await apiRequest<{ members: User[] }>(
+      const data = await apiRequest<User[] | { members?: User[] }>(
         'GET',
         '/v1/merchants/team'
       );
-      const team = data.members || [];
+      const team = Array.isArray(data) ? data : (data.members || []);
       setUsers(team);
       const firstUser = team.at(0);
       if (firstUser) {
@@ -180,7 +181,7 @@ export default function PerUserNotificationPreferences() {
         >
           {users.map(user => (
             <option key={user.id} value={user.id}>
-              {user.name} ({user.email})
+              {(user.full_name || user.name || user.email)} ({user.email})
             </option>
           ))}
         </select>

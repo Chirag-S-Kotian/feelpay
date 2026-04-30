@@ -20,18 +20,21 @@ export default function Disputes() {
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [submittingEvidence, setSubmittingEvidence] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const actionableDisputes = disputes.filter(d =>
+    ['open', 'needs_response', 'under_review'].includes(d.status)
+  );
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await apiRequest<{ disputes: Dispute[] }>(
         'GET',
         '/v1/disputes',
-        undefined,
-        undefined,
-        { useApiKey: true },
       );
       setDisputes(res.disputes || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load disputes');
     } finally {
       setLoading(false);
     }
@@ -42,12 +45,17 @@ export default function Disputes() {
   }, []);
 
   const acceptDispute = async (id: string) => {
-    await apiRequest('POST', `/v1/disputes/${id}/accept`, {}, undefined, { useApiKey: true });
-    await load();
+    try {
+      setError(null);
+      await apiRequest('POST', `/v1/disputes/${id}/accept`, {});
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept dispute');
+    }
   };
 
-  const openEvidenceModal = (id: string) => {
-    setTargetDisputeId(id);
+  const openEvidenceModal = (id?: string) => {
+    setTargetDisputeId(id || actionableDisputes[0]?.id || null);
     setEvidenceText('');
     setEvidenceFiles([]);
     setError(null);
@@ -75,8 +83,6 @@ export default function Disputes() {
           text: evidenceText || 'Evidence submitted from merchant dashboard.',
           documents: docs,
         },
-        undefined,
-        { useApiKey: true },
       );
       setShowEvidenceModal(false);
       await load();
@@ -96,11 +102,7 @@ export default function Disputes() {
         </div>
         <button
           className="btn btn-primary"
-          onClick={() => {
-            const candidate = disputes.find(d => ['needs_response', 'under_review'].includes(d.status));
-            if (candidate) openEvidenceModal(candidate.id);
-          }}
-          disabled={disputes.length === 0}
+          onClick={() => openEvidenceModal()}
         >
           Upload Evidence
         </button>
@@ -112,6 +114,7 @@ export default function Disputes() {
       </div>
 
       <div className="dispute-grid">
+        {error && <div className="modal-error">{error}</div>}
         {!loading && disputes.map((d) => (
           <div key={d.id} className="dispute-card">
             <div className="dispute-card__head">
@@ -133,7 +136,13 @@ export default function Disputes() {
             </div>
             <div className="dispute-card__actions">
               <button className="btn btn-secondary" onClick={() => void acceptDispute(d.id)}>Accept</button>
-              <button className="btn btn-primary" onClick={() => openEvidenceModal(d.id)}>Respond</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => openEvidenceModal(d.id)}
+                disabled={!['open', 'needs_response', 'under_review'].includes(d.status)}
+              >
+                Respond
+              </button>
             </div>
           </div>
         ))}
@@ -145,6 +154,26 @@ export default function Disputes() {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3>Upload Evidence</h3>
             {error && <div className="modal-error">{error}</div>}
+            {actionableDisputes.length === 0 && (
+              <div className="file-count">
+                No open disputes right now. Add dispute via webhook/test flow first.
+              </div>
+            )}
+            {actionableDisputes.length > 0 && (
+              <>
+                <label>Select dispute</label>
+                <select
+                  value={targetDisputeId || ''}
+                  onChange={e => setTargetDisputeId(e.target.value)}
+                >
+                  {actionableDisputes.map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.id} ({d.status})
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <label>Evidence note</label>
             <textarea
               value={evidenceText}
@@ -164,7 +193,11 @@ export default function Disputes() {
               <button className="btn btn-secondary" onClick={() => setShowEvidenceModal(false)}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={() => void submitEvidence()} disabled={submittingEvidence}>
+              <button
+                className="btn btn-primary"
+                onClick={() => void submitEvidence()}
+                disabled={submittingEvidence || actionableDisputes.length === 0 || !targetDisputeId}
+              >
                 {submittingEvidence ? 'Submitting...' : 'Submit Evidence'}
               </button>
             </div>
@@ -203,7 +236,8 @@ export default function Disputes() {
           color: #c8dbfb;
         }
         .modal-content textarea,
-        .modal-content input[type="file"] {
+        .modal-content input[type="file"],
+        .modal-content select {
           width: 100%;
           padding: 10px 12px;
           border-radius: 10px;

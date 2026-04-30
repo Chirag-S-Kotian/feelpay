@@ -325,7 +325,7 @@ async fn main() -> std::io::Result<()> {
             )
             // Merchant settings and operational APIs
             .service(
-                web::scope("/v1/merchants/{merchant_id}")
+                web::scope("/v1/merchants/{merchant_id:[0-9a-fA-F\\-]{36}}")
                     .wrap(crate::middleware::auth::JwtMiddleware)
                     // Bank accounts
                     .route(
@@ -435,6 +435,13 @@ async fn main() -> std::io::Result<()> {
                             .route("/profile", web::put().to(api::merchants::update_profile))
                             .route("/keys", web::get().to(api::merchants::get_keys))
                             .route("/keys/roll", web::post().to(api::merchants::roll_keys))
+                            .route("/team", web::get().to(api::merchants::list_team_members))
+                            .route("/team/invite", web::post().to(api::merchants::invite_team_member))
+                            .route("/team/{user_id}", web::delete().to(api::merchants::remove_team_member))
+                            .route(
+                                "/team/{user_id}/role",
+                                web::put().to(api::merchants::update_team_member_role),
+                            )
                             // Export aliases under /v1/merchants to avoid scope shadow 404s
                             .route(
                                 "/{merchant_id}/exports/transactions",

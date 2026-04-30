@@ -126,7 +126,7 @@ pub async fn submit_evidence(
             updated_at = NOW()
         WHERE id = $2
           AND merchant_id = $3
-          AND status IN ('needs_response', 'under_review')
+          AND status IN ('open', 'needs_response', 'under_review')
         RETURNING id, merchant_id, payment_order_id, amount, currency, status, reason_code, reason_message, evidence_due_by, evidence, connector_reference, created_at, updated_at, resolved_at
         "#,
     )
@@ -157,7 +157,7 @@ pub async fn accept_dispute(
             updated_at = NOW()
         WHERE id = $1
           AND merchant_id = $2
-          AND status IN ('needs_response', 'under_review')
+          AND status IN ('open', 'needs_response', 'under_review')
         RETURNING id, merchant_id, payment_order_id, amount, currency, status, reason_code, reason_message, evidence_due_by, evidence, connector_reference, created_at, updated_at, resolved_at
         "#,
     )
