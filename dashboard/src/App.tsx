@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { EnvironmentMode, getEnvironmentMode, setEnvironmentMode } from './hooks/useApi';
+import { apiRequest } from './hooks/useApi';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Payments = lazy(() => import('./pages/Payments'));
@@ -86,7 +87,7 @@ function Sidebar({
 }: {
   onNavigate?: () => void;
   mode: EnvironmentMode;
-  onModeChange: (mode: EnvironmentMode) => void;
+  onModeChange: (mode: EnvironmentMode) => Promise<void> | void;
 }) {
   const preloadRoute = (path: string) => {
     routePreloaders[path]?.();
@@ -123,14 +124,14 @@ function Sidebar({
         <div className="pill-tabs">
           <button
             className={`pill-tab ${mode === 'test' ? 'active' : ''}`}
-            onClick={() => onModeChange('test')}
+            onClick={() => void onModeChange('test')}
             type="button"
           >
             Test
           </button>
           <button
             className={`pill-tab ${mode === 'live' ? 'active' : ''}`}
-            onClick={() => onModeChange('live')}
+            onClick={() => void onModeChange('live')}
             type="button"
           >
             Live
@@ -146,10 +147,34 @@ function Layout() {
   const [open, setOpen] = useState(false);
   const [notificationCount] = useState(0);
   const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
+  const [modeWarning, setModeWarning] = useState('');
 
   useEffect(() => {
     setEnvironmentMode(mode);
   }, [mode]);
+
+  const handleModeChange = async (nextMode: EnvironmentMode) => {
+    if (nextMode === mode) return;
+    if (nextMode === 'test') {
+      setModeWarning('');
+      setMode('test');
+      return;
+    }
+    try {
+      const check = await apiRequest<{
+        can_go_live: boolean;
+        blockers: string[];
+      }>('GET', '/v1/onboarding/live-preflight', undefined, undefined, { cacheMs: 5_000 });
+      if (!check.can_go_live) {
+        setModeWarning(`Live mode blocked: ${check.blockers.join(' | ')}`);
+        return;
+      }
+      setModeWarning('');
+      setMode('live');
+    } catch (err) {
+      setModeWarning(err instanceof Error ? err.message : 'Unable to validate live mode preflight.');
+    }
+  };
 
   return (
     <div className="app-layout">
@@ -162,13 +187,18 @@ function Layout() {
       </button>
       {open && <div className="mobile-overlay" onClick={() => setOpen(false)}></div>}
       <div className={`mobile-sidebar ${open ? 'open' : ''}`}>
-        <Sidebar onNavigate={() => setOpen(false)} mode={mode} onModeChange={setMode} />
+        <Sidebar onNavigate={() => setOpen(false)} mode={mode} onModeChange={handleModeChange} />
       </div>
       <div className="desktop-sidebar">
-        <Sidebar mode={mode} onModeChange={setMode} />
+        <Sidebar mode={mode} onModeChange={handleModeChange} />
       </div>
       <main className="main-content">
         <ErrorBoundary>
+          {modeWarning && (
+            <div className="card" style={{ marginBottom: 12, borderColor: 'rgba(245,158,11,0.45)', color: '#f5b96b' }}>
+              {modeWarning}
+            </div>
+          )}
           <header className="top-header">
             <div className="header-spacer"></div>
             <button 

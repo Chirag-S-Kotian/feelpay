@@ -497,6 +497,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/developers")
                     .wrap(crate::middleware::auth::JwtMiddleware)
                     .route("/keys", web::get().to(api::merchants::get_keys))
+                    .route("/api-logs", web::get().to(api::analytics::get_api_logs))
                     .route(
                         "/webhooks",
                         web::get().to(api::analytics::get_webhook_events),

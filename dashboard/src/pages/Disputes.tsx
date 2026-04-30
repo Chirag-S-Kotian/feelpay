@@ -18,11 +18,18 @@ export default function Disputes() {
   const [targetDisputeId, setTargetDisputeId] = useState<string | null>(null);
   const [evidenceText, setEvidenceText] = useState('');
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidenceTemplate, setEvidenceTemplate] = useState('delivery');
   const [submittingEvidence, setSubmittingEvidence] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const actionableDisputes = disputes.filter(d =>
     ['open', 'needs_response', 'under_review'].includes(d.status)
   );
+  const evidenceTemplates: Record<string, string> = {
+    delivery: 'Attach delivery proof, courier timeline, customer acknowledgment, signed POD.',
+    service: 'Attach service logs, timestamps, acceptance records, communication transcript.',
+    fraud: 'Attach device fingerprint, IP metadata, OTP/auth logs, risk score timeline.',
+    duplicate: 'Attach prior transaction reference, refund trail, customer confirmation.',
+  };
 
   const load = async () => {
     setLoading(true);
@@ -58,6 +65,7 @@ export default function Disputes() {
     setTargetDisputeId(id || actionableDisputes[0]?.id || null);
     setEvidenceText('');
     setEvidenceFiles([]);
+    setEvidenceTemplate('delivery');
     setError(null);
     setShowEvidenceModal(true);
   };
@@ -80,7 +88,7 @@ export default function Disputes() {
         'POST',
         `/v1/disputes/${targetDisputeId}/evidence`,
         {
-          text: evidenceText || 'Evidence submitted from merchant dashboard.',
+          text: evidenceText || evidenceTemplates[evidenceTemplate] || 'Evidence submitted from merchant dashboard.',
           documents: docs,
         },
       );
@@ -134,6 +142,14 @@ export default function Disputes() {
               <span>Evidence due</span>
               <strong>{d.evidence_due_by ? new Date(d.evidence_due_by).toLocaleDateString('en-IN') : '-'}</strong>
             </div>
+            <div className="dispute-card__row">
+              <span>SLA</span>
+              <strong>
+                {d.evidence_due_by
+                  ? `${Math.max(0, Math.ceil((new Date(d.evidence_due_by).getTime() - Date.now()) / (1000 * 60 * 60)))}h left`
+                  : '-'}
+              </strong>
+            </div>
             <div className="dispute-card__actions">
               <button className="btn btn-secondary" onClick={() => void acceptDispute(d.id)}>Accept</button>
               <button
@@ -177,6 +193,22 @@ export default function Disputes() {
               </>
             )}
             <label>Evidence note</label>
+            <label>Checklist template</label>
+            <select
+              value={evidenceTemplate}
+              onChange={e => {
+                const next = e.target.value;
+                setEvidenceTemplate(next);
+                if (!evidenceText.trim()) {
+                  setEvidenceText(evidenceTemplates[next] || '');
+                }
+              }}
+            >
+              <option value="delivery">Delivery Proof</option>
+              <option value="service">Service Rendered</option>
+              <option value="fraud">Fraud Defense</option>
+              <option value="duplicate">Duplicate Charge</option>
+            </select>
             <textarea
               value={evidenceText}
               onChange={e => setEvidenceText(e.target.value)}
@@ -198,6 +230,13 @@ export default function Disputes() {
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowEvidenceModal(false)}>
                 Cancel
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => void submitEvidence()}
+                disabled={submittingEvidence || actionableDisputes.length === 0 || !targetDisputeId}
+              >
+                Retry Upload
               </button>
               <button
                 className="btn btn-primary"

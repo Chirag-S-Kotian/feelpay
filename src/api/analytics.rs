@@ -1,8 +1,8 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 /// Extract merchant_id from request extensions (inserted by ApiKeyMiddleware or JwtMiddleware)
@@ -25,6 +25,16 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/top-customers", web::get().to(get_top_customers))
             .route("/alerts", web::get().to(get_actionable_alerts)),
     );
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ApiLogQuery {
+    pub status: Option<String>,
+    pub endpoint: Option<String>,
+    pub from_date: Option<String>,
+    pub to_date: Option<String>,
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
 }
 
 #[utoipa::path(
@@ -384,6 +394,95 @@ pub async fn get_webhook_events(req: HttpRequest, pool: web::Data<PgPool>) -> Ht
             }))
         }
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/developers/api-logs",
+    params(
+        ApiLogQuery
+    ),
+    responses(
+        (status = 200, description = "Developer API activity logs")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_api_logs(
+    req: HttpRequest,
+    pool: web::Data<PgPool>,
+    query: web::Query<ApiLogQuery>,
+) -> HttpResponse {
+    let merchant_id = match extract_merchant_id(&req) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+
+    let status_filter = query.status.as_deref().map(|s| s.to_lowercase());
+    let endpoint_filter = query.endpoint.as_deref().map(|s| s.to_lowercase());
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, entity_type, action, actor_id, ip_address, created_at
+        FROM audit_logs
+        WHERE actor_id = $1::TEXT
+          AND ($2::TEXT IS NULL OR LOWER(entity_type || ':' || action) LIKE '%' || $2::TEXT || '%')
+          AND ($3::DATE IS NULL OR created_at::DATE >= $3::DATE)
+          AND ($4::DATE IS NULL OR created_at::DATE <= $4::DATE)
+        ORDER BY created_at DESC
+        LIMIT $5 OFFSET $6
+        "#,
+    )
+    .bind(merchant_id.to_string())
+    .bind(endpoint_filter)
+    .bind(&query.from_date)
+    .bind(&query.to_date)
+    .bind(per_page)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    let Ok(rows) = rows else {
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": { "code": "analytics_error", "message": "Failed to fetch API logs" }
+        }));
+    };
+
+    let mut logs = Vec::new();
+    for row in rows {
+        let action: String = row.get("action");
+        let status = if action.contains("failed") {
+            "failed"
+        } else {
+            "success"
+        };
+        if let Some(sf) = status_filter.as_deref() {
+            if sf != status {
+                continue;
+            }
+        }
+        let entity_type: String = row.get("entity_type");
+        let endpoint = format!("{entity_type}:{action}");
+        logs.push(serde_json::json!({
+            "request_id": row.get::<uuid::Uuid, _>("id").to_string(),
+            "endpoint": endpoint,
+            "status": status,
+            "actor_id": row.get::<Option<String>, _>("actor_id"),
+            "ip_address": row.get::<Option<String>, _>("ip_address"),
+            "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+        }));
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "page": page,
+        "per_page": per_page,
+        "logs": logs
+    }))
 }
 
 #[derive(Serialize, ToSchema)]

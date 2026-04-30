@@ -30,7 +30,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/aadhaar/verify", web::post().to(verify_aadhaar_otp))
             .route("/digilocker/initiate", web::post().to(initiate_digilocker))
             .route("/digilocker/callback", web::post().to(handle_digilocker_callback))
-            .route("/digilocker/status", web::get().to(get_digilocker_status)),
+            .route("/digilocker/status", web::get().to(get_digilocker_status))
+            .route("/live-preflight", web::get().to(get_live_preflight)),
     );
 }
 
@@ -1313,4 +1314,87 @@ pub async fn get_digilocker_status(
             "status": "not_started"
         }))),
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/onboarding/live-preflight",
+    responses(
+        (status = 200, description = "Live mode preflight checklist")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_live_preflight(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let row = sqlx::query(
+        r#"
+        SELECT onboarding_status, status, webhook_url
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let onboarding_status: String = row.get("onboarding_status");
+    let merchant_status: String = row.get("status");
+    let webhook_url: Option<String> = row.get("webhook_url");
+
+    let bank_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::BIGINT
+        FROM bank_accounts
+        WHERE merchant_id = $1 AND verification_status = 'verified'
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    let team_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::BIGINT
+        FROM users
+        WHERE merchant_id = $1 AND status IN ('active', 'pending')
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    let mut blockers = Vec::<String>::new();
+    if onboarding_status != "approved" {
+        blockers.push(format!("Onboarding status is `{onboarding_status}`; require `approved`."));
+    }
+    if merchant_status != "active" {
+        blockers.push(format!("Merchant status is `{merchant_status}`; require `active`."));
+    }
+    if webhook_url.as_deref().unwrap_or("").trim().is_empty() {
+        blockers.push("Webhook URL missing.".to_string());
+    }
+    if bank_count == 0 {
+        blockers.push("No verified bank account found.".to_string());
+    }
+
+    let checks = serde_json::json!({
+        "onboarding_approved": onboarding_status == "approved",
+        "merchant_active": merchant_status == "active",
+        "webhook_configured": webhook_url.as_deref().unwrap_or("").trim().len() > 0,
+        "verified_bank_account": bank_count > 0,
+        "team_present": team_count > 0
+    });
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "can_go_live": blockers.is_empty(),
+        "blockers": blockers,
+        "checks": checks
+    })))
 }

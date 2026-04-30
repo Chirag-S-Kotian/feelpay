@@ -1,6 +1,7 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -13,6 +14,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/settlements")
             .route("", web::get().to(list_settlements))
             .route("/balance", web::get().to(get_settlement_stats))
+            .route("/reconciliation", web::get().to(get_reconciliation_summary))
             .route("/{id}", web::get().to(get_settlement)),
     );
 }
@@ -266,6 +268,62 @@ pub async fn get_settlement_stats(
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "available": available,
         "pending": pending
+    })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/settlements/reconciliation",
+    responses(
+        (status = 200, description = "Settlement reconciliation summary")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_reconciliation_summary(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT
+            COALESCE(SUM(amount), 0)::BIGINT AS gross,
+            COALESCE(SUM(fee_amount), 0)::BIGINT AS fees,
+            COALESCE(SUM(net_amount), 0)::BIGINT AS net,
+            COUNT(*) FILTER (WHERE status = 'completed')::BIGINT AS completed_count,
+            COUNT(*) FILTER (WHERE status = 'pending')::BIGINT AS pending_count,
+            COUNT(*) FILTER (WHERE status = 'failed')::BIGINT AS failed_count
+        FROM settlements
+        WHERE merchant_id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let gross: i64 = row.get("gross");
+    let fees: i64 = row.get("fees");
+    let net: i64 = row.get("net");
+    let tax = ((fees as f64) * 0.18_f64).round() as i64;
+    let completed_count: i64 = row.get("completed_count");
+    let pending_count: i64 = row.get("pending_count");
+    let failed_count: i64 = row.get("failed_count");
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "gross": gross,
+        "fees": fees,
+        "tax": tax,
+        "net": net,
+        "variance": gross - (fees + tax + net),
+        "counts": {
+            "completed": completed_count,
+            "pending": pending_count,
+            "failed": failed_count
+        }
     })))
 }
 

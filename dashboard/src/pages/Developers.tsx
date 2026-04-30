@@ -13,6 +13,13 @@ import {
 import { apiRequest, getEnvironmentMode, setEnvironmentMode, type EnvironmentMode } from '../hooks/useApi';
 
 type SnippetId = 'curl' | 'node' | 'python' | 'webhook';
+type WebhookEvent = {
+  id: string;
+  event_type: string;
+  status: string;
+  attempts: number;
+  created_at: string;
+};
 
 const API_BASE_BY_MODE: Record<EnvironmentMode, string> = {
   test: 'https://sandbox-api.feelpay.in',
@@ -50,6 +57,25 @@ export default function Developers() {
   const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedSnippet, setSelectedSnippet] = useState<SnippetId>('curl');
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
+  const [apiLogs, setApiLogs] = useState<Array<{
+    request_id: string;
+    endpoint: string;
+    status: string;
+    actor_id?: string | null;
+    ip_address?: string | null;
+    created_at: string;
+  }>>([]);
+  const [apiLogStatus, setApiLogStatus] = useState('all');
+  const [apiLogEndpoint, setApiLogEndpoint] = useState('');
+  const [selectedLog, setSelectedLog] = useState<{
+    request_id: string;
+    endpoint: string;
+    status: string;
+    actor_id?: string | null;
+    ip_address?: string | null;
+    created_at: string;
+  } | null>(null);
 
   const baseUrl = API_BASE_BY_MODE[mode];
   const sampleIdempotencyKey = 'pay_01HV7M5YVQX2S2AZ8WMK6QF7SZ';
@@ -66,10 +92,52 @@ export default function Developers() {
     }
   };
 
+  const loadWebhookEvents = async () => {
+    try {
+      const data = await apiRequest<{ events?: WebhookEvent[] }>(
+        'GET',
+        '/v1/developers/webhooks',
+        undefined,
+        undefined,
+        { cacheMs: 20_000 },
+      );
+      setWebhookEvents(data.events || []);
+    } catch {
+      setWebhookEvents([]);
+    }
+  };
+
+  const loadApiLogs = async () => {
+    const qs = new URLSearchParams();
+    if (apiLogStatus !== 'all') qs.set('status', apiLogStatus);
+    if (apiLogEndpoint.trim()) qs.set('endpoint', apiLogEndpoint.trim());
+    const data = await apiRequest<{ logs?: Array<{
+      request_id: string;
+      endpoint: string;
+      status: string;
+      actor_id?: string | null;
+      ip_address?: string | null;
+      created_at: string;
+    }> }>(
+      'GET',
+      `/v1/developers/api-logs${qs.toString() ? `?${qs.toString()}` : ''}`,
+      undefined,
+      undefined,
+      { cacheMs: 12_000 },
+    );
+    setApiLogs(data.logs || []);
+  };
+
   useEffect(() => {
     setEnvironmentMode(mode);
     void loadKeys();
+    void loadWebhookEvents();
+    void loadApiLogs();
   }, [mode]);
+
+  useEffect(() => {
+    void loadApiLogs();
+  }, [apiLogStatus, apiLogEndpoint]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -303,6 +371,85 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
       </section>
 
       <section className="card">
+        <div className="dev-section-title"><Webhook size={18} /> Recent Webhook Deliveries</div>
+        <div className="error-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Status</th>
+                <th>Attempts</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {webhookEvents.slice(0, 10).map((item) => (
+                <tr key={item.id}>
+                  <td><code>{item.event_type}</code></td>
+                  <td>{item.status}</td>
+                  <td>{item.attempts}</td>
+                  <td>{new Date(item.created_at).toLocaleString('en-IN')}</td>
+                </tr>
+              ))}
+              {webhookEvents.length === 0 && (
+                <tr>
+                  <td colSpan={4}>No webhook logs yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="dev-section-title">API Activity Logs</div>
+        <div className="dev-actions" style={{ marginBottom: 10 }}>
+          <select value={apiLogStatus} onChange={(e) => setApiLogStatus(e.target.value)}>
+            <option value="all">All status</option>
+            <option value="success">Success</option>
+            <option value="failed">Failed</option>
+          </select>
+          <input
+            value={apiLogEndpoint}
+            onChange={(e) => setApiLogEndpoint(e.target.value)}
+            placeholder="Filter by endpoint/action"
+            style={{ minWidth: 260 }}
+          />
+        </div>
+        <div className="error-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Request ID</th>
+                <th>Endpoint</th>
+                <th>Status</th>
+                <th>Time</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apiLogs.slice(0, 20).map((item) => (
+                <tr key={item.request_id}>
+                  <td><code>{item.request_id.slice(0, 12)}...</code></td>
+                  <td>{item.endpoint}</td>
+                  <td>{item.status}</td>
+                  <td>{new Date(item.created_at).toLocaleString('en-IN')}</td>
+                  <td>
+                    <button className="btn-secondary" onClick={() => setSelectedLog(item)}>View</button>
+                  </td>
+                </tr>
+              ))}
+              {apiLogs.length === 0 && (
+                <tr>
+                  <td colSpan={5}>No API logs found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
         <div className="dev-section-title">Error Handling Matrix</div>
         <div className="error-table-wrap">
           <table className="data-table">
@@ -325,6 +472,24 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
           </table>
         </div>
       </section>
+
+      {selectedLog && (
+        <div className="modal-overlay" onClick={() => setSelectedLog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>API Log Detail</h3>
+            <p><strong>Request ID:</strong> <code>{selectedLog.request_id}</code></p>
+            <p><strong>Endpoint:</strong> {selectedLog.endpoint}</p>
+            <p><strong>Status:</strong> {selectedLog.status}</p>
+            <p><strong>Actor:</strong> {selectedLog.actor_id || '-'}</p>
+            <p><strong>IP:</strong> {selectedLog.ip_address || '-'}</p>
+            <p><strong>Created:</strong> {new Date(selectedLog.created_at).toLocaleString('en-IN')}</p>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => copyToClipboard(selectedLog.request_id, 'request-id')}>Copy Request ID</button>
+              <button className="btn-primary" onClick={() => setSelectedLog(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .dev-hero {
@@ -460,6 +625,29 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
         }
         .error-table-wrap {
           overflow-x: auto;
+        }
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(4, 10, 22, 0.75);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+          padding: 16px;
+        }
+        .modal-content {
+          width: min(560px, 100%);
+          border: 1px solid rgba(98, 163, 253, 0.3);
+          border-radius: 14px;
+          background: rgba(11, 28, 53, 0.96);
+          padding: 18px;
+        }
+        .modal-actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin-top: 12px;
         }
         @media (max-width: 860px) {
           .dev-hero {

@@ -35,6 +35,15 @@ interface SecuritySettings {
   updated_at: string;
 }
 
+interface TeamMember {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  status: string;
+  created_at: string;
+  role: 'merchant_admin' | 'merchant_staff' | 'merchant_viewer' | string;
+}
+
 const EVENTS = [
   'payment.success',
   'payment.failed',
@@ -56,6 +65,10 @@ export default function Settings() {
   const [copied, setCopied] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>('');
   const [warning, setWarning] = useState<string>('');
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteRole, setInviteRole] = useState<'merchant_admin' | 'merchant_staff' | 'merchant_viewer'>('merchant_staff');
 
   const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
@@ -70,12 +83,13 @@ export default function Settings() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [profileRes, keysRes, securityResult] = await Promise.all([
+      const [profileRes, keysRes, securityResult, teamRes] = await Promise.all([
         apiRequest<MerchantProfile>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 30_000 }),
         apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys', undefined, undefined, { cacheMs: 30_000 }),
         apiRequest<SecuritySettings>('GET', '/v1/merchants/settings/security', undefined, undefined, { cacheMs: 30_000 })
           .then((value) => ({ ok: true as const, value }))
           .catch((err: unknown) => ({ ok: false as const, err })),
+        apiRequest<TeamMember[]>('GET', '/v1/merchants/team', undefined, undefined, { cacheMs: 20_000 }).catch(() => []),
       ]);
       let securityRes: SecuritySettings;
       if (securityResult.ok) {
@@ -105,6 +119,7 @@ export default function Settings() {
       setBusinessName(profileRes.business_name || '');
       setBusinessType((profileRes.business_type || 'individual').toLowerCase());
       setWebhookUrl(profileRes.webhook_url || '');
+      setTeam(teamRes || []);
     } finally {
       setLoading(false);
     }
@@ -192,6 +207,40 @@ export default function Settings() {
       }
       setWarning(msg || 'Failed to send test webhook.');
     }
+  };
+
+  const inviteTeamMember = async () => {
+    if (!inviteEmail.trim() || !inviteName.trim()) {
+      setWarning('Invite name + email required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiRequest('POST', '/v1/merchants/team/invite', {
+        email: inviteEmail.trim(),
+        full_name: inviteName.trim(),
+        role: inviteRole,
+      });
+      setInviteEmail('');
+      setInviteName('');
+      await loadAll();
+      setNotice('Team member invited.');
+      setWarning('');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateRole = async (userId: string, role: string) => {
+    await apiRequest('PUT', `/v1/merchants/team/${userId}/role`, { role });
+    await loadAll();
+    setNotice('Team role updated.');
+  };
+
+  const removeTeamMember = async (userId: string) => {
+    await apiRequest('DELETE', `/v1/merchants/team/${userId}`);
+    await loadAll();
+    setNotice('Team member removed.');
   };
 
   if (loading) {
@@ -346,6 +395,73 @@ export default function Settings() {
         </section>
       </div>
 
+      <div className="settings-grid" style={{ marginTop: 16 }}>
+        <section className="card">
+          <h3 className="section-title"><ShieldCheck size={17} /> Team & Access Control</h3>
+          <div className="ops-grid">
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label>Member Name</label>
+              <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Jane Doe" />
+            </div>
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label>Member Email</label>
+              <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="jane@company.com" />
+            </div>
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label>Role</label>
+              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as 'merchant_admin' | 'merchant_staff' | 'merchant_viewer')}>
+                <option value="merchant_admin">Admin</option>
+                <option value="merchant_staff">Staff</option>
+                <option value="merchant_viewer">Viewer</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'end' }}>
+              <button className="btn-primary" style={{ width: '100%' }} onClick={() => void inviteTeamMember()} disabled={saving}>
+                Invite Team Member
+              </button>
+            </div>
+          </div>
+
+          <div className="error-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {team.map((member) => (
+                  <tr key={member.id}>
+                    <td>{member.full_name || '-'}</td>
+                    <td>{member.email}</td>
+                    <td>
+                      <select value={member.role} onChange={(e) => void updateRole(member.id, e.target.value)}>
+                        <option value="merchant_admin">Admin</option>
+                        <option value="merchant_staff">Staff</option>
+                        <option value="merchant_viewer">Viewer</option>
+                      </select>
+                    </td>
+                    <td>{member.status}</td>
+                    <td>
+                      <button className="btn-secondary" onClick={() => void removeTeamMember(member.id)}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+                {team.length === 0 && (
+                  <tr>
+                    <td colSpan={5}>No team members yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
       <style>{`
         .settings-grid {
           display: grid;
@@ -459,6 +575,9 @@ export default function Settings() {
           margin-top: 8px;
           font-size: 12px;
           color: #9ebbe0;
+        }
+        .error-table-wrap {
+          overflow-x: auto;
         }
       `}</style>
     </div>

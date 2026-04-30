@@ -22,6 +22,12 @@ type PaymentRow = {
 };
 
 type PaymentsResponse = { data: PaymentRow[] };
+type AlertItem = {
+  type: string;
+  severity: 'warning' | 'error' | 'info';
+  message: string;
+  action_url?: string;
+};
 
 function MiniChart({ data, color = 'var(--fp-primary)' }: { data: VolumePoint[]; color?: string }) {
   if (!data.length) return null;
@@ -53,6 +59,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [volume, setVolume] = useState<VolumePoint[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -61,14 +68,16 @@ export default function Dashboard() {
       setLoading(true);
       setError('');
       try {
-        const [s, v, p] = await Promise.all([
+        const [s, v, p, a] = await Promise.all([
           apiRequest<Summary>('GET', '/v1/analytics/summary', undefined, null, { useApiKey: true }),
           apiRequest<{ chart: VolumePoint[] }>('GET', '/v1/analytics/volume', undefined, null, { useApiKey: true }),
           apiRequest<PaymentsResponse>('GET', '/v1/payments?limit=6', undefined, null, { useApiKey: true }),
+          apiRequest<{ alerts: AlertItem[] }>('GET', '/v1/analytics/alerts', undefined, null, { useApiKey: true }).catch(() => ({ alerts: [] })),
         ]);
         setSummary(s);
         setVolume(v.chart || []);
         setPayments((p.data || []).slice(0, 6));
+        setAlerts(a.alerts || []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');
       } finally {
@@ -110,6 +119,23 @@ export default function Dashboard() {
       </div>
 
       {error && <div className="card" style={{ color: 'var(--fp-danger)', marginBottom: 16 }}>{error}</div>}
+      {alerts.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginBottom: 12 }}>Action Required</h3>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {alerts.map((item) => (
+              <button
+                key={item.type}
+                className="btn btn-secondary"
+                style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                onClick={() => item.action_url && navigate(item.action_url.replace('/dashboard', ''))}
+              >
+                {item.message}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="stats-grid">
         {stats.map((s) => (
