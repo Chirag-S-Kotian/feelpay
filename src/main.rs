@@ -207,7 +207,13 @@ async fn main() -> std::io::Result<()> {
                     .add(("x-deprecated", "false"))
                     .add(("x-deprecation-notice", ""))
                     .add(("x-content-type-options", "nosniff"))
-                    .add(("referrer-policy", "strict-origin-when-cross-origin")),
+                    .add(("x-frame-options", "DENY"))
+                    .add(("referrer-policy", "strict-origin-when-cross-origin"))
+                    .add((
+                        "permissions-policy",
+                        "camera=(), microphone=(), geolocation=(), payment=()",
+                    ))
+                    .add(("content-security-policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")),
             )
             .wrap(cors)
             .wrap(rate_limiter.clone())

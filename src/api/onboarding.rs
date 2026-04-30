@@ -13,14 +13,11 @@ use crate::state::AppState;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/onboarding")
+        web::scope("")
             .route("/kyc", web::post().to(submit_kyc))
             .route("/status", web::get().to(onboarding_status))
             .route("/bank-account", web::post().to(submit_bank_account))
-            .route(
-                "/registration/step",
-                web::post().to(update_registration_step),
-            )
+            .route("/registration/step", web::post().to(update_registration_step))
             .route(
                 "/registration/progress",
                 web::get().to(get_registration_progress),
