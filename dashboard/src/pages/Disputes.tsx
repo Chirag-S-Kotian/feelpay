@@ -152,10 +152,12 @@ export default function Disputes() {
       {showEvidenceModal && (
         <div className="modal-overlay" onClick={() => setShowEvidenceModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-kicker">Chargeback Defense</div>
             <h3>Upload Evidence</h3>
+            <p className="modal-subtitle">Send supporting docs and context to strengthen your dispute response.</p>
             {error && <div className="modal-error">{error}</div>}
             {actionableDisputes.length === 0 && (
-              <div className="file-count">
+              <div className="modal-hint">
                 No open disputes right now. Add dispute via webhook/test flow first.
               </div>
             )}
@@ -178,16 +180,20 @@ export default function Disputes() {
             <textarea
               value={evidenceText}
               onChange={e => setEvidenceText(e.target.value)}
-              placeholder="Explain why charge is valid."
+              placeholder="Explain why charge valid. Add order timeline, delivery proof, customer communication."
               rows={4}
             />
             <label>Evidence files</label>
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.png,.jpg,.jpeg,.txt"
-              onChange={e => setEvidenceFiles(Array.from(e.target.files || []))}
-            />
+            <label className="file-drop">
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.txt"
+                onChange={e => setEvidenceFiles(Array.from(e.target.files || []))}
+              />
+              <span className="file-drop-title">Choose files or drag into picker</span>
+              <span className="file-drop-sub">PDF, PNG, JPG, TXT</span>
+            </label>
             <div className="file-count">{evidenceFiles.length} file(s) selected</div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowEvidenceModal(false)}>
@@ -218,17 +224,35 @@ export default function Disputes() {
         }
         .modal-content {
           width: min(620px, 100%);
-          background: #142746;
-          border: 1px solid rgba(77, 141, 235, 0.35);
-          border-radius: 14px;
-          padding: 18px;
+          background: radial-gradient(140% 160% at 20% 0%, rgba(34, 85, 152, 0.36), rgba(16, 38, 74, 0.98));
+          border: 1px solid rgba(108, 168, 255, 0.35);
+          border-radius: 18px;
+          padding: 20px;
           color: #e8f2ff;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 11px;
+          box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+        }
+        .modal-kicker {
+          font-size: 11px;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: #9cc3ff;
+          font-weight: 700;
         }
         .modal-content h3 {
+          margin: 0;
+          font-size: 28px;
+          font-weight: 800;
+          line-height: 1.05;
+          color: #f0f6ff;
+        }
+        .modal-subtitle {
           margin: 0 0 2px;
+          font-size: 13px;
+          color: #a8c4ec;
+          line-height: 1.5;
         }
         .modal-content label {
           font-size: 13px;
@@ -244,20 +268,68 @@ export default function Disputes() {
           border: 1px solid rgba(91, 154, 247, 0.34);
           background: linear-gradient(180deg, rgba(17, 41, 77, 0.94), rgba(12, 29, 56, 0.94));
           color: #eaf3ff;
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .modal-content textarea:focus,
+        .modal-content select:focus {
+          border-color: rgba(122, 182, 255, 0.95);
+          box-shadow: 0 0 0 3px rgba(77, 141, 235, 0.2);
         }
         .modal-content textarea {
           resize: vertical;
           min-height: 100px;
         }
+        .modal-content textarea::placeholder {
+          color: #93b2de;
+        }
+        .file-drop {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border: 1px dashed rgba(122, 182, 255, 0.55);
+          border-radius: 12px;
+          min-height: 84px;
+          padding: 12px;
+          background: linear-gradient(180deg, rgba(22, 51, 92, 0.9), rgba(16, 38, 70, 0.9));
+          cursor: pointer;
+        }
+        .file-drop input[type="file"] {
+          position: absolute;
+          opacity: 0;
+          width: 1px;
+          height: 1px;
+          pointer-events: none;
+        }
+        .file-drop-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #dbe9ff;
+        }
+        .file-drop-sub {
+          font-size: 12px;
+          color: #92b4e2;
+        }
         .file-count {
           font-size: 12px;
-          color: #a8c3ea;
+          color: #b5ccef;
+        }
+        .modal-hint {
+          border: 1px solid rgba(255, 180, 85, 0.35);
+          background: rgba(255, 180, 85, 0.12);
+          color: #ffd79d;
+          border-radius: 10px;
+          padding: 9px 11px;
+          font-size: 12px;
+          font-weight: 600;
         }
         .modal-actions {
           display: flex;
           gap: 10px;
           justify-content: flex-end;
-          margin-top: 6px;
+          margin-top: 10px;
         }
         .modal-error {
           border: 1px solid rgba(247, 83, 96, 0.45);
