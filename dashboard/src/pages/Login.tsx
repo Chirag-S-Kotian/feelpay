@@ -86,55 +86,73 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-header">
-          <h1>FeelPay</h1>
-          <p>Payment Gateway</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="login-form">
-          {error && <div className="error-message">{error}</div>}
-          
-          <div className="form-group">
-            <label>Email</label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="merchant@business.com"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Password</label>
-            <div className="password-input-wrapper">
-              <input 
-                type={showPassword ? "text" : "password"} 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-              <button 
-                type="button" 
-                className="password-toggle"
-                onClick={() => setShowPassword(!showPassword)}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+        <div className="auth-shell">
+          <section className="auth-hero">
+            <div>
+              <p className="auth-kicker">Developer Platform</p>
+              <h1 className="auth-title">Build, test, ship payments fast.</h1>
+              <p className="auth-subtitle">
+                Move from sandbox to live with one flow. Same endpoints, clean keys, reliable webhooks.
+              </p>
             </div>
-          </div>
+            <div className="auth-pills">
+              <span className="auth-pill">Hosted Checkout</span>
+              <span className="auth-pill">Smart Retries</span>
+              <span className="auth-pill">Disputes + Settlements</span>
+            </div>
+          </section>
+          <section className="auth-form-wrap">
+            <div className="login-header">
+              <h1>FeelPay</h1>
+              <p>Sign in to your merchant dashboard</p>
+            </div>
 
-          <button type="submit" className="btn-primary btn-full" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
+            <form onSubmit={handleSubmit} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+              
+              <div className="form-group">
+                <label>Email</label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="merchant@business.com"
+                  required
+                />
+              </div>
 
-        <div className="login-footer">
-          <Link to="/forgot-password">Forgot password?</Link>
-          <span>•</span>
-          <Link to="/signup">Create account</Link>
+              <div className="form-group">
+                <label>Password</label>
+                <div className="password-input-wrapper">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button 
+                    type="button" 
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary btn-full" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+
+            <div className="login-footer">
+              <Link to="/forgot-password">Forgot password?</Link>
+              <span>•</span>
+              <Link to="/signup">Create account</Link>
+            </div>
+          </section>
         </div>
       </div>
     </div>

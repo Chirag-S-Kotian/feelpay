@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
   --fp-primary: #f59e0b;
@@ -1054,4 +1054,445 @@ pre {
   .stepper {
     grid-template-columns: 1fr;
   }
+}
+
+/* Mastercard redesign override */
+:root {
+  --fp-primary: #141413;
+  --fp-primary-soft: #2c2a28;
+  --fp-cta: #eb001b;
+  --fp-accent: #eb001b;
+  --fp-bg: #f5efe2;
+  --fp-bg-card: #fff9ec;
+  --fp-bg-elevated: #f2ead8;
+  --fp-bg-hover: #ece3cf;
+  --fp-border: #d5c9af;
+  --fp-text: #141413;
+  --fp-text-muted: #6b6862;
+  --fp-text-dim: #8a857d;
+  --fp-danger: #c81f2f;
+  --fp-radius: 28px;
+  --fp-radius-sm: 999px;
+  --fp-shadow: 0 16px 40px rgba(20, 20, 19, 0.08);
+  --fp-transition: 200ms ease;
+}
+
+body {
+  font-family: 'IBM Plex Sans', sans-serif;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(235, 0, 27, 0.16) 0 120px, transparent 120px),
+    radial-gradient(circle at 94% 14%, rgba(20, 20, 19, 0.08) 0 84px, transparent 84px),
+    var(--fp-bg);
+  color: var(--fp-text);
+}
+
+h1, h2, h3, .command-deck__title, .logo-text {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.sidebar {
+  background: #fff8ea;
+  border-right: 1px solid var(--fp-border);
+}
+
+.sidebar-logo {
+  border-bottom: 1px solid var(--fp-border);
+}
+
+.logo-icon {
+  border-radius: 16px;
+  color: #fff9ec;
+  background: var(--fp-primary);
+}
+
+.nav-item {
+  border-radius: 999px;
+  color: var(--fp-text-muted);
+}
+
+.nav-item:hover {
+  background: var(--fp-bg-elevated);
+  color: var(--fp-text);
+}
+
+.nav-item.active {
+  background: rgba(235, 0, 27, 0.12);
+  color: var(--fp-primary);
+}
+
+.nav-item.active::before {
+  background: var(--fp-cta);
+}
+
+.env-panel {
+  border-top: 1px solid var(--fp-border);
+}
+
+.env-badge {
+  background: rgba(235, 0, 27, 0.12);
+  color: var(--fp-primary);
+}
+
+.env-dot {
+  background: var(--fp-cta);
+}
+
+.pill-tabs,
+.mode-toggle,
+.lang-tabs {
+  background: var(--fp-bg-elevated);
+  border: 1px solid var(--fp-border);
+}
+
+.pill-tab.active,
+.mode-toggle button.active,
+.lang-tabs button.active {
+  background: #fff9ec;
+  color: var(--fp-primary);
+}
+
+.main-content {
+  background: transparent;
+}
+
+.top-header {
+  border-bottom: 1px solid var(--fp-border);
+}
+
+.notification-bell {
+  border-radius: 999px;
+  border-color: var(--fp-border);
+  background: var(--fp-bg-card);
+  color: var(--fp-primary);
+}
+
+.notification-bell:hover {
+  background: var(--fp-bg-elevated);
+}
+
+.notification-badge {
+  background: var(--fp-cta);
+}
+
+.command-deck {
+  border-radius: 36px;
+  border: 1px solid var(--fp-border);
+  background: var(--fp-bg-card);
+}
+
+.command-deck::after {
+  background: radial-gradient(circle, rgba(235, 0, 27, 0.22), transparent 65%);
+}
+
+.command-deck__meta {
+  font-family: 'Space Grotesk', sans-serif;
+  border-color: rgba(20, 20, 19, 0.2);
+  color: var(--fp-text-muted);
+}
+
+.command-deck__sub,
+.page-header p,
+.help-text,
+.login-header p,
+.stat-label {
+  color: var(--fp-text-muted);
+}
+
+.card,
+.chart-container,
+.chart-card,
+.table-card,
+.api-section,
+.docs-section,
+.webhooks-section,
+.stat-card,
+.form,
+.dispute-card,
+.login-card {
+  background: var(--fp-bg-card);
+  border: 1px solid var(--fp-border);
+  border-radius: var(--fp-radius);
+  box-shadow: var(--fp-shadow);
+}
+
+.dispute-banner {
+  border-color: rgba(235, 0, 27, 0.35);
+  background: rgba(235, 0, 27, 0.06);
+}
+
+.dispute-banner__kicker {
+  color: var(--fp-cta);
+}
+
+.dispute-card__row strong {
+  color: var(--fp-primary);
+}
+
+.dispute-card__row code,
+.key-row code,
+.code-block {
+  background: #f6efdf;
+  border-color: var(--fp-border);
+  color: var(--fp-primary);
+}
+
+.data-table th,
+table th {
+  color: var(--fp-text-muted);
+  border-bottom-color: var(--fp-border);
+}
+
+.data-table td,
+table td {
+  border-bottom-color: #e7dcc3;
+}
+
+.data-table tr:hover td,
+table tr:hover td {
+  background: #f9f2e3;
+}
+
+.btn,
+.btn-primary,
+.btn-secondary {
+  border-radius: 999px;
+}
+
+.btn-primary {
+  background: var(--fp-cta);
+  color: #fff9ec;
+}
+
+.btn-primary:hover {
+  filter: brightness(0.96);
+}
+
+.btn-secondary {
+  background: #fff9ec;
+  color: var(--fp-primary);
+  border-color: var(--fp-border);
+}
+
+.btn-secondary:hover {
+  background: var(--fp-bg-elevated);
+}
+
+input,
+select,
+textarea {
+  color: var(--fp-primary);
+}
+
+.input-group input,
+.input-group select,
+.form-group input,
+.form-group select,
+.search-box input,
+.period-select,
+.search-box,
+.key-row button,
+.mobile-nav-toggle {
+  border-radius: 999px;
+  border-color: var(--fp-border);
+  background: #fff9ec;
+  color: var(--fp-primary);
+}
+
+.password-toggle:hover,
+.key-row button:hover {
+  background: var(--fp-bg-elevated);
+}
+
+.event,
+.step,
+.review-box {
+  border-color: var(--fp-border);
+  background: #fff9ec;
+}
+
+.step.active {
+  border-color: var(--fp-cta);
+  background: rgba(235, 0, 27, 0.08);
+}
+
+.step-number {
+  background: var(--fp-bg-elevated);
+}
+
+.login-page {
+  background:
+    radial-gradient(circle at 86% 14%, rgba(235, 0, 27, 0.18) 0 150px, transparent 150px),
+    radial-gradient(circle at 90% 21%, rgba(20, 20, 19, 0.11) 0 98px, transparent 98px),
+    var(--fp-bg);
+}
+
+.login-card {
+  width: min(980px, 100%);
+  padding: 0;
+  overflow: hidden;
+}
+
+.auth-shell {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  min-height: 620px;
+}
+
+.auth-hero {
+  background: #fff3d4;
+  padding: 56px 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid var(--fp-border);
+}
+
+.auth-kicker {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fp-text-muted);
+  font-weight: 600;
+}
+
+.auth-title {
+  margin-top: 14px;
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  line-height: 0.95;
+}
+
+.auth-subtitle {
+  margin-top: 18px;
+  color: var(--fp-text-muted);
+  max-width: 34ch;
+}
+
+.auth-pills {
+  margin-top: 26px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auth-pill {
+  border: 1px solid var(--fp-border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: #fff9ec;
+  color: var(--fp-primary);
+  font-size: 0.85rem;
+}
+
+.auth-form-wrap {
+  padding: 40px 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.login-form .btn-primary {
+  margin-top: 4px;
+}
+
+.error-message {
+  border-color: rgba(235, 0, 27, 0.34);
+  background: rgba(235, 0, 27, 0.1);
+  color: #991627;
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-hero {
+    border-right: none;
+    border-bottom: 1px solid var(--fp-border);
+    padding: 32px 24px;
+  }
+
+  .auth-form-wrap {
+    padding: 28px 20px;
+  }
+}
+
+/* Mastercard hotfix: kill leftover dark form styles from page-local style blocks */
+.form-group input,
+.form-group select,
+.form-group textarea,
+.input-group input,
+.input-group select,
+.payment-link-field .form-input,
+.customers-field .form-input,
+.customers-toolbar-select,
+.customers-search-wrap .form-input,
+.exports-page input,
+.exports-page select,
+.modal-content textarea,
+.modal-content select,
+.modal-content input[type='file'],
+.user-selector select,
+.search-box input,
+.period-select {
+  background: #fff9ec !important;
+  color: #141413 !important;
+  border: 1px solid #d5c9af !important;
+  box-shadow: none !important;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder,
+.input-group input::placeholder,
+.payment-link-field .form-input::placeholder,
+.customers-field .form-input::placeholder,
+.customers-search-wrap .form-input::placeholder,
+.exports-page input::placeholder,
+.modal-content textarea::placeholder {
+  color: #8a857d !important;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus,
+.input-group input:focus,
+.input-group select:focus,
+.payment-link-field .form-input:focus,
+.customers-field .form-input:focus,
+.customers-toolbar-select:focus,
+.customers-search-wrap .form-input:focus,
+.exports-page input:focus,
+.exports-page select:focus,
+.modal-content textarea:focus,
+.modal-content select:focus,
+.user-selector select:focus,
+.search-box input:focus,
+.period-select:focus {
+  border-color: #eb001b !important;
+  outline: 2px solid rgba(235, 0, 27, 0.16) !important;
+  outline-offset: 1px !important;
+}
+
+select option {
+  background: #fff9ec;
+  color: #141413;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #141413 !important;
+  -webkit-box-shadow: 0 0 0 1000px #fff9ec inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.code-block,
+pre,
+pre code,
+.key-row code {
+  background: #f6efdf !important;
+  color: #141413 !important;
+  border-color: #d5c9af !important;
 }
