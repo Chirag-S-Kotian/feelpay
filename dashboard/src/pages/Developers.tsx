@@ -1,13 +1,58 @@
-import { useEffect, useState } from 'react';
-import { Copy, Check, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  BookOpen,
+  Check,
+  Copy,
+  KeyRound,
+  RefreshCw,
+  Rocket,
+  ShieldCheck,
+  TerminalSquare,
+  Webhook,
+} from 'lucide-react';
 import { apiRequest, getEnvironmentMode, setEnvironmentMode, type EnvironmentMode } from '../hooks/useApi';
+
+type SnippetId = 'curl' | 'node' | 'python' | 'webhook';
+
+const API_BASE_BY_MODE: Record<EnvironmentMode, string> = {
+  test: 'https://sandbox-api.feelpay.in',
+  live: 'https://api.feelpay.in',
+};
+
+const USE_CASES = [
+  {
+    title: 'One-time payments',
+    desc: 'Create payment, track status, capture/refund with idempotent retries.',
+    endpoints: ['POST /v1/payments', 'GET /v1/payments/{id}', 'POST /v1/payments/{id}/refund'],
+  },
+  {
+    title: 'Subscriptions and mandates',
+    desc: 'Recurring billing with pause/resume/cancel lifecycle APIs.',
+    endpoints: ['POST /v1/subscriptions', 'POST /v1/mandates', 'POST /v1/subscriptions/{id}/pause'],
+  },
+  {
+    title: 'Settlement and reconciliation',
+    desc: 'Fetch settlement list, balance, exports, and automate reporting.',
+    endpoints: ['GET /v1/settlements', 'GET /v1/settlements/balance', 'GET /v1/merchants/{id}/exports'],
+  },
+];
+
+const ERROR_GUIDE = [
+  { code: '400', meaning: 'Invalid payload, state, or validation failed', action: 'Fix request fields, retry with corrected body' },
+  { code: '401', meaning: 'Missing/invalid API key or auth context', action: 'Verify `x-api-key`, auth token, and env mode' },
+  { code: '404', meaning: 'Resource/route not found', action: 'Check path params, merchant scope, and endpoint version' },
+  { code: '409', meaning: 'Idempotency key reused with different payload', action: 'Reuse key only for exact same body' },
+  { code: '500', meaning: 'Server/database failure', action: 'Retry with same idempotency key; alert support if persistent' },
+];
 
 export default function Developers() {
   const [apiKey, setApiKey] = useState('Loading...');
-  const [secretKey] = useState('Hidden for security');
-  const [showSecret, setShowSecret] = useState(false);
   const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
   const [copied, setCopied] = useState<string | null>(null);
+  const [selectedSnippet, setSelectedSnippet] = useState<SnippetId>('curl');
+
+  const baseUrl = API_BASE_BY_MODE[mode];
+  const sampleIdempotencyKey = 'pay_01HV7M5YVQX2S2AZ8WMK6QF7SZ';
 
   const loadKeys = async () => {
     const data = await apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys');
@@ -29,7 +74,7 @@ export default function Developers() {
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
+    setTimeout(() => setCopied(null), 1600);
   };
 
   const regenerateKeys = async () => {
@@ -37,140 +82,391 @@ export default function Developers() {
     await loadKeys();
   };
 
-  const codeExamples: Record<string, string> = {
-    curl: `curl -X POST https://api.feelpay.in/v1/payments \\
-  -H "X-Api-Key: ${apiKey}" \\
+  const snippets = useMemo<Record<SnippetId, string>>(
+    () => ({
+      curl: `curl -X POST ${baseUrl}/v1/payments \\
+  -H "x-api-key: ${apiKey}" \\
+  -H "x-feelpay-environment: ${mode}" \\
+  -H "idempotency-key: ${sampleIdempotencyKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "order_id": "ord_123",
     "amount": 50000,
     "currency": "INR",
-    "payment_method": {
-      "type": "card",
-      "card": {
-        "number": "4111111111111111",
+    "order_id": "ORD-2026-0001",
+    "customer_email": "customer@example.com",
+    "customer_phone": "+919999999999",
+    "description": "Premium plan payment",
+    "return_url": "https://merchant.example/return",
+    "method_data": {
+      "method": "card",
+      "data": {
+        "card_number": "4111111111111111",
         "expiry_month": 12,
-        "expiry_year": 2027,
+        "expiry_year": 2028,
         "cvv": "123"
       }
     }
   }'`,
-    node: `const feelpay = require('feelpay')('${apiKey}', '${secretKey}');
-
-const payment = await feelpay.payments.create({
-  order_id: 'ord_123',
+      node: `const payload = {
   amount: 50000,
   currency: 'INR',
-  payment_method: {
-    type: 'card',
-    card: {
-      number: '4111111111111111',
+  order_id: 'ORD-2026-0001',
+  customer_email: 'customer@example.com',
+  customer_phone: '+919999999999',
+  description: 'Premium plan payment',
+  return_url: 'https://merchant.example/return',
+  method_data: {
+    method: 'card',
+    data: {
+      card_number: '4111111111111111',
       expiry_month: 12,
-      expiry_year: 2027,
-      cvv: '123'
-    }
-  }
-});`,
-    python: `import feelpay
+      expiry_year: 2028,
+      cvv: '123',
+    },
+  },
+};
 
-client = feelpay.Client('${apiKey}', '${secretKey}')
+const res = await fetch('${baseUrl}/v1/payments', {
+  method: 'POST',
+  headers: {
+    'x-api-key': '${apiKey}',
+    'x-feelpay-environment': '${mode}',
+    'idempotency-key': '${sampleIdempotencyKey}',
+    'content-type': 'application/json',
+  },
+  body: JSON.stringify(payload),
+});
 
-payment = client.payments.create(
-    order_id='ord_123',
-    amount=50000,
-    currency='INR',
-    payment_method={
-        'type': 'card',
-        'card': {
-            'number': '4111111111111111',
-            'expiry_month': 12,
-            'expiry_year': 2027,
-            'cvv': '123'
+console.log(res.status, await res.json());`,
+      python: `import requests
+
+url = "${baseUrl}/v1/payments"
+headers = {
+    "x-api-key": "${apiKey}",
+    "x-feelpay-environment": "${mode}",
+    "idempotency-key": "${sampleIdempotencyKey}",
+    "content-type": "application/json",
+}
+payload = {
+    "amount": 50000,
+    "currency": "INR",
+    "order_id": "ORD-2026-0001",
+    "customer_email": "customer@example.com",
+    "customer_phone": "+919999999999",
+    "description": "Premium plan payment",
+    "return_url": "https://merchant.example/return",
+    "method_data": {
+        "method": "card",
+        "data": {
+            "card_number": "4111111111111111",
+            "expiry_month": 12,
+            "expiry_year": 2028,
+            "cvv": "123"
         }
     }
-)`
-  };
+}
 
-  const [selectedLang, setSelectedLang] = useState('curl');
+r = requests.post(url, headers=headers, json=payload, timeout=20)
+print(r.status_code, r.json())`,
+      webhook: `import crypto from 'crypto';
+
+function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
+  const expected = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(rawBody)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(expected, 'hex'),
+    Buffer.from(signature, 'hex'),
+  );
+}
+
+// Verify header: X-FeelPay-Signature
+// Use raw request body. Do not parse before signature check.`,
+    }),
+    [apiKey, baseUrl, mode],
+  );
 
   return (
     <div className="page">
-      <h1>Developer Settings</h1>
+      <div className="dev-hero">
+        <div>
+          <div className="dev-kicker">Developer Platform</div>
+          <h1>Build, test, ship payments fast.</h1>
+          <p>Stripe/Razorpay-style integration hub: keys, examples, use-cases, reliability and go-live controls.</p>
+        </div>
+        <div className="mode-toggle">
+          <button className={mode === 'test' ? 'active' : ''} onClick={() => setMode('test')}>Test Mode</button>
+          <button className={mode === 'live' ? 'active' : ''} onClick={() => setMode('live')}>Live Mode</button>
+        </div>
+      </div>
 
       <section className="api-section">
-        <h2>API Keys</h2>
-        <div className="mode-toggle">
-          <button 
-            className={mode === 'test' ? 'active' : ''} 
-            onClick={() => setMode('test')}
-          >
-            Test Mode
-          </button>
-          <button 
-            className={mode === 'live' ? 'active' : ''} 
-            onClick={() => setMode('live')}
-          >
-            Live Mode
-          </button>
-        </div>
-
-        <div className="key-card">
-          <label>API Key</label>
-          <div className="key-row">
-            <code>{apiKey}</code>
-            <button onClick={() => copyToClipboard(apiKey, 'key')}>
-              {copied === 'key' ? <Check size={16} /> : <Copy size={16} />}
-            </button>
+        <div className="dev-section-title"><KeyRound size={18} /> Credentials & Base URL</div>
+        <div className="dev-grid">
+          <div className="dev-card">
+            <label>Base URL</label>
+            <div className="key-row">
+              <code>{baseUrl}</code>
+              <button onClick={() => copyToClipboard(baseUrl, 'base')}>
+                {copied === 'base' ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="dev-card">
+            <label>API Key</label>
+            <div className="key-row">
+              <code>{apiKey}</code>
+              <button onClick={() => copyToClipboard(apiKey, 'key')}>
+                {copied === 'key' ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
           </div>
         </div>
-
-        <div className="key-card">
-          <label>Secret Key</label>
-          <div className="key-row">
-            <code>{showSecret ? secretKey : '••••••••••••••••••••••••'}</code>
-            <button onClick={() => setShowSecret(!showSecret)}>
-              {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-            <button onClick={() => copyToClipboard(secretKey, 'secret')}>
-              {copied === 'secret' ? <Check size={16} /> : <Copy size={16} />}
-            </button>
-          </div>
+        <div className="dev-actions">
+          <button className="btn-secondary" onClick={regenerateKeys}>
+            <RefreshCw size={16} /> Rotate API Key
+          </button>
+          <p className="help-text">Secret keys not re-displayed. Rotate immediately if leaked.</p>
         </div>
-
-        <button className="btn-secondary" onClick={regenerateKeys}>
-          <RefreshCw size={16} /> Regenerate Keys
-        </button>
       </section>
 
       <section className="docs-section">
-        <h2>Integration</h2>
+        <div className="dev-section-title"><TerminalSquare size={18} /> Quickstart</div>
+        <ul className="dev-bullets">
+          <li>Auth via <code>x-api-key</code>.</li>
+          <li>POST retries must include stable <code>idempotency-key</code>.</li>
+          <li>Amount in paise (<code>50000 = INR 500.00</code>).</li>
+          <li>Set <code>x-feelpay-environment</code> = <code>test</code> or <code>live</code>.</li>
+        </ul>
         <div className="lang-tabs">
-          {['curl', 'node', 'python'].map(lang => (
-            <button 
-              key={lang}
-              className={selectedLang === lang ? 'active' : ''}
-              onClick={() => setSelectedLang(lang)}
-            >
-              {lang === 'node' ? 'Node.js' : lang === 'python' ? 'Python' : 'cURL'}
+          {[
+            ['curl', 'cURL'],
+            ['node', 'Node.js'],
+            ['python', 'Python'],
+            ['webhook', 'Webhook Verify'],
+          ].map(([id, label]) => (
+            <button key={id} className={selectedSnippet === id ? 'active' : ''} onClick={() => setSelectedSnippet(id as SnippetId)}>
+              {label}
             </button>
           ))}
         </div>
         <pre className="code-block">
-          <code>{codeExamples[selectedLang]}</code>
+          <code>{snippets[selectedSnippet]}</code>
         </pre>
       </section>
 
+      <section className="card">
+        <div className="dev-section-title"><BookOpen size={18} /> Use Cases</div>
+        <div className="usecase-grid">
+          {USE_CASES.map((item) => (
+            <div key={item.title} className="usecase-card">
+              <h3>{item.title}</h3>
+              <p>{item.desc}</p>
+              <div className="endpoint-list">
+                {item.endpoints.map((ep) => (
+                  <code key={ep}>{ep}</code>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="webhooks-section">
-        <h2>Webhooks</h2>
-        <p className="help-text">Configure webhook URL in your merchant settings to receive real-time payment events.</p>
+        <div className="dev-section-title"><Webhook size={18} /> Webhooks & Security</div>
+        <div className="webhook-meta">
+          <div className="meta-item"><ShieldCheck size={16} /> Verify <code>X-FeelPay-Signature</code> with HMAC-SHA256</div>
+          <div className="meta-item"><ShieldCheck size={16} /> Store dedupe key/event id; ignore duplicate deliveries</div>
+          <div className="meta-item"><ShieldCheck size={16} /> Do not rely on event ordering; make handlers idempotent</div>
+        </div>
         <div className="webhook-events">
           <div className="event">payment.success</div>
           <div className="event">payment.failed</div>
-          <div className="event">payment.pending</div>
-          <div className="event">refund.processed</div>
-          <div className="event">settlement.completed</div>
+          <div className="event">refund.initiated</div>
+          <div className="event">settlement.processed</div>
+          <div className="event">dispute.created</div>
         </div>
       </section>
+
+      <section className="card">
+        <div className="dev-section-title"><Rocket size={18} /> Go-Live Checklist</div>
+        <div className="checklist-grid">
+          <div className="check-item">✅ Test mode flow validated end-to-end</div>
+          <div className="check-item">✅ Webhook signature verification implemented</div>
+          <div className="check-item">✅ Retry-safe idempotency keys wired on POSTs</div>
+          <div className="check-item">✅ Alerting configured for 4xx/5xx + webhook failures</div>
+          <div className="check-item">✅ API key rotation runbook documented</div>
+          <div className="check-item">✅ Refund/settlement reconciliation cron in place</div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="dev-section-title">Error Handling Matrix</div>
+        <div className="error-table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Meaning</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ERROR_GUIDE.map((item) => (
+                <tr key={item.code}>
+                  <td><code>{item.code}</code></td>
+                  <td>{item.meaning}</td>
+                  <td>{item.action}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <style>{`
+        .dev-hero {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 20px;
+          border: 1px solid rgba(108, 170, 255, 0.3);
+          border-radius: 16px;
+          padding: 20px;
+          margin-bottom: 18px;
+          background:
+            radial-gradient(140% 140% at 10% 0%, rgba(89, 152, 246, 0.2), transparent 42%),
+            radial-gradient(120% 130% at 100% 0%, rgba(245, 158, 11, 0.14), transparent 46%),
+            linear-gradient(180deg, rgba(16, 38, 72, 0.98), rgba(10, 24, 46, 0.98));
+        }
+        .dev-kicker {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.15em;
+          color: #9ec5ff;
+          margin-bottom: 6px;
+          font-weight: 700;
+        }
+        .dev-hero h1 {
+          margin: 0;
+          font-size: 32px;
+          letter-spacing: -0.02em;
+          line-height: 1.03;
+        }
+        .dev-hero p {
+          margin-top: 8px;
+          color: #a9c4e7;
+          max-width: 680px;
+        }
+        .dev-section-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 700;
+          margin-bottom: 12px;
+        }
+        .dev-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 12px;
+        }
+        .dev-card {
+          border: 1px solid rgba(97, 160, 252, 0.25);
+          border-radius: 12px;
+          padding: 12px;
+          background: rgba(17, 39, 72, 0.7);
+        }
+        .dev-card label {
+          display: block;
+          margin-bottom: 8px;
+          color: #b8cff0;
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .dev-actions {
+          margin-top: 12px;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .dev-bullets {
+          margin: 8px 0 14px 18px;
+          color: #c4d9f5;
+          display: grid;
+          gap: 6px;
+        }
+        .usecase-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 12px;
+        }
+        .usecase-card {
+          border: 1px solid rgba(99, 161, 252, 0.26);
+          background: rgba(16, 38, 70, 0.65);
+          border-radius: 12px;
+          padding: 14px;
+        }
+        .usecase-card h3 {
+          margin: 0 0 6px;
+          font-size: 18px;
+        }
+        .usecase-card p {
+          margin: 0 0 10px;
+          color: #acc7e9;
+          font-size: 14px;
+        }
+        .endpoint-list {
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+        .endpoint-list code {
+          background: rgba(7, 19, 38, 0.75);
+          border: 1px solid rgba(93, 155, 248, 0.28);
+          border-radius: 8px;
+          padding: 6px 8px;
+          color: #d0e4ff;
+          font-size: 12px;
+        }
+        .webhook-meta {
+          display: grid;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .meta-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #b9d3f4;
+          font-size: 14px;
+        }
+        .checklist-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 10px;
+        }
+        .check-item {
+          border: 1px solid rgba(102, 166, 255, 0.25);
+          background: rgba(13, 34, 62, 0.72);
+          border-radius: 10px;
+          padding: 10px 12px;
+          color: #cde2ff;
+          font-size: 14px;
+        }
+        .error-table-wrap {
+          overflow-x: auto;
+        }
+        @media (max-width: 860px) {
+          .dev-hero {
+            flex-direction: column;
+          }
+        }
+      `}</style>
     </div>
   );
 }

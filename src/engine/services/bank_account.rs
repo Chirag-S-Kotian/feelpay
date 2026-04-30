@@ -127,12 +127,104 @@ impl BankAccountService {
         })
     }
 
+    async fn ensure_schema(&self) -> Result<(), FeelPayError> {
+        // Create table if missing with encrypted column.
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS bank_accounts (
+                id UUID PRIMARY KEY,
+                merchant_id UUID NOT NULL,
+                account_holder_name TEXT NOT NULL,
+                account_number_encrypted TEXT NULL,
+                account_number TEXT NULL,
+                ifsc_code TEXT NOT NULL,
+                bank_name TEXT NULL,
+                account_type TEXT NOT NULL DEFAULT 'savings',
+                verification_status TEXT NOT NULL DEFAULT 'pending',
+                penny_drop_amount_paise INT NULL,
+                penny_drop_reference TEXT NULL,
+                is_primary BOOLEAN NOT NULL DEFAULT false,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                verified_at TIMESTAMPTZ NULL
+            )
+            "#,
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        // Legacy DB may miss encrypted column.
+        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS account_number_encrypted TEXT NULL")
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        // Legacy DB may miss account_type.
+        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'savings'")
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        // Legacy DB may miss verification fields.
+        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending'")
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS penny_drop_amount_paise INT NULL")
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS penny_drop_reference TEXT NULL")
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ NULL")
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        // Fill encrypted column from legacy plaintext when possible.
+        let legacy_rows: Vec<(Uuid, String)> = sqlx::query_as(
+            r#"
+            SELECT id, account_number
+            FROM bank_accounts
+            WHERE account_number_encrypted IS NULL
+              AND account_number IS NOT NULL
+              AND account_number <> ''
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        for (id, account_number) in legacy_rows {
+            let encrypted = self.encrypt_account_number(&account_number)?;
+            sqlx::query(
+                r#"
+                UPDATE bank_accounts
+                SET account_number_encrypted = $1,
+                    updated_at = NOW()
+                WHERE id = $2
+                "#,
+            )
+            .bind(encrypted)
+            .bind(id)
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+
     /// Add a new bank account with validation
     pub async fn add_bank_account(
         &self,
         merchant_id: Uuid,
         request: AddBankAccountRequest,
     ) -> Result<BankAccount, FeelPayError> {
+        self.ensure_schema().await?;
         // Validate IFSC code format (11 characters)
         if request.ifsc_code.len() != 11 {
             return Err(FeelPayError::BadRequest(
@@ -229,6 +321,7 @@ impl BankAccountService {
         merchant_id: Uuid,
         account_id: Uuid,
     ) -> Result<Option<BankAccount>, FeelPayError> {
+        self.ensure_schema().await?;
         let account = sqlx::query_as::<
             _,
             (
@@ -275,6 +368,7 @@ impl BankAccountService {
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<BankAccount>, i64), FeelPayError> {
+        self.ensure_schema().await?;
         // Get total count
         let (total,): (i64,) = sqlx::query_as(
             r#"
@@ -343,6 +437,7 @@ impl BankAccountService {
         account_id: Uuid,
         penny_drop_amount_paise: i32,
     ) -> Result<BankAccount, FeelPayError> {
+        self.ensure_schema().await?;
         // Get the account
         let account = self
             .get_bank_account(merchant_id, account_id)
@@ -433,6 +528,7 @@ impl BankAccountService {
         merchant_id: Uuid,
         account_id: Uuid,
     ) -> Result<(), FeelPayError> {
+        self.ensure_schema().await?;
         // Verify account exists and is verified
         let account = self
             .get_bank_account(merchant_id, account_id)
@@ -488,6 +584,7 @@ impl BankAccountService {
         &self,
         merchant_id: Uuid,
     ) -> Result<Option<BankAccount>, FeelPayError> {
+        self.ensure_schema().await?;
         let account = sqlx::query_as::<
             _,
             (

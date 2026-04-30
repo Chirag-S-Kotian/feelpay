@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, AlertCircle, ShieldCheck, Landmark } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import AddBankAccountForm from '../components/AddBankAccountForm';
 import PennyDropVerification from '../components/PennyDropVerification';
@@ -40,11 +40,11 @@ export default function BankAccounts() {
 
   const fetchBankAccounts = async () => {
     try {
-      const data = await apiRequest<{ bank_accounts: BankAccount[] }>(
+      const data = await apiRequest<{ bank_accounts?: BankAccount[]; accounts?: BankAccount[] }>(
         'GET',
         `/v1/merchants/${merchantId}/bank-accounts`
       );
-      setAccounts(data.bank_accounts || []);
+      setAccounts(data.bank_accounts || data.accounts || []);
     } catch (err) {
       console.error('Failed to fetch bank accounts:', err);
     } finally {
@@ -122,15 +122,37 @@ export default function BankAccounts() {
         </div>
 
         {accounts.length === 0 ? (
-          <div className="empty-state">
-            <AlertCircle size={32} />
-            <p>No bank accounts configured</p>
-            <button
-              className="btn-primary"
-              onClick={() => setShowAddForm(true)}
-            >
-              Add First Account
-            </button>
+          <div className="bank-empty">
+            <div className="bank-empty-left">
+              <div className="bank-empty-icon">
+                <Landmark size={28} />
+              </div>
+              <h3>No bank accounts configured</h3>
+              <p>Add payout account to unlock settlements, automated transfers, and faster reconciliation.</p>
+              <div className="bank-empty-cta">
+                <button
+                  className="btn-primary"
+                  onClick={() => setShowAddForm(true)}
+                >
+                  <Plus size={16} />
+                  Add First Account
+                </button>
+              </div>
+            </div>
+            <div className="bank-empty-right">
+              <div className="bank-empty-check">
+                <ShieldCheck size={16} />
+                Verification with penny-drop validation
+              </div>
+              <div className="bank-empty-check">
+                <ShieldCheck size={16} />
+                Primary account failover controls
+              </div>
+              <div className="bank-empty-check">
+                <ShieldCheck size={16} />
+                Full payout audit trail support
+              </div>
+            </div>
           </div>
         ) : (
           <div className="accounts-grid">
@@ -202,16 +224,89 @@ export default function BankAccounts() {
       </div>
 
       <style>{`
+        .card {
+          border-radius: 16px;
+          border: 1px solid rgba(98, 160, 250, 0.3);
+          background:
+            radial-gradient(150% 190% at 0% 0%, rgba(91, 154, 247, 0.15), transparent 42%),
+            linear-gradient(180deg, rgba(17, 39, 72, 0.96), rgba(10, 25, 47, 0.96));
+          overflow: hidden;
+        }
+        .card-header h2 {
+          font-size: 32px;
+          line-height: 1.06;
+          letter-spacing: -0.02em;
+        }
+        .bank-empty {
+          min-height: 260px;
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 24px;
+          padding: 8px 4px 2px;
+        }
+        .bank-empty-left {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          gap: 10px;
+        }
+        .bank-empty-icon {
+          width: 54px;
+          height: 54px;
+          border-radius: 14px;
+          display: grid;
+          place-items: center;
+          color: #e8f2ff;
+          border: 1px solid rgba(114, 174, 255, 0.44);
+          background: linear-gradient(135deg, rgba(245, 158, 11, 0.32), rgba(139, 92, 246, 0.34));
+        }
+        .bank-empty h3 {
+          font-size: 24px;
+          line-height: 1.05;
+          margin: 4px 0 0;
+          letter-spacing: -0.02em;
+        }
+        .bank-empty p {
+          color: #a4bfdf;
+          font-size: 14px;
+          max-width: 440px;
+        }
+        .bank-empty-cta {
+          margin-top: 4px;
+        }
+        .bank-empty-right {
+          border: 1px solid rgba(103, 165, 255, 0.24);
+          background: rgba(14, 34, 63, 0.62);
+          border-radius: 14px;
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 10px;
+        }
+        .bank-empty-check {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #c3daf9;
+          font-size: 13px;
+          line-height: 1.35;
+        }
+        .bank-empty-check svg {
+          flex: 0 0 auto;
+          color: #7fd6a6;
+        }
         .accounts-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
           gap: 16px;
         }
         .account-card {
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
+          border: 1px solid rgba(95, 158, 250, 0.28);
+          border-radius: 12px;
           padding: 16px;
-          background: var(--bg-secondary);
+          background: linear-gradient(180deg, rgba(16, 38, 70, 0.86), rgba(10, 24, 45, 0.86));
           display: flex;
           flex-direction: column;
           gap: 12px;
@@ -229,7 +324,7 @@ export default function BankAccounts() {
         .account-number {
           margin: 4px 0 0 0;
           font-size: 13px;
-          color: var(--text-secondary);
+          color: #9fbcdf;
           font-family: monospace;
         }
         .account-details {
@@ -246,7 +341,7 @@ export default function BankAccounts() {
           font-size: 13px;
         }
         .detail-row span:first-child {
-          color: var(--text-secondary);
+          color: #9fbcdf;
         }
         .account-actions {
           display: flex;
@@ -258,17 +353,22 @@ export default function BankAccounts() {
           font-size: 13px;
         }
         .btn-danger {
-          background: #fee;
-          border: 1px solid #f00;
-          color: #f00;
-          border-radius: 4px;
+          background: rgba(247, 83, 96, 0.16);
+          border: 1px solid rgba(247, 83, 96, 0.45);
+          color: #ffb1b8;
+          border-radius: 10px;
           cursor: pointer;
           padding: 8px 12px;
           font-size: 13px;
           transition: all 0.2s;
         }
         .btn-danger:hover {
-          background: #fdd;
+          background: rgba(247, 83, 96, 0.24);
+        }
+        @media (max-width: 900px) {
+          .bank-empty {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </div>

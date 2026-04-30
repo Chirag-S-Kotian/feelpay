@@ -7,11 +7,12 @@ interface Props {
 }
 
 export default function AddBankAccountForm({ onClose }: Props) {
+  type AccountType = 'savings' | 'current';
   const [formData, setFormData] = useState({
     account_holder_name: '',
     account_number: '',
     ifsc_code: '',
-    account_type: 'savings' as const,
+    account_type: 'savings' as AccountType,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -54,6 +55,10 @@ export default function AddBankAccountForm({ onClose }: Props) {
     e.preventDefault();
 
     if (!validate()) return;
+    if (!merchantId) {
+      setErrors({ submit: 'Merchant session missing. Login again.' });
+      return;
+    }
 
     setLoading(true);
 
@@ -77,7 +82,10 @@ export default function AddBankAccountForm({ onClose }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Add Bank Account</h2>
+          <div>
+            <div className="modal-kicker">Settlement Setup</div>
+            <h2>Add Bank Account</h2>
+          </div>
           <button className="btn-close" onClick={onClose}>
             <X size={20} />
           </button>
@@ -132,13 +140,22 @@ export default function AddBankAccountForm({ onClose }: Props) {
 
           <div className="form-group">
             <label>Account Type *</label>
-            <select
-              value={formData.account_type}
-              onChange={e => setFormData({ ...formData, account_type: e.target.value as any })}
-            >
-              <option value="savings">Savings</option>
-              <option value="current">Current</option>
-            </select>
+            <div className="account-type-toggle" role="group" aria-label="Account type">
+              <button
+                type="button"
+                className={`type-btn ${formData.account_type === 'savings' ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, account_type: 'savings' })}
+              >
+                Savings
+              </button>
+              <button
+                type="button"
+                className={`type-btn ${formData.account_type === 'current' ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, account_type: 'current' })}
+              >
+                Current
+              </button>
+            </div>
           </div>
 
           <div className="form-actions">
@@ -159,74 +176,155 @@ export default function AddBankAccountForm({ onClose }: Props) {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
+          background: rgba(4, 10, 24, 0.78);
+          backdrop-filter: blur(5px);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
+          z-index: 2200;
+          padding: 16px;
         }
         .modal-content {
-          background: var(--bg-primary);
-          border-radius: 8px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-          max-width: 500px;
+          background:
+            radial-gradient(140% 170% at 8% -2%, rgba(91, 154, 247, 0.22), transparent 48%),
+            radial-gradient(130% 160% at 100% 0%, rgba(245, 158, 11, 0.14), transparent 46%),
+            linear-gradient(180deg, rgba(13, 31, 61, 0.98), rgba(10, 24, 46, 0.98));
+          border: 1px solid rgba(107, 168, 255, 0.34);
+          border-radius: 18px;
+          box-shadow: 0 18px 64px rgba(0, 0, 0, 0.46);
+          max-width: 620px;
           width: 90%;
+          max-height: 90vh;
+          overflow-y: auto;
         }
         .modal-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 20px;
-          border-bottom: 1px solid var(--border-color);
+          padding: 20px 22px;
+          border-bottom: 1px solid rgba(107, 168, 255, 0.24);
+        }
+        .modal-kicker {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.16em;
+          font-weight: 700;
+          color: #9bc3ff;
+          margin-bottom: 4px;
         }
         .modal-header h2 {
           margin: 0;
-          font-size: 18px;
+          font-size: 26px;
+          line-height: 1.05;
+          font-weight: 800;
+          color: #f0f6ff;
         }
         .btn-close {
-          background: none;
-          border: none;
+          background: rgba(14, 34, 63, 0.9);
+          border: 1px solid rgba(91, 154, 247, 0.35);
+          border-radius: 10px;
           cursor: pointer;
-          padding: 4px;
+          padding: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: var(--text-secondary);
+          color: #c4dcff;
+        }
+        .btn-close:hover {
+          border-color: rgba(127, 186, 255, 0.72);
+          color: #eef5ff;
         }
         .form {
-          padding: 20px;
-        }
-        .form-group {
-          margin-bottom: 16px;
+          padding: 20px 22px 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
         }
         .form-group label {
           display: block;
-          margin-bottom: 6px;
-          font-weight: 500;
-          font-size: 14px;
+          margin-bottom: 7px;
+          font-weight: 700;
+          font-size: 13px;
+          color: #c6dcfb;
+          letter-spacing: 0.02em;
         }
-        .form-group input,
-        .form-group select {
+        .form-group input {
           width: 100%;
-          padding: 8px 12px;
-          border: 1px solid var(--border-color);
-          border-radius: 4px;
+          padding: 11px 13px;
+          border: 1px solid rgba(91, 154, 247, 0.34);
+          border-radius: 12px;
           font-size: 14px;
           font-family: inherit;
+          color: #eaf3ff;
+          background: linear-gradient(180deg, rgba(17, 41, 77, 0.94), rgba(12, 29, 56, 0.94));
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .form-group input:focus {
+          border-color: rgba(122, 182, 255, 0.95);
+          box-shadow: 0 0 0 3px rgba(77, 141, 235, 0.2);
+        }
+        .form-group input::placeholder {
+          color: #93b2de;
+        }
+        .account-type-toggle {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          padding: 5px;
+          border: 1px solid rgba(91, 154, 247, 0.34);
+          border-radius: 12px;
+          background: rgba(12, 29, 56, 0.7);
+        }
+        .type-btn {
+          border: 1px solid rgba(97, 162, 255, 0.24);
+          background: rgba(18, 46, 84, 0.6);
+          color: #b8d3f6;
+          border-radius: 9px;
+          min-height: 42px;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .type-btn:hover {
+          border-color: rgba(127, 186, 255, 0.52);
+          color: #e8f2ff;
+        }
+        .type-btn.active {
+          background: linear-gradient(135deg, #f8a429, #9f5cff);
+          color: #fff;
+          box-shadow: 0 4px 18px rgba(120, 74, 203, 0.38);
+          border-color: rgba(255, 215, 155, 0.24);
         }
         .error-text {
           display: block;
-          color: #f00;
+          color: #ffabb4;
           font-size: 12px;
-          margin-top: 4px;
+          margin-top: 6px;
         }
         .form-actions {
           display: flex;
           gap: 12px;
-          margin-top: 24px;
+          margin-top: 10px;
+          padding-top: 2px;
         }
         .form-actions button {
           flex: 1;
+          min-height: 42px;
+        }
+        .alert.alert-error {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid rgba(247, 83, 96, 0.42);
+          background: rgba(247, 83, 96, 0.14);
+          color: #ffb2ba;
+          border-radius: 10px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          font-size: 13px;
+          font-weight: 600;
         }
       `}</style>
     </div>
