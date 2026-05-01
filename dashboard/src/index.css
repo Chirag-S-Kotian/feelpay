@@ -34,6 +34,7 @@ body {
     var(--fp-bg);
   color: var(--fp-text);
   line-height: 1.6;
+  overflow-x: clip;
 }
 
 html,
@@ -67,13 +68,17 @@ a:focus-visible {
   grid-template-columns: 270px minmax(0, 1fr);
   min-height: 100vh;
   width: 100%;
-  overflow-x: hidden;
 }
 
 .desktop-sidebar {
   display: block;
   width: 270px;
   min-width: 270px;
+  height: 100vh;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -83,13 +88,10 @@ a:focus-visible {
   padding: 24px 0;
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  position: relative;
+  height: 100%;
   z-index: 40;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
 .sidebar-logo {
@@ -99,6 +101,7 @@ a:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .logo-icon {
@@ -131,7 +134,7 @@ a:focus-visible {
   flex-direction: column;
   gap: 6px;
   padding: 0 12px;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -176,6 +179,7 @@ a:focus-visible {
   margin-top: auto;
   padding: 16px 24px;
   border-top: 1px solid var(--fp-border);
+  flex-shrink: 0;
 }
 
 .env-label {
@@ -292,6 +296,7 @@ a:focus-visible {
   max-width: none;
   min-width: 0;
   flex: 1 1 auto;
+  overflow-x: clip;
 }
 
 .page,
@@ -312,9 +317,19 @@ a:focus-visible {
   max-width: none;
 }
 
+.main-content > *,
+.page > *,
+.page-container > *,
+.fade-in > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .table-card,
-.error-table-wrap {
+.error-table-wrap,
+.table-container {
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .page,
@@ -801,6 +816,7 @@ table tr:hover td {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .search-box {
@@ -808,6 +824,8 @@ table tr:hover td {
   align-items: center;
   gap: 8px;
   min-width: 280px;
+  width: min(100%, 420px);
+  max-width: 100%;
   border: 1px solid var(--fp-border);
   border-radius: 10px;
   padding: 0 10px;
@@ -828,6 +846,7 @@ table tr:hover td {
 code,
 pre {
   font-family: 'Fira Code', monospace;
+  max-width: 100%;
 }
 
 .code-block {
@@ -1089,8 +1108,8 @@ pre {
 
   .main-content {
     margin-left: 0;
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
     padding: 70px 14px 14px;
   }
 
@@ -1111,6 +1130,8 @@ pre {
     display: block;
     position: fixed;
     inset: 0 auto 0 0;
+    height: 100vh;
+    height: 100dvh;
     transform: translateX(-100%);
     transition: transform var(--fp-transition);
     z-index: 50;
@@ -1123,6 +1144,9 @@ pre {
   .mobile-sidebar .sidebar {
     position: static;
     min-height: 100vh;
+    min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
   }
 
   .filter-bar,
@@ -2475,6 +2499,7 @@ select option:checked {
 
   .settings-grid,
   .ops-grid,
+  .search-box,
   .settlements-search-box,
   .customers-search-wrap,
   .key-row,
@@ -2526,8 +2551,8 @@ select option:checked {
   }
 
   .modal-content {
-    width: calc(100vw - 20px) !important;
-    max-width: calc(100vw - 20px) !important;
+    width: min(100%, calc(100vw - 20px)) !important;
+    max-width: min(100%, calc(100vw - 20px)) !important;
     max-height: calc(100vh - 28px) !important;
   }
 }
@@ -2538,4 +2563,54 @@ select option:checked {
   .spin {
     animation: none;
   }
+}
+
+.page-header,
+.top-header,
+.customers-toolbar,
+.exports-toolbar,
+.settlements-filter-bar,
+.key-row,
+.webhook-url-row,
+.form-actions {
+  flex-wrap: wrap;
+}
+
+.search-box,
+.settlements-search-box,
+.customers-search-wrap,
+.key-row,
+.webhook-url-row,
+.table-card,
+.chart-card,
+.card,
+.api-section,
+.docs-section,
+.webhooks-section,
+.preferences-matrix {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.data-table,
+table,
+pre,
+.code-block,
+.response-body,
+.payload-json,
+.endpoint-list code,
+.payment-link-id-cell code,
+.method-box pre {
+  max-width: 100%;
+}
+
+code,
+pre,
+.response-body,
+.payload-json,
+.payment-link-id-cell code,
+.endpoint-list code,
+.method-box pre {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }

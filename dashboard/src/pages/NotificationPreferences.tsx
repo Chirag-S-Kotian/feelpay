@@ -271,13 +271,15 @@ export default function NotificationPreferences() {
         .preferences-matrix {
           border: 1px solid var(--fp-border);
           border-radius: 20px;
-          overflow: hidden;
+          overflow-x: auto;
+          overflow-y: hidden;
           margin-bottom: 20px;
           background: #fffdf5;
         }
         .matrix-header {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
+          min-width: 560px;
           background: #f2ead8;
           border-bottom: 1px solid var(--fp-border);
           font-weight: 600;
@@ -287,6 +289,7 @@ export default function NotificationPreferences() {
         .matrix-row {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
+          min-width: 560px;
           border-bottom: 1px solid #ece2cc;
           align-items: center;
           background: #fff9ec;

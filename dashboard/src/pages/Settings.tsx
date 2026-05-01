@@ -468,6 +468,10 @@ export default function Settings() {
           grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
           gap: 16px;
         }
+        .settings-grid > .card {
+          min-width: 0;
+          overflow: hidden;
+        }
         .section-title {
           font-size: 16px;
           margin-bottom: 14px;
@@ -478,6 +482,12 @@ export default function Settings() {
         .key-row {
           display: flex;
           gap: 8px;
+          min-width: 0;
+          align-items: stretch;
+        }
+        .key-row input {
+          flex: 1 1 auto;
+          min-width: 0;
         }
         .key-row .btn-secondary {
           min-width: 42px;
@@ -495,9 +505,15 @@ export default function Settings() {
         .security-row {
           display: flex;
           justify-content: space-between;
+          align-items: center;
+          gap: 10px;
           padding: 7px 0;
           font-size: 13px;
           border-bottom: 1px solid rgba(100, 158, 245, 0.14);
+        }
+        .security-row strong {
+          text-align: right;
+          overflow-wrap: anywhere;
         }
         .security-row:last-child {
           border-bottom: none;
@@ -556,6 +572,7 @@ export default function Settings() {
           padding: 10px;
           max-height: 170px;
           overflow: auto;
+          max-width: 100%;
           color: #d2e6ff;
           font-size: 12px;
         }
@@ -578,6 +595,7 @@ export default function Settings() {
         }
         .error-table-wrap {
           overflow-x: auto;
+          max-width: 100%;
         }
         @media (max-width: 640px) {
           .settings-grid,

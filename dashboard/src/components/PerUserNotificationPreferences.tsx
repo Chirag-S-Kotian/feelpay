@@ -256,12 +256,14 @@ export default function PerUserNotificationPreferences() {
         .preferences-matrix {
           border: 1px solid var(--border-color);
           border-radius: 8px;
-          overflow: hidden;
+          overflow-x: auto;
+          overflow-y: hidden;
           margin-bottom: 20px;
         }
         .matrix-header {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
+          min-width: 560px;
           background: var(--bg-secondary);
           border-bottom: 2px solid var(--border-color);
           font-weight: 600;
@@ -270,6 +272,7 @@ export default function PerUserNotificationPreferences() {
         .matrix-row {
           display: grid;
           grid-template-columns: 200px repeat(3, 1fr);
+          min-width: 560px;
           border-bottom: 1px solid var(--border-color);
           align-items: center;
         }
