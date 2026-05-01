@@ -79,19 +79,19 @@ export default function AddBankAccountForm({ onClose }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="ba-modal-overlay" onClick={onClose}>
+      <div className="ba-modal-content" onClick={e => e.stopPropagation()}>
+        <div className="ba-modal-header">
           <div>
-            <div className="modal-kicker">Settlement Setup</div>
+            <div className="ba-modal-kicker">Settlement Setup</div>
             <h2>Add Bank Account</h2>
           </div>
-          <button className="btn-close" onClick={onClose}>
+          <button className="ba-btn-close" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="form">
+        <form onSubmit={handleSubmit} className="ba-form">
           {errors.submit && (
             <div className="alert alert-error">
               <AlertCircle size={16} />
@@ -99,7 +99,7 @@ export default function AddBankAccountForm({ onClose }: Props) {
             </div>
           )}
 
-          <div className="form-group">
+          <div className="ba-form-group">
             <label>Account Holder Name *</label>
             <input
               type="text"
@@ -112,7 +112,7 @@ export default function AddBankAccountForm({ onClose }: Props) {
             )}
           </div>
 
-          <div className="form-group">
+          <div className="ba-form-group">
             <label>Account Number *</label>
             <input
               type="text"
@@ -125,7 +125,7 @@ export default function AddBankAccountForm({ onClose }: Props) {
             )}
           </div>
 
-          <div className="form-group">
+          <div className="ba-form-group">
             <label>IFSC Code *</label>
             <input
               type="text"
@@ -138,19 +138,19 @@ export default function AddBankAccountForm({ onClose }: Props) {
             )}
           </div>
 
-          <div className="form-group">
+          <div className="ba-form-group">
             <label>Account Type *</label>
-            <div className="account-type-toggle" role="group" aria-label="Account type">
+            <div className="ba-account-type-toggle" role="group" aria-label="Account type">
               <button
                 type="button"
-                className={`type-btn ${formData.account_type === 'savings' ? 'active' : ''}`}
+                className={`ba-type-btn ${formData.account_type === 'savings' ? 'active' : ''}`}
                 onClick={() => setFormData({ ...formData, account_type: 'savings' })}
               >
                 Savings
               </button>
               <button
                 type="button"
-                className={`type-btn ${formData.account_type === 'current' ? 'active' : ''}`}
+                className={`ba-type-btn ${formData.account_type === 'current' ? 'active' : ''}`}
                 onClick={() => setFormData({ ...formData, account_type: 'current' })}
               >
                 Current
@@ -158,7 +158,7 @@ export default function AddBankAccountForm({ onClose }: Props) {
             </div>
           </div>
 
-          <div className="form-actions">
+          <div className="ba-form-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
             </button>
@@ -170,7 +170,7 @@ export default function AddBankAccountForm({ onClose }: Props) {
       </div>
 
       <style>{`
-        .modal-overlay {
+        .ba-modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
@@ -184,102 +184,98 @@ export default function AddBankAccountForm({ onClose }: Props) {
           z-index: 2200;
           padding: 16px;
         }
-        .modal-content {
-          background:
-            radial-gradient(140% 170% at 8% -2%, rgba(91, 154, 247, 0.22), transparent 48%),
-            radial-gradient(130% 160% at 100% 0%, rgba(245, 158, 11, 0.14), transparent 46%),
-            linear-gradient(180deg, rgba(13, 31, 61, 0.98), rgba(10, 24, 46, 0.98));
-          border: 1px solid rgba(107, 168, 255, 0.34);
+        .ba-modal-content {
+          background: #fff9ec;
+          border: 1px solid #d5c9af;
           border-radius: 18px;
-          box-shadow: 0 18px 64px rgba(0, 0, 0, 0.46);
+          box-shadow: 0 18px 64px rgba(0, 0, 0, 0.28);
           max-width: 620px;
           width: 90%;
           max-height: 90vh;
           overflow-y: auto;
         }
-        .modal-header {
+        .ba-modal-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           padding: 20px 22px;
-          border-bottom: 1px solid rgba(107, 168, 255, 0.24);
+          border-bottom: 1px solid #d5c9af;
         }
-        .modal-kicker {
+        .ba-modal-kicker {
           font-size: 11px;
           text-transform: uppercase;
           letter-spacing: 0.16em;
           font-weight: 700;
-          color: #9bc3ff;
+          color: #6b6862;
           margin-bottom: 4px;
         }
-        .modal-header h2 {
+        .ba-modal-header h2 {
           margin: 0;
           font-size: 26px;
           line-height: 1.05;
           font-weight: 800;
-          color: #f0f6ff;
+          color: #141413;
         }
-        .btn-close {
-          background: rgba(14, 34, 63, 0.9);
-          border: 1px solid rgba(91, 154, 247, 0.35);
+        .ba-btn-close {
+          background: #2d4a73;
+          border: 1px solid #2d4a73;
           border-radius: 10px;
           cursor: pointer;
           padding: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #c4dcff;
+          color: #fff9ec;
         }
-        .btn-close:hover {
-          border-color: rgba(127, 186, 255, 0.72);
-          color: #eef5ff;
+        .ba-btn-close:hover {
+          filter: brightness(1.08);
         }
-        .form {
+        .ba-form {
           padding: 20px 22px 24px;
           display: flex;
           flex-direction: column;
           gap: 14px;
         }
-        .form-group label {
+        .ba-form-group label {
           display: block;
           margin-bottom: 7px;
           font-weight: 700;
           font-size: 13px;
-          color: #c6dcfb;
+          color: #141413;
           letter-spacing: 0.02em;
         }
-        .form-group input {
+        .ba-form-group input {
           width: 100%;
           padding: 11px 13px;
-          border: 1px solid rgba(91, 154, 247, 0.34);
+          border: 1px solid #d5c9af;
           border-radius: 12px;
           font-size: 14px;
           font-family: inherit;
-          color: #eaf3ff;
-          background: linear-gradient(180deg, rgba(17, 41, 77, 0.94), rgba(12, 29, 56, 0.94));
+          color: #141413;
+          background: #fff9ec;
           outline: none;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .form-group input:focus {
-          border-color: rgba(122, 182, 255, 0.95);
-          box-shadow: 0 0 0 3px rgba(77, 141, 235, 0.2);
+        .ba-form-group input:focus {
+          border-color: #eb001b;
+          box-shadow: 0 0 0 3px rgba(235, 0, 27, 0.14);
         }
-        .form-group input::placeholder {
-          color: #93b2de;
+        .ba-form-group input::placeholder {
+          color: #8a857d;
         }
-        .account-type-toggle {
+        .ba-account-type-toggle {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 10px;
           padding: 5px;
-          border: 1px solid rgba(91, 154, 247, 0.34);
+          border: 1px solid #d5c9af;
           border-radius: 12px;
-          background: rgba(12, 29, 56, 0.7);
+          background: #f5efe2;
         }
-        .type-btn {
-          border: 1px solid rgba(97, 162, 255, 0.24);
-          background: rgba(18, 46, 84, 0.6);
-          color: #b8d3f6;
+        .ba-type-btn {
+          border: 1px solid #d5c9af;
+          background: #fff9ec;
+          color: #6b6862;
           border-radius: 9px;
           min-height: 42px;
           font-size: 14px;
@@ -287,11 +283,11 @@ export default function AddBankAccountForm({ onClose }: Props) {
           cursor: pointer;
           transition: all 0.2s ease;
         }
-        .type-btn:hover {
-          border-color: rgba(127, 186, 255, 0.52);
-          color: #e8f2ff;
+        .ba-type-btn:hover {
+          border-color: #2d4a73;
+          color: #141413;
         }
-        .type-btn.active {
+        .ba-type-btn.active {
           background: linear-gradient(135deg, #f8a429, #9f5cff);
           color: #fff;
           box-shadow: 0 4px 18px rgba(120, 74, 203, 0.38);
@@ -303,13 +299,13 @@ export default function AddBankAccountForm({ onClose }: Props) {
           font-size: 12px;
           margin-top: 6px;
         }
-        .form-actions {
+        .ba-form-actions {
           display: flex;
           gap: 12px;
           margin-top: 10px;
           padding-top: 2px;
         }
-        .form-actions button {
+        .ba-form-actions button {
           flex: 1;
           min-height: 42px;
         }

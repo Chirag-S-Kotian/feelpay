@@ -9,6 +9,7 @@ use crate::engine::services::auth::MfaService;
 use crate::error::FeelPayError;
 use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequest};
 use crate::state::AppState;
+use base64::Engine;
 use sqlx::Row;
 
 const MERCHANT_SESSION_SECONDS: i64 = 24 * 60 * 60;
@@ -59,12 +60,18 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/mfa/verify", web::post().to(verify_mfa_merchant))
             .route("/profile", web::get().to(get_profile))
             .route("/profile", web::put().to(update_profile))
+            .route("/profile/avatar-upload", web::post().to(upload_profile_avatar))
             .route("/keys", web::get().to(get_keys))
             .route("/keys/roll", web::post().to(roll_keys))
             .route("/settings/security", web::get().to(get_security_settings))
             .route("/dashboard-signals", web::get().to(get_dashboard_signals))
+            .route("/account-settings-hub", web::get().to(get_account_settings_hub))
             .route("/checkout-settings", web::get().to(get_checkout_settings))
             .route("/checkout-settings", web::put().to(update_checkout_settings))
+            .route(
+                "/checkout-settings/audit",
+                web::get().to(get_checkout_settings_audit),
+            )
             .route(
                 "/webhook-secret/roll",
                 web::post().to(roll_webhook_secret),
@@ -97,6 +104,10 @@ pub struct UpdateSettingsRequest {
     pub business_name: Option<String>,
     pub business_type: Option<String>,
     pub webhook_url: Option<String>,
+    pub phone: Option<String>,
+    pub avatar_url: Option<String>,
+    pub current_password: Option<String>,
+    pub new_password: Option<String>,
     pub settlement_account: Option<serde_json::Value>,
 }
 
@@ -105,6 +116,34 @@ pub struct UpdateCheckoutSettingsRequest {
     pub styling: Option<serde_json::Value>,
     pub features: Option<serde_json::Value>,
     pub payment_configuration: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AvatarUploadRequest {
+    pub filename: String,
+    pub content_type: String,
+    pub data_base64: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AccountSettingsHubResponse {
+    pub sections: Vec<AccountSettingsHubSection>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AccountSettingsHubSection {
+    pub key: String,
+    pub title: String,
+    pub icon: String,
+    pub links: Vec<AccountSettingsHubLink>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AccountSettingsHubLink {
+    pub key: String,
+    pub label: String,
+    pub route: String,
+    pub enabled: bool,
 }
 
 #[utoipa::path(
@@ -319,6 +358,8 @@ pub async fn get_profile(
     let row = sqlx::query(
         r#"
         SELECT id, tenant_id, name, email, api_key, business_name, webhook_url, status, onboarding_status, daily_limit, monthly_limit
+             , phone
+             , metadata
         FROM merchants
         WHERE id = $1
         "#,
@@ -343,7 +384,12 @@ pub async fn get_profile(
         "status": row.get::<String, _>(7),
         "onboarding_status": row.get::<String, _>(8),
         "daily_limit": row.get::<i64, _>(9),
-        "monthly_limit": row.get::<i64, _>(10)
+        "monthly_limit": row.get::<i64, _>(10),
+        "phone": row.get::<Option<String>, _>(11),
+        "avatar_url": row
+            .get::<Option<serde_json::Value>, _>(12)
+            .and_then(|m| m.get("avatar_url").cloned())
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
     })))
 }
 
@@ -374,6 +420,63 @@ pub async fn update_profile(
         }
     }
 
+    if let Some(phone) = body.phone.as_ref() {
+        if !(phone.starts_with('+') || phone.chars().all(|c| c.is_ascii_digit())) {
+            return Err(FeelPayError::BadRequest(
+                "Phone must be digits or include leading +".into(),
+            ));
+        }
+    }
+
+    if body.current_password.is_some() || body.new_password.is_some() {
+        let current = body
+            .current_password
+            .as_deref()
+            .ok_or_else(|| FeelPayError::BadRequest("Current password required".into()))?;
+        let new_password = body
+            .new_password
+            .as_deref()
+            .ok_or_else(|| FeelPayError::BadRequest("New password required".into()))?;
+        if new_password.len() < 8 {
+            return Err(FeelPayError::BadRequest(
+                "New password must be at least 8 characters".into(),
+            ));
+        }
+
+        let row = sqlx::query("SELECT password_hash FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+        let Some(row) = row else {
+            return Err(FeelPayError::NotFound("Merchant not found".into()));
+        };
+
+        let stored_hash: String = row.get(0);
+        let parsed_hash = PasswordHash::new(&stored_hash)
+            .map_err(|_| FeelPayError::Unauthorized("Stored password hash invalid".into()))?;
+
+        Argon2::default()
+            .verify_password(current.as_bytes(), &parsed_hash)
+            .map_err(|_| FeelPayError::Unauthorized("Current password incorrect".into()))?;
+
+        let salt = SaltString::generate(&mut OsRng);
+        let new_hash = Argon2::default()
+            .hash_password(new_password.as_bytes(), &salt)
+            .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
+            .to_string();
+
+        sqlx::query(
+            "UPDATE merchants SET password_hash = $2, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .bind(new_hash)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    }
+
     sqlx::query(
         r#"
         UPDATE merchants
@@ -383,6 +486,11 @@ pub async fn update_profile(
             webhook_url = COALESCE($4, webhook_url),
             settlement_account = COALESCE($5, settlement_account),
             business_type = COALESCE($6, business_type),
+            phone = COALESCE($7, phone),
+            metadata = CASE
+                WHEN $8::text IS NULL THEN metadata
+                ELSE jsonb_set(COALESCE(metadata, '{}'::jsonb), '{avatar_url}', to_jsonb($8::text), true)
+            END,
             updated_at = NOW()
         WHERE id = $1
         "#,
@@ -393,11 +501,187 @@ pub async fn update_profile(
     .bind(&body.webhook_url)
     .bind(&body.settlement_account)
     .bind(&body.business_type)
+    .bind(&body.phone)
+    .bind(&body.avatar_url)
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     get_profile(req, state).await
+}
+
+pub async fn upload_profile_avatar(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<AvatarUploadRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let content_type = body.content_type.trim().to_ascii_lowercase();
+    let allowed = ["image/png", "image/jpeg", "image/webp"];
+    if !allowed.contains(&content_type.as_str()) {
+        return Err(FeelPayError::BadRequest(
+            "Only PNG/JPEG/WEBP allowed".into(),
+        ));
+    }
+
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(body.data_base64.trim())
+        .map_err(|_| FeelPayError::BadRequest("Invalid base64 payload".into()))?;
+
+    if raw.len() < 100 * 1024 {
+        return Err(FeelPayError::BadRequest(
+            "Avatar must be at least 100KB".into(),
+        ));
+    }
+    if raw.len() > 5 * 1024 * 1024 {
+        return Err(FeelPayError::BadRequest(
+            "Avatar must be <= 5MB".into(),
+        ));
+    }
+
+    let ext = match content_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        _ => "webp",
+    };
+    let file_id = format!("{}_{}", merchant_id, Uuid::new_v4().simple());
+    let dir = std::path::Path::new("uploads/avatars");
+    std::fs::create_dir_all(dir).map_err(|e| FeelPayError::Internal(format!("Create dir: {e}")))?;
+    let path = dir.join(format!("{}.{}", file_id, ext));
+    std::fs::write(&path, &raw).map_err(|e| FeelPayError::Internal(format!("Write file: {e}")))?;
+
+    let avatar_url = format!("/uploads/avatars/{}.{}", file_id, ext);
+
+    sqlx::query(
+        r#"
+        UPDATE merchants
+        SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{avatar_url}', to_jsonb($2::text), true),
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(&avatar_url)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "avatar_url": avatar_url,
+        "size_bytes": raw.len(),
+        "message": "Avatar uploaded"
+    })))
+}
+
+pub async fn get_account_settings_hub(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    let dynamic = sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT value FROM system_config WHERE key = 'merchant_account_settings_hub'",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+
+    let default = serde_json::json!({
+      "sections": [
+        {
+          "key": "website_app",
+          "title": "Website and App Settings",
+          "icon": "monitor",
+          "links": [
+            { "key": "api_keys", "label": "API keys", "route": "/developers", "enabled": true },
+            { "key": "webhooks", "label": "Webhooks", "route": "/webhooks", "enabled": true },
+            { "key": "checkout_preview", "label": "Checkout preview", "route": "/checkout-preview", "enabled": true }
+          ]
+        },
+        {
+          "key": "business",
+          "title": "Business Settings",
+          "icon": "briefcase",
+          "links": [
+            { "key": "account_details", "label": "Account details", "route": "/onboarding", "enabled": true },
+            { "key": "business_details", "label": "Business details", "route": "/settings", "enabled": true },
+            { "key": "manage_team", "label": "Manage team", "route": "/settings", "enabled": true }
+          ]
+        },
+        {
+          "key": "payments",
+          "title": "Payments and Refunds",
+          "icon": "wallet",
+          "links": [
+            { "key": "payments", "label": "Payments", "route": "/payments", "enabled": true },
+            { "key": "settlements", "label": "Settlements", "route": "/settlements", "enabled": true },
+            { "key": "disputes", "label": "Disputes", "route": "/disputes", "enabled": true }
+          ]
+        },
+        {
+          "key": "notifications",
+          "title": "Notification Settings",
+          "icon": "bell",
+          "links": [
+            { "key": "notification_channels", "label": "Email / SMS / Alerts", "route": "/notifications", "enabled": true },
+            { "key": "user_preferences", "label": "User preferences", "route": "/notifications", "enabled": true }
+          ]
+        }
+      ]
+    });
+
+    let payload = dynamic.unwrap_or(default);
+
+    let sections = payload
+        .get("sections")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let sections: Vec<AccountSettingsHubSection> = sections
+        .iter()
+        .map(|raw| {
+            let links = raw
+                .get("links")
+                .and_then(|l| l.as_array())
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .map(|link| AccountSettingsHubLink {
+                    key: link.get("key").and_then(|v| v.as_str()).unwrap_or("link").to_string(),
+                    label: link
+                        .get("label")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Link")
+                        .to_string(),
+                    route: link
+                        .get("route")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("/")
+                        .to_string(),
+                    enabled: link.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
+                })
+                .collect();
+            AccountSettingsHubSection {
+                key: raw.get("key").and_then(|v| v.as_str()).unwrap_or("section").to_string(),
+                title: raw
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Section")
+                    .to_string(),
+                icon: raw
+                    .get("icon")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("grid")
+                    .to_string(),
+                links,
+            }
+        })
+        .collect();
+
+    let _ = merchant_id;
+    Ok(HttpResponse::Ok().json(AccountSettingsHubResponse { sections }))
 }
 
 #[utoipa::path(
@@ -584,6 +868,24 @@ pub async fn update_checkout_settings(
     body: web::Json<UpdateCheckoutSettingsRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let actor_id = req
+        .extensions()
+        .get::<crate::middleware::auth::UserId>()
+        .map(|v| v.0.to_string())
+        .unwrap_or_else(|| "merchant".to_string());
+
+    let previous_settings: serde_json::Value = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(registration_data->'checkout_settings', '{}'::jsonb)
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    .unwrap_or_else(|| serde_json::json!({}));
 
     let payload = serde_json::json!({
         "styling": body.styling.clone().unwrap_or_else(|| serde_json::json!({})),
@@ -610,10 +912,59 @@ pub async fn update_checkout_settings(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs (entity_type, entity_id, action, old_state, new_state, actor_type, actor_id)
+        VALUES ('merchant_checkout_settings', $1, 'checkout_settings_updated', $2::jsonb, $3::jsonb, 'merchant_user', $4)
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(previous_settings)
+    .bind(payload.clone())
+    .bind(actor_id)
+    .execute(&state.db)
+    .await;
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Checkout settings updated",
         "settings": payload
     })))
+}
+
+pub async fn get_checkout_settings_audit(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let rows = sqlx::query(
+        r#"
+        SELECT created_at, actor_id, old_state, new_state
+        FROM audit_logs
+        WHERE entity_type = 'merchant_checkout_settings'
+          AND entity_id = $1
+          AND action = 'checkout_settings_updated'
+        ORDER BY created_at DESC
+        LIMIT 20
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let items: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| {
+            serde_json::json!({
+                "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>(0),
+                "actor_id": row.get::<Option<String>, _>(1),
+                "old_state": row.get::<Option<serde_json::Value>, _>(2),
+                "new_state": row.get::<Option<serde_json::Value>, _>(3)
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
 }
 
 #[utoipa::path(

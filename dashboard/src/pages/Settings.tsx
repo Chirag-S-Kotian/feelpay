@@ -9,6 +9,7 @@ import {
   Webhook,
   Zap,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../hooks/useApi';
 
 interface MerchantProfile {
@@ -44,6 +45,62 @@ interface TeamMember {
   role: 'merchant_admin' | 'merchant_staff' | 'merchant_viewer' | string;
 }
 
+interface HubLink {
+  key: string;
+  label: string;
+  route: string;
+  enabled: boolean;
+}
+
+interface HubSection {
+  key: string;
+  title: string;
+  icon: string;
+  links: HubLink[];
+}
+
+const FALLBACK_HUB_SECTIONS: HubSection[] = [
+  {
+    key: 'website_app',
+    title: 'Website and App Settings',
+    icon: 'monitor',
+    links: [
+      { key: 'api_keys', label: 'API keys', route: '/developers', enabled: true },
+      { key: 'webhooks', label: 'Webhooks', route: '/webhooks', enabled: true },
+      { key: 'checkout_preview', label: 'Checkout preview', route: '/checkout-preview', enabled: true },
+    ],
+  },
+  {
+    key: 'business',
+    title: 'Business Settings',
+    icon: 'briefcase',
+    links: [
+      { key: 'account_details', label: 'Account details', route: '/onboarding', enabled: true },
+      { key: 'business_details', label: 'Business details', route: '/settings', enabled: true },
+      { key: 'manage_team', label: 'Manage team', route: '/settings', enabled: true },
+    ],
+  },
+  {
+    key: 'payments',
+    title: 'Payments and Refunds',
+    icon: 'wallet',
+    links: [
+      { key: 'payments', label: 'Payments', route: '/payments', enabled: true },
+      { key: 'settlements', label: 'Settlements', route: '/settlements', enabled: true },
+      { key: 'disputes', label: 'Disputes', route: '/disputes', enabled: true },
+    ],
+  },
+  {
+    key: 'notifications',
+    title: 'Notification Settings',
+    icon: 'bell',
+    links: [
+      { key: 'notification_channels', label: 'Email / SMS / Alerts', route: '/notifications', enabled: true },
+      { key: 'user_preferences', label: 'User preferences', route: '/notifications', enabled: true },
+    ],
+  },
+];
+
 const EVENTS = [
   'payment.success',
   'payment.failed',
@@ -53,6 +110,7 @@ const EVENTS = [
 ];
 
 export default function Settings() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [apiKey, setApiKey] = useState('');
@@ -69,6 +127,7 @@ export default function Settings() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviteRole, setInviteRole] = useState<'merchant_admin' | 'merchant_staff' | 'merchant_viewer'>('merchant_staff');
+  const [hubSections, setHubSections] = useState<HubSection[]>([]);
 
   const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
@@ -83,13 +142,16 @@ export default function Settings() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [profileRes, keysRes, securityResult, teamRes] = await Promise.all([
+      const [profileRes, keysRes, securityResult, teamRes, hubRes] = await Promise.all([
         apiRequest<MerchantProfile>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 30_000 }),
         apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys', undefined, undefined, { cacheMs: 30_000 }),
         apiRequest<SecuritySettings>('GET', '/v1/merchants/settings/security', undefined, undefined, { cacheMs: 30_000 })
           .then((value) => ({ ok: true as const, value }))
           .catch((err: unknown) => ({ ok: false as const, err })),
         apiRequest<TeamMember[]>('GET', '/v1/merchants/team', undefined, undefined, { cacheMs: 20_000 }).catch(() => []),
+        apiRequest<{ sections?: HubSection[] }>('GET', '/v1/merchants/account-settings-hub', undefined, undefined, { cacheMs: 60_000 })
+          .then((r) => r.sections || [])
+          .catch(() => [] as HubSection[]),
       ]);
       let securityRes: SecuritySettings;
       if (securityResult.ok) {
@@ -120,6 +182,7 @@ export default function Settings() {
       setBusinessType((profileRes.business_type || 'individual').toLowerCase());
       setWebhookUrl(profileRes.webhook_url || '');
       setTeam(teamRes || []);
+      setHubSections(hubRes || []);
     } finally {
       setLoading(false);
     }
@@ -333,6 +396,22 @@ export default function Settings() {
           </button>
           <p className="mini-help">Rotation invalidates prior secret. Roll one deployment window, not random time.</p>
         </section>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 className="section-title">Account and Product Settings</h3>
+        <div className="settings-hub-grid">
+          {(hubSections.length ? hubSections : FALLBACK_HUB_SECTIONS).map((section) => (
+            <div key={section.key} className="settings-hub-card">
+              <h4>{section.title}</h4>
+              {section.links.filter((link) => link.enabled).map((link) => (
+                <button key={link.key} className="link-btn" onClick={() => navigate(link.route)}>
+                  {link.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="settings-grid" style={{ marginTop: 16 }}>
@@ -596,6 +675,38 @@ export default function Settings() {
         .error-table-wrap {
           overflow-x: auto;
           max-width: 100%;
+        }
+        .settings-hub-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 12px;
+          margin-top: 8px;
+        }
+        .settings-hub-card {
+          border: 1px solid #d5c9af;
+          border-radius: 12px;
+          padding: 12px;
+          background: #f2ead8;
+          display: grid;
+          gap: 8px;
+        }
+        .settings-hub-card h4 {
+          font-size: 14px;
+          margin: 0 0 2px 0;
+          color: #141413;
+        }
+        .link-btn {
+          text-align: left;
+          border: none;
+          background: transparent;
+          color: #2d5ea8;
+          font-size: 14px;
+          cursor: pointer;
+          padding: 0;
+        }
+        .link-btn:hover {
+          color: #193d73;
+          text-decoration: underline;
         }
         @media (max-width: 640px) {
           .settings-grid,

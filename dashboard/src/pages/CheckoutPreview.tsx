@@ -59,6 +59,11 @@ type CheckoutSettings = {
   };
 };
 
+type CheckoutAuditItem = {
+  created_at: string;
+  actor_id?: string | null;
+};
+
 const LABELS: Record<MethodKey, string> = {
   card: 'Cards',
   upi: 'UPI',
@@ -118,12 +123,14 @@ export default function CheckoutPreview() {
   });
   const [settingsNotice, setSettingsNotice] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [auditItems, setAuditItems] = useState<CheckoutAuditItem[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
         const data = await apiRequest<PreviewConfig>('GET', '/v1/checkout/preview-config', undefined, undefined, { cacheMs: 20_000 });
         const checkoutSettings: CheckoutSettings = await apiRequest<CheckoutSettings>('GET', '/v1/merchants/checkout-settings', undefined, undefined, { cacheMs: 20_000 }).catch(() => ({} as CheckoutSettings));
+        const auditRes = await apiRequest<{ items?: CheckoutAuditItem[] }>('GET', '/v1/merchants/checkout-settings/audit', undefined, undefined, { cacheMs: 10_000 }).catch(() => ({ items: [] }));
         const normalized = normalize(data.methods || []);
         setMethods(normalized);
         setMerchantName(data.merchant?.business_name || data.merchant?.name || 'FeelPay Merchant');
@@ -136,6 +143,7 @@ export default function CheckoutPreview() {
           features: { ...prev.features, ...(checkoutSettings.features || {}) },
           payment_configuration: { ...prev.payment_configuration, ...(checkoutSettings.payment_configuration || {}) },
         }));
+        setAuditItems(auditRes.items || []);
         const first = normalized.find((method) => method.enabled)?.method_type;
         if (first) setSelected(first);
       } catch {
@@ -165,11 +173,21 @@ export default function CheckoutPreview() {
   };
 
   const saveCheckoutSettings = async () => {
+    if ((settings.styling?.background_color || '').trim() && !/^#([0-9A-Fa-f]{6})$/.test((settings.styling?.background_color || '').trim())) {
+      setSettingsNotice('Background color must be hex like #C63201');
+      return;
+    }
+    if (!(settings.payment_configuration?.preset_name || '').trim()) {
+      setSettingsNotice('Preset name required.');
+      return;
+    }
     setSettingsSaving(true);
     setSettingsNotice('');
     try {
       await apiRequest('PUT', '/v1/merchants/checkout-settings', settings);
       setSettingsNotice('Checkout settings saved.');
+      const auditRes = await apiRequest<{ items?: CheckoutAuditItem[] }>('GET', '/v1/merchants/checkout-settings/audit', undefined, undefined, { cacheMs: 0 }).catch(() => ({ items: [] }));
+      setAuditItems(auditRes.items || []);
     } catch (err) {
       setSettingsNotice(err instanceof Error ? err.message : 'Unable to save checkout settings.');
     } finally {
@@ -370,6 +388,14 @@ export default function CheckoutPreview() {
             {settingsSaving ? 'Saving...' : 'Save all changes'}
           </button>
           {settingsNotice && <p className="mini-help">{settingsNotice}</p>}
+          <div className="checkout-audit">
+            <span>Recent changes</span>
+            {(auditItems || []).slice(0, 3).map((item, idx) => (
+              <div key={`${item.created_at}-${idx}`} className="checkout-audit-item">
+                {new Date(item.created_at).toLocaleString('en-IN')} • {item.actor_id || 'merchant'}
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className={`checkout-stage ${viewport}`}>
@@ -452,6 +478,9 @@ export default function CheckoutPreview() {
         .checkout-settings-grid { display: grid; gap: 8px; }
         .checkout-settings-grid label { display: grid; gap: 6px; font-size: 12px; color: #6b6862; }
         .checkout-settings-grid input[type='checkbox'] { margin-right: 8px; accent-color: #eb001b; }
+        .checkout-audit { display: grid; gap: 6px; border-top: 1px dashed #d5c9af; padding-top: 10px; }
+        .checkout-audit > span { font-size: 12px; color: #6b6862; font-weight: 700; }
+        .checkout-audit-item { font-size: 12px; color: #141413; background: #f5efe2; border: 1px solid #d5c9af; border-radius: 10px; padding: 6px 8px; }
         .preview-merchant-name { color: #312d28; background: #f5efe2; border: 1px solid #d5c9af; border-radius: 999px; padding: 12px 14px; font-weight: 800; font-size: 18px; }
         .preview-controls label { display: flex; flex-direction: column; gap: 6px; color: var(--fp-text-muted); font-size: 13px; }
         .preview-controls input { background: #fff9ec; border: 1px solid #d5c9af; color: #141413; border-radius: 999px; padding: 10px 12px; }

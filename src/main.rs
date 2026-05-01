@@ -446,6 +446,10 @@ async fn main() -> std::io::Result<()> {
                             .wrap(crate::middleware::auth::JwtMiddleware)
                             .route("/profile", web::get().to(api::merchants::get_profile))
                             .route("/profile", web::put().to(api::merchants::update_profile))
+                            .route(
+                                "/profile/avatar-upload",
+                                web::post().to(api::merchants::upload_profile_avatar),
+                            )
                             .route("/logout", web::post().to(api::merchants::logout_merchant))
                             .route("/keys", web::get().to(api::merchants::get_keys))
                             .route("/keys/roll", web::post().to(api::merchants::roll_keys))
@@ -466,12 +470,20 @@ async fn main() -> std::io::Result<()> {
                                 web::get().to(api::merchants::get_dashboard_signals),
                             )
                             .route(
+                                "/account-settings-hub",
+                                web::get().to(api::merchants::get_account_settings_hub),
+                            )
+                            .route(
                                 "/checkout-settings",
                                 web::get().to(api::merchants::get_checkout_settings),
                             )
                             .route(
                                 "/checkout-settings",
                                 web::put().to(api::merchants::update_checkout_settings),
+                            )
+                            .route(
+                                "/checkout-settings/audit",
+                                web::get().to(api::merchants::get_checkout_settings_audit),
                             )
                             .route(
                                 "/webhook-secret/roll",

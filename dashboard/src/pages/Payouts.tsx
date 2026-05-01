@@ -178,11 +178,11 @@ export default function Payouts() {
 
         <section className="card payout-summary">
           <h3 className="section-title"><Landmark size={17} /> Payout Health</h3>
-          <div className="ops-grid">
-            <div className="ops-tile"><span>Total paid</span><strong>{money(totalPaid)}</strong></div>
-            <div className="ops-tile"><span>Pending</span><strong>{pendingCount}</strong></div>
-            <div className="ops-tile"><span>Accounts</span><strong>{accounts.length}</strong></div>
-            <div className="ops-tile"><span>Default rail</span><strong>{method.toUpperCase()}</strong></div>
+          <div className="payout-health-grid">
+            <div className="payout-health-tile"><span>Total paid</span><strong>{money(totalPaid)}</strong></div>
+            <div className="payout-health-tile"><span>Pending</span><strong>{pendingCount}</strong></div>
+            <div className="payout-health-tile"><span>Accounts</span><strong>{accounts.length}</strong></div>
+            <div className="payout-health-tile"><span>Default rail</span><strong>{method.toUpperCase()}</strong></div>
           </div>
         </section>
       </div>
@@ -231,8 +231,19 @@ export default function Payouts() {
         .payout-alert { margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .payout-alert.success { border-color: rgba(34, 197, 94, 0.4); color: #9af0b8; }
         .payout-alert.danger { border-color: rgba(239, 68, 68, 0.42); color: #fecaca; }
+        .payout-health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .payout-health-tile {
+          border: 1px solid var(--fp-border);
+          background: var(--fp-bg-elevated);
+          border-radius: 10px;
+          padding: 10px;
+          display: grid;
+          gap: 5px;
+        }
+        .payout-health-tile span { font-size: 12px; color: var(--fp-text-muted); }
+        .payout-health-tile strong { font-size: 22px; line-height: 1.1; color: var(--fp-text); }
         .mono { font-family: Fira Code, monospace; font-size: 12px; }
-        @media (max-width: 900px) { .payout-grid, .payout-form { grid-template-columns: 1fr; } }
+        @media (max-width: 900px) { .payout-grid, .payout-form, .payout-health-grid { grid-template-columns: 1fr; } }
       `}</style>
     </div>
   );

@@ -21,6 +21,8 @@ import {
   Layers3,
   UserCircle2,
   Activity,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import {
@@ -199,6 +201,7 @@ function Sidebar({
 function Layout() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [notificationCount] = useState(0);
   const [headerSignals, setHeaderSignals] = useState<{
     announcements: Array<{ id?: string; title?: string; message?: string; severity?: 'info' | 'warning' | 'error' }>;
@@ -213,11 +216,16 @@ function Layout() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [profileUploadState, setProfileUploadState] = useState('');
   const [profileForm, setProfileForm] = useState({
     name: '',
     business_name: '',
     business_type: 'individual',
     webhook_url: '',
+    phone: '',
+    avatar_url: '',
+    current_password: '',
+    new_password: '',
   });
 
   const handleLogout = async () => {
@@ -303,12 +311,18 @@ function Layout() {
         business_name?: string | null;
         business_type?: string | null;
         webhook_url?: string | null;
+        phone?: string | null;
+        avatar_url?: string | null;
       }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 1000 });
       setProfileForm({
         name: profile.name || '',
         business_name: profile.business_name || '',
         business_type: (profile.business_type || 'individual').toLowerCase(),
         webhook_url: profile.webhook_url || '',
+        phone: profile.phone || '',
+        avatar_url: profile.avatar_url || '',
+        current_password: '',
+        new_password: '',
       });
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : 'Unable to load profile');
@@ -324,11 +338,20 @@ function Layout() {
     setProfileSaving(true);
     setProfileError('');
     try {
-      await apiRequest('PUT', '/v1/merchants/profile', profileForm);
+      await apiRequest('PUT', '/v1/merchants/profile', {
+        name: profileForm.name.trim() || null,
+        business_name: profileForm.business_name.trim() || null,
+        business_type: profileForm.business_type,
+        webhook_url: profileForm.webhook_url.trim() || null,
+        phone: profileForm.phone.trim() || null,
+        avatar_url: profileForm.avatar_url.trim() || null,
+        current_password: profileForm.current_password || null,
+        new_password: profileForm.new_password || null,
+      });
       const raw = localStorage.getItem('feelpay_merchant');
       if (raw) {
         const parsed = JSON.parse(raw) as Record<string, unknown>;
-        localStorage.setItem('feelpay_merchant', JSON.stringify({ ...parsed, name: profileForm.name }));
+        localStorage.setItem('feelpay_merchant', JSON.stringify({ ...parsed, name: profileForm.name.trim() }));
       }
       setProfileModalOpen(false);
     } catch (err) {
@@ -338,8 +361,50 @@ function Layout() {
     }
   };
 
+  const uploadAvatarFile = async (file: File) => {
+    setProfileError('');
+    setProfileUploadState('');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setProfileError('Only PNG/JPEG/WEBP allowed');
+      return;
+    }
+    if (file.size < 100 * 1024) {
+      setProfileError('Avatar must be at least 100KB');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileError('Avatar must be <= 5MB');
+      return;
+    }
+    setProfileUploadState('Uploading...');
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const val = String(reader.result || '');
+        const body = val.includes(',') ? (val.split(',')[1] || '') : val;
+        resolve(body);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+    try {
+      const res = await apiRequest<{ avatar_url?: string }>('POST', '/v1/merchants/profile/avatar-upload', {
+        filename: file.name,
+        content_type: file.type,
+        data_base64: base64,
+      });
+      if (res.avatar_url) {
+        setProfileForm((p) => ({ ...p, avatar_url: res.avatar_url || p.avatar_url }));
+      }
+      setProfileUploadState('Upload complete');
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Upload failed');
+      setProfileUploadState('');
+    }
+  };
+
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${desktopSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <button
         className="mobile-nav-toggle"
         aria-label={open ? 'Close navigation' : 'Open navigation'}
@@ -362,6 +427,14 @@ function Layout() {
             </div>
           )}
           <header className="top-header">
+            <button
+              className="sidebar-toggle-btn"
+              type="button"
+              aria-label={desktopSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+              onClick={() => setDesktopSidebarCollapsed((v) => !v)}
+            >
+              {desktopSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
             <div className="header-spacer"></div>
             <div className="header-dropdown-wrap" ref={announcementsRef}>
               <button
@@ -468,20 +541,37 @@ function Layout() {
           <div className="profile-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="profile-modal-header">
               <h2>Edit Merchant Profile</h2>
-              <button type="button" className="btn-close" onClick={() => setProfileModalOpen(false)}>×</button>
+              <button type="button" className="profile-btn-close" onClick={() => setProfileModalOpen(false)}>×</button>
             </div>
-            <div className="profile-modal-body" style={{ display: 'grid', gap: 10 }}>
+            <form
+              className="profile-modal-body"
+              style={{ display: 'grid', gap: 10 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveProfileFromHeader();
+              }}
+            >
               {profileError && <div className="card" style={{ color: 'var(--fp-danger)' }}>{profileError}</div>}
-              <label>
-                Name
-                <input value={profileForm.name} onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))} />
+              <label className="profile-field">
+                <span>Name</span>
+                <input
+                  type="text"
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Merchant owner name"
+                />
               </label>
-              <label>
-                Business Name
-                <input value={profileForm.business_name} onChange={(e) => setProfileForm((p) => ({ ...p, business_name: e.target.value }))} />
+              <label className="profile-field">
+                <span>Business Name</span>
+                <input
+                  type="text"
+                  value={profileForm.business_name}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, business_name: e.target.value }))}
+                  placeholder="Legal business name"
+                />
               </label>
-              <label>
-                Business Type
+              <label className="profile-field">
+                <span>Business Type</span>
                 <select value={profileForm.business_type} onChange={(e) => setProfileForm((p) => ({ ...p, business_type: e.target.value }))}>
                   <option value="individual">Individual</option>
                   <option value="sole_proprietorship">Sole Proprietorship</option>
@@ -490,14 +580,78 @@ function Layout() {
                   <option value="llc">LLC</option>
                 </select>
               </label>
-              <label>
-                Webhook URL
-                <input value={profileForm.webhook_url} onChange={(e) => setProfileForm((p) => ({ ...p, webhook_url: e.target.value }))} />
+              <label className="profile-field">
+                <span>Webhook URL</span>
+                <input
+                  type="url"
+                  value={profileForm.webhook_url}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, webhook_url: e.target.value }))}
+                  placeholder="https://merchant.example/webhooks/feelpay"
+                />
               </label>
-              <button className="btn-primary" type="button" onClick={() => void saveProfileFromHeader()} disabled={profileSaving}>
+              <label className="profile-field">
+                <span>Phone</span>
+                <input
+                  type="tel"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))}
+                  placeholder="+919876543210"
+                />
+              </label>
+              <label className="profile-field">
+                <span>Avatar URL</span>
+                <input
+                  type="url"
+                  value={profileForm.avatar_url}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, avatar_url: e.target.value }))}
+                  placeholder="https://cdn.example.com/avatar.png"
+                />
+              </label>
+              <label className="profile-field">
+                <span>Avatar Upload (Drag/Drop or Select)</span>
+                <div
+                  className="profile-dropzone"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) void uploadAvatarFile(f);
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void uploadAvatarFile(f);
+                    }}
+                  />
+                  <span>Drop image here or click to upload (100KB - 5MB)</span>
+                </div>
+                {profileUploadState && <small>{profileUploadState}</small>}
+              </label>
+              <label className="profile-field">
+                <span>Current Password (optional)</span>
+                <input
+                  type="password"
+                  value={profileForm.current_password}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, current_password: e.target.value }))}
+                  placeholder="Required only for password change"
+                />
+              </label>
+              <label className="profile-field">
+                <span>New Password (optional)</span>
+                <input
+                  type="password"
+                  value={profileForm.new_password}
+                  onChange={(e) => setProfileForm((p) => ({ ...p, new_password: e.target.value }))}
+                  placeholder="Minimum 8 characters"
+                />
+              </label>
+              <button className="btn-primary" type="submit" disabled={profileSaving}>
                 {profileSaving ? 'Saving...' : 'Save Profile'}
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
