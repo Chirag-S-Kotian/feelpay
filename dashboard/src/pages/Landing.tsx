@@ -12,8 +12,11 @@ type PricingPlan = {
   features: string[];
   featured?: boolean;
 };
+type Testimonial = { quote: string; name: string; role: string };
+type FaqItem = { q: string; a: string };
 type LandingConfig = {
   brand?: { name?: string; tagline?: string };
+  navbar?: { links?: { label: string; href: string }[] };
   hero?: {
     kicker?: string;
     headline?: string;
@@ -24,10 +27,20 @@ type LandingConfig = {
   metrics?: Metric[];
   features?: Feature[];
   pricing?: PricingPlan[];
+  testimonials?: Testimonial[];
+  faq?: FaqItem[];
+  footer?: { blurb?: string; columns?: { title: string; links: { label: string; href: string }[] }[] };
 };
 
 const fallbackConfig: LandingConfig = {
   brand: { name: 'FeelPay', tagline: 'Payments that build trust' },
+  navbar: {
+    links: [
+      { label: 'Features', href: '#features' },
+      { label: 'Pricing', href: '#pricing' },
+      { label: 'FAQ', href: '#faq' },
+    ],
+  },
   hero: {
     kicker: 'Configured from admin',
     headline: 'Merchant landing content loads from system config.',
@@ -55,6 +68,61 @@ const fallbackConfig: LandingConfig = {
       featured: true,
     },
   ],
+  testimonials: [
+    {
+      quote: 'Checkout drop-offs went down and settlement visibility improved across teams.',
+      name: 'Rhea Kapoor',
+      role: 'Ops Lead, WaveKart',
+    },
+    {
+      quote: 'Webhook testing + developer docs cut integration time from days to hours.',
+      name: 'Vikram Iyer',
+      role: 'CTO, BuildNow',
+    },
+  ],
+  faq: [
+    {
+      q: 'How fast can we go live?',
+      a: 'After onboarding checks pass, switch from Test to Live mode from dashboard with same core API flow.',
+    },
+    {
+      q: 'Can we customize payment methods?',
+      a: 'Yes. Payment methods and checkout order are configurable in dashboard and reflected in preview.',
+    },
+    {
+      q: 'How are webhooks secured?',
+      a: 'Webhook events are signed. Verify signatures server-side with your webhook secret.',
+    },
+  ],
+  footer: {
+    blurb: 'Built for modern Indian merchants with reliability, observability, and conversion focus.',
+    columns: [
+      {
+        title: 'Product',
+        links: [
+          { label: 'Checkout', href: '#features' },
+          { label: 'Pricing', href: '#pricing' },
+          { label: 'Dashboard', href: '/login' },
+        ],
+      },
+      {
+        title: 'Developers',
+        links: [
+          { label: 'API Access', href: '/login' },
+          { label: 'Webhooks', href: '/login' },
+          { label: 'Docs', href: '/login' },
+        ],
+      },
+      {
+        title: 'Company',
+        links: [
+          { label: 'About', href: '#top' },
+          { label: 'Contact', href: '#footer' },
+          { label: 'Sign Up', href: '/signup' },
+        ],
+      },
+    ],
+  },
 };
 
 const iconFor = (title: string) => {
@@ -82,17 +150,28 @@ export default function Landing() {
 
   const brand = { ...fallbackConfig.brand, ...config.brand };
   const hero = { ...fallbackConfig.hero, ...config.hero };
+  const navbar = config.navbar?.links?.length ? config.navbar : fallbackConfig.navbar;
   const metrics = config.metrics?.length ? config.metrics : fallbackConfig.metrics || [];
   const features = config.features?.length ? config.features : fallbackConfig.features || [];
   const pricing = config.pricing?.length ? config.pricing : fallbackConfig.pricing || [];
+  const testimonials = config.testimonials?.length ? config.testimonials : fallbackConfig.testimonials || [];
+  const faq = config.faq?.length ? config.faq : fallbackConfig.faq || [];
+  const footer = config.footer || fallbackConfig.footer;
 
   return (
-    <main className="landing-page">
+    <main className="landing-page" id="top">
       <nav className="landing-nav">
         <Link to="/landing" className="landing-brand">
           <img src="/feelpay.png" alt={brand.name || 'FeelPay'} />
           <span>{brand.name}</span>
         </Link>
+        <div className="landing-nav-links">
+          {(navbar?.links || []).map((link) => (
+            <a key={link.label} href={link.href} className="landing-nav-link">
+              {link.label}
+            </a>
+          ))}
+        </div>
         <div>
           <Link to="/login" className="landing-link">Login</Link>
           <Link to="/signup" className="landing-cta">{hero.primary_cta}</Link>
@@ -130,7 +209,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="landing-rails">
+      <section className="landing-rails" id="features">
         {features.map((feature) => {
           const Icon = iconFor(feature.title);
           return (
@@ -164,6 +243,58 @@ export default function Landing() {
           ))}
         </div>
       </section>
+
+      <section className="landing-testimonials">
+        {testimonials.map((item) => (
+          <article key={`${item.name}-${item.role}`}>
+            <p>"{item.quote}"</p>
+            <strong>{item.name}</strong>
+            <span>{item.role}</span>
+          </article>
+        ))}
+      </section>
+
+      <section className="landing-faq" id="faq">
+        <div className="landing-section-head">
+          <p className="landing-kicker">FAQ</p>
+          <h2>Everything teams ask before go-live.</h2>
+        </div>
+        <div className="landing-faq-grid">
+          {faq.map((item) => (
+            <article key={item.q}>
+              <h3>{item.q}</h3>
+              <p>{item.a}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <footer className="landing-footer" id="footer">
+        <div className="landing-footer-top">
+          <div>
+            <strong>{brand.name}</strong>
+            <p>{footer?.blurb}</p>
+          </div>
+          <div className="landing-footer-columns">
+            {(footer?.columns || []).map((column) => (
+              <div key={column.title}>
+                <h4>{column.title}</h4>
+                {column.links.map((link) =>
+                  link.href.startsWith('/') ? (
+                    <Link key={`${column.title}-${link.label}`} to={link.href}>{link.label}</Link>
+                  ) : (
+                    <a key={`${column.title}-${link.label}`} href={link.href}>{link.label}</a>
+                  ),
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="landing-footer-bottom">
+          <span>© {new Date().getFullYear()} {brand.name}. All rights reserved.</span>
+          <a href="#top">Back to top</a>
+        </div>
+      </footer>
     </main>
   );
 }

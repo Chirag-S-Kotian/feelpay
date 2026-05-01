@@ -38,6 +38,27 @@ type PreviewConfig = {
   event_flow?: Array<{ label: string; status: string; detail: string }>;
 };
 
+type CheckoutSettings = {
+  styling?: {
+    background_color?: string;
+    border_style?: 'rounded' | 'sharp';
+    font_family?: string;
+    show_sidebar_graphic?: boolean;
+    show_trusted_badge?: boolean;
+  };
+  features?: {
+    show_mandate_summary?: boolean;
+    default_language?: string;
+    collect_email?: boolean;
+    show_message_banner?: boolean;
+    flash_checkout?: boolean;
+  };
+  payment_configuration?: {
+    preset_name?: string;
+    allow_custom_configuration?: boolean;
+  };
+};
+
 const LABELS: Record<MethodKey, string> = {
   card: 'Cards',
   upi: 'UPI',
@@ -89,11 +110,20 @@ export default function CheckoutPreview() {
   const [selected, setSelected] = useState<MethodKey>('upi');
   const [loading, setLoading] = useState(true);
   const [paymentState, setPaymentState] = useState<'idle' | 'processing' | 'success'>('idle');
+  const [settingsTab, setSettingsTab] = useState<'styling' | 'features' | 'payment_configuration'>('styling');
+  const [settings, setSettings] = useState<CheckoutSettings>({
+    styling: { background_color: '#C63201', border_style: 'rounded', font_family: 'IBM Plex Sans', show_sidebar_graphic: false, show_trusted_badge: true },
+    features: { show_mandate_summary: false, default_language: 'English', collect_email: false, show_message_banner: false, flash_checkout: true },
+    payment_configuration: { preset_name: 'Standard payment options', allow_custom_configuration: true },
+  });
+  const [settingsNotice, setSettingsNotice] = useState('');
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
         const data = await apiRequest<PreviewConfig>('GET', '/v1/checkout/preview-config', undefined, undefined, { cacheMs: 20_000 });
+        const checkoutSettings: CheckoutSettings = await apiRequest<CheckoutSettings>('GET', '/v1/merchants/checkout-settings', undefined, undefined, { cacheMs: 20_000 }).catch(() => ({} as CheckoutSettings));
         const normalized = normalize(data.methods || []);
         setMethods(normalized);
         setMerchantName(data.merchant?.business_name || data.merchant?.name || 'FeelPay Merchant');
@@ -101,6 +131,11 @@ export default function CheckoutPreview() {
         if (data.sample_order?.amount) setAmount(String(data.sample_order.amount / 100));
         if (data.sample_order?.customer_email) setCustomer(data.sample_order.customer_email);
         setEventFlow(data.event_flow || []);
+        setSettings((prev) => ({
+          styling: { ...prev.styling, ...(checkoutSettings.styling || {}) },
+          features: { ...prev.features, ...(checkoutSettings.features || {}) },
+          payment_configuration: { ...prev.payment_configuration, ...(checkoutSettings.payment_configuration || {}) },
+        }));
         const first = normalized.find((method) => method.enabled)?.method_type;
         if (first) setSelected(first);
       } catch {
@@ -127,6 +162,19 @@ export default function CheckoutPreview() {
   const runPreviewPayment = () => {
     setPaymentState('processing');
     window.setTimeout(() => setPaymentState('success'), 900);
+  };
+
+  const saveCheckoutSettings = async () => {
+    setSettingsSaving(true);
+    setSettingsNotice('');
+    try {
+      await apiRequest('PUT', '/v1/merchants/checkout-settings', settings);
+      setSettingsNotice('Checkout settings saved.');
+    } catch (err) {
+      setSettingsNotice(err instanceof Error ? err.message : 'Unable to save checkout settings.');
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
   const renderMethodExperience = () => {
@@ -243,7 +291,12 @@ export default function CheckoutPreview() {
 
       <div className="preview-shell">
         <section className="card preview-controls">
-          <h3>Preview Data</h3>
+          <h3>Checkout Settings</h3>
+          <div className="checkout-settings-tabs">
+            <button className={settingsTab === 'styling' ? 'active' : ''} type="button" onClick={() => setSettingsTab('styling')}>Checkout Styling</button>
+            <button className={settingsTab === 'features' ? 'active' : ''} type="button" onClick={() => setSettingsTab('features')}>Checkout Features</button>
+            <button className={settingsTab === 'payment_configuration' ? 'active' : ''} type="button" onClick={() => setSettingsTab('payment_configuration')}>Payment Configuration</button>
+          </div>
           <div className="preview-merchant-name">{merchantName}</div>
           <label>
             Amount
@@ -266,6 +319,57 @@ export default function CheckoutPreview() {
               </button>
             ))}
           </div>
+
+          {settingsTab === 'styling' && (
+            <div className="checkout-settings-grid">
+              <label>
+                Background color
+                <input value={settings.styling?.background_color || ''} onChange={(e) => setSettings((p) => ({ ...p, styling: { ...p.styling, background_color: e.target.value } }))} />
+              </label>
+              <label>
+                Border style
+                <select value={settings.styling?.border_style || 'rounded'} onChange={(e) => setSettings((p) => ({ ...p, styling: { ...p.styling, border_style: e.target.value as 'rounded' | 'sharp' } }))}>
+                  <option value="rounded">Rounded</option>
+                  <option value="sharp">Sharp</option>
+                </select>
+              </label>
+              <label>
+                Font
+                <select value={settings.styling?.font_family || 'IBM Plex Sans'} onChange={(e) => setSettings((p) => ({ ...p, styling: { ...p.styling, font_family: e.target.value } }))}>
+                  <option value="IBM Plex Sans">IBM Plex Sans</option>
+                  <option value="Inter">Inter</option>
+                  <option value="Roboto Slab">Roboto Slab</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          {settingsTab === 'features' && (
+            <div className="checkout-settings-grid">
+              <label><input type="checkbox" checked={Boolean(settings.features?.show_mandate_summary)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, show_mandate_summary: e.target.checked } }))} /> Mandate summary page</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.collect_email)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, collect_email: e.target.checked } }))} /> Collect customer email</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.show_message_banner)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, show_message_banner: e.target.checked } }))} /> Message banner</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.flash_checkout)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, flash_checkout: e.target.checked } }))} /> Flash checkout</label>
+            </div>
+          )}
+
+          {settingsTab === 'payment_configuration' && (
+            <div className="checkout-settings-grid">
+              <label>
+                Preset name
+                <input value={settings.payment_configuration?.preset_name || ''} onChange={(e) => setSettings((p) => ({ ...p, payment_configuration: { ...p.payment_configuration, preset_name: e.target.value } }))} />
+              </label>
+              <label>
+                <input type="checkbox" checked={Boolean(settings.payment_configuration?.allow_custom_configuration)} onChange={(e) => setSettings((p) => ({ ...p, payment_configuration: { ...p.payment_configuration, allow_custom_configuration: e.target.checked } }))} />
+                Allow custom payment configuration
+              </label>
+            </div>
+          )}
+
+          <button className="btn btn-primary" type="button" onClick={saveCheckoutSettings} disabled={settingsSaving}>
+            {settingsSaving ? 'Saving...' : 'Save all changes'}
+          </button>
+          {settingsNotice && <p className="mini-help">{settingsNotice}</p>}
         </section>
 
         <section className={`checkout-stage ${viewport}`}>
@@ -342,6 +446,12 @@ export default function CheckoutPreview() {
         .preview-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 16px; }
         .preview-controls { display: grid; gap: 14px; position: sticky; top: 20px; background: #fff9ec !important; border-radius: 30px !important; }
         .preview-controls h3 { margin: 0; font-size: 22px; }
+        .checkout-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+        .checkout-settings-tabs button { border: 1px solid #d5c9af; background: #fff9ec; border-radius: 999px; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #6b6862; cursor: pointer; }
+        .checkout-settings-tabs button.active { border-color: #eb001b; color: #141413; background: #f5efe2; }
+        .checkout-settings-grid { display: grid; gap: 8px; }
+        .checkout-settings-grid label { display: grid; gap: 6px; font-size: 12px; color: #6b6862; }
+        .checkout-settings-grid input[type='checkbox'] { margin-right: 8px; accent-color: #eb001b; }
         .preview-merchant-name { color: #312d28; background: #f5efe2; border: 1px solid #d5c9af; border-radius: 999px; padding: 12px 14px; font-weight: 800; font-size: 18px; }
         .preview-controls label { display: flex; flex-direction: column; gap: 6px; color: var(--fp-text-muted); font-size: 13px; }
         .preview-controls input { background: #fff9ec; border: 1px solid #d5c9af; color: #141413; border-radius: 999px; padding: 10px 12px; }
@@ -361,7 +471,7 @@ export default function CheckoutPreview() {
         .checkout-stage.laptop .browser-bar, .checkout-stage.laptop .checkout-card { max-width: 880px; }
         .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-card { max-width: 344px; }
         .checkout-stage.mobile .browser-bar { margin-top: 18px; }
-        .checkout-card { width: 100%; max-width: 820px; min-height: 600px; background: #fff9ec; color: #141413; border: 1px solid #d5c9af; border-top: none; border-radius: 0 0 28px 28px; padding: 28px; display: grid; gap: 18px; align-content: start; box-shadow: none; }
+        .checkout-card { width: 100%; max-width: 820px; min-height: 600px; background: ${settings.styling?.background_color ? '#fff9ec' : '#fff9ec'}; color: #141413; border: 1px solid #d5c9af; border-top: none; border-radius: ${settings.styling?.border_style === 'sharp' ? '0 0 8px 8px' : '0 0 28px 28px'}; padding: 28px; display: grid; gap: 18px; align-content: start; box-shadow: none; font-family: ${settings.styling?.font_family || 'IBM Plex Sans'}, sans-serif; }
         .checkout-stage.laptop .checkout-card { min-height: 530px; }
         .checkout-stage.mobile .checkout-card { min-height: 660px; padding: 18px; gap: 14px; }
         .checkout-brand { display: flex; align-items: center; gap: 14px; }
@@ -402,7 +512,7 @@ export default function CheckoutPreview() {
         .payment-flow-grid h4 { margin: 0 0 4px; font-size: 14px; }
         .payment-flow-grid p { margin: 0; color: #6b6862; font-size: 12px; line-height: 1.45; }
         .payment-flow-grid span { display: inline-flex; margin-top: 10px; border: 1px solid #d5c9af; border-radius: 999px; padding: 3px 8px; color: #6b6862; font-size: 11px; }
-        @media (max-width: 980px) { .preview-shell { grid-template-columns: 1fr; } .preview-controls { position: static; } .checkout-stage { min-height: auto; } }
+        @media (max-width: 980px) { .preview-shell { grid-template-columns: 1fr; } .preview-controls { position: static; } .checkout-stage { min-height: auto; } .checkout-settings-tabs { grid-template-columns: 1fr; } }
         @media (max-width: 430px) { .checkout-stage.mobile { width: 100%; box-shadow: inset 0 0 0 6px #312d28; } }
         @media (max-width: 980px) { .payment-flow-grid { grid-template-columns: 1fr; } }
       `}</style>

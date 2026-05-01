@@ -462,6 +462,18 @@ async fn main() -> std::io::Result<()> {
                                 web::get().to(api::merchants::get_security_settings),
                             )
                             .route(
+                                "/dashboard-signals",
+                                web::get().to(api::merchants::get_dashboard_signals),
+                            )
+                            .route(
+                                "/checkout-settings",
+                                web::get().to(api::merchants::get_checkout_settings),
+                            )
+                            .route(
+                                "/checkout-settings",
+                                web::put().to(api::merchants::update_checkout_settings),
+                            )
+                            .route(
                                 "/webhook-secret/roll",
                                 web::post().to(api::merchants::roll_webhook_secret),
                             )

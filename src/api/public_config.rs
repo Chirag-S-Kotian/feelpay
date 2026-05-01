@@ -12,6 +12,13 @@ fn default_landing_config() -> serde_json::Value {
             "name": "FeelPay",
             "tagline": "Payments that build trust"
         },
+        "navbar": {
+            "links": [
+                { "label": "Features", "href": "#features" },
+                { "label": "Pricing", "href": "#pricing" },
+                { "label": "FAQ", "href": "#faq" }
+            ]
+        },
         "hero": {
             "kicker": "Payments that build trust",
             "headline": "Accept, route, settle, and pay out from one merchant platform.",
@@ -50,7 +57,62 @@ fn default_landing_config() -> serde_json::Value {
                 "caption": "For platforms and marketplaces",
                 "features": ["Volume pricing", "Dedicated support", "Custom risk rules", "Advanced reconciliation"]
             }
-        ]
+        ],
+        "testimonials": [
+            {
+                "quote": "Checkout drop-offs went down and settlement visibility improved across teams.",
+                "name": "Rhea Kapoor",
+                "role": "Ops Lead, WaveKart"
+            },
+            {
+                "quote": "Webhook testing + developer docs cut integration time from days to hours.",
+                "name": "Vikram Iyer",
+                "role": "CTO, BuildNow"
+            }
+        ],
+        "faq": [
+            {
+                "q": "How fast can we go live?",
+                "a": "After onboarding checks pass, switch from Test to Live mode from dashboard with same core API flow."
+            },
+            {
+                "q": "Can we customize payment methods?",
+                "a": "Yes. Payment methods and checkout order are configurable in dashboard and reflected in preview."
+            },
+            {
+                "q": "How are webhooks secured?",
+                "a": "Webhook events are signed. Verify signatures server-side with your webhook secret."
+            }
+        ],
+        "footer": {
+            "blurb": "Built for modern Indian merchants with reliability, observability, and conversion focus.",
+            "columns": [
+                {
+                    "title": "Product",
+                    "links": [
+                        { "label": "Checkout", "href": "#features" },
+                        { "label": "Pricing", "href": "#pricing" },
+                        { "label": "Dashboard", "href": "/login" }
+                    ]
+                },
+                {
+                    "title": "Developers",
+                    "links": [
+                        { "label": "API Access", "href": "/login" },
+                        { "label": "Webhooks", "href": "/login" },
+                        { "label": "Docs", "href": "/login" }
+                    ]
+                },
+                {
+                    "title": "Company",
+                    "links": [
+                        { "label": "About", "href": "#top" },
+                        { "label": "Contact", "href": "#footer" },
+                        { "label": "Sign Up", "href": "/signup" }
+                    ]
+                }
+            ]
+        }
     })
 }
 

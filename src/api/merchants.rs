@@ -62,6 +62,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/keys", web::get().to(get_keys))
             .route("/keys/roll", web::post().to(roll_keys))
             .route("/settings/security", web::get().to(get_security_settings))
+            .route("/dashboard-signals", web::get().to(get_dashboard_signals))
+            .route("/checkout-settings", web::get().to(get_checkout_settings))
+            .route("/checkout-settings", web::put().to(update_checkout_settings))
             .route(
                 "/webhook-secret/roll",
                 web::post().to(roll_webhook_secret),
@@ -95,6 +98,13 @@ pub struct UpdateSettingsRequest {
     pub business_type: Option<String>,
     pub webhook_url: Option<String>,
     pub settlement_account: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateCheckoutSettingsRequest {
+    pub styling: Option<serde_json::Value>,
+    pub features: Option<serde_json::Value>,
+    pub payment_configuration: Option<serde_json::Value>,
 }
 
 #[utoipa::path(
@@ -250,6 +260,27 @@ fn request_environment(req: &HttpRequest) -> &'static str {
         Some("live") => "live",
         _ => "test",
     }
+}
+
+async fn ensure_team_roles_exist(pool: &sqlx::PgPool) -> Result<(), FeelPayError> {
+    let role_specs = [
+        ("merchant_admin", "Administrative access to merchant features"),
+        ("merchant_staff", "Operational access for merchant team members"),
+        ("merchant_viewer", "Read-only access for merchant team members"),
+    ];
+
+    for (name, description) in role_specs {
+        sqlx::query(
+            "INSERT INTO roles (name, description, is_system) VALUES ($1, $2, true) ON CONFLICT DO NOTHING",
+        )
+        .bind(name)
+        .bind(description)
+        .execute(pool)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    }
+
+    Ok(())
 }
 
 async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, FeelPayError> {
@@ -430,6 +461,158 @@ pub async fn get_security_settings(
         "allowed_payment_methods": row.get::<serde_json::Value, _>(6),
         "webhook_secret_hint": webhook_hint,
         "updated_at": row.get::<chrono::DateTime<chrono::Utc>, _>(7)
+    })))
+}
+
+pub async fn get_dashboard_signals(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    let announcements: Vec<serde_json::Value> = sqlx::query_scalar(
+        "SELECT value->'announcements' FROM system_config WHERE key = 'merchant_dashboard_signals'",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|v: serde_json::Value| v.as_array().cloned())
+    .unwrap_or_else(|| {
+        vec![
+            serde_json::json!({
+                "id": "default-test-mode",
+                "title": "Test Mode Active",
+                "message": "Real money disabled. Validate checkout, webhooks, and settlement flows safely.",
+                "severity": "info"
+            }),
+            serde_json::json!({
+                "id": "default-webhooks",
+                "title": "Webhook Hygiene",
+                "message": "Keep webhook endpoints HTTPS and rotate webhook secret periodically.",
+                "severity": "warning"
+            }),
+        ]
+    });
+
+    let provider_health: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        SELECT jsonb_build_object(
+            'name', display_name,
+            'success_rate', success_rate,
+            'avg_latency_ms', avg_latency_ms,
+            'is_active', is_active,
+            'circuit_breaker_state', circuit_breaker_state
+        )
+        FROM payment_providers
+        ORDER BY success_rate DESC, avg_latency_ms ASC
+        LIMIT 5
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let merchant_status: Option<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        SELECT jsonb_build_object(
+            'onboarding_status', onboarding_status,
+            'status', status,
+            'registration_step', registration_step,
+            'updated_at', updated_at
+        )
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "announcements": announcements,
+        "ecosystem_health": provider_health,
+        "merchant_status": merchant_status
+    })))
+}
+
+pub async fn get_checkout_settings(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let settings: Option<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(registration_data->'checkout_settings', '{}'::jsonb)
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let fallback = serde_json::json!({
+        "styling": {
+            "background_color": "#C63201",
+            "border_style": "rounded",
+            "font_family": "IBM Plex Sans",
+            "show_sidebar_graphic": false,
+            "show_trusted_badge": true
+        },
+        "features": {
+            "show_mandate_summary": false,
+            "default_language": "English",
+            "collect_email": false,
+            "show_message_banner": false,
+            "flash_checkout": true
+        },
+        "payment_configuration": {
+            "preset_name": "Standard payment options",
+            "allow_custom_configuration": true
+        }
+    });
+
+    Ok(HttpResponse::Ok().json(settings.unwrap_or(fallback)))
+}
+
+pub async fn update_checkout_settings(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<UpdateCheckoutSettingsRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+
+    let payload = serde_json::json!({
+        "styling": body.styling.clone().unwrap_or_else(|| serde_json::json!({})),
+        "features": body.features.clone().unwrap_or_else(|| serde_json::json!({})),
+        "payment_configuration": body.payment_configuration.clone().unwrap_or_else(|| serde_json::json!({}))
+    });
+
+    sqlx::query(
+        r#"
+        UPDATE merchants
+        SET registration_data = jsonb_set(
+            COALESCE(registration_data, '{}'::jsonb),
+            '{checkout_settings}',
+            $2::jsonb,
+            true
+        ),
+        updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(&payload)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Checkout settings updated",
+        "settings": payload
     })))
 }
 
@@ -905,6 +1088,7 @@ pub async fn invite_team_member(
     body: web::Json<InviteTeamMemberRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    ensure_team_roles_exist(&state.db).await?;
 
     // Validate role
     let valid_roles = ["merchant_admin", "merchant_staff", "merchant_viewer"];
@@ -1072,6 +1256,7 @@ pub async fn update_team_member_role(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let user_id = path.into_inner();
+    ensure_team_roles_exist(&state.db).await?;
 
     // Validate role
     let valid_roles = ["merchant_admin", "merchant_staff", "merchant_viewer"];

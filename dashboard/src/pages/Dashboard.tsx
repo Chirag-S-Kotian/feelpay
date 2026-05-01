@@ -113,6 +113,7 @@ export default function Dashboard() {
           <p>Live merchant payment overview</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-secondary" onClick={() => navigate('/pricing')}>Pricing</button>
           <button className="btn btn-secondary" onClick={() => navigate('/exports')}>Export</button>
           <button className="btn btn-primary" onClick={() => navigate('/payments')}>View Payments</button>
         </div>
