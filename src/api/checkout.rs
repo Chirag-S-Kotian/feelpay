@@ -305,22 +305,91 @@ pub async fn get_embed_script() -> Result<HttpResponse, FeelPayError> {
     let script = r#"
 (function() {
     if (window.FeelPayCheckout) return;
+
+    const TRUST_CSS = `
+      .feelpay-checkout-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        background: rgba(20, 20, 19, 0.42);
+        display: grid;
+        place-items: center;
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+      }
+      .feelpay-checkout-frame {
+        width: min(100%, 440px);
+        height: min(760px, 100dvh - 32px);
+        border: 0;
+        border-radius: 34px;
+        background: #fff9ec;
+        box-shadow: 0 24px 80px rgba(20, 20, 19, 0.28);
+      }
+      .feelpay-checkout-close {
+        position: fixed;
+        top: max(14px, env(safe-area-inset-top));
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        border: 1px solid #d5c9af;
+        border-radius: 999px;
+        background: #fff9ec;
+        color: #141413;
+        font: 700 18px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      @media (min-width: 900px) {
+        .feelpay-checkout-frame {
+          width: min(920px, 94vw);
+          height: min(720px, 86vh);
+        }
+      }
+    `;
     
     window.FeelPayCheckout = {
         init: function(options) {
             this.merchantId = options.merchantId;
             this.container = document.getElementById(options.containerId);
+            this.checkoutBaseUrl = options.checkoutBaseUrl || 'https://checkout.feelpay.com';
             this.onSuccess = options.onSuccess || function(){};
             this.onError = options.onError || function(){};
             this.onClose = options.onClose || function(){};
         },
         
         open: function(paymentData) {
+            this.close();
+            if (!document.getElementById('feelpay-checkout-style')) {
+                const style = document.createElement('style');
+                style.id = 'feelpay-checkout-style';
+                style.textContent = TRUST_CSS;
+                document.head.appendChild(style);
+            }
+            const backdrop = document.createElement('div');
+            backdrop.className = 'feelpay-checkout-backdrop';
+            backdrop.id = 'feelpay-checkout-backdrop';
+            backdrop.setAttribute('role', 'dialog');
+            backdrop.setAttribute('aria-modal', 'true');
+            backdrop.setAttribute('aria-label', 'FeelPay secure checkout');
+
+            const closeButton = document.createElement('button');
+            closeButton.className = 'feelpay-checkout-close';
+            closeButton.type = 'button';
+            closeButton.setAttribute('aria-label', 'Close FeelPay checkout');
+            closeButton.textContent = '×';
+            closeButton.onclick = () => {
+                this.close();
+                this.onClose();
+            };
+
             const iframe = document.createElement('iframe');
-            iframe.src = 'https://checkout.feelpay.com/embed/' + paymentData.sessionId;
-            iframe.style.cssText = 'width:100%;height:100%;border:none;position:fixed;top:0;left:0;z-index:9999;background:transparent;';
+            iframe.src = this.checkoutBaseUrl.replace(/\/$/, '') + '/embed/' + encodeURIComponent(paymentData.sessionId);
+            iframe.className = 'feelpay-checkout-frame';
             iframe.id = 'feelpay-checkout-iframe';
-            document.body.appendChild(iframe);
+            iframe.title = 'FeelPay secure checkout';
+            iframe.allow = 'payment *';
+            backdrop.appendChild(iframe);
+            backdrop.appendChild(closeButton);
+            document.body.appendChild(backdrop);
             
             window.addEventListener('message', (event) => {
                 if (event.data.type === 'FEELPAY_SUCCESS') {
@@ -336,8 +405,8 @@ pub async fn get_embed_script() -> Result<HttpResponse, FeelPayError> {
         },
         
         close: function() {
-            const iframe = document.getElementById('feelpay-checkout-iframe');
-            if (iframe) iframe.remove();
+            const backdrop = document.getElementById('feelpay-checkout-backdrop');
+            if (backdrop) backdrop.remove();
         }
     };
 })();

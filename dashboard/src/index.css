@@ -2346,33 +2346,196 @@ select option:checked {
 .fp-loader {
   width: 42px;
   height: 42px;
-  border-radius: 999px;
+  border-radius: 16px;
   display: inline-block;
-  border: 2px solid #d5c9af;
+  border: 1px solid #d5c9af;
   background:
-    radial-gradient(circle at 34% 50%, #eb001b 0 8px, transparent 9px),
-    radial-gradient(circle at 66% 50%, #f2a000 0 8px, transparent 9px),
+    url('/feelpay.png') center / 70% 70% no-repeat,
     #fff9ec;
-  animation: fpLoaderPulse 1.1s ease-in-out infinite;
+  animation: fpLoaderTrust 1.35s ease-in-out infinite;
   box-shadow: 0 10px 24px rgba(20, 20, 19, 0.1);
+  position: relative;
+}
+
+.fp-loader::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 22px;
+  border: 2px solid transparent;
+  border-top-color: #eb001b;
+  border-right-color: rgba(235, 0, 27, 0.28);
+  animation: fpTrustRing 900ms linear infinite;
 }
 
 .fp-loader.large {
   width: 58px;
   height: 58px;
-  background:
-    radial-gradient(circle at 34% 50%, #eb001b 0 12px, transparent 13px),
-    radial-gradient(circle at 66% 50%, #f2a000 0 12px, transparent 13px),
-    #fff9ec;
+  border-radius: 20px;
 }
 
-@keyframes fpLoaderPulse {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.08) rotate(8deg); }
+@keyframes fpLoaderTrust {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.03); }
+}
+
+@keyframes fpTrustRing {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: fpTrustRing 900ms linear infinite;
+}
+
+/* Responsive safety net for merchant dashboard pages */
+@media (max-width: 900px) {
+  .app-layout {
+    grid-template-columns: 1fr !important;
+    overflow-x: hidden;
+  }
+
+  .main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden;
+  }
+
+  .page-header,
+  .top-header {
+    gap: 10px;
+  }
+
+  .card,
+  .table-card,
+  .chart-card,
+  .stat-card,
+  .api-section,
+  .docs-section,
+  .webhooks-section {
+    border-radius: 24px !important;
+  }
+
+  .data-table {
+    min-width: 720px;
+  }
+}
+
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .main-content {
+    padding: 68px 10px 14px !important;
+  }
+
+  .page-container,
+  .fade-in,
+  .page {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .page-header {
+    padding: 18px !important;
+    margin-bottom: 16px;
+  }
+
+  .page-header h1 {
+    font-size: clamp(1.75rem, 9vw, 2.35rem) !important;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .settings-grid,
+  .ops-grid,
+  .stats-grid,
+  .charts-grid,
+  .metrics-grid,
+  .payout-grid,
+  .payout-form,
+  .bank-accounts-hero,
+  .bank-accounts-grid,
+  .payment-link-form-grid,
+  .customers-form-grid,
+  .exports-create-grid,
+  .export-summary-grid,
+  .notification-grid,
+  .dev-grid,
+  .usecase-grid,
+  .methods-layout,
+  .methods-list,
+  .preview-shell {
+    grid-template-columns: 1fr !important;
+    min-width: 0 !important;
+  }
+
+  .settings-grid,
+  .ops-grid,
+  .settlements-search-box,
+  .customers-search-wrap,
+  .key-row,
+  .webhook-url-row {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .form-actions,
+  .key-row,
+  .webhook-url-row,
+  .settlements-filter-bar,
+  .filter-bar,
+  .customers-toolbar,
+  .exports-toolbar {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .logout-button,
+  select,
+  input,
+  textarea {
+    min-height: 46px;
+  }
+
+  .pill-tabs {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  }
+
+  .sidebar {
+    width: min(88vw, 320px) !important;
+  }
+
+  .logo-mark {
+    width: 50px;
+    height: 50px;
+  }
+
+  .logo-text {
+    font-size: 1.35rem;
+  }
+
+  .modal-content {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100vh - 28px) !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fp-loader {
+  .fp-loader,
+  .fp-loader::after,
+  .spin {
     animation: none;
   }
 }

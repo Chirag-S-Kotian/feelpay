@@ -465,7 +465,7 @@ export default function Settings() {
       <style>{`
         .settings-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
           gap: 16px;
         }
         .section-title {
@@ -578,6 +578,23 @@ export default function Settings() {
         }
         .error-table-wrap {
           overflow-x: auto;
+        }
+        @media (max-width: 640px) {
+          .settings-grid,
+          .ops-grid {
+            grid-template-columns: 1fr;
+          }
+          .key-row,
+          .settings-actions,
+          .risk-note,
+          .security-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            align-items: stretch;
+          }
+          .data-table {
+            min-width: 720px;
+          }
         }
       `}</style>
     </div>

@@ -224,6 +224,10 @@ async fn main() -> std::io::Result<()> {
                 "/v1/public/landing-page",
                 web::get().to(api::public_config::get_landing_page_config),
             )
+            .route(
+                "/v1/checkout/embed.js",
+                web::get().to(api::checkout::get_embed_script),
+            )
             // Swagger UI (only in non-production)
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
@@ -543,6 +547,12 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/preview-config",
                         web::get().to(api::checkout::get_checkout_preview_config),
+                    )
+                    .route("/session", web::post().to(api::checkout::create_checkout_session))
+                    .route("/session/{id}", web::get().to(api::checkout::get_checkout_session))
+                    .route(
+                        "/session/{id}/status",
+                        web::get().to(api::checkout::get_payment_status),
                     ),
             )
             // Payouts API (keep after specific /v1 routes so public merchant auth is not shadowed)
