@@ -220,6 +220,10 @@ async fn main() -> std::io::Result<()> {
             // Healthcheck
             .route("/health", web::get().to(api::health::health_check))
             .route("/v1/health", web::get().to(api::health::health_check))
+            .route(
+                "/v1/public/landing-page",
+                web::get().to(api::public_config::get_landing_page_config),
+            )
             // Swagger UI (only in non-production)
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
@@ -315,6 +319,10 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/balance",
                         web::get().to(crate::api::settlements::get_settlement_stats),
+                    )
+                    .route(
+                        "/reconciliation",
+                        web::get().to(api::settlements::get_reconciliation_summary),
                     )
                     .route("/{id}", web::get().to(api::settlements::get_settlement)),
             )
@@ -434,8 +442,17 @@ async fn main() -> std::io::Result<()> {
                             .wrap(crate::middleware::auth::JwtMiddleware)
                             .route("/profile", web::get().to(api::merchants::get_profile))
                             .route("/profile", web::put().to(api::merchants::update_profile))
+                            .route("/logout", web::post().to(api::merchants::logout_merchant))
                             .route("/keys", web::get().to(api::merchants::get_keys))
                             .route("/keys/roll", web::post().to(api::merchants::roll_keys))
+                            .route(
+                                "/payment-methods",
+                                web::get().to(api::merchants::list_payment_methods),
+                            )
+                            .route(
+                                "/payment-methods/{method_type}",
+                                web::put().to(api::merchants::update_payment_method),
+                            )
                             .route(
                                 "/settings/security",
                                 web::get().to(api::merchants::get_security_settings),
@@ -490,6 +507,10 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/top-customers",
                         web::get().to(api::analytics::get_top_customers),
+                    )
+                    .route(
+                        "/alerts",
+                        web::get().to(api::analytics::get_actionable_alerts),
                     ),
             )
             // Developers API (API key info)
@@ -514,6 +535,21 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/emi-bnpl")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::emi_bnpl::configure),
+            )
+            // Checkout preview API
+            .service(
+                web::scope("/v1/checkout")
+                    .wrap(crate::middleware::auth::JwtMiddleware)
+                    .route(
+                        "/preview-config",
+                        web::get().to(api::checkout::get_checkout_preview_config),
+                    ),
+            )
+            // Payouts API (keep after specific /v1 routes so public merchant auth is not shadowed)
+            .service(
+                web::scope("/v1")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::payouts::configure),
             )
             // Fee Plans API
             .service(

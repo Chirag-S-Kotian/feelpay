@@ -26,9 +26,27 @@ function getApiKey() {
 export type EnvironmentMode = 'test' | 'live';
 
 const ENV_KEY = 'feelpay_environment_mode';
+export const SESSION_EXPIRES_AT_KEY = 'feelpay_session_expires_at';
 const DEFAULT_GET_CACHE_MS = 15_000;
 const getCache = new Map<string, { expiresAt: number; data: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
+
+export function clearMerchantSession() {
+  localStorage.removeItem('feelpay_token');
+  localStorage.removeItem('feelpay_merchant');
+  localStorage.removeItem(SESSION_EXPIRES_AT_KEY);
+  getCache.clear();
+  inFlight.clear();
+}
+
+export function setSessionExpiryFromSeconds(seconds = 86_400) {
+  localStorage.setItem(SESSION_EXPIRES_AT_KEY, String(Date.now() + seconds * 1000));
+}
+
+export function isSessionExpired() {
+  const expiresAt = Number(localStorage.getItem(SESSION_EXPIRES_AT_KEY) || '0');
+  return Boolean(expiresAt && Date.now() >= expiresAt);
+}
 
 export function getEnvironmentMode(): EnvironmentMode {
   const value = localStorage.getItem(ENV_KEY);
@@ -124,7 +142,7 @@ export async function apiRequest<T = unknown>(
         }
       }
       if (res.status === 401) {
-        localStorage.removeItem('feelpay_token');
+        clearMerchantSession();
       }
       throw new Error(
         data?.error?.message || data?.message || `API request failed (${res.status})`,

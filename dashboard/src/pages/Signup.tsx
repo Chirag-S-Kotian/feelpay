@@ -52,6 +52,7 @@ export default function Signup() {
         <div className="auth-shell">
           <section className="auth-hero">
             <div>
+              <img src="/feelpay.png" alt="FeelPay" className="auth-logo" />
               <p className="auth-kicker">Merchant Onboarding</p>
               <h1 className="auth-title">Launch checkout in minutes.</h1>
               <p className="auth-subtitle">
@@ -66,6 +67,7 @@ export default function Signup() {
           </section>
           <section className="auth-form-wrap">
             <div className="login-header">
+              <img src="/feelpay.png" alt="FeelPay" className="auth-logo small" />
               <h1>FeelPay</h1>
               <p>Create your merchant account</p>
             </div>
@@ -135,6 +137,8 @@ export default function Signup() {
             <div className="login-footer">
               <span>Already have an account?</span>
               <Link to="/login">Sign In</Link>
+              <span>•</span>
+              <Link to="/landing">View pricing</Link>
             </div>
           </section>
         </div>

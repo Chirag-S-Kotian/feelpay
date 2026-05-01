@@ -6,6 +6,7 @@ use actix_web::{
 use chrono::{Duration, Utc};
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use sha2::{Digest, Sha256};
 use std::future::{ready, Ready};
 use std::rc::Rc;
 use uuid::Uuid;
@@ -34,6 +35,61 @@ fn request_environment(req: &ServiceRequest) -> EnvironmentMode {
     } else {
         EnvironmentMode::Test
     }
+}
+
+fn bearer_token_hash(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn bearer_token_from_header(value: &str) -> Option<String> {
+    value
+        .trim()
+        .strip_prefix("Bearer ")
+        .or_else(|| value.trim().strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+}
+
+pub fn bearer_token_from_request(req: &HttpRequest) -> Option<String> {
+    req.headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(bearer_token_from_header)
+}
+
+async fn is_bearer_token_revoked(req: &ServiceRequest, token: &str) -> bool {
+    let Some(state) = req.app_data::<web::Data<crate::state::AppState>>() else {
+        return false;
+    };
+    let key = format!("revoked:jwt:{}", bearer_token_hash(token));
+    let Ok(mut conn) = state.redis.get_connection() else {
+        return false;
+    };
+    redis::cmd("EXISTS")
+        .arg(key)
+        .query::<i32>(&mut conn)
+        .map(|exists| exists == 1)
+        .unwrap_or(false)
+}
+
+pub fn revoke_bearer_token(
+    state: &crate::state::AppState,
+    token: &str,
+    ttl_seconds: usize,
+) -> bool {
+    let key = format!("revoked:jwt:{}", bearer_token_hash(token));
+    let Ok(mut conn) = state.redis.get_connection() else {
+        return false;
+    };
+    redis::cmd("SETEX")
+        .arg(key)
+        .arg(ttl_seconds)
+        .arg("1")
+        .query::<()>(&mut conn)
+        .is_ok()
 }
 
 async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, actix_web::Error> {
@@ -274,50 +330,38 @@ where
             });
         };
 
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
-        let decoded = decode::<Claims>(
-            &token,
-            &DecodingKey::from_secret(secret.as_bytes()),
-            &Validation::default(),
-        );
-
-        let claims = match decoded {
-            Ok(v) => v.claims,
-            Err(_) => {
-                return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized(
-                        "Invalid or expired token",
-                    ))
-                });
-            }
-        };
-
-        let user_id = match Uuid::parse_str(&claims.sub) {
-            Ok(id) => id,
-            Err(_) => {
-                return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized(
-                        "Invalid user identity in token",
-                    ))
-                });
-            }
-        };
-
-        // Insert context into request extensions using wrapper types
-        req.extensions_mut().insert(UserId(user_id));
-        if let Some(tid) = claims.tenant_id {
-            req.extensions_mut().insert(TenantId(tid));
-        }
-        if let Some(mid) = claims.merchant_id {
-            req.extensions_mut().insert(MerchantId(mid));
-        }
-        req.extensions_mut().insert(UserRole(claims.role.clone()));
-
-        let fut = self.service.call(req);
-
         Box::pin(async move {
-            let res = fut.await?;
-            Ok(res)
+            if is_bearer_token_revoked(&req, &token).await {
+                return Err(actix_web::error::ErrorUnauthorized(
+                    "Session has been logged out",
+                ));
+            }
+
+            let secret =
+                std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+            let decoded = decode::<Claims>(
+                &token,
+                &DecodingKey::from_secret(secret.as_bytes()),
+                &Validation::default(),
+            );
+
+            let claims = decoded
+                .map(|v| v.claims)
+                .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid or expired token"))?;
+
+            let user_id = Uuid::parse_str(&claims.sub)
+                .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid user identity in token"))?;
+
+            req.extensions_mut().insert(UserId(user_id));
+            if let Some(tid) = claims.tenant_id {
+                req.extensions_mut().insert(TenantId(tid));
+            }
+            if let Some(mid) = claims.merchant_id {
+                req.extensions_mut().insert(MerchantId(mid));
+            }
+            req.extensions_mut().insert(UserRole(claims.role.clone()));
+
+            service.call(req).await
         })
     }
 }
@@ -434,6 +478,11 @@ where
 
             if auth_header.to_lowercase().starts_with("bearer ") {
                 let token = auth_header[7..].trim();
+                if is_bearer_token_revoked(&req, token).await {
+                    return Err(actix_web::error::ErrorUnauthorized(
+                        "Session has been logged out",
+                    ));
+                }
                 let secret =
                     std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
 
@@ -466,7 +515,11 @@ where
 
 /// Create a new JWT token for a user or merchant
 pub fn create_token(id: Uuid, _email: &str) -> Result<String, crate::error::FeelPayError> {
-    let exp = Utc::now() + Duration::days(7);
+    let expiry_hours = std::env::var("JWT_EXPIRY_HOURS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(24);
+    let exp = Utc::now() + Duration::hours(expiry_hours);
     let claims = Claims {
         sub: id.to_string(),
         tenant_id: None,

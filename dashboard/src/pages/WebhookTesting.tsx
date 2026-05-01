@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, Eye, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Send, Eye, AlertCircle, CheckCircle, Clock, Webhook, Save } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
 interface WebhookEndpoint {
@@ -7,6 +7,14 @@ interface WebhookEndpoint {
   url: string;
   status: 'active' | 'inactive';
   event_subscriptions: string[];
+}
+
+interface WebhookEvent {
+  id: string;
+  event_type: string;
+  status: string;
+  attempts: number;
+  created_at: string;
 }
 
 interface TestResult {
@@ -34,6 +42,10 @@ const EVENT_TYPES = [
 export default function WebhookTesting() {
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
   const [selectedEndpoint, setSelectedEndpoint] = useState<WebhookEndpoint | null>(null);
+  const [events, setEvents] = useState<WebhookEvent[]>([]);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
   const [selectedEventType, setSelectedEventType] = useState('payment.success');
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
@@ -56,18 +68,46 @@ export default function WebhookTesting() {
   }, []);
 
   const fetchWebhookEndpoints = async () => {
+    setError('');
     try {
-      const data = await apiRequest<{ webhooks: WebhookEndpoint[] }>(
-        'GET',
-        '/v1/developers/webhooks'
-      );
-      const webhooks = data.webhooks || [];
+      const [profile, webhookData] = await Promise.all([
+        apiRequest<{ webhook_url?: string | null }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 5_000 }),
+        apiRequest<{ events?: WebhookEvent[]; webhooks?: WebhookEndpoint[] }>('GET', '/v1/developers/webhooks', undefined, undefined, { cacheMs: 5_000 }),
+      ]);
+      const savedUrl = profile.webhook_url || '';
+      setWebhookUrl(savedUrl);
+      const configuredEndpoint: WebhookEndpoint[] = savedUrl ? [{
+        id: 'merchant-webhook-url',
+        url: savedUrl,
+        status: 'active',
+        event_subscriptions: EVENT_TYPES,
+      }] : [];
+      const webhooks = webhookData.webhooks?.length ? webhookData.webhooks : configuredEndpoint;
       setEndpoints(webhooks);
       setSelectedEndpoint(webhooks[0] ?? null);
+      setEvents(webhookData.events || []);
     } catch (err) {
       console.error('Failed to fetch webhook endpoints:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch webhook configuration.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveWebhookUrl = async () => {
+    setNotice('');
+    setError('');
+    const trimmed = webhookUrl.trim();
+    if (!trimmed.startsWith('https://')) {
+      setError('Webhook URL must start with https://');
+      return;
+    }
+    try {
+      await apiRequest('PUT', '/v1/merchants/profile', { webhook_url: trimmed });
+      setNotice('Webhook URL saved.');
+      await fetchWebhookEndpoints();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save webhook URL.');
     }
   };
 
@@ -84,6 +124,7 @@ export default function WebhookTesting() {
         {
           event_type: selectedEventType,
           webhook_endpoint_id: selectedEndpoint.id,
+          webhook_url: selectedEndpoint.url,
         }
       );
       setTestResult(data);
@@ -118,39 +159,42 @@ export default function WebhookTesting() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="loading">Loading webhook configuration...</div>
-      </div>
-    );
-  }
-
-  if (endpoints.length === 0) {
-    return (
-      <div className="page-container">
-        <div className="page-header">
-          <h1>Webhook Testing</h1>
-          <p>Test your webhook configuration</p>
-        </div>
-        <div className="card">
-          <div className="empty-state">
-            <AlertCircle size={32} />
-            <p>No webhook endpoints configured</p>
-            <p className="text-secondary">Configure a webhook endpoint in Developers settings first</p>
-          </div>
-        </div>
+        <div className="card mc-loader-card"><span className="fp-loader"></span> Loading webhook configuration...</div>
       </div>
     );
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container webhooks-page mc-page">
       <div className="page-header">
-        <h1>Webhook Testing</h1>
-        <p>Send test events to verify your webhook configuration</p>
+        <div>
+          <h1>Webhook Testing</h1>
+          <p>Configure HTTPS endpoint, inspect signed payload, send test event.</p>
+        </div>
+        <div className="webhook-mark"><Webhook size={28} /></div>
       </div>
 
+      {notice && <div className="card methods-alert success"><CheckCircle size={16} /> {notice}</div>}
+      {error && <div className="card methods-alert danger"><AlertCircle size={16} /> {error}</div>}
+
       <div className="grid grid-2">
-        <div className="card">
-          <h2>Test Configuration</h2>
+        <div className="card webhook-config-card">
+          <h2>Endpoint</h2>
+
+          <div className="form-group">
+            <label>Webhook URL</label>
+            <div className="webhook-url-row">
+              <input
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://merchant.example/webhooks/feelpay"
+              />
+              <button className="btn-secondary" onClick={() => void saveWebhookUrl()}>
+                <Save size={16} /> Save
+              </button>
+            </div>
+            <p className="mini-help">HTTPS only. Test runner signs payload with merchant webhook secret.</p>
+          </div>
 
           <div className="form-group">
             <label>Webhook Endpoint</label>
@@ -161,6 +205,7 @@ export default function WebhookTesting() {
                 setSelectedEndpoint(endpoint || null);
               }}
             >
+              {endpoints.length === 0 && <option value="">No saved endpoint</option>}
               {endpoints.map(ep => (
                 <option key={ep.id} value={ep.id}>
                   {ep.url}
@@ -225,9 +270,9 @@ export default function WebhookTesting() {
           </div>
         </div>
 
-        {testResult && (
-          <div className="card">
-            <h2>Test Result</h2>
+        <div className="card webhook-events-card">
+          <h2>{testResult ? 'Test Result' : 'Recent Delivery Events'}</h2>
+          {testResult ? (
             <div className={`result-container result-${testResult.status}`}>
               {testResult.status === 'sent' ? (
                 <CheckCircle size={32} />
@@ -272,8 +317,24 @@ export default function WebhookTesting() {
                 <span className="mono">{testResult.test_id}</span>
               </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="webhook-event-list">
+              {events.length === 0 ? (
+                <div className="empty-state webhook-empty">
+                  <Webhook size={34} />
+                  <strong>No delivery events yet</strong>
+                  <p>Save endpoint and send test event. Events will appear here after delivery attempts.</p>
+                </div>
+              ) : events.map((event) => (
+                <div className="webhook-event-item" key={event.id}>
+                  <strong>{event.event_type}</strong>
+                  <span>{event.status}</span>
+                  <small>{event.attempts} attempt(s) • {new Date(event.created_at).toLocaleString()}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {showPayload && samplePayload && (
@@ -293,6 +354,24 @@ export default function WebhookTesting() {
       )}
 
       <style>{`
+        .webhooks-page .page-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border: 1px solid #d5c9af;
+          border-radius: 34px;
+          background: #fff9ec;
+          padding: 24px;
+        }
+        .webhook-mark {
+          width: 64px;
+          height: 64px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          background: #eb001b;
+          color: #fff9ec;
+        }
         .grid-2 {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -303,11 +382,22 @@ export default function WebhookTesting() {
             grid-template-columns: 1fr;
           }
         }
+        .webhook-config-card,
+        .webhook-events-card {
+          border-radius: 34px !important;
+          background: #fff9ec !important;
+        }
+        .webhook-url-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 10px;
+        }
         .endpoint-info {
           margin-top: 12px;
-          padding: 12px;
-          background: var(--bg-secondary);
-          border-radius: 4px;
+          padding: 14px;
+          background: #f5efe2;
+          border: 1px solid #d5c9af;
+          border-radius: 22px;
           font-size: 13px;
         }
         .info-row {
@@ -321,15 +411,15 @@ export default function WebhookTesting() {
           align-items: center;
           gap: 16px;
           padding: 20px;
-          border-radius: 8px;
+          border-radius: 28px;
           text-align: center;
         }
         .result-container.result-sent {
-          background: #f0fdf4;
+          background: #eef8ef;
           color: #166534;
         }
         .result-container.result-failed {
-          background: #fef2f2;
+          background: #fff0ef;
           color: #991b1b;
         }
         .result-status {
@@ -349,9 +439,9 @@ export default function WebhookTesting() {
           border-bottom: none;
         }
         .response-body {
-          background: var(--bg-secondary);
+          background: #f5efe2;
           padding: 8px;
-          border-radius: 4px;
+          border-radius: 18px;
           font-size: 11px;
           overflow-x: auto;
           max-height: 150px;
@@ -363,16 +453,16 @@ export default function WebhookTesting() {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
+          background: rgba(20, 20, 19, 0.34);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 1000;
         }
         .modal-content {
-          background: var(--bg-primary);
-          border-radius: 8px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+          background: #fff9ec;
+          border-radius: 28px;
+          box-shadow: 0 18px 50px rgba(20, 20, 19, 0.18);
           max-width: 600px;
           width: 90%;
           max-height: 80vh;
@@ -383,7 +473,7 @@ export default function WebhookTesting() {
           justify-content: space-between;
           align-items: center;
           padding: 20px;
-          border-bottom: 1px solid var(--border-color);
+          border-bottom: 1px solid #d5c9af;
         }
         .modal-header h2 {
           margin: 0;
@@ -394,15 +484,15 @@ export default function WebhookTesting() {
           border: none;
           cursor: pointer;
           font-size: 20px;
-          color: var(--text-secondary);
+          color: #6b6862;
         }
         .modal-body {
           padding: 20px;
         }
         .payload-json {
-          background: var(--bg-secondary);
+          background: #f5efe2;
           padding: 12px;
-          border-radius: 4px;
+          border-radius: 20px;
           font-size: 12px;
           overflow-x: auto;
           margin: 0;
@@ -410,6 +500,30 @@ export default function WebhookTesting() {
         .spin {
           animation: spin 1s linear infinite;
         }
+        .webhook-event-list { display: grid; gap: 10px; }
+        .webhook-event-item {
+          border: 1px solid #d5c9af;
+          border-radius: 24px;
+          background: #f5efe2;
+          padding: 14px;
+          display: grid;
+          gap: 4px;
+        }
+        .webhook-event-item strong { color: #312d28; }
+        .webhook-event-item span { color: #eb001b; text-transform: uppercase; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; }
+        .webhook-event-item small { color: #6b6862; }
+        .webhook-empty {
+          min-height: 260px;
+          display: grid;
+          place-items: center;
+          align-content: center;
+          gap: 10px;
+          color: #6b6862;
+        }
+        .webhook-empty strong { color: #312d28; font-size: 20px; }
+        .methods-alert { margin: 14px 0; display: flex; align-items: center; gap: 8px; }
+        .methods-alert.success { border-color: rgba(35, 110, 62, 0.34) !important; color: #236e3e !important; }
+        .methods-alert.danger { border-color: rgba(200, 31, 47, 0.34) !important; color: #a01525 !important; }
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }

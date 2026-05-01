@@ -11,6 +11,12 @@ use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequ
 use crate::state::AppState;
 use sqlx::Row;
 
+const MERCHANT_SESSION_SECONDS: i64 = 24 * 60 * 60;
+
+fn merchant_session_expires_at() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now() + chrono::Duration::seconds(MERCHANT_SESSION_SECONDS)
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub email: String,
@@ -669,11 +675,38 @@ pub async fn login_merchant(
     }
 
     let token = crate::middleware::auth::create_token(m.id, &body.email)?;
+    let expires_at = merchant_session_expires_at();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "success",
         "token": token,
-        "merchant_id": m.id
+        "merchant_id": m.id,
+        "name": m.name,
+        "email": m.email,
+        "api_key": m.api_key,
+        "expires_in": MERCHANT_SESSION_SECONDS,
+        "expires_at": expires_at.to_rfc3339()
+    })))
+}
+
+pub async fn logout_merchant(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let revoked = crate::middleware::auth::bearer_token_from_request(&req)
+        .map(|token| {
+            crate::middleware::auth::revoke_bearer_token(
+                state.get_ref(),
+                &token,
+                MERCHANT_SESSION_SECONDS as usize,
+            )
+        })
+        .unwrap_or(false);
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Logged out",
+        "session_status": "terminated",
+        "server_revoked": revoked
     })))
 }
 
@@ -739,10 +772,16 @@ pub async fn verify_mfa_merchant(
         if let Some(mfa_secret) = &m.mfa_secret {
             if MfaService::verify_token(mfa_secret, &body.code)? {
                 let token = crate::middleware::auth::create_token(m.id, &m.email)?;
+                let expires_at = merchant_session_expires_at();
                 Ok(HttpResponse::Ok().json(serde_json::json!({
                     "status": "success",
                     "token": token,
-                    "merchant_id": m.id
+                    "merchant_id": m.id,
+                    "name": m.name,
+                    "email": m.email,
+                    "api_key": m.api_key,
+                    "expires_in": MERCHANT_SESSION_SECONDS,
+                    "expires_at": expires_at.to_rfc3339()
                 })))
             } else {
                 Err(FeelPayError::Unauthorized("Invalid MFA code".into()))

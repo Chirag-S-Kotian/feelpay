@@ -1,8 +1,10 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{http::header, web, HttpMessage, HttpRequest, HttpResponse};
+use redis::Commands;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
+use crate::middleware::auth::MerchantId;
 use crate::state::AppState;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -34,6 +36,115 @@ pub struct CheckoutSessionResponse {
     pub checkout_url: String,
     pub embed_url: String,
     pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn default_preview_methods() -> Vec<serde_json::Value> {
+    ["card", "upi", "netbanking", "wallet", "emi", "bnpl"]
+        .iter()
+        .enumerate()
+        .map(|(index, method)| {
+            serde_json::json!({
+                "method_type": method,
+                "enabled": true,
+                "config": {
+                    "priority": index + 1,
+                    "display_name": match *method {
+                        "card" => "Cards",
+                        "upi" => "UPI",
+                        "netbanking" => "Netbanking",
+                        "wallet" => "Wallets",
+                        "emi" => "EMI",
+                        "bnpl" => "Pay Later",
+                        _ => method,
+                    },
+                    "checkout_note": "Available on FeelPay checkout."
+                }
+            })
+        })
+        .collect()
+}
+
+pub async fn get_checkout_preview_config(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = req
+        .extensions()
+        .get::<MerchantId>()
+        .map(|m| m.0)
+        .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))?;
+
+    let cache_key = format!("merchant:{}:checkout_preview", merchant_id);
+    if let Ok(mut conn) = state.redis.get_connection() {
+        let cached: redis::RedisResult<String> = conn.get(&cache_key);
+        if let Ok(value) = cached {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&value) {
+                return Ok(HttpResponse::Ok()
+                    .insert_header((header::CACHE_CONTROL, "private, max-age=20"))
+                    .json(json));
+            }
+        }
+    }
+
+    let merchant: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT name, business_name FROM merchants WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let methods: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        SELECT jsonb_build_object(
+            'method_type', method_type,
+            'enabled', enabled,
+            'config', COALESCE(config, '{}'::jsonb)
+        )
+        FROM merchant_payment_methods
+        WHERE merchant_id = $1
+        ORDER BY COALESCE((config->>'priority')::int, 99), method_type
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let (merchant_name, business_name) = merchant.unwrap_or_else(|| ("FeelPay Merchant".into(), None));
+    let payload = serde_json::json!({
+        "merchant": {
+            "id": merchant_id,
+            "name": merchant_name,
+            "business_name": business_name
+        },
+        "sample_order": {
+            "order_id": "order_preview_001",
+            "amount": 249900,
+            "currency": "INR",
+            "customer_email": "customer@example.com",
+            "description": "Checkout preview order"
+        },
+        "methods": if methods.is_empty() { default_preview_methods() } else { methods },
+        "event_flow": [
+            { "label": "Order created", "status": "created", "detail": "Merchant creates order/session from API or dashboard." },
+            { "label": "Customer selects method", "status": "customer_action", "detail": "Checkout shows enabled methods in merchant priority order." },
+            { "label": "Authorization + capture", "status": "processing", "detail": "FeelPay routes payment and updates status." },
+            { "label": "Signed webhook", "status": "webhook", "detail": "Merchant receives signed payment event." },
+            { "label": "Settlement", "status": "settlement", "detail": "Captured funds move into settlement workflow." }
+        ]
+    });
+
+    if let Ok(mut conn) = state.redis.get_connection() {
+        let _: redis::RedisResult<()> = conn.set_ex(
+            cache_key,
+            serde_json::to_string(&payload).unwrap_or_default(),
+            20,
+        );
+    }
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CACHE_CONTROL, "private, max-age=20"))
+        .json(payload))
 }
 
 /// Create a hosted checkout session

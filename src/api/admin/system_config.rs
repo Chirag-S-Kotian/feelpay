@@ -77,6 +77,10 @@ pub async fn upsert_config(
     .await?;
     if let Ok(mut conn) = state.redis.get_connection() {
         let _: redis::RedisResult<()> = conn.del("system_config:all");
+        let _: redis::RedisResult<()> = conn.del(format!("system_config:{}", key));
+        if key == "landing_page" {
+            let _: redis::RedisResult<()> = conn.del("public:landing_page");
+        }
         let _: redis::RedisResult<()> = conn.set_ex(
             format!("system_config:{}", key),
             serde_json::to_string(&row).unwrap_or_default(),

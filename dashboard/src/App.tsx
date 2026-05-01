@@ -14,9 +14,19 @@ import {
   Link as LinkIcon,
   Users,
   Bell,
+  Send,
+  SlidersHorizontal,
+  Smartphone,
+  LogOut,
 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { EnvironmentMode, getEnvironmentMode, setEnvironmentMode } from './hooks/useApi';
+import {
+  clearMerchantSession,
+  EnvironmentMode,
+  getEnvironmentMode,
+  isSessionExpired,
+  setEnvironmentMode,
+} from './hooks/useApi';
 import { apiRequest } from './hooks/useApi';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -30,7 +40,11 @@ const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const Landing = lazy(() => import('./pages/Landing'));
 const PaymentLinks = lazy(() => import('./pages/PaymentLinks'));
+const Payouts = lazy(() => import('./pages/Payouts'));
+const PaymentMethods = lazy(() => import('./pages/PaymentMethods'));
+const CheckoutPreview = lazy(() => import('./pages/CheckoutPreview'));
 const Customers = lazy(() => import('./pages/Customers'));
 const Exports = lazy(() => import('./pages/Exports'));
 const SettlementReports = lazy(() => import('./pages/SettlementReports'));
@@ -43,6 +57,9 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   '/': () => import('./pages/Dashboard'),
   '/payments': () => import('./pages/Payments'),
   '/payment-links': () => import('./pages/PaymentLinks'),
+  '/payouts': () => import('./pages/Payouts'),
+  '/payment-methods': () => import('./pages/PaymentMethods'),
+  '/checkout-preview': () => import('./pages/CheckoutPreview'),
   '/customers': () => import('./pages/Customers'),
   '/settlements': () => import('./pages/Settlements'),
   '/exports': () => import('./pages/Exports'),
@@ -65,6 +82,9 @@ const NAV = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/payments', label: 'Payments', icon: CreditCard },
   { path: '/payment-links', label: 'Payment Links', icon: LinkIcon },
+  { path: '/payouts', label: 'Payouts', icon: Send },
+  { path: '/payment-methods', label: 'Payment Methods', icon: SlidersHorizontal },
+  { path: '/checkout-preview', label: 'Checkout Preview', icon: Smartphone },
   { path: '/customers', label: 'Customers', icon: Users },
   { path: '/settlements', label: 'Settlements', icon: Wallet },
   { path: '/exports', label: 'Exports', icon: BarChart3 },
@@ -96,7 +116,7 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-icon">F</div>
+        <img src="/feelpay.png" alt="FeelPay" className="logo-mark" />
         <span className="logo-text">FeelPay</span>
       </div>
       <nav className="sidebar-nav">
@@ -148,6 +168,17 @@ function Layout() {
   const [notificationCount] = useState(0);
   const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
   const [modeWarning, setModeWarning] = useState('');
+
+  const handleLogout = async () => {
+    try {
+      await apiRequest('POST', '/v1/merchants/logout', {});
+    } catch {
+      // Local session cleanup still completes if network/API is already gone.
+    } finally {
+      clearMerchantSession();
+      navigate('/login?reason=logout', { replace: true });
+    }
+  };
 
   useEffect(() => {
     setEnvironmentMode(mode);
@@ -211,12 +242,19 @@ function Layout() {
                 <span className="notification-badge">{notificationCount}</span>
               )}
             </button>
+            <button className="logout-button" onClick={() => void handleLogout()} type="button">
+              <LogOut size={18} />
+              Logout
+            </button>
           </header>
           <Suspense fallback={<RouteLoader />}>
             <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/payment-links" element={<PaymentLinks />} />
+            <Route path="/payouts" element={<Payouts />} />
+            <Route path="/payment-methods" element={<PaymentMethods />} />
+            <Route path="/checkout-preview" element={<CheckoutPreview />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/settlements" element={<Settlements />} />
             <Route path="/exports" element={<Exports />} />
@@ -241,11 +279,10 @@ function Layout() {
 
 function RouteLoader() {
   return (
-    <div className="card" style={{ minHeight: 260 }}>
-      <div className="skeleton" style={{ height: 24, width: 220, marginBottom: 16 }}></div>
-      <div className="skeleton" style={{ height: 46, width: '100%', marginBottom: 12 }}></div>
-      <div className="skeleton" style={{ height: 46, width: '100%', marginBottom: 12 }}></div>
-      <div className="skeleton" style={{ height: 180, width: '100%' }}></div>
+    <div className="card route-loader" style={{ minHeight: 260 }}>
+      <span className="fp-loader large"></span>
+      <strong>Loading FeelPay workspace</strong>
+      <p>Preparing secure merchant controls...</p>
     </div>
   );
 }
@@ -255,6 +292,10 @@ function ProtectedLayout() {
   if (!token) {
     return <Navigate to="/login" replace />;
   }
+  if (isSessionExpired()) {
+    clearMerchantSession();
+    return <Navigate to="/login?reason=expired" replace />;
+  }
   return <Layout />;
 }
 
@@ -263,6 +304,7 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={<RouteLoader />}>
         <Routes>
+          <Route path="/landing" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

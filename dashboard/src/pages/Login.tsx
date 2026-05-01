@@ -1,7 +1,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { apiRequest, setSessionExpiryFromSeconds } from '../hooks/useApi';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -14,6 +14,10 @@ export default function Login() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const impersonateToken = params.get('token');
+    const reason = params.get('reason');
+
+    if (reason === 'expired') setError('Session expired after 24 hours. Sign in again.');
+    if (reason === 'logout') setError('You have been logged out.');
 
     if (impersonateToken) {
       const handleImpersonate = async () => {
@@ -30,6 +34,7 @@ export default function Login() {
           }>('GET', '/v1/merchants/profile', null, impersonateToken);
 
           localStorage.setItem('feelpay_token', impersonateToken);
+          setSessionExpiryFromSeconds(86_400);
           localStorage.setItem(
             'feelpay_merchant',
             JSON.stringify({
@@ -61,16 +66,19 @@ export default function Login() {
         token: string;
         merchant_id: string;
         name: string;
+        email?: string;
         api_key: string;
+        expires_in?: number;
       }>('POST', '/v1/merchants/login', { email, password });
 
       localStorage.setItem('feelpay_token', res.token);
+      setSessionExpiryFromSeconds(res.expires_in || 86_400);
       localStorage.setItem(
         'feelpay_merchant',
         JSON.stringify({
           id: res.merchant_id,
           name: res.name,
-          email,
+          email: res.email || email,
           api_key: res.api_key,
         }),
       );
@@ -89,6 +97,7 @@ export default function Login() {
         <div className="auth-shell">
           <section className="auth-hero">
             <div>
+              <img src="/feelpay.png" alt="FeelPay" className="auth-logo" />
               <p className="auth-kicker">Developer Platform</p>
               <h1 className="auth-title">Build, test, ship payments fast.</h1>
               <p className="auth-subtitle">
@@ -103,6 +112,7 @@ export default function Login() {
           </section>
           <section className="auth-form-wrap">
             <div className="login-header">
+              <img src="/feelpay.png" alt="FeelPay" className="auth-logo small" />
               <h1>FeelPay</h1>
               <p>Sign in to your merchant dashboard</p>
             </div>
@@ -151,6 +161,8 @@ export default function Login() {
               <Link to="/forgot-password">Forgot password?</Link>
               <span>•</span>
               <Link to="/signup">Create account</Link>
+              <span>•</span>
+              <Link to="/landing">Landing page</Link>
             </div>
           </section>
         </div>
