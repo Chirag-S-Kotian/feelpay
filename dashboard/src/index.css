@@ -2601,10 +2601,13 @@ textarea {
 }
 
 .main-content,
-.sidebar,
-.mobile-sidebar {
+.sidebar {
   position: relative;
   z-index: 1;
+}
+
+.mobile-sidebar {
+  z-index: 50;
 }
 
 .settlements-filter-bar {
@@ -3010,6 +3013,25 @@ pre,
     min-height: 100dvh !important;
   }
 
+  .mobile-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(88vw, 320px) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    transform: translateX(-100%) !important;
+    z-index: 50 !important;
+  }
+
+  .mobile-sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .mobile-sidebar .sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
   .top-header {
     margin: 0 0 12px 0 !important;
     padding: 0 0 12px 0 !important;
@@ -3032,12 +3054,20 @@ pre,
     align-content: start !important;
     gap: 12px !important;
   }
+
+  .tabs,
+  .pill-tabs,
+  .mode-toggle,
+  .lang-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }
 
 @media (max-width: 640px) {
   .top-header {
-    position: sticky !important;
-    top: 56px !important;
+    position: static !important;
+    top: auto !important;
     z-index: 35 !important;
     background: #fff9ec !important;
     border-radius: 12px !important;
