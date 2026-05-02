@@ -62,8 +62,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-icon">A</div>
-        <span className="logo-text">FeelPay Admin</span>
+        <div className="logo-icon">FP</div>
+        <span className="logo-text">FeelPay</span>
       </div>
       <nav className="sidebar-nav">
         {NAV.map(n => (
@@ -75,15 +75,15 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
             <n.icon size={18} />
-            {n.label}
+            <span>{n.label}</span>
           </NavLink>
         ))}
       </nav>
       <div className="env-panel">
-        <div className="env-label">Platform Mode</div>
+        <div className="env-label">Platform</div>
         <div className="env-badge">
           <span className="env-dot"></span>
-          Super Admin
+          <span>Admin</span>
         </div>
       </div>
     </aside>
@@ -112,9 +112,10 @@ function Layout() {
             <Search size={16} />
             <input
               type="text"
-              placeholder="Search merchants, transactions, users..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              aria-label="Search transactions, merchants"
             />
           </div>
           <button className="notification-bell" aria-label="Notifications">
