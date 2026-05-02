@@ -119,6 +119,61 @@ fn request_hash<T: serde::Serialize>(body: &T) -> Result<String, FeelPayError> {
     Ok(hex::encode(digest))
 }
 
+fn payment_method_name(method_data: &MethodData) -> &'static str {
+    match method_data {
+        MethodData::Card { .. } => "card",
+        MethodData::Upi { .. } => "upi",
+        MethodData::NetBanking { .. } => "netbanking",
+        MethodData::Wallet { .. } => "wallet",
+        MethodData::Emi { .. } => "emi",
+        MethodData::Bnpl { .. } => "bnpl",
+        MethodData::Simulator { .. } => "simulator",
+    }
+}
+
+fn connector_for_payment(
+    method_data: &MethodData,
+    processor_override: Option<&str>,
+    is_live: bool,
+) -> String {
+    if let Some(connector) = processor_override.filter(|value| !value.trim().is_empty()) {
+        return connector.to_string();
+    }
+    if !is_live {
+        return "simulator".to_string();
+    }
+    payment_method_name(method_data).to_string()
+}
+
+fn capture_connector(connector: Option<&str>) -> &str {
+    connector
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("simulator")
+}
+
+fn status_timestamps(
+    status: &PaymentStatus,
+    now: chrono::DateTime<chrono::Utc>,
+) -> (
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<chrono::DateTime<chrono::Utc>>,
+) {
+    match status {
+        PaymentStatus::Authorized => (Some(now), None),
+        PaymentStatus::Captured => (Some(now), Some(now)),
+        _ => (None, None),
+    }
+}
+
+fn payment_metadata(environment: &str, method: &str, connector: &str) -> serde_json::Value {
+    serde_json::json!({
+        "environment": environment,
+        "payment_method": method,
+        "connector": connector,
+        "mode_badge": if environment == "live" { "LIVE" } else { "TEST" }
+    })
+}
+
 async fn check_idempotency(
     db: &sqlx::PgPool,
     merchant_id: Uuid,
@@ -315,14 +370,18 @@ pub async fn create_payment(
         }
     }
 
+    let method_name = payment_method_name(&final_method_data).to_string();
+    let connector = connector_for_payment(
+        &final_method_data,
+        req_data.processor_override.as_deref(),
+        state.config.is_live(),
+    );
+    let environment = if state.config.is_live() { "live" } else { "test" };
+
     // 3. Process Payment via Engine
     let engine = state.payment_engine.read().await;
     let proc_result = engine
-        .authorize(
-            &txn_ctx,
-            &final_method_data,
-            req_data.processor_override.as_deref(),
-        )
+        .authorize(&txn_ctx, &final_method_data, Some(&connector))
         .await;
 
     // 4. Update Order Status
@@ -340,13 +399,34 @@ pub async fn create_payment(
             order.error_message = Some(e.to_string());
         }
     }
+    let now = chrono::Utc::now();
+    let (authorized_at, captured_at) = status_timestamps(&order.status, now);
+    order.payment_method = Some(method_name.clone());
+    order.payment_method_data =
+        Some(serde_json::to_value(&final_method_data).unwrap_or_else(|_| serde_json::json!({})));
+    order.connector = Some(connector.clone());
+    order.metadata = Some(payment_metadata(environment, &method_name, &connector));
+    order.authorized_at = authorized_at;
+    order.captured_at = captured_at;
+    order.updated_at = now;
 
     // 5. Persist Order
-    // ... DB insertion omitted for brevity, let's just insert it
     sqlx::query(
         r#"
-        INSERT INTO payment_orders (id, merchant_id, amount, currency, status, order_id, customer_email, customer_phone, description, return_url, gateway_reference, gateway_response, error_message, error_code, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        INSERT INTO payment_orders (
+            id, merchant_id, amount, currency, status, order_id,
+            payment_method, payment_method_data, connector, customer_email, customer_phone,
+            description, return_url, idempotency_key, gateway_reference, gateway_response,
+            error_message, error_code, metadata, refunded_amount, created_at, updated_at,
+            authorized_at, captured_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11,
+            $12, $13, $14, $15, $16,
+            $17, $18, $19, $20, $21, $22,
+            $23, $24
+        )
         "#,
     )
     .bind(order.id)
@@ -355,16 +435,24 @@ pub async fn create_payment(
     .bind(&order.currency)
     .bind(order.status.as_str())
     .bind(&order.order_id)
+    .bind(&order.payment_method)
+    .bind(&order.payment_method_data)
+    .bind(&order.connector)
     .bind(&order.customer_email)
     .bind(&order.customer_phone)
     .bind(&order.description)
     .bind(&order.return_url)
+    .bind(&order.idempotency_key)
     .bind(&order.gateway_reference)
     .bind(&order.gateway_response)
     .bind(&order.error_message)
     .bind(&order.error_code)
+    .bind(&order.metadata)
+    .bind(order.refunded_amount)
     .bind(order.created_at)
     .bind(order.updated_at)
+    .bind(order.authorized_at)
+    .bind(order.captured_at)
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
@@ -578,14 +666,15 @@ pub async fn capture_payment(
         description: order.description.clone(),
     };
 
+    let connector = capture_connector(order.connector.as_deref());
     let engine = state.payment_engine.read().await;
-    // We assume default or stored processor if we had one. In a real system, we'd store the processor name on the order.
-    // For now, simulate using "simulator"
-    let proc_result = engine
-        .capture(&txn_ctx, payload.amount, "simulator")
-        .await?;
+    let proc_result = engine.capture(&txn_ctx, payload.amount, connector).await?;
 
     order.status = proc_result.status;
+    order.gateway_reference = proc_result.gateway_reference;
+    order.gateway_response = proc_result.gateway_response;
+    order.error_code = proc_result.error_code;
+    order.error_message = proc_result.error_message;
 
     if order.status == PaymentStatus::Captured {
         // Record in ledger
@@ -601,18 +690,42 @@ pub async fn capture_payment(
             )
             .await?;
 
-        sqlx::query(r#"UPDATE payment_orders SET status = $1, updated_at = $2, captured_at = $3 WHERE id = $4"#)
+        sqlx::query(
+            r#"
+            UPDATE payment_orders
+            SET status = $1, updated_at = $2, captured_at = $3,
+                gateway_reference = $4, gateway_response = $5,
+                error_code = $6, error_message = $7
+            WHERE id = $8
+            "#,
+        )
             .bind(order.status.as_str())
             .bind(chrono::Utc::now())
             .bind(chrono::Utc::now())
+            .bind(&order.gateway_reference)
+            .bind(&order.gateway_response)
+            .bind(&order.error_code)
+            .bind(&order.error_message)
             .bind(order.id)
             .execute(&state.db)
             .await
             .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     } else {
-        sqlx::query(r#"UPDATE payment_orders SET status = $1, updated_at = $2 WHERE id = $3"#)
+        sqlx::query(
+            r#"
+            UPDATE payment_orders
+            SET status = $1, updated_at = $2,
+                gateway_reference = $3, gateway_response = $4,
+                error_code = $5, error_message = $6
+            WHERE id = $7
+            "#,
+        )
             .bind(order.status.as_str())
             .bind(chrono::Utc::now())
+            .bind(&order.gateway_reference)
+            .bind(&order.gateway_response)
+            .bind(&order.error_code)
+            .bind(&order.error_message)
             .bind(order.id)
             .execute(&state.db)
             .await
@@ -989,4 +1102,111 @@ pub async fn batch_refund(
         failed,
         results,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::processor::MethodData;
+    use crate::models::payment_order::PaymentStatus;
+
+    #[test]
+    fn method_name_from_method_data_maps_supported_methods() {
+        assert_eq!(
+            payment_method_name(&MethodData::Card {
+                number: None,
+                token: Some("tok_123".into()),
+                expiry_month: None,
+                expiry_year: None,
+                cvv: None,
+                holder_name: None,
+            }),
+            "card"
+        );
+        assert_eq!(
+            payment_method_name(&MethodData::Upi {
+                vpa: Some("buyer@upi".into()),
+                flow: Some("collect".into()),
+            }),
+            "upi"
+        );
+        assert_eq!(
+            payment_method_name(&MethodData::Simulator {
+                action: "success".into(),
+            }),
+            "simulator"
+        );
+    }
+
+    #[test]
+    fn connector_for_request_prefers_override_then_test_simulator() {
+        assert_eq!(
+            connector_for_payment(
+                &MethodData::Card {
+                    number: None,
+                    token: Some("tok_123".into()),
+                    expiry_month: None,
+                    expiry_year: None,
+                    cvv: None,
+                    holder_name: None,
+                },
+                Some("card"),
+                false,
+            ),
+            "card"
+        );
+        assert_eq!(
+            connector_for_payment(
+                &MethodData::Upi {
+                    vpa: Some("buyer@upi".into()),
+                    flow: Some("collect".into()),
+                },
+                None,
+                false,
+            ),
+            "simulator"
+        );
+        assert_eq!(
+            connector_for_payment(
+                &MethodData::Upi {
+                    vpa: Some("buyer@upi".into()),
+                    flow: Some("collect".into()),
+                },
+                None,
+                true,
+            ),
+            "upi"
+        );
+    }
+
+    #[test]
+    fn status_timestamps_mark_authorized_and_captured() {
+        let now = chrono::Utc::now();
+        let (authorized_at, captured_at) = status_timestamps(&PaymentStatus::Authorized, now);
+        assert_eq!(authorized_at, Some(now));
+        assert_eq!(captured_at, None);
+
+        let (authorized_at, captured_at) = status_timestamps(&PaymentStatus::Captured, now);
+        assert_eq!(authorized_at, Some(now));
+        assert_eq!(captured_at, Some(now));
+
+        let (authorized_at, captured_at) = status_timestamps(&PaymentStatus::Failed, now);
+        assert_eq!(authorized_at, None);
+        assert_eq!(captured_at, None);
+    }
+
+    #[test]
+    fn checkout_metadata_includes_environment_and_method() {
+        let metadata = payment_metadata("test", "card", "simulator");
+        assert_eq!(metadata["environment"], "test");
+        assert_eq!(metadata["payment_method"], "card");
+        assert_eq!(metadata["connector"], "simulator");
+    }
+
+    #[test]
+    fn capture_connector_uses_stored_connector_or_simulator() {
+        assert_eq!(capture_connector(Some("card")), "card");
+        assert_eq!(capture_connector(Some("upi")), "upi");
+        assert_eq!(capture_connector(None), "simulator");
+    }
 }

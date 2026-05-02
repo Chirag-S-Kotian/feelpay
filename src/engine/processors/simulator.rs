@@ -48,6 +48,55 @@ impl PaymentMethodProcessor for SimulatorProcessor {
         // Simulate processing delay
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
+        if let MethodData::Simulator { action } = method_data {
+            match action.as_str() {
+                "success" => {
+                    return Ok(ProcessorResponse {
+                        status: PaymentStatus::Captured,
+                        gateway_reference: Some(self.generate_ref("pay")),
+                        gateway_response: Some(serde_json::json!({
+                            "simulator": true,
+                            "action": "success",
+                            "amount": txn.amount
+                        })),
+                        error_code: None,
+                        error_message: None,
+                        redirect_url: None,
+                        metadata: Some(serde_json::json!({ "simulator_action": "success" })),
+                    });
+                }
+                "fail" | "failed" => {
+                    return Ok(ProcessorResponse {
+                        status: PaymentStatus::Failed,
+                        gateway_reference: Some(self.generate_ref("fail")),
+                        gateway_response: Some(serde_json::json!({
+                            "simulator": true,
+                            "action": "fail"
+                        })),
+                        error_code: Some("SIM_DECLINED".into()),
+                        error_message: Some("Simulated payment decline".into()),
+                        redirect_url: None,
+                        metadata: Some(serde_json::json!({ "simulator_action": "fail" })),
+                    });
+                }
+                "processing" | "delay" => {
+                    return Ok(ProcessorResponse {
+                        status: PaymentStatus::Processing,
+                        gateway_reference: Some(self.generate_ref("processing")),
+                        gateway_response: Some(serde_json::json!({
+                            "simulator": true,
+                            "action": "processing"
+                        })),
+                        error_code: None,
+                        error_message: None,
+                        redirect_url: None,
+                        metadata: Some(serde_json::json!({ "simulator_action": "processing" })),
+                    });
+                }
+                _ => {}
+            }
+        }
+
         if !self.should_succeed() {
             return Ok(ProcessorResponse {
                 status: PaymentStatus::Failed,
@@ -154,5 +203,56 @@ impl PaymentMethodProcessor for SimulatorProcessor {
             redirect_url: None,
             metadata: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn txn() -> TransactionContext {
+        TransactionContext {
+            payment_id: Uuid::new_v4(),
+            merchant_id: Uuid::new_v4(),
+            order_id: "order_test_123".into(),
+            amount: 12345,
+            currency: "INR".into(),
+            customer_email: Some("buyer@example.com".into()),
+            customer_phone: None,
+            return_url: None,
+            description: Some("Test order".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn simulator_success_action_captures_payment() {
+        let processor = SimulatorProcessor::new();
+        let response = processor
+            .authorize(
+                &txn(),
+                &MethodData::Simulator {
+                    action: "success".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status, PaymentStatus::Captured);
+        assert!(response.error_code.is_none());
+    }
+
+    #[tokio::test]
+    async fn simulator_fail_action_declines_payment() {
+        let processor = SimulatorProcessor::new();
+        let response = processor
+            .authorize(
+                &txn(),
+                &MethodData::Simulator {
+                    action: "fail".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status, PaymentStatus::Failed);
+        assert_eq!(response.error_code.as_deref(), Some("SIM_DECLINED"));
     }
 }

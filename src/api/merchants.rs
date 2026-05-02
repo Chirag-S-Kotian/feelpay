@@ -338,6 +338,26 @@ async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, FeelPayEr
     Ok(count == 2)
 }
 
+async fn has_merchant_column(pool: &sqlx::PgPool, column_name: &str) -> Result<bool, FeelPayError> {
+    let exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'merchants'
+              AND column_name = $1
+        )
+        "#,
+    )
+    .bind(column_name)
+    .fetch_one(pool)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    Ok(exists)
+}
+
 #[utoipa::path(
     get,
     path = "/v1/merchants/profile",
@@ -1183,41 +1203,62 @@ pub async fn login_merchant(
     state: web::Data<AppState>,
     body: web::Json<MerchantLoginRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
-    let merchant: Option<Merchant> = sqlx::query_as("SELECT * FROM merchants WHERE email = $1")
+    let merchant = sqlx::query(
+        r#"
+        SELECT id, name, email, password_hash, api_key
+        FROM merchants
+        WHERE email = $1
+        "#,
+    )
         .bind(&body.email)
         .fetch_optional(&state.db)
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let m = merchant.ok_or(FeelPayError::Unauthorized("Invalid credentials".into()))?;
+    let merchant_id: Uuid = m.get("id");
+    let name: String = m.get("name");
+    let email: String = m.get("email");
+    let password_hash: String = m.get("password_hash");
+    let api_key: String = m.get("api_key");
 
     let argon2 = Argon2::default();
-    let parsed_hash = PasswordHash::new(&m.password_hash)
-        .map_err(|_| FeelPayError::Internal("Hash error".into()))?;
+    let parsed_hash = PasswordHash::new(&password_hash)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid credentials".into()))?;
 
     argon2
         .verify_password(body.password.as_bytes(), &parsed_hash)
         .map_err(|_| FeelPayError::Unauthorized("Invalid credentials".into()))?;
 
-    if m.mfa_enabled {
-        let mfa_token = create_mfa_token(m.id, &body.email)?;
+    let mfa_enabled = if has_merchant_column(&state.db, "mfa_enabled").await? {
+        sqlx::query_scalar::<_, bool>("SELECT COALESCE(mfa_enabled, false) FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    } else {
+        false
+    };
+
+    if mfa_enabled {
+        let mfa_token = create_mfa_token(merchant_id, &body.email)?;
         return Ok(HttpResponse::Ok().json(serde_json::json!({
             "status": "mfa_required",
             "mfa_token": mfa_token,
-            "merchant_id": m.id
+            "merchant_id": merchant_id
         })));
     }
 
-    let token = crate::middleware::auth::create_token(m.id, &body.email)?;
+    let token = crate::middleware::auth::create_token(merchant_id, &body.email)?;
     let expires_at = merchant_session_expires_at();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "success",
         "token": token,
-        "merchant_id": m.id,
-        "name": m.name,
-        "email": m.email,
-        "api_key": m.api_key,
+        "merchant_id": merchant_id,
+        "name": name,
+        "email": email,
+        "api_key": api_key,
         "expires_in": MERCHANT_SESSION_SECONDS,
         "expires_at": expires_at.to_rfc3339()
     })))

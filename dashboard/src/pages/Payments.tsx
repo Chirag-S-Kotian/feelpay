@@ -12,6 +12,42 @@ type Payment = {
   created_at: string;
 };
 
+function paymentAmount(amount: number) {
+  return (amount / 100).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function statusTone(status: string) {
+  const normalized = status.toLowerCase();
+  if (['captured', 'completed', 'success'].includes(normalized)) return 'captured';
+  if (['failed', 'declined', 'error'].includes(normalized)) return 'failed';
+  if (['refunded', 'partially_refunded'].includes(normalized)) return 'refunded';
+  if (['processing', 'requires_action', 'created', 'pending'].includes(normalized)) return 'processing';
+  return 'pending';
+}
+
+function connectorLabel(connector?: string | null) {
+  if (!connector) return 'Not set';
+  const labels: Record<string, string> = {
+    simulator: 'Simulator',
+    core_card_rail: 'Card rail',
+    upi_stub: 'UPI rail',
+    razorpay: 'Razorpay',
+    stripe: 'Stripe',
+  };
+  return labels[connector] || connector.replace(/_/g, ' ');
+}
+
+function connectorTone(connector?: string | null) {
+  if (!connector) return 'unknown';
+  if (connector === 'simulator') return 'test';
+  if (connector.includes('card') || connector === 'stripe') return 'card';
+  if (connector.includes('upi') || connector === 'razorpay') return 'upi';
+  return 'live';
+}
+
 function SkeletonRow() {
   return (
     <tr>
@@ -98,7 +134,7 @@ export default function Payments() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24, alignItems: 'center' }}>
+        <div className="payments-toolbar">
         <div className="pill-tabs">
           {['all', 'captured', 'processing', 'failed', 'refunded'].map(f => (
             <button key={f} className={`pill-tab ${filter === f ? 'active' : ''}`}
@@ -120,7 +156,7 @@ export default function Payments() {
 
       {/* Table */}
       {loading ? <SkeletonTable /> : (
-        <div className="card">
+        <div className="card payments-table-card">
           <table className="data-table">
             <thead>
               <tr>
@@ -140,22 +176,16 @@ export default function Payments() {
                   <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-soft)' }}>{p.id}</td>
                   <td style={{ fontWeight: 500 }}>{p.order_id}</td>
                   <td style={{ color: 'var(--fp-text-muted)', fontSize: 13 }}>{p.customer_email || '-'}</td>
-                  <td style={{ fontWeight: 600 }}>₹{p.amount.toLocaleString('en-IN')}</td>
+                  <td style={{ fontWeight: 600 }}>₹{paymentAmount(p.amount)}</td>
                   <td>
-                    <span style={{
-                      padding: '3px 10px', borderRadius: 6, fontSize: 12,
-                      background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)',
-                    }}>{p.payment_method || '-'}</span>
+                    <span className="payment-chip">{p.payment_method || 'Not set'}</span>
                   </td>
                   <td>
-                    <span style={{
-                      padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                      textTransform: 'uppercase', letterSpacing: '0.5px',
-                      background: p.connector === 'simulator' ? 'rgba(6,214,160,0.1)' : p.connector === 'core_card_rail' ? 'rgba(59,130,246,0.1)' : 'rgba(245,158,11,0.1)',
-                      color: p.connector === 'simulator' ? 'var(--fp-accent)' : p.connector === 'core_card_rail' ? 'var(--fp-info)' : 'var(--fp-warning)',
-                    }}>{p.connector || '-'}</span>
+                    <span className={`connector-chip ${connectorTone(p.connector)}`}>
+                      {connectorLabel(p.connector)}
+                    </span>
                   </td>
-                  <td><span className={`badge ${p.status}`}>{p.status}</span></td>
+                  <td><span className={`badge ${statusTone(p.status)}`}>{p.status}</span></td>
                   <td style={{ color: 'var(--fp-text-muted)', fontSize: 13 }}>
                     {new Date(p.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
@@ -170,6 +200,73 @@ export default function Payments() {
           )}
         </div>
       )}
+      <style>{`
+        .payments-toolbar {
+          display: flex;
+          gap: 16px;
+          margin-bottom: 24px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .payments-table-card {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .payment-chip,
+        .connector-chip {
+          display: inline-flex;
+          align-items: center;
+          min-height: 26px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          border: 1px solid var(--fp-border);
+          background: var(--fp-bg-elevated);
+          color: var(--fp-text-muted);
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: capitalize;
+          white-space: nowrap;
+        }
+
+        .connector-chip.test {
+          background: rgba(34, 197, 94, 0.14);
+          border-color: rgba(34, 197, 94, 0.3);
+          color: #86efac;
+        }
+
+        .connector-chip.card {
+          background: rgba(59, 130, 246, 0.14);
+          border-color: rgba(59, 130, 246, 0.3);
+          color: #93c5fd;
+        }
+
+        .connector-chip.upi {
+          background: rgba(245, 158, 11, 0.14);
+          border-color: rgba(245, 158, 11, 0.3);
+          color: #fbbf24;
+        }
+
+        .connector-chip.live {
+          background: rgba(139, 92, 246, 0.14);
+          border-color: rgba(139, 92, 246, 0.3);
+          color: #c4b5fd;
+        }
+
+        @media (max-width: 760px) {
+          .payments-toolbar,
+          .payments-toolbar .pill-tabs,
+          .payments-toolbar input {
+            width: 100% !important;
+          }
+
+          .payments-toolbar .pill-tabs {
+            overflow-x: auto;
+            padding-bottom: 2px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

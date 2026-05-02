@@ -575,6 +575,10 @@ async fn main() -> std::io::Result<()> {
                     .route("/session", web::post().to(api::checkout::create_checkout_session))
                     .route("/session/{id}", web::get().to(api::checkout::get_checkout_session))
                     .route(
+                        "/session/{id}/pay",
+                        web::post().to(api::checkout::pay_checkout_session),
+                    )
+                    .route(
                         "/session/{id}/status",
                         web::get().to(api::checkout::get_payment_status),
                     ),

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertCircle,
   Banknote,
   CheckCircle2,
   CreditCard,
@@ -41,8 +42,14 @@ type PreviewConfig = {
 type CheckoutSettings = {
   styling?: {
     background_color?: string;
+    theme_color?: string;
+    accent_color?: string;
     border_style?: 'rounded' | 'sharp';
     font_family?: string;
+    layout?: 'standard' | 'split' | 'compact';
+    logo_url?: string;
+    button_text?: string;
+    corner_radius?: number;
     show_sidebar_graphic?: boolean;
     show_trusted_badge?: boolean;
   };
@@ -50,12 +57,25 @@ type CheckoutSettings = {
     show_mandate_summary?: boolean;
     default_language?: string;
     collect_email?: boolean;
+    collect_contact?: boolean;
     show_message_banner?: boolean;
+    banner_text?: string;
     flash_checkout?: boolean;
+    retry_enabled?: boolean;
+    show_saved_methods?: boolean;
+    show_fee_breakup?: boolean;
+    remember_customer?: boolean;
+    readonly_email?: boolean;
+    readonly_contact?: boolean;
   };
   payment_configuration?: {
     preset_name?: string;
     allow_custom_configuration?: boolean;
+    preferred_method?: MethodKey;
+    promoted_methods?: MethodKey[];
+    method_order?: MethodKey[];
+    blocked_card_networks?: string[];
+    allowed_upi_apps?: string[];
   };
 };
 
@@ -63,6 +83,18 @@ type CheckoutAuditItem = {
   created_at: string;
   actor_id?: string | null;
 };
+
+type PaymentResult = {
+  session_id?: string;
+  payment_id?: string;
+  payment_status?: string;
+  connector?: string;
+  payment_method?: string;
+  mode_badge?: string;
+  error?: string;
+};
+
+type SimulationAction = 'success' | 'fail' | 'processing';
 
 const LABELS: Record<MethodKey, string> = {
   card: 'Cards',
@@ -92,6 +124,10 @@ const FALLBACK_METHODS: PaymentMethod[] = (Object.keys(LABELS) as MethodKey[]).m
   },
 }));
 
+const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Marathi'];
+const CARD_NETWORKS = ['Visa', 'Mastercard', 'RuPay', 'Amex', 'Diners'];
+const UPI_APPS = ['GPay', 'PhonePe', 'Paytm', 'BHIM'];
+
 function normalize(methods: PaymentMethod[]) {
   const incoming = new Map(methods.map((method) => [method.method_type, method]));
   return FALLBACK_METHODS.map((fallback) => ({
@@ -115,11 +151,47 @@ export default function CheckoutPreview() {
   const [selected, setSelected] = useState<MethodKey>('upi');
   const [loading, setLoading] = useState(true);
   const [paymentState, setPaymentState] = useState<'idle' | 'processing' | 'success'>('idle');
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [simulationAction, setSimulationAction] = useState<SimulationAction>('success');
   const [settingsTab, setSettingsTab] = useState<'styling' | 'features' | 'payment_configuration'>('styling');
   const [settings, setSettings] = useState<CheckoutSettings>({
-    styling: { background_color: '#C63201', border_style: 'rounded', font_family: 'IBM Plex Sans', show_sidebar_graphic: false, show_trusted_badge: true },
-    features: { show_mandate_summary: false, default_language: 'English', collect_email: false, show_message_banner: false, flash_checkout: true },
-    payment_configuration: { preset_name: 'Standard payment options', allow_custom_configuration: true },
+    styling: {
+      background_color: '#fff9ec',
+      theme_color: '#0b72e7',
+      accent_color: '#10b981',
+      border_style: 'rounded',
+      font_family: 'IBM Plex Sans',
+      layout: 'split',
+      logo_url: '/feelpay.png',
+      button_text: 'Pay securely',
+      corner_radius: 28,
+      show_sidebar_graphic: true,
+      show_trusted_badge: true,
+    },
+    features: {
+      show_mandate_summary: true,
+      default_language: 'English',
+      collect_email: true,
+      collect_contact: true,
+      show_message_banner: true,
+      banner_text: 'Test mode checkout. No real money moves.',
+      flash_checkout: true,
+      retry_enabled: true,
+      show_saved_methods: true,
+      show_fee_breakup: true,
+      remember_customer: true,
+      readonly_email: false,
+      readonly_contact: false,
+    },
+    payment_configuration: {
+      preset_name: 'High conversion checkout',
+      allow_custom_configuration: true,
+      preferred_method: 'upi',
+      promoted_methods: ['upi'],
+      method_order: ['upi', 'card', 'wallet', 'netbanking', 'emi', 'bnpl'],
+      blocked_card_networks: [],
+      allowed_upi_apps: UPI_APPS,
+    },
   });
   const [settingsNotice, setSettingsNotice] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -132,7 +204,16 @@ export default function CheckoutPreview() {
         const checkoutSettings: CheckoutSettings = await apiRequest<CheckoutSettings>('GET', '/v1/merchants/checkout-settings', undefined, undefined, { cacheMs: 20_000 }).catch(() => ({} as CheckoutSettings));
         const auditRes = await apiRequest<{ items?: CheckoutAuditItem[] }>('GET', '/v1/merchants/checkout-settings/audit', undefined, undefined, { cacheMs: 10_000 }).catch(() => ({ items: [] }));
         const normalized = normalize(data.methods || []);
-        setMethods(normalized);
+        const order = checkoutSettings.payment_configuration?.method_order || settings.payment_configuration?.method_order || [];
+        const ordered = normalized
+          .map((method) => ({
+            ...method,
+            config: {
+              ...method.config,
+              priority: order.includes(method.method_type) ? order.indexOf(method.method_type) + 1 : method.config?.priority,
+            },
+          }));
+        setMethods(ordered);
         setMerchantName(data.merchant?.business_name || data.merchant?.name || 'FeelPay Merchant');
         setMerchantTagline('Payments that build trust');
         if (data.sample_order?.amount) setAmount(String(data.sample_order.amount / 100));
@@ -144,7 +225,7 @@ export default function CheckoutPreview() {
           payment_configuration: { ...prev.payment_configuration, ...(checkoutSettings.payment_configuration || {}) },
         }));
         setAuditItems(auditRes.items || []);
-        const first = normalized.find((method) => method.enabled)?.method_type;
+        const first = (checkoutSettings.payment_configuration?.preferred_method || ordered.find((method) => method.enabled)?.method_type);
         if (first) setSelected(first);
       } catch {
         setMethods(FALLBACK_METHODS);
@@ -161,20 +242,108 @@ export default function CheckoutPreview() {
   );
   const selectedMethod = visibleMethods.find((method) => method.method_type === selected) || visibleMethods[0];
   const selectedLabel = selectedMethod?.config?.display_name || LABELS[selectedMethod?.method_type || 'upi'];
+  const themeColor = settings.styling?.theme_color || settings.styling?.background_color || '#0b72e7';
+  const accentColor = settings.styling?.accent_color || '#10b981';
+  const checkoutBg = settings.styling?.background_color || '#fff9ec';
+  const cornerRadius = Number(settings.styling?.corner_radius || 28);
+  const promotedMethods = settings.payment_configuration?.promoted_methods || [];
+  const isPromoted = selectedMethod ? promotedMethods.includes(selectedMethod.method_type) : false;
 
   const selectMethod = (methodType: MethodKey) => {
     setSelected(methodType);
     setPaymentState('idle');
+    setPaymentResult(null);
   };
 
-  const runPreviewPayment = () => {
+  const setFeature = <K extends keyof NonNullable<CheckoutSettings['features']>>(key: K, value: NonNullable<CheckoutSettings['features']>[K]) => {
+    setSettings((p) => ({ ...p, features: { ...p.features, [key]: value } }));
+  };
+
+  const setStyle = <K extends keyof NonNullable<CheckoutSettings['styling']>>(key: K, value: NonNullable<CheckoutSettings['styling']>[K]) => {
+    setSettings((p) => ({ ...p, styling: { ...p.styling, [key]: value } }));
+  };
+
+  const setPaymentConfig = <K extends keyof NonNullable<CheckoutSettings['payment_configuration']>>(key: K, value: NonNullable<CheckoutSettings['payment_configuration']>[K]) => {
+    setSettings((p) => ({ ...p, payment_configuration: { ...p.payment_configuration, [key]: value } }));
+  };
+
+  const persistMethodOrder = (nextMethods: PaymentMethod[]) => {
+    setPaymentConfig('method_order', nextMethods.sort((a, b) => (a.config?.priority || 99) - (b.config?.priority || 99)).map((m) => m.method_type));
+  };
+
+  const toggleMethod = (methodType: MethodKey) => {
+    setMethods((current) => {
+      const next = current.map((method) => method.method_type === methodType ? { ...method, enabled: !method.enabled } : method);
+      persistMethodOrder(next);
+      return next;
+    });
+  };
+
+  const moveMethod = (methodType: MethodKey, direction: -1 | 1) => {
+    setMethods((current) => {
+      const ordered = [...current].sort((a, b) => (a.config?.priority || 99) - (b.config?.priority || 99));
+      const index = ordered.findIndex((method) => method.method_type === methodType);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= ordered.length) return current;
+      const currentMethod = ordered[index];
+      const targetMethod = ordered[target];
+      if (!currentMethod || !targetMethod) return current;
+      ordered[index] = targetMethod;
+      ordered[target] = currentMethod;
+      const next = ordered.map((method, idx) => ({ ...method, config: { ...method.config, priority: idx + 1 } }));
+      persistMethodOrder(next);
+      return next;
+    });
+  };
+
+  const togglePromotedMethod = (methodType: MethodKey) => {
+    const current = settings.payment_configuration?.promoted_methods || [];
+    setPaymentConfig(
+      'promoted_methods',
+      current.includes(methodType) ? current.filter((item) => item !== methodType) : [...current, methodType],
+    );
+  };
+
+  const runPreviewPayment = async () => {
     setPaymentState('processing');
-    window.setTimeout(() => setPaymentState('success'), 900);
+    setPaymentResult(null);
+    try {
+      const rawMerchant = localStorage.getItem('feelpay_merchant');
+      const merchant = rawMerchant ? (JSON.parse(rawMerchant) as { id?: string }) : {};
+      if (!merchant.id) throw new Error('Merchant session missing.');
+
+      const session = await apiRequest<{ session_id: string }>('POST', '/v1/checkout/session', {
+        merchant_id: merchant.id,
+        order_id: `preview_${Date.now()}`,
+        amount: Math.round(Number(amount || 0) * 100),
+        currency: 'INR',
+        customer_email: customer,
+        metadata: { source: 'dashboard_checkout_preview' },
+      });
+
+      const result = await apiRequest<PaymentResult>('POST', `/v1/checkout/session/${session.session_id}/pay`, {
+        method_data: { Simulator: { action: simulationAction } },
+        processor_override: 'simulator',
+        simulation_action: simulationAction,
+        selected_payment_method: selectedMethod?.method_type || 'simulator',
+      });
+
+      setPaymentResult(result);
+      setPaymentState(['captured', 'authorized'].includes(result.payment_status || '') ? 'success' : 'idle');
+    } catch (err) {
+      setPaymentResult({ error: err instanceof Error ? err.message : 'Payment failed' });
+      setPaymentState('idle');
+    }
   };
 
   const saveCheckoutSettings = async () => {
-    if ((settings.styling?.background_color || '').trim() && !/^#([0-9A-Fa-f]{6})$/.test((settings.styling?.background_color || '').trim())) {
-      setSettingsNotice('Background color must be hex like #C63201');
+    const hexFields = [
+      settings.styling?.background_color,
+      settings.styling?.theme_color,
+      settings.styling?.accent_color,
+    ].filter(Boolean) as string[];
+    if (hexFields.some((value) => !/^#([0-9A-Fa-f]{6})$/.test(value.trim()))) {
+      setSettingsNotice('Colors must be hex like #0B72E7');
       return;
     }
     if (!(settings.payment_configuration?.preset_name || '').trim()) {
@@ -201,8 +370,10 @@ export default function CheckoutPreview() {
         <div className="checkout-method-panel success">
           <CheckCircle2 size={22} />
           <div>
-            <strong>Payment authorized</strong>
-            <span>Checkout would now capture payment, update order, and send signed webhook.</span>
+            <strong>Payment captured</strong>
+            <span>
+              <b>{paymentResult?.mode_badge || 'TEST'}</b> • {paymentResult?.connector || 'simulator'} • {paymentResult?.payment_id || 'payment created'}
+            </span>
           </div>
         </div>
       );
@@ -215,6 +386,30 @@ export default function CheckoutPreview() {
           <div>
             <strong>Processing {selectedLabel}</strong>
             <span>Simulating gateway authorization and webhook queue.</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (paymentResult?.error || paymentResult?.payment_status === 'failed') {
+      return (
+        <div className="checkout-method-panel failed">
+          <AlertCircle size={22} />
+          <div>
+            <strong>Payment failed</strong>
+            <span>{paymentResult?.error || 'Simulated gateway decline. Retry option can route next best method.'}</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (paymentResult?.payment_status === 'processing') {
+      return (
+        <div className="checkout-method-panel processing">
+          <LoaderCircle size={22} className="spin" />
+          <div>
+            <strong>Payment pending</strong>
+            <span>Simulator returned processing. Status polling and webhook update remain pending.</span>
           </div>
         </div>
       );
@@ -285,6 +480,12 @@ export default function CheckoutPreview() {
     }
   };
 
+  const simulationSteps = [
+    { label: 'Session', value: paymentResult?.session_id ? 'created' : 'ready' },
+    { label: 'Connector', value: paymentResult?.connector || 'simulator' },
+    { label: 'Result', value: paymentResult?.payment_status || simulationAction },
+  ];
+
   return (
     <div className="fade-in checkout-preview-page mc-page">
       <div className="page-header">
@@ -341,33 +542,74 @@ export default function CheckoutPreview() {
           {settingsTab === 'styling' && (
             <div className="checkout-settings-grid">
               <label>
-                Background color
-                <input value={settings.styling?.background_color || ''} onChange={(e) => setSettings((p) => ({ ...p, styling: { ...p.styling, background_color: e.target.value } }))} />
+                Checkout background
+                <input value={settings.styling?.background_color || ''} onChange={(e) => setStyle('background_color', e.target.value)} />
+              </label>
+              <label>
+                Brand color
+                <input value={settings.styling?.theme_color || ''} onChange={(e) => setStyle('theme_color', e.target.value)} />
+              </label>
+              <label>
+                Success accent
+                <input value={settings.styling?.accent_color || ''} onChange={(e) => setStyle('accent_color', e.target.value)} />
               </label>
               <label>
                 Border style
-                <select value={settings.styling?.border_style || 'rounded'} onChange={(e) => setSettings((p) => ({ ...p, styling: { ...p.styling, border_style: e.target.value as 'rounded' | 'sharp' } }))}>
+                <select value={settings.styling?.border_style || 'rounded'} onChange={(e) => setStyle('border_style', e.target.value as 'rounded' | 'sharp')}>
                   <option value="rounded">Rounded</option>
                   <option value="sharp">Sharp</option>
                 </select>
               </label>
               <label>
+                Template
+                <select value={settings.styling?.layout || 'split'} onChange={(e) => setStyle('layout', e.target.value as 'standard' | 'split' | 'compact')}>
+                  <option value="split">Split: brand + payment</option>
+                  <option value="standard">Standard popup</option>
+                  <option value="compact">Compact mobile first</option>
+                </select>
+              </label>
+              <label>
                 Font
-                <select value={settings.styling?.font_family || 'IBM Plex Sans'} onChange={(e) => setSettings((p) => ({ ...p, styling: { ...p.styling, font_family: e.target.value } }))}>
+                <select value={settings.styling?.font_family || 'IBM Plex Sans'} onChange={(e) => setStyle('font_family', e.target.value)}>
                   <option value="IBM Plex Sans">IBM Plex Sans</option>
                   <option value="Inter">Inter</option>
                   <option value="Roboto Slab">Roboto Slab</option>
                 </select>
+              </label>
+              <label>
+                Button text
+                <input value={settings.styling?.button_text || ''} onChange={(e) => setStyle('button_text', e.target.value)} />
+              </label>
+              <label>
+                Corner radius
+                <input type="number" min="8" max="36" value={settings.styling?.corner_radius || 28} onChange={(e) => setStyle('corner_radius', Number(e.target.value))} />
               </label>
             </div>
           )}
 
           {settingsTab === 'features' && (
             <div className="checkout-settings-grid">
-              <label><input type="checkbox" checked={Boolean(settings.features?.show_mandate_summary)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, show_mandate_summary: e.target.checked } }))} /> Mandate summary page</label>
-              <label><input type="checkbox" checked={Boolean(settings.features?.collect_email)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, collect_email: e.target.checked } }))} /> Collect customer email</label>
-              <label><input type="checkbox" checked={Boolean(settings.features?.show_message_banner)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, show_message_banner: e.target.checked } }))} /> Message banner</label>
-              <label><input type="checkbox" checked={Boolean(settings.features?.flash_checkout)} onChange={(e) => setSettings((p) => ({ ...p, features: { ...p.features, flash_checkout: e.target.checked } }))} /> Flash checkout</label>
+              <label>
+                Language
+                <select value={settings.features?.default_language || 'English'} onChange={(e) => setFeature('default_language', e.target.value)}>
+                  {LANGUAGES.map((language) => <option key={language} value={language}>{language}</option>)}
+                </select>
+              </label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.show_mandate_summary)} onChange={(e) => setFeature('show_mandate_summary', e.target.checked)} /> Mandatory order summary</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.collect_email)} onChange={(e) => setFeature('collect_email', e.target.checked)} /> Collect customer email</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.collect_contact)} onChange={(e) => setFeature('collect_contact', e.target.checked)} /> Collect phone number</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.readonly_email)} onChange={(e) => setFeature('readonly_email', e.target.checked)} /> Lock prefilled email</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.readonly_contact)} onChange={(e) => setFeature('readonly_contact', e.target.checked)} /> Lock prefilled phone</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.show_message_banner)} onChange={(e) => setFeature('show_message_banner', e.target.checked)} /> Message banner</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.flash_checkout)} onChange={(e) => setFeature('flash_checkout', e.target.checked)} /> Flash checkout</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.retry_enabled)} onChange={(e) => setFeature('retry_enabled', e.target.checked)} /> Smart retry after failure</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.show_saved_methods)} onChange={(e) => setFeature('show_saved_methods', e.target.checked)} /> Saved instruments</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.show_fee_breakup)} onChange={(e) => setFeature('show_fee_breakup', e.target.checked)} /> Fee breakup</label>
+              <label><input type="checkbox" checked={Boolean(settings.features?.remember_customer)} onChange={(e) => setFeature('remember_customer', e.target.checked)} /> Remember customer</label>
+              <label>
+                Banner text
+                <input value={settings.features?.banner_text || ''} onChange={(e) => setFeature('banner_text', e.target.value)} />
+              </label>
             </div>
           )}
 
@@ -378,8 +620,45 @@ export default function CheckoutPreview() {
                 <input value={settings.payment_configuration?.preset_name || ''} onChange={(e) => setSettings((p) => ({ ...p, payment_configuration: { ...p.payment_configuration, preset_name: e.target.value } }))} />
               </label>
               <label>
-                <input type="checkbox" checked={Boolean(settings.payment_configuration?.allow_custom_configuration)} onChange={(e) => setSettings((p) => ({ ...p, payment_configuration: { ...p.payment_configuration, allow_custom_configuration: e.target.checked } }))} />
+                <input type="checkbox" checked={Boolean(settings.payment_configuration?.allow_custom_configuration)} onChange={(e) => setPaymentConfig('allow_custom_configuration', e.target.checked)} />
                 Allow custom payment configuration
+              </label>
+              <label>
+                Preferred method
+                <select value={settings.payment_configuration?.preferred_method || selected} onChange={(e) => { const method = e.target.value as MethodKey; setPaymentConfig('preferred_method', method); selectMethod(method); }}>
+                  {(Object.keys(LABELS) as MethodKey[]).map((method) => <option key={method} value={method}>{LABELS[method]}</option>)}
+                </select>
+              </label>
+              <label>
+                Simulation result
+                <select value={simulationAction} onChange={(e) => setSimulationAction(e.target.value as SimulationAction)}>
+                  <option value="success">Success captured</option>
+                  <option value="fail">Failure declined</option>
+                  <option value="processing">Processing / pending</option>
+                </select>
+              </label>
+              <div className="method-config-builder">
+                <span>Methods, order, promoted blocks</span>
+                {[...methods].sort((a, b) => (a.config?.priority || 99) - (b.config?.priority || 99)).map((method) => (
+                  <div key={method.method_type} className="method-config-row">
+                    <label><input type="checkbox" checked={method.enabled} onChange={() => toggleMethod(method.method_type)} /> {LABELS[method.method_type]}</label>
+                    <button type="button" onClick={() => moveMethod(method.method_type, -1)}>↑</button>
+                    <button type="button" onClick={() => moveMethod(method.method_type, 1)}>↓</button>
+                    <button type="button" className={promotedMethods.includes(method.method_type) ? 'active' : ''} onClick={() => togglePromotedMethod(method.method_type)}>Promote</button>
+                  </div>
+                ))}
+              </div>
+              <label>
+                Blocked card networks
+                <select multiple value={settings.payment_configuration?.blocked_card_networks || []} onChange={(e) => setPaymentConfig('blocked_card_networks', Array.from(e.target.selectedOptions).map((option) => option.value))}>
+                  {CARD_NETWORKS.map((network) => <option key={network} value={network}>{network}</option>)}
+                </select>
+              </label>
+              <label>
+                UPI apps shown
+                <select multiple value={settings.payment_configuration?.allowed_upi_apps || []} onChange={(e) => setPaymentConfig('allowed_upi_apps', Array.from(e.target.selectedOptions).map((option) => option.value))}>
+                  {UPI_APPS.map((app) => <option key={app} value={app}>{app}</option>)}
+                </select>
               </label>
             </div>
           )}
@@ -398,26 +677,72 @@ export default function CheckoutPreview() {
           </div>
         </section>
 
-        <section className={`checkout-stage ${viewport}`}>
+        <section className={`checkout-stage ${viewport} template-${settings.styling?.layout || 'split'}`}>
           {viewport === 'laptop' && <div className="laptop-lid-dot"></div>}
           <div className="browser-bar">
             <span></span><span></span><span></span>
             <strong>checkout.feelpay.in</strong>
           </div>
           <div className="checkout-card">
+            <div className="test-mode-ribbon">
+              <span>TEST MODE</span>
+              <strong>{simulationAction === 'success' ? 'Approve payment' : simulationAction === 'fail' ? 'Decline payment' : 'Keep pending'}</strong>
+            </div>
             <div className="checkout-brand">
-              <img src="/feelpay.png" alt="FeelPay" />
+              <img src={settings.styling?.logo_url || '/feelpay.png'} alt="FeelPay" />
               <div>
                 <strong>{merchantName}</strong>
                 <span>{merchantTagline}</span>
               </div>
             </div>
 
+            {settings.features?.show_message_banner && (
+              <div className="checkout-banner">
+                {settings.features?.banner_text || 'Secure checkout is ready.'}
+              </div>
+            )}
+
+            <div className="simulation-switcher">
+              {(['success', 'fail', 'processing'] as SimulationAction[]).map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  className={simulationAction === action ? 'active' : ''}
+                  onClick={() => {
+                    setSimulationAction(action);
+                    setPaymentResult(null);
+                    setPaymentState('idle');
+                  }}
+                >
+                  {action === 'success' ? 'Success' : action === 'fail' ? 'Fail' : 'Pending'}
+                </button>
+              ))}
+            </div>
+
             <div className="checkout-amount">
               <span>Amount payable</span>
               <strong>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
-              <small>{customer}</small>
+              <small>
+                {settings.features?.collect_email ? customer : 'Email collection off'}
+                {settings.features?.readonly_email ? ' • locked' : ''}
+              </small>
+              {settings.features?.collect_contact && <small>+91 99999 99999{settings.features?.readonly_contact ? ' • locked' : ''}</small>}
             </div>
+
+            {settings.features?.show_mandate_summary && (
+              <div className="checkout-summary-strip">
+                <span>Order summary required</span>
+                <strong>Preview order • INR • {settings.features?.default_language || 'English'}</strong>
+              </div>
+            )}
+
+            {settings.features?.show_saved_methods && (
+              <div className="saved-methods-strip">
+                <span>Saved</span>
+                <button type="button">HDFC Visa • 1111</button>
+                <button type="button">buyer@upi</button>
+              </div>
+            )}
 
             <div className="checkout-methods">
               {visibleMethods.map((method) => {
@@ -426,7 +751,10 @@ export default function CheckoutPreview() {
                 return (
                   <button key={method.method_type} className={active ? 'active' : ''} onClick={() => selectMethod(method.method_type)}>
                     <Icon size={18} />
-                    <span>{method.config?.display_name || LABELS[method.method_type]}</span>
+                    <span>
+                      {method.config?.display_name || LABELS[method.method_type]}
+                      {promotedMethods.includes(method.method_type) && <b>Promoted</b>}
+                    </span>
                     <small>{method.config?.checkout_note}</small>
                   </button>
                 );
@@ -435,12 +763,32 @@ export default function CheckoutPreview() {
 
             {renderMethodExperience()}
 
-            <button className="checkout-pay-button" onClick={runPreviewPayment} disabled={paymentState === 'processing'}>
-              {paymentState === 'processing' ? 'Processing...' : `Pay with ${selectedLabel}`}
+            <div className="simulation-timeline" aria-label="Payment simulation timeline">
+              {simulationSteps.map((step) => (
+                <div key={step.label}>
+                  <span>{step.label}</span>
+                  <strong>{step.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            {settings.features?.show_fee_breakup && (
+              <div className="fee-breakup">
+                <span>Amount</span><strong>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
+                <span>Gateway fee</span><strong>₹0.00</strong>
+                <span>Total</span><strong>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
+              </div>
+            )}
+
+            {isPromoted && <div className="recommended-method">Recommended for better success rate</div>}
+
+            <button className="checkout-pay-button" onClick={() => void runPreviewPayment()} disabled={paymentState === 'processing'}>
+              {paymentState === 'processing' ? 'Processing...' : `${settings.styling?.button_text || 'Pay securely'} with ${selectedLabel}`}
             </button>
+            {settings.features?.retry_enabled && paymentResult?.error && <button className="retry-button" type="button" onClick={() => void runPreviewPayment()}>Retry with suggested method</button>}
             <div className="checkout-secure">
               <ShieldCheck size={14} />
-              PCI-ready card vault, signed webhooks, live/test isolation
+              {settings.styling?.show_trusted_badge === false ? 'Test checkout preview' : 'PCI-ready vault, signed webhooks, live/test isolation'}
             </div>
           </div>
         </section>
@@ -464,75 +812,108 @@ export default function CheckoutPreview() {
 
       <style>{`
         .checkout-preview-page .page-header {
-          border: 1px solid #d5c9af;
+          border: 1px solid #d9e2ef;
           border-radius: 34px;
-          background: #fff9ec;
+          background: #ffffff;
           padding: 24px;
         }
         .preview-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 16px; }
-        .preview-controls { display: grid; gap: 14px; position: sticky; top: 20px; background: #fff9ec !important; border-radius: 30px !important; }
+        .preview-controls { display: grid; gap: 14px; position: sticky; top: 20px; background: #ffffff !important; border-radius: 18px !important; }
         .preview-controls h3 { margin: 0; font-size: 22px; }
         .checkout-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-        .checkout-settings-tabs button { border: 1px solid #d5c9af; background: #fff9ec; border-radius: 999px; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #6b6862; cursor: pointer; }
-        .checkout-settings-tabs button.active { border-color: #eb001b; color: #141413; background: #f5efe2; }
+        .checkout-settings-tabs button { border: 1px solid #d9e2ef; background: #ffffff; border-radius: 999px; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #64748b; cursor: pointer; }
+        .checkout-settings-tabs button.active { border-color: ${themeColor}; color: #0f172a; background: #eef6ff; }
         .checkout-settings-grid { display: grid; gap: 8px; }
         .checkout-settings-grid label { display: grid; gap: 6px; font-size: 12px; color: #6b6862; }
         .checkout-settings-grid input[type='checkbox'] { margin-right: 8px; accent-color: #eb001b; }
-        .checkout-audit { display: grid; gap: 6px; border-top: 1px dashed #d5c9af; padding-top: 10px; }
-        .checkout-audit > span { font-size: 12px; color: #6b6862; font-weight: 700; }
-        .checkout-audit-item { font-size: 12px; color: #141413; background: #f5efe2; border: 1px solid #d5c9af; border-radius: 10px; padding: 6px 8px; }
-        .preview-merchant-name { color: #312d28; background: #f5efe2; border: 1px solid #d5c9af; border-radius: 999px; padding: 12px 14px; font-weight: 800; font-size: 18px; }
+        .checkout-audit { display: grid; gap: 6px; border-top: 1px dashed #d9e2ef; padding-top: 10px; }
+        .checkout-audit > span { font-size: 12px; color: #64748b; font-weight: 700; }
+        .checkout-audit-item { font-size: 12px; color: #0f172a; background: #f6f8fb; border: 1px solid #d9e2ef; border-radius: 10px; padding: 6px 8px; }
+        .preview-merchant-name { color: #172033; background: #f6f8fb; border: 1px solid #d9e2ef; border-radius: 999px; padding: 12px 14px; font-weight: 800; font-size: 18px; }
         .preview-controls label { display: flex; flex-direction: column; gap: 6px; color: var(--fp-text-muted); font-size: 13px; }
-        .preview-controls input { background: #fff9ec; border: 1px solid #d5c9af; color: #141413; border-radius: 999px; padding: 10px 12px; }
+        .preview-controls input,
+        .preview-controls select { background: #ffffff; border: 1px solid #d9e2ef; color: #0f172a; border-radius: 999px; padding: 10px 12px; min-width: 0; }
+        .preview-controls select[multiple] { border-radius: 18px; min-height: 92px; }
         .preview-method-list { display: grid; gap: 8px; }
         .preview-method-list span { color: var(--fp-text-muted); font-size: 13px; }
-        .preview-method-list button { text-align: left; background: #fff9ec; border: 1px solid #d5c9af; color: #6b6862; border-radius: 999px; padding: 9px 12px; cursor: pointer; }
-        .preview-method-list button.selected { border-color: #eb001b; color: #141413; background: #f5efe2; }
-        .checkout-stage { min-height: 720px; border: 1px solid #d5c9af; border-radius: 34px; background: #f5efe2; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        .preview-method-list button { text-align: left; background: #ffffff; border: 1px solid #d9e2ef; color: #64748b; border-radius: 999px; padding: 9px 12px; cursor: pointer; }
+        .preview-method-list button.selected { border-color: ${themeColor}; color: #0f172a; background: #eef6ff; }
+        .method-config-builder { display: grid; gap: 8px; }
+        .method-config-builder > span { color: #6b6862; font-size: 12px; font-weight: 800; }
+        .method-config-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px 34px 78px; gap: 6px; align-items: center; border: 1px solid #d9e2ef; background: #ffffff; border-radius: 18px; padding: 8px; }
+        .method-config-row label { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; color: #172033; }
+        .method-config-row button { border: 1px solid #d9e2ef; background: #f6f8fb; color: #172033; border-radius: 999px; min-height: 30px; cursor: pointer; font-weight: 800; }
+        .method-config-row button.active { border-color: ${themeColor}; color: ${themeColor}; background: #fff; }
+        .checkout-stage { min-height: 720px; border: 1px solid #d9e2ef; border-radius: 34px; background: #f6f8fb; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
         .checkout-stage.browser { width: 100%; }
-        .checkout-stage.laptop { width: min(100%, 980px); margin: 0 auto; padding: 18px 18px 54px; border-radius: 26px; background: #312d28; position: relative; }
+        .checkout-stage.laptop { width: min(100%, 980px); margin: 0 auto; padding: 18px 18px 54px; border-radius: 26px; background: #172033; position: relative; }
         .checkout-stage.laptop::after { content: ''; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 58%; height: 10px; border-radius: 0 0 999px 999px; background: #1f1c19; }
         .laptop-lid-dot { width: 8px; height: 8px; border-radius: 999px; background: #6b6862; margin-bottom: 10px; }
-        .checkout-stage.mobile { width: 390px; min-height: 812px; margin: 0 auto; padding: 14px; border-radius: 42px; box-shadow: inset 0 0 0 8px #312d28; background: #312d28; }
-        .browser-bar { width: 100%; max-width: 820px; height: 38px; border-radius: 28px 28px 0 0; background: #fff9ec; display: flex; align-items: center; gap: 7px; padding: 0 12px; color: #141413; }
+        .checkout-stage.mobile { width: 390px; min-height: 812px; margin: 0 auto; padding: 14px; border-radius: 42px; box-shadow: inset 0 0 0 8px #172033; background: #172033; }
+        .browser-bar { width: 100%; max-width: 820px; height: 38px; border-radius: 28px 28px 0 0; background: #ffffff; display: flex; align-items: center; gap: 7px; padding: 0 12px; color: #0f172a; }
         .browser-bar span { width: 9px; height: 9px; border-radius: 99px; background: #6b6862; }
         .browser-bar strong { margin-left: 10px; font-size: 12px; font-weight: 600; }
         .checkout-stage.laptop .browser-bar, .checkout-stage.laptop .checkout-card { max-width: 880px; }
         .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-card { max-width: 344px; }
         .checkout-stage.mobile .browser-bar { margin-top: 18px; }
-        .checkout-card { width: 100%; max-width: 820px; min-height: 600px; background: ${settings.styling?.background_color ? '#fff9ec' : '#fff9ec'}; color: #141413; border: 1px solid #d5c9af; border-top: none; border-radius: ${settings.styling?.border_style === 'sharp' ? '0 0 8px 8px' : '0 0 28px 28px'}; padding: 28px; display: grid; gap: 18px; align-content: start; box-shadow: none; font-family: ${settings.styling?.font_family || 'IBM Plex Sans'}, sans-serif; }
+        .checkout-card { width: 100%; max-width: 820px; min-height: 600px; background: ${checkoutBg}; color: #0f172a; border: 1px solid #d9e2ef; border-top: none; border-radius: ${settings.styling?.border_style === 'sharp' ? '0 0 8px 8px' : `0 0 ${cornerRadius}px ${cornerRadius}px`}; padding: 28px; display: grid; gap: 16px; align-content: start; box-shadow: 0 20px 55px rgba(15, 23, 42, 0.08); font-family: ${settings.styling?.font_family || 'IBM Plex Sans'}, sans-serif; }
         .checkout-stage.laptop .checkout-card { min-height: 530px; }
         .checkout-stage.mobile .checkout-card { min-height: 660px; padding: 18px; gap: 14px; }
+        .checkout-stage.template-compact .checkout-card { max-width: 470px; }
+        .checkout-stage.template-standard .checkout-card { max-width: 620px; }
+        .test-mode-ribbon { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; border-radius: 18px; padding: 10px 12px; }
+        .test-mode-ribbon span { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; }
+        .test-mode-ribbon strong { font-size: 13px; }
         .checkout-brand { display: flex; align-items: center; gap: 14px; }
-        .checkout-brand img { width: 62px; height: 62px; border-radius: 20px; object-fit: contain; border: 1px solid #d5c9af; background: #fff; padding: 4px; }
+        .checkout-brand img { width: 62px; height: 62px; border-radius: 20px; object-fit: contain; border: 1px solid #d9e2ef; background: #fff; padding: 4px; }
         .checkout-stage.mobile .checkout-brand img { width: 54px; height: 54px; border-radius: 18px; }
         .checkout-brand div { display: flex; flex-direction: column; line-height: 1.2; }
-        .checkout-brand strong { font-size: 20px; color: #312d28; }
+        .checkout-brand strong { font-size: 20px; color: #172033; }
         .checkout-stage.mobile .checkout-brand strong { font-size: 17px; }
-        .checkout-brand span { color: #6b6862; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-        .checkout-amount { border: 1px solid #d5c9af; border-radius: 28px; padding: 16px; display: grid; gap: 2px; background: #f5efe2; }
-        .checkout-amount span, .checkout-amount small { color: #6b6862; }
+        .checkout-brand span { color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+        .checkout-banner { border: 1px solid ${themeColor}; color: ${themeColor}; background: color-mix(in srgb, ${themeColor} 8%, #ffffff); border-radius: 999px; padding: 10px 14px; font-size: 13px; font-weight: 800; }
+        .simulation-switcher { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+        .simulation-switcher button { border: 1px solid #d9e2ef; background: #ffffff; color: #64748b; border-radius: 999px; min-height: 36px; cursor: pointer; font-weight: 800; }
+        .simulation-switcher button.active { border-color: ${themeColor}; background: #eef6ff; color: ${themeColor}; }
+        .checkout-amount { border: 1px solid #d9e2ef; border-radius: 22px; padding: 16px; display: grid; gap: 2px; background: #f6f8fb; }
+        .checkout-amount span, .checkout-amount small { color: #64748b; }
         .checkout-amount strong { font-size: 34px; line-height: 1.1; }
+        .checkout-summary-strip { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px dashed #d9e2ef; border-radius: 18px; padding: 10px 12px; color: #64748b; font-size: 12px; }
+        .checkout-summary-strip strong { color: #172033; }
+        .saved-methods-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .saved-methods-strip span { color: #64748b; font-size: 12px; font-weight: 800; }
+        .saved-methods-strip button { border: 1px solid #d9e2ef; background: #f6f8fb; color: #172033; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; }
         .checkout-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .checkout-stage.mobile .checkout-methods { grid-template-columns: 1fr; }
-        .checkout-methods button { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 10px; text-align: left; border: 1px solid #d5c9af; background: #fff9ec; color: #141413; border-radius: 28px; padding: 14px; cursor: pointer; min-height: 70px; }
-        .checkout-methods button.active { border-color: #eb001b; background: #f5efe2; box-shadow: inset 0 0 0 1px #eb001b; }
-        .checkout-methods small { grid-column: 2; color: #6b6862; line-height: 1.35; }
-        .checkout-method-panel { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: center; border: 1px solid #d5c9af; background: #f5efe2; border-radius: 28px; padding: 14px; color: #312d28; }
+        .checkout-methods button { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 10px; text-align: left; border: 1px solid #d9e2ef; background: #ffffff; color: #0f172a; border-radius: 18px; padding: 14px; cursor: pointer; min-height: 70px; }
+        .checkout-methods button.active { border-color: ${themeColor}; background: #eef6ff; box-shadow: inset 0 0 0 1px ${themeColor}; }
+        .checkout-methods b { margin-left: 6px; border: 1px solid ${accentColor}; color: ${accentColor}; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
+        .checkout-methods small { grid-column: 2; color: #64748b; line-height: 1.35; }
+        .checkout-method-panel { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: center; border: 1px solid #d9e2ef; background: #f6f8fb; border-radius: 20px; padding: 14px; color: #172033; }
         .checkout-method-panel strong { display: block; font-size: 15px; margin-bottom: 3px; }
-        .checkout-method-panel span { color: #6b6862; font-size: 12px; line-height: 1.4; }
+        .checkout-method-panel span { color: #64748b; font-size: 12px; line-height: 1.4; }
         .checkout-method-panel.success { border-color: rgba(35, 110, 62, 0.36); background: #eef8ef; color: #236e3e; }
+        .checkout-method-panel.success b { display: inline-flex; border: 1px solid rgba(35, 110, 62, 0.32); border-radius: 999px; padding: 1px 7px; background: #fff9ec; color: #236e3e; font-size: 11px; }
         .checkout-method-panel.processing { border-color: rgba(235, 0, 27, 0.28); }
-        .upi-qr { width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center; background: #fff9ec; border: 1px solid #d5c9af; }
+        .checkout-method-panel.failed { border-color: rgba(200, 31, 47, 0.34); background: #fff0f0; color: #9f1728; }
+        .upi-qr { width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center; background: #ffffff; border: 1px solid #d9e2ef; }
         .upi-panel { grid-template-columns: 72px minmax(0, 1fr); }
         .mini-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .mini-actions button { border: 1px solid #d5c9af; background: #fff9ec; color: #312d28; border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 800; }
+        .mini-actions button { border: 1px solid #d9e2ef; background: #ffffff; color: #172033; border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 800; }
         .checkout-stage.mobile .checkout-method-panel { grid-template-columns: 34px minmax(0, 1fr); padding: 12px; }
         .checkout-stage.mobile .upi-panel { grid-template-columns: 58px minmax(0, 1fr); }
         .checkout-stage.mobile .upi-qr { width: 58px; height: 58px; }
-        .checkout-pay-button { border: none; border-radius: 999px; padding: 14px 18px; font-weight: 800; background: #eb001b; color: #fff9ec; cursor: pointer; min-height: 50px; }
+        .simulation-timeline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+        .simulation-timeline div { border: 1px solid #d9e2ef; background: #ffffff; border-radius: 16px; padding: 9px; display: grid; gap: 2px; min-width: 0; }
+        .simulation-timeline span { color: #64748b; font-size: 11px; font-weight: 800; }
+        .simulation-timeline strong { color: #172033; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fee-breakup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; border: 1px solid #d9e2ef; border-radius: 18px; padding: 12px; background: #ffffff; font-size: 12px; }
+        .fee-breakup span { color: #64748b; }
+        .recommended-method { border-radius: 999px; background: color-mix(in srgb, ${accentColor} 12%, #ffffff); color: ${accentColor}; border: 1px solid ${accentColor}; padding: 8px 12px; font-weight: 800; font-size: 12px; }
+        .checkout-pay-button { border: none; border-radius: 999px; padding: 14px 18px; font-weight: 800; background: ${themeColor}; color: #fff; cursor: pointer; min-height: 50px; }
         .checkout-pay-button:disabled { opacity: 0.74; cursor: progress; }
-        .checkout-secure { display: inline-flex; gap: 7px; align-items: center; justify-content: center; color: #6b6862; font-size: 12px; }
+        .retry-button { border: 1px solid ${themeColor}; color: ${themeColor}; background: #ffffff; border-radius: 999px; min-height: 44px; font-weight: 800; cursor: pointer; }
+        .checkout-secure { display: inline-flex; gap: 7px; align-items: center; justify-content: center; color: #64748b; font-size: 12px; }
         .payment-flow-panel { margin-top: 18px; }
         .payment-flow-panel h3 { margin-bottom: 14px; }
         .payment-flow-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
