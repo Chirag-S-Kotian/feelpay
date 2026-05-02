@@ -19431,8 +19431,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
       "source_location": "L567",
       "weight": 1.0,
-      "_src": "merchants_upload_profile_avatar",
-      "_tgt": "provider_circuitbreakerstate_to_string",
+      "_src": "provider_circuitbreakerstate_to_string",
+      "_tgt": "merchants_upload_profile_avatar",
       "source": "provider_circuitbreakerstate_to_string",
       "target": "merchants_upload_profile_avatar"
     },
@@ -19443,8 +19443,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
       "source_location": "L652",
       "weight": 1.0,
-      "_src": "merchants_get_account_settings_hub",
-      "_tgt": "provider_circuitbreakerstate_to_string",
+      "_src": "provider_circuitbreakerstate_to_string",
+      "_tgt": "merchants_get_account_settings_hub",
       "source": "provider_circuitbreakerstate_to_string",
       "target": "merchants_get_account_settings_hub"
     },
@@ -19491,8 +19491,8 @@
       "source_file": "/home/chiragskotian/Desktop/payment/src/api/merchants.rs",
       "source_location": "L953",
       "weight": 1.0,
-      "_src": "merchants_get_checkout_settings_audit",
-      "_tgt": "provider_circuitbreakerstate_to_string",
+      "_src": "provider_circuitbreakerstate_to_string",
+      "_tgt": "merchants_get_checkout_settings_audit",
       "source": "provider_circuitbreakerstate_to_string",
       "target": "merchants_get_checkout_settings_audit"
     },
