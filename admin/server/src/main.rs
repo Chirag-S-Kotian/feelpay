@@ -38,6 +38,14 @@ struct ExportListQuery {
 }
 
 #[derive(Deserialize)]
+struct ListQuery {
+    limit: Option<i64>,
+    offset: Option<i64>,
+    status: Option<String>,
+    q: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct CreateBulkExportRequest {
     date_range: Option<serde_json::Value>,
     entity_types: Vec<String>,
@@ -80,6 +88,46 @@ struct BootstrapTokenResponse {
 struct AdminLoginRequest {
     email: String,
     password: String,
+}
+
+#[derive(Serialize)]
+struct TransactionItem {
+    id: Uuid,
+    merchant_id: Uuid,
+    amount: i64,
+    currency: Option<String>,
+    status: String,
+    payment_method: Option<String>,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct SettlementItem {
+    id: Uuid,
+    merchant_id: Uuid,
+    amount: i64,
+    status: String,
+    created_at: DateTime<Utc>,
+    processed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize)]
+struct DisputeItem {
+    id: Uuid,
+    payment_order_id: Uuid,
+    merchant_id: Uuid,
+    amount: i64,
+    reason: Option<String>,
+    status: String,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct RevenueSummary {
+    captured_amount: i64,
+    refunded_amount: i64,
+    dispute_amount: i64,
+    settlement_amount: i64,
 }
 
 async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
@@ -202,6 +250,191 @@ async fn list_exports(
     }
 }
 
+async fn list_transactions(
+    pool: web::Data<PgPool>,
+    query: web::Query<ListQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(25).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let status = query.status.clone().filter(|v| !v.trim().is_empty());
+    let q = query.q.clone().filter(|v| !v.trim().is_empty());
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, merchant_id, amount, currency, status, payment_method, created_at
+        FROM payment_orders
+        WHERE
+          ($1::text IS NULL OR status = $1)
+          AND (
+            $2::text IS NULL OR
+            id::text ILIKE '%' || $2 || '%' OR
+            merchant_id::text ILIKE '%' || $2 || '%'
+          )
+        ORDER BY created_at DESC
+        LIMIT $3 OFFSET $4
+        "#,
+    )
+    .bind(status)
+    .bind(q)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let data = rows
+                .into_iter()
+                .map(|r| TransactionItem {
+                    id: r.get("id"),
+                    merchant_id: r.get("merchant_id"),
+                    amount: r.get("amount"),
+                    currency: r.get("currency"),
+                    status: r.get("status"),
+                    payment_method: r.get("payment_method"),
+                    created_at: r.get("created_at"),
+                })
+                .collect::<Vec<_>>();
+            HttpResponse::Ok().json(serde_json::json!({ "items": data }))
+        }
+        Err(e) => {
+            tracing::error!("List transactions failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load transactions" }))
+        }
+    }
+}
+
+async fn list_settlements(
+    pool: web::Data<PgPool>,
+    query: web::Query<ListQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(25).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let status = query.status.clone().filter(|v| !v.trim().is_empty());
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, merchant_id, amount, status, created_at, processed_at
+        FROM settlements
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(status)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let data = rows
+                .into_iter()
+                .map(|r| SettlementItem {
+                    id: r.get("id"),
+                    merchant_id: r.get("merchant_id"),
+                    amount: r.get("amount"),
+                    status: r.get("status"),
+                    created_at: r.get("created_at"),
+                    processed_at: r.get("processed_at"),
+                })
+                .collect::<Vec<_>>();
+            HttpResponse::Ok().json(serde_json::json!({ "items": data }))
+        }
+        Err(e) => {
+            tracing::error!("List settlements failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load settlements" }))
+        }
+    }
+}
+
+async fn list_disputes(
+    pool: web::Data<PgPool>,
+    query: web::Query<ListQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(25).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let status = query.status.clone().filter(|v| !v.trim().is_empty());
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          id,
+          payment_order_id,
+          merchant_id,
+          amount,
+          COALESCE(reason_message, reason_code) AS reason,
+          status,
+          created_at
+        FROM disputes
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(status)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let data = rows
+                .into_iter()
+                .map(|r| DisputeItem {
+                    id: r.get("id"),
+                    payment_order_id: r.get("payment_order_id"),
+                    merchant_id: r.get("merchant_id"),
+                    amount: r.get("amount"),
+                    reason: r.get("reason"),
+                    status: r.get("status"),
+                    created_at: r.get("created_at"),
+                })
+                .collect::<Vec<_>>();
+            HttpResponse::Ok().json(serde_json::json!({ "items": data }))
+        }
+        Err(e) => {
+            tracing::error!("List disputes failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load disputes" }))
+        }
+    }
+}
+
+async fn revenue_summary(pool: web::Data<PgPool>) -> impl Responder {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          COALESCE((SELECT SUM(amount) FROM payment_orders WHERE status = 'captured'), 0)::bigint AS captured_amount,
+          COALESCE((SELECT SUM(amount) FROM payment_orders WHERE status = 'refunded'), 0)::bigint AS refunded_amount,
+          COALESCE((SELECT SUM(amount) FROM disputes), 0)::bigint AS dispute_amount,
+          COALESCE((SELECT SUM(amount) FROM settlements WHERE status IN ('paid','processed')), 0)::bigint AS settlement_amount
+        "#,
+    )
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match row {
+        Ok(row) => {
+            use sqlx::Row;
+            HttpResponse::Ok().json(RevenueSummary {
+                captured_amount: row.get("captured_amount"),
+                refunded_amount: row.get("refunded_amount"),
+                dispute_amount: row.get("dispute_amount"),
+                settlement_amount: row.get("settlement_amount"),
+            })
+        }
+        Err(e) => {
+            tracing::error!("Revenue summary failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load revenue summary" }))
+        }
+    }
+}
+
 async fn create_bulk_export(
     pool: web::Data<PgPool>,
     req: web::Json<CreateBulkExportRequest>,
@@ -319,7 +552,11 @@ fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
         .route("/merchants/{id}/impersonate", web::post().to(impersonate_merchant))
         .route("/exports", web::get().to(list_exports))
         .route("/exports/bulk", web::post().to(create_bulk_export))
-        .route("/exports/{id}/download", web::get().to(get_export_download));
+        .route("/exports/{id}/download", web::get().to(get_export_download))
+        .route("/transactions", web::get().to(list_transactions))
+        .route("/settlements", web::get().to(list_settlements))
+        .route("/disputes", web::get().to(list_disputes))
+        .route("/revenue/summary", web::get().to(revenue_summary));
 }
 
 async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder {

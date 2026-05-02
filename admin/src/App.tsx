@@ -8,16 +8,28 @@ import {
   Bell,
   Search,
   Download,
+  Receipt,
+  Landmark,
+  Scale,
+  IndianRupee,
 } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
 import AdminDashboard from './pages/AdminDashboard';
 import Merchants from './pages/Merchants';
 import AdminBulkExport from './pages/AdminBulkExport';
+import Transactions from './pages/Transactions';
+import Settlements from './pages/Settlements';
+import Disputes from './pages/Disputes';
+import Revenue from './pages/Revenue';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
   { path: '/merchants', label: 'Merchants', icon: Users },
+  { path: '/transactions', label: 'Transactions', icon: Receipt },
+  { path: '/settlements', label: 'Settlements', icon: Landmark },
+  { path: '/disputes', label: 'Disputes', icon: Scale },
+  { path: '/revenue', label: 'Revenue', icon: IndianRupee },
   { path: '/bulk-export', label: 'Bulk Export', icon: Download },
   { path: '/settings', label: 'Platform Settings', icon: SettingsIcon },
 ];
@@ -98,6 +110,10 @@ function Layout() {
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
           <Route path="/merchants" element={<Merchants />} />
+          <Route path="/transactions" element={<Transactions />} />
+          <Route path="/settlements" element={<Settlements />} />
+          <Route path="/disputes" element={<Disputes />} />
+          <Route path="/revenue" element={<Revenue />} />
           <Route path="/bulk-export" element={<AdminBulkExport />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" />} />
@@ -113,6 +129,17 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromQuery = params.get('token');
+    if (!tokenFromQuery) {
+      return;
+    }
+    setToken(tokenFromQuery);
+    window.history.replaceState({}, '', '/');
+    navigate('/', { replace: true });
+  }, [navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
