@@ -54,6 +54,11 @@
 
 # FeelPay — repo agent config
 
+## Codebase context
+- Before exploring unfamiliar modules, read `/home/chiragskotian/Desktop/payment/graphify-out/GRAPH_REPORT.md`.
+- It contains the full dependency graph (215 nodes, 232 edges) — use it to understand call paths and cluster ownership before making changes.
+- Core hubs are `PaymentEngine`, `CardProcessor`, `UpiProcessor`, `SimulatorProcessor` — treat them as high-blast-radius; changes here affect the entire pipeline.
+
 ## Stack
 - Backend: Rust + Actix Web + sqlx + PostgreSQL
 - Frontend: React 19 + Vite + TypeScript (`dashboard/`)
