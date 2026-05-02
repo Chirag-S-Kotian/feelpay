@@ -1,60 +1,24 @@
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
-  Building2,
-  ShieldAlert,
   Settings as SettingsIcon,
-  PieChart,
-  Wallet,
   Menu,
   X,
-  FileCheck,
   Bell,
   Search,
   Download,
-  Webhook,
-  KeyRound,
-  ClipboardList,
 } from 'lucide-react';
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
+import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
 import AdminDashboard from './pages/AdminDashboard';
 import Merchants from './pages/Merchants';
-import KYCQueue from './pages/KYCQueue';
 import AdminBulkExport from './pages/AdminBulkExport';
-import AdminWebhookTesting from './pages/AdminWebhookTesting';
-import NotificationDeliveryLogs from './pages/NotificationDeliveryLogs';
-import NotificationTemplateEditor from './pages/NotificationTemplateEditor';
-import KycAuditLog from './pages/KycAuditLog';
-import TransactionSearch from './pages/TransactionSearch';
-import TransactionDetail from './pages/TransactionDetail';
-import SettlementManagement from './pages/SettlementManagement';
-import RevenueDashboard from './pages/RevenueDashboard';
-import CredentialManagement from './pages/CredentialManagement';
-import TenantManagement from './pages/TenantManagement';
-import AdminUserManagement from './pages/AdminUserManagement';
-import AuditLogViewer from './pages/AuditLogViewer';
-import SystemConfig from './pages/SystemConfig';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
   { path: '/merchants', label: 'Merchants', icon: Users },
-  { path: '/kyc-queue', label: 'KYC Queue', icon: FileCheck },
   { path: '/bulk-export', label: 'Bulk Export', icon: Download },
-  { path: '/webhook-testing', label: 'Webhook Testing', icon: Webhook },
-  { path: '/notification-logs', label: 'Notification Logs', icon: Bell },
-  { path: '/notification-templates', label: 'Notif Templates', icon: Bell },
-  { path: '/kyc-audit', label: 'KYC Audit', icon: ClipboardList },
-  { path: '/transactions', label: 'Transactions', icon: Search },
-  { path: '/transaction-actions', label: 'Txn Actions', icon: ShieldAlert },
-  { path: '/settlements', label: 'Global Settlements', icon: Wallet },
-  { path: '/revenue', label: 'Revenue', icon: PieChart },
-  { path: '/credentials', label: 'Credentials', icon: KeyRound },
-  { path: '/tenants', label: 'Tenants', icon: Building2 },
-  { path: '/admin-users', label: 'Admin Users', icon: Users },
-  { path: '/audit-logs', label: 'Audit Logs', icon: ClipboardList },
-  { path: '/disputes', label: 'Global Disputes', icon: ShieldAlert },
-  { path: '/system', label: 'System Health', icon: PieChart },
   { path: '/settings', label: 'Platform Settings', icon: SettingsIcon },
 ];
 
@@ -91,9 +55,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Layout() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount] = useState(2); // TODO: fetch from API
+  const handleLogout = () => {
+    clearToken();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="app-layout">
@@ -124,25 +93,13 @@ function Layout() {
               <span className="notification-badge">{notificationCount}</span>
             )}
           </button>
+          <button className="btn-secondary" onClick={handleLogout}>Logout</button>
         </header>
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
           <Route path="/merchants" element={<Merchants />} />
-          <Route path="/kyc-queue" element={<KYCQueue />} />
           <Route path="/bulk-export" element={<AdminBulkExport />} />
-          <Route path="/webhook-testing" element={<AdminWebhookTesting />} />
-          <Route path="/notification-logs" element={<NotificationDeliveryLogs />} />
-          <Route path="/notification-templates" element={<NotificationTemplateEditor />} />
-          <Route path="/kyc-audit" element={<KycAuditLog />} />
-          <Route path="/transactions" element={<TransactionSearch />} />
-          <Route path="/transaction-actions" element={<TransactionDetail />} />
-          <Route path="/settlements" element={<SettlementManagement />} />
-          <Route path="/revenue" element={<RevenueDashboard />} />
-          <Route path="/credentials" element={<CredentialManagement />} />
-          <Route path="/tenants" element={<TenantManagement />} />
-          <Route path="/admin-users" element={<AdminUserManagement />} />
-          <Route path="/audit-logs" element={<AuditLogViewer />} />
-          <Route path="/settings" element={<SystemConfig />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
@@ -150,10 +107,82 @@ function Layout() {
   );
 }
 
+function LoginPage() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiRequest<{ token: string }>('POST', '/admin/login', {
+        email,
+        password,
+      });
+      setToken(data.token);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <form className="login-card" onSubmit={handleSubmit}>
+        <div className="login-header">
+          <h2>FeelPay Admin Login</h2>
+          <p>Use admin merchant email + password</p>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <input type="email" placeholder="Email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input type="password" placeholder="Password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <button className="btn-primary" type="submit" disabled={loading}>
+          {loading ? 'Signing in...' : 'Sign In'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function SettingsPage() {
+  return (
+    <div className="page fade-in">
+      <div className="page-header">
+        <div>
+          <h1>Platform Settings</h1>
+          <p>Only verified modules enabled in this release train.</p>
+        </div>
+      </div>
+      <div className="card">
+        <h3 style={{ marginBottom: 10 }}>Production Notes</h3>
+        <p style={{ color: 'var(--fp-text-muted)' }}>
+          Admin surface now trimmed to fully functional DB-backed flows: overview, merchants, bulk export, impersonation, auth/session.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ProtectedApp() {
+  if (!getToken()) {
+    return <Navigate to="/login" replace />;
+  }
+  return <Layout />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Layout />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/*" element={<ProtectedApp />} />
+      </Routes>
     </BrowserRouter>
   );
 }

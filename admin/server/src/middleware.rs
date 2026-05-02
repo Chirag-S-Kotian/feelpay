@@ -1,6 +1,6 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    web, Error, HttpMessage,
+    web, Error,
 };
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, DecodingKey, Validation};
@@ -50,6 +50,17 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
+        let path = req.path().to_string();
+        if path.ends_with("/bootstrap-token") || path.ends_with("/login") {
+            let fut = self.service.call(req);
+            return Box::pin(async move { fut.await });
+        }
+
+        if req.method() == actix_web::http::Method::OPTIONS {
+            let fut = self.service.call(req);
+            return Box::pin(async move { fut.await });
+        }
+
         let auth_header = req
             .headers()
             .get("authorization")
@@ -104,23 +115,30 @@ where
             let pool = pool.ok_or_else(|| actix_web::error::ErrorInternalServerError("DB pool missing"))?;
             
             // Check if is_admin
-            let is_admin = sqlx::query("SELECT is_admin FROM merchants WHERE id = $1")
+            let merchant = sqlx::query("SELECT is_admin, name FROM merchants WHERE id = $1")
                 .bind(merchant_id)
                 .fetch_optional(pool.get_ref())
                 .await
                 .map_err(|e| {
-                    tracing::error!("Auth check error: {}", e);
+                    tracing::error!("Auth check DB error: {}", e);
                     actix_web::error::ErrorInternalServerError("Database error")
                 })?;
 
-            match is_admin {
+            match merchant {
                 Some(row) => {
                     use sqlx::Row;
-                    if !row.get::<bool, _>("is_admin") {
+                    let is_admin: bool = row.get("is_admin");
+                    let name: String = row.get("name");
+                    tracing::info!("Auth check for {}: is_admin={}", name, is_admin);
+                    
+                    if !is_admin {
                         return Err(actix_web::error::ErrorForbidden("Forbidden: Admin access required"));
                     }
                 }
-                None => return Err(actix_web::error::ErrorUnauthorized("Merchant not found")),
+                None => {
+                    tracing::warn!("Merchant ID {} not found in auth check", merchant_id);
+                    return Err(actix_web::error::ErrorUnauthorized("Merchant not found"));
+                }
             }
 
             fut.await

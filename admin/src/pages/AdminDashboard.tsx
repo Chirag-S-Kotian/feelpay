@@ -4,10 +4,10 @@ import { apiRequest } from '../hooks/useApi';
 export interface Merchant {
   id: string;
   name: string;
-  email: string;
-  business_name: string | null;
-  business_type: string | null;
-  created_at: string;
+  email?: string;
+  business_name?: string | null;
+  business_type?: string | null;
+  created_at?: string;
 }
 
 export interface PlatformStats {
@@ -15,6 +15,10 @@ export interface PlatformStats {
   active_merchants: number;
   failed_payments: number;
   system_health: string;
+}
+
+interface MerchantsResponse {
+  merchants: Merchant[];
 }
 
 import {
@@ -61,10 +65,10 @@ export default function AdminDashboard() {
       try {
         const [statsData, merchantsData] = await Promise.all([
           apiRequest<PlatformStats>('GET', '/admin/stats'),
-          apiRequest<Merchant[]>('GET', '/admin/merchants')
+          apiRequest<Merchant[] | MerchantsResponse>('GET', '/admin/merchants')
         ]);
         setStats(statsData);
-        setMerchants(merchantsData);
+        setMerchants(Array.isArray(merchantsData) ? merchantsData : merchantsData.merchants || []);
       } catch (err) {
         console.error('Failed to fetch admin data:', err);
         setError('Connection to admin server failed. Ensure server is running on port 8081.');
@@ -208,9 +212,9 @@ export default function AdminDashboard() {
                      {m.business_name || m.name}
                   </div>
                 </td>
-                <td>{m.email}</td>
+                <td>{m.email || 'N/A'}</td>
                 <td>{m.business_type || 'N/A'}</td>
-                <td>{new Date(m.created_at).toLocaleDateString()}</td>
+                <td>{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'N/A'}</td>
                 <td>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }}>

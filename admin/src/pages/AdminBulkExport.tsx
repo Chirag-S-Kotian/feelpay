@@ -41,7 +41,7 @@ export default function AdminBulkExport() {
     try {
       const data = await apiRequest<{ merchants: Array<{ id: string; name: string }> }>(
         'GET',
-        '/api/v1/admin/merchants?limit=100'
+        '/admin/merchants'
       );
       setMerchants(data.merchants || []);
     } catch (err) {
@@ -53,7 +53,7 @@ export default function AdminBulkExport() {
     try {
       const data = await apiRequest<{ exports: ExportJob[] }>(
         'GET',
-        '/api/v1/admin/exports?limit=20&offset=0'
+        '/admin/exports?limit=20&offset=0'
       );
       setJobs(data.exports || []);
     } catch (err) {
@@ -86,7 +86,7 @@ export default function AdminBulkExport() {
 
       const response = await apiRequest<{ job_id: string }>(
         'POST',
-        '/api/v1/admin/exports/bulk',
+        '/admin/exports/bulk',
         {
           date_range: { start: startDate, end: endDate },
           entity_types: selectedTypes,
@@ -108,7 +108,7 @@ export default function AdminBulkExport() {
     try {
       const response = await apiRequest<{ download_url: string }>(
         'GET',
-        `/api/v1/admin/exports/${jobId}/download`
+        `/admin/exports/${jobId}/download`
       );
       window.location.href = response.download_url;
     } catch (err) {

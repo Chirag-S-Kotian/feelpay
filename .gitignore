@@ -21,3 +21,5 @@ payment/.sqlx
 
 dashboard/dist/assets
 dashboard/dist/assets/*
+
+admin/target

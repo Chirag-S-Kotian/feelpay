@@ -1,10 +1,11 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder, middleware::Logger};
 use actix_cors::Cors;
-use sqlx::PgPool;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::env;
+use uuid::Uuid;
 
 #[derive(Serialize)]
 pub struct PlatformStats {
@@ -14,16 +15,83 @@ pub struct PlatformStats {
     pub system_health: String,
 }
 
+#[derive(Serialize)]
+struct MerchantLite {
+    id: Uuid,
+    name: String,
+    email: Option<String>,
+    business_name: Option<String>,
+    business_type: Option<String>,
+    onboarding_status: Option<String>,
+    created_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize)]
+struct MerchantListResponse {
+    merchants: Vec<MerchantLite>,
+}
+
+#[derive(Deserialize)]
+struct ExportListQuery {
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct CreateBulkExportRequest {
+    date_range: Option<serde_json::Value>,
+    entity_types: Vec<String>,
+    merchant_filter: Option<String>,
+    format: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ExportJobListItem {
+    job_id: String,
+    status: String,
+    created_at: DateTime<Utc>,
+    completed_at: Option<DateTime<Utc>>,
+    record_count: Option<i32>,
+    file_size_bytes: Option<i64>,
+    error_message: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ExportJobListResponse {
+    exports: Vec<ExportJobListItem>,
+}
+
+#[derive(Serialize)]
+struct CreateBulkExportResponse {
+    job_id: String,
+}
+
+#[derive(Serialize)]
+struct DownloadExportResponse {
+    download_url: String,
+}
+
+#[derive(Serialize)]
+struct BootstrapTokenResponse {
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct AdminLoginRequest {
+    email: String,
+    password: String,
+}
+
 async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
     let stats = sqlx::query(
         r#"
-        SELECT 
+        SELECT
             COALESCE(SUM(amount), 0)::BIGINT as total_volume,
             (SELECT COUNT(*) FROM merchants)::BIGINT as active_merchants,
             (SELECT COUNT(*) FROM payment_orders WHERE status = 'failed')::BIGINT as failed_payments
         FROM payment_orders
         WHERE status = 'captured'
-        "#
+        "#,
     )
     .fetch_one(pool.get_ref())
     .await;
@@ -37,7 +105,7 @@ async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
                 "failed_payments": row.get::<i64, _>("failed_payments"),
                 "system_health": "Healthy"
             }))
-        },
+        }
         Err(e) => {
             tracing::error!("Stats error: {}", e);
             HttpResponse::InternalServerError().finish()
@@ -48,38 +116,283 @@ async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
 async fn list_merchants(pool: web::Data<PgPool>) -> impl Responder {
     let merchants = sqlx::query(
         r#"
-        SELECT id, name, email, business_name, business_type, created_at
+        SELECT id, name, email, business_name, business_type, onboarding_status, created_at
         FROM merchants
         ORDER BY created_at DESC
-        "#
+        "#,
     )
     .fetch_all(pool.get_ref())
     .await;
 
     match merchants {
-        Ok(m) => {
-            let res: Vec<_> = m.into_iter().map(|row| {
-                use sqlx::Row;
-                serde_json::json!({
-                    "id": row.get::<Uuid, _>("id"),
-                    "name": row.get::<String, _>("name"),
-                    "email": row.get::<String, _>("email"),
-                    "business_name": row.get::<Option<String>, _>("business_name"),
-                    "business_type": row.get::<Option<String>, _>("business_type"),
-                    "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+        Ok(rows) => {
+            use sqlx::Row;
+            let merchants = rows
+                .into_iter()
+                .map(|row| MerchantLite {
+                    id: row.get::<Uuid, _>("id"),
+                    name: row.get::<String, _>("name"),
+                    email: row.get::<Option<String>, _>("email"),
+                    business_name: row.get::<Option<String>, _>("business_name"),
+                    business_type: row.get::<Option<String>, _>("business_type"),
+                    onboarding_status: row.get::<Option<String>, _>("onboarding_status"),
+                    created_at: row.get::<Option<DateTime<Utc>>, _>("created_at"),
                 })
-            }).collect();
-            HttpResponse::Ok().json(res)
-        },
+                .collect::<Vec<_>>();
+            HttpResponse::Ok().json(MerchantListResponse { merchants })
+        }
         Err(e) => {
-            tracing::error!("List error: {}", e);
+            tracing::error!("List merchants error: {}", e);
             HttpResponse::InternalServerError().finish()
-        },
+        }
+    }
+}
+
+async fn list_exports(
+    pool: web::Data<PgPool>,
+    query: web::Query<ExportListQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            id,
+            status,
+            created_at,
+            completed_at,
+            record_count,
+            file_size_bytes,
+            error_message
+        FROM export_jobs
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let exports = rows
+                .into_iter()
+                .map(|row| ExportJobListItem {
+                    job_id: row.get::<Uuid, _>("id").to_string(),
+                    status: row.get::<String, _>("status"),
+                    created_at: row.get::<DateTime<Utc>, _>("created_at"),
+                    completed_at: row.get::<Option<DateTime<Utc>>, _>("completed_at"),
+                    record_count: row.get::<Option<i32>, _>("record_count"),
+                    file_size_bytes: row.get::<Option<i64>, _>("file_size_bytes"),
+                    error_message: row.get::<Option<String>, _>("error_message"),
+                })
+                .collect();
+
+            HttpResponse::Ok().json(ExportJobListResponse { exports })
+        }
+        Err(e) => {
+            tracing::error!("List exports error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "message": "Failed to fetch export jobs"
+            }))
+        }
+    }
+}
+
+async fn create_bulk_export(
+    pool: web::Data<PgPool>,
+    req: web::Json<CreateBulkExportRequest>,
+) -> impl Responder {
+    if req.entity_types.is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "message": "At least one entity type required"
+        }));
+    }
+
+    let filters = serde_json::json!({
+        "date_range": req.date_range,
+        "entity_types": req.entity_types,
+        "merchant_filter": req.merchant_filter,
+        "format": req.format,
+    });
+
+    let merchant_id = if let Some(id) = req
+        .merchant_filter
+        .as_ref()
+        .filter(|value| !value.is_empty() && *value != "all")
+    {
+        match Uuid::parse_str(id) {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "message": "Invalid merchant_filter"
+                }))
+            }
+        }
+    } else {
+        let first_merchant = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM merchants ORDER BY created_at DESC LIMIT 1",
+        )
+        .fetch_optional(pool.get_ref())
+        .await;
+
+        match first_merchant {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "message": "No merchants found to attach export job"
+                }))
+            }
+            Err(e) => {
+                tracing::error!("Merchant lookup failed for bulk export: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "message": "Failed to create export job"
+                }));
+            }
+        }
+    };
+
+    let inserted = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO export_jobs (merchant_id, job_type, status, filters)
+        VALUES ($1, 'bulk', 'queued', $2::jsonb)
+        RETURNING id
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(filters)
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match inserted {
+        Ok(job_id) => HttpResponse::Ok().json(CreateBulkExportResponse {
+            job_id: job_id.to_string(),
+        }),
+        Err(e) => {
+            tracing::error!("Create bulk export failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "message": "Failed to create export job"
+            }))
+        }
+    }
+}
+
+async fn get_export_download(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let job_id = path.into_inner();
+
+    let file_url = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT file_url FROM export_jobs WHERE id = $1",
+    )
+    .bind(job_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match file_url {
+        Ok(Some(Some(url))) => HttpResponse::Ok().json(DownloadExportResponse { download_url: url }),
+        Ok(Some(None)) => HttpResponse::BadRequest().json(serde_json::json!({
+            "message": "Export file not ready"
+        })),
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+            "message": "Export job not found"
+        })),
+        Err(e) => {
+            tracing::error!("Download export lookup failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "message": "Failed to fetch export job"
+            }))
+        }
     }
 }
 
 mod middleware;
 use middleware::AdminAuthMiddleware;
+
+fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
+    cfg.route("/stats", web::get().to(get_platform_stats))
+        .route("/merchants", web::get().to(list_merchants))
+        .route("/merchants/{id}/impersonate", web::post().to(impersonate_merchant))
+        .route("/exports", web::get().to(list_exports))
+        .route("/exports/bulk", web::post().to(create_bulk_export))
+        .route("/exports/{id}/download", web::get().to(get_export_download));
+}
+
+async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder {
+    let admin = sqlx::query("SELECT id, name FROM merchants WHERE is_admin = true ORDER BY created_at ASC LIMIT 1")
+        .fetch_optional(pool.get_ref())
+        .await;
+
+    match admin {
+        Ok(Some(row)) => {
+            use sqlx::Row;
+            let merchant_id: Uuid = row.get("id");
+            let merchant_name: String = row.get("name");
+            match generate_jwt(&merchant_id, &merchant_name) {
+                Ok(token) => HttpResponse::Ok().json(BootstrapTokenResponse { token }),
+                Err(e) => {
+                    tracing::error!("Bootstrap token generation failed: {}", e);
+                    HttpResponse::InternalServerError().json(serde_json::json!({
+                        "message": "Failed to generate bootstrap token"
+                    }))
+                }
+            }
+        }
+        Ok(None) => HttpResponse::Unauthorized().json(serde_json::json!({
+            "message": "No admin merchant found. Mark one merchant as is_admin=true."
+        })),
+        Err(e) => {
+            tracing::error!("Bootstrap token lookup failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "message": "Failed to lookup admin merchant"
+            }))
+        }
+    }
+}
+
+async fn admin_login(
+    pool: web::Data<PgPool>,
+    req: web::Json<AdminLoginRequest>,
+) -> impl Responder {
+    let row = sqlx::query("SELECT id, name, password_hash, is_admin FROM merchants WHERE email = $1 LIMIT 1")
+        .bind(req.email.trim().to_lowercase())
+        .fetch_optional(pool.get_ref())
+        .await;
+
+    let Some(row) = (match row {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("Admin login DB error: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"message": "Login failed"}));
+        }
+    }) else {
+        return HttpResponse::Unauthorized().json(serde_json::json!({"message": "Invalid credentials"}));
+    };
+
+    use sqlx::Row;
+    let is_admin: bool = row.get("is_admin");
+    if !is_admin {
+        return HttpResponse::Forbidden().json(serde_json::json!({"message": "Admin access required"}));
+    }
+    let password_hash: String = row.get("password_hash");
+    let password_ok = bcrypt::verify(req.password.as_str(), &password_hash).unwrap_or(false);
+    if !password_ok {
+        return HttpResponse::Unauthorized().json(serde_json::json!({"message": "Invalid credentials"}));
+    }
+    let merchant_id: Uuid = row.get("id");
+    let merchant_name: String = row.get("name");
+    match generate_jwt(&merchant_id, &merchant_name) {
+        Ok(token) => HttpResponse::Ok().json(serde_json::json!({ "token": token })),
+        Err(e) => {
+            tracing::error!("Admin login token generation failed: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({"message": "Login failed"}))
+        }
+    }
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -87,16 +400,14 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to Postgres");
 
     println!("Admin server starting on 127.0.0.1:8081");
 
     HttpServer::new(move || {
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
-            .max_age(3600);
+        let cors = Cors::permissive().max_age(3600);
 
         App::new()
             .wrap(Logger::default())
@@ -104,10 +415,33 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(pool.clone()))
             .service(
                 web::scope("/admin")
+                    .route("/login", web::post().to(admin_login))
+                    .route("/bootstrap-token", web::get().to(create_admin_bootstrap_token))
+                    .service(
+                        web::scope("")
+                            .wrap(AdminAuthMiddleware)
+                            .configure(configure_admin_routes),
+                    ),
+            )
+            .service(
+                web::scope("/api/admin")
+                    .route("/login", web::post().to(admin_login))
+                    .route("/bootstrap-token", web::get().to(create_admin_bootstrap_token))
+                    .service(
+                        web::scope("")
+                            .wrap(AdminAuthMiddleware)
+                            .configure(configure_admin_routes),
+                    ),
+            )
+            .service(
+                web::scope("/v1/admin")
                     .wrap(AdminAuthMiddleware)
-                    .route("/stats", web::get().to(get_platform_stats))
-                    .route("/merchants", web::get().to(list_merchants))
-                    .route("/merchants/{id}/impersonate", web::post().to(impersonate_merchant))
+                    .configure(configure_admin_routes),
+            )
+            .service(
+                web::scope("/api/v1/admin")
+                    .wrap(AdminAuthMiddleware)
+                    .configure(configure_admin_routes),
             )
     })
     .bind("127.0.0.1:8081")?
@@ -115,17 +449,12 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-async fn impersonate_merchant(
-    pool: web::Data<PgPool>,
-    path: web::Path<Uuid>,
-) -> impl Responder {
+async fn impersonate_merchant(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let merchant_id = path.into_inner();
-    let row = sqlx::query(
-        "SELECT id, name FROM merchants WHERE id = $1",
-    )
-    .bind(merchant_id)
-    .fetch_optional(pool.get_ref())
-    .await;
+    let row = sqlx::query("SELECT id, name FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_optional(pool.get_ref())
+        .await;
 
     match row {
         Ok(Some(m)) => {
@@ -168,5 +497,6 @@ fn generate_jwt(merchant_id: &Uuid, _name: &str) -> Result<String, Box<dyn std::
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
-    ).map_err(|e| e.into())
+    )
+    .map_err(|e| e.into())
 }
