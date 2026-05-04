@@ -13,6 +13,7 @@ import {
   Scale,
   IndianRupee,
   ListChecks,
+  Cable,
 } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -24,6 +25,7 @@ import Settlements from './pages/Settlements';
 import Disputes from './pages/Disputes';
 import Revenue from './pages/Revenue';
 import AdminOperations from './pages/AdminOperations';
+import CredentialManagement from './pages/CredentialManagement';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
@@ -33,6 +35,7 @@ const NAV = [
   { path: '/settlements', label: 'Settlements', icon: Landmark },
   { path: '/disputes', label: 'Disputes', icon: Scale },
   { path: '/revenue', label: 'Revenue', icon: IndianRupee },
+  { path: '/connectors', label: 'Banks & Connectors', icon: Cable },
   { path: '/bulk-export', label: 'Bulk Export', icon: Download },
   { path: '/settings', label: 'Platform Settings', icon: SettingsIcon },
 ];
@@ -125,6 +128,7 @@ function Layout() {
           <Route path="/settlements" element={<Settlements />} />
           <Route path="/disputes" element={<Disputes />} />
           <Route path="/revenue" element={<Revenue />} />
+          <Route path="/connectors" element={<CredentialManagement />} />
           <Route path="/bulk-export" element={<AdminBulkExport />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" />} />

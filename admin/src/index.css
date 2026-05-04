@@ -1107,6 +1107,23 @@ pre {
   gap: 12px;
 }
 
+.check-list {
+  display: grid;
+  gap: 12px;
+  color: var(--fp-text-muted);
+}
+
+.check-list > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.muted-text {
+  color: var(--fp-text-muted);
+  font-size: 12px;
+}
+
 .button-row,
 .viewer-actions {
   display: flex;

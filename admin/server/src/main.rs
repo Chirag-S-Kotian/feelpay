@@ -1,7 +1,11 @@
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use aes_gcm::aead::{Aead, KeyInit, OsRng};
+use aes_gcm::{Aes256Gcm, Nonce};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::env;
@@ -39,6 +43,41 @@ struct MerchantLite {
 #[derive(Serialize)]
 struct MerchantListResponse {
     merchants: Vec<MerchantLite>,
+}
+
+#[derive(Deserialize)]
+struct ProviderCredentialRequest {
+    provider: String,
+    key_name: String,
+    value: String,
+}
+
+#[derive(Serialize)]
+struct ProviderCredentialItem {
+    id: Uuid,
+    provider: String,
+    key_name: String,
+    masked_value: String,
+    last_validated: Option<DateTime<Utc>>,
+    is_valid: Option<bool>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct BankAccountItem {
+    id: Uuid,
+    merchant_id: Uuid,
+    merchant_name: String,
+    merchant_email: String,
+    account_holder_name: String,
+    ifsc_code: String,
+    account_type: String,
+    bank_name: Option<String>,
+    verification_status: String,
+    is_primary: Option<bool>,
+    created_at: DateTime<Utc>,
+    verified_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Deserialize)]
@@ -202,6 +241,220 @@ async fn list_merchants(pool: web::Data<PgPool>) -> impl Responder {
         Err(e) => {
             tracing::error!("List merchants error: {}", e);
             HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+fn mask_secret(value: &str) -> String {
+    let chars = value.chars().collect::<Vec<_>>();
+    if chars.len() <= 4 {
+        return "****".to_string();
+    }
+    let suffix = chars[chars.len() - 4..].iter().collect::<String>();
+    format!("****{suffix}")
+}
+
+fn encrypt_secret(value: &str) -> Result<(String, String), String> {
+    let raw_key = env::var("VAULT_ENCRYPTION_KEY").map_err(|_| {
+        "VAULT_ENCRYPTION_KEY is required to save provider credentials".to_string()
+    })?;
+    let key = hex::decode(raw_key.trim())
+        .map_err(|_| "VAULT_ENCRYPTION_KEY must be 64 hex characters".to_string())?;
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|_| "VAULT_ENCRYPTION_KEY must decode to 32 bytes".to_string())?;
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let encrypted = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), value.as_bytes())
+        .map_err(|_| "Credential encryption failed".to_string())?;
+    Ok((BASE64.encode(encrypted), BASE64.encode(nonce_bytes)))
+}
+
+async fn list_provider_credentials(pool: web::Data<PgPool>) -> impl Responder {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, provider, key_name, last_validated, is_valid, created_at, updated_at
+        FROM provider_credentials
+        ORDER BY provider, key_name
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let data = rows
+                .into_iter()
+                .map(|row| ProviderCredentialItem {
+                    id: row.get("id"),
+                    provider: row.get("provider"),
+                    key_name: row.get("key_name"),
+                    masked_value: "stored".to_string(),
+                    last_validated: row.get("last_validated"),
+                    is_valid: row.get("is_valid"),
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                })
+                .collect::<Vec<_>>();
+            HttpResponse::Ok().json(serde_json::json!({ "items": data }))
+        }
+        Err(e) => {
+            tracing::error!("List provider credentials failed: {}", e);
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load provider credentials" }))
+        }
+    }
+}
+
+async fn upsert_provider_credential(
+    pool: web::Data<PgPool>,
+    req: web::Json<ProviderCredentialRequest>,
+) -> impl Responder {
+    let provider = req.provider.trim().to_lowercase();
+    let key_name = req.key_name.trim().to_lowercase();
+    if provider.is_empty() || key_name.is_empty() || req.value.trim().is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "message": "provider, key_name, and value are required"
+        }));
+    }
+
+    let (encrypted_value, nonce) = match encrypt_secret(req.value.trim()) {
+        Ok(value) => value,
+        Err(message) => return HttpResponse::BadRequest().json(serde_json::json!({ "message": message })),
+    };
+
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO provider_credentials (provider, key_name, encrypted_value, nonce, is_valid)
+        VALUES ($1, $2, $3, $4, TRUE)
+        ON CONFLICT (provider, key_name)
+        DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value,
+                      nonce = EXCLUDED.nonce,
+                      updated_at = NOW(),
+                      is_valid = TRUE
+        RETURNING id
+        "#,
+    )
+    .bind(&provider)
+    .bind(&key_name)
+    .bind(encrypted_value)
+    .bind(nonce)
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(serde_json::json!({
+            "id": id,
+            "provider": provider,
+            "key_name": key_name,
+            "masked_value": mask_secret(req.value.trim())
+        })),
+        Err(e) => {
+            tracing::error!("Save provider credential failed: {}", e);
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to save provider credential" }))
+        }
+    }
+}
+
+async fn validate_provider_credential(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE provider_credentials SET last_validated = NOW(), is_valid = TRUE, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => HttpResponse::Ok().json(serde_json::json!({
+            "id": id,
+            "is_valid": true
+        })),
+        Ok(_) => HttpResponse::NotFound().json(serde_json::json!({
+            "message": "Provider credential not found"
+        })),
+        Err(e) => {
+            tracing::error!("Validate provider credential failed: {}", e);
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to validate provider credential" }))
+        }
+    }
+}
+
+async fn list_bank_accounts(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let status = query.status.clone().filter(|v| !v.trim().is_empty());
+    let q = query.q.clone().filter(|v| !v.trim().is_empty());
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          b.id,
+          b.merchant_id,
+          m.name AS merchant_name,
+          m.email AS merchant_email,
+          b.account_holder_name,
+          b.ifsc_code,
+          b.account_type,
+          b.bank_name,
+          b.verification_status,
+          b.is_primary,
+          b.created_at,
+          b.verified_at
+        FROM bank_accounts b
+        JOIN merchants m ON m.id = b.merchant_id
+        WHERE
+          ($1::text IS NULL OR b.verification_status = $1)
+          AND (
+            $2::text IS NULL OR
+            b.ifsc_code ILIKE '%' || $2 || '%' OR
+            b.account_holder_name ILIKE '%' || $2 || '%' OR
+            m.name ILIKE '%' || $2 || '%' OR
+            m.email ILIKE '%' || $2 || '%'
+          )
+        ORDER BY b.created_at DESC
+        LIMIT $3 OFFSET $4
+        "#,
+    )
+    .bind(status)
+    .bind(q)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let data = rows
+                .into_iter()
+                .map(|row| BankAccountItem {
+                    id: row.get("id"),
+                    merchant_id: row.get("merchant_id"),
+                    merchant_name: row.get("merchant_name"),
+                    merchant_email: row.get("merchant_email"),
+                    account_holder_name: row.get("account_holder_name"),
+                    ifsc_code: row.get("ifsc_code"),
+                    account_type: row.get("account_type"),
+                    bank_name: row.get("bank_name"),
+                    verification_status: row.get("verification_status"),
+                    is_primary: row.get("is_primary"),
+                    created_at: row.get("created_at"),
+                    verified_at: row.get("verified_at"),
+                })
+                .collect::<Vec<_>>();
+            HttpResponse::Ok().json(serde_json::json!({ "items": data }))
+        }
+        Err(e) => {
+            tracing::error!("List bank accounts failed: {}", e);
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load bank accounts" }))
         }
     }
 }
@@ -601,6 +854,13 @@ fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
             "/merchants/{id}/impersonate",
             web::post().to(impersonate_merchant),
         )
+        .route("/provider-credentials", web::get().to(list_provider_credentials))
+        .route("/provider-credentials", web::post().to(upsert_provider_credential))
+        .route(
+            "/provider-credentials/{id}/validate",
+            web::post().to(validate_provider_credential),
+        )
+        .route("/bank-accounts", web::get().to(list_bank_accounts))
         .route("/exports", web::get().to(list_exports))
         .route("/exports/bulk", web::post().to(create_bulk_export))
         .route("/exports/{id}/download", web::get().to(get_export_download))

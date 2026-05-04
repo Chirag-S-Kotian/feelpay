@@ -6,7 +6,7 @@ Read `AGENTS.md` first; it is repo source of truth. Keep this file tiny so Claud
 - Use `clean-code` + `karpathy-guidelines` when writing, reviewing, or refactoring code.
 - Use smallest useful context: `rg`, targeted file slices, graph report only for unknown modules.
 - State assumptions, choose simplest viable path, make surgical edits, verify with commands.
-- After code changes, run `graphify update .`; if unavailable, state blocker.
+- After code changes, run `./scripts/graphify update .`; if unavailable, state blocker.
 - Do not edit old migrations, revert user changes, add Analytics mocks, or invent production NPCI.
 
 ## Before Compacting

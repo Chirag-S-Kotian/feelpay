@@ -26,7 +26,7 @@ scripts/              utilities; inspect before replacing
 2. Read graph/files/tests needed for change, no bulk context.
 3. Plan only for risky or multi-file work.
 4. Patch smallest surface.
-5. After code changes, run `graphify update .` to refresh `graphify-out/`.
+5. After code changes, run `./scripts/graphify update .` to refresh `graphify-out/`.
 6. Run narrow check, then full gate.
 7. Report files + commands + exit status.
 
@@ -52,7 +52,7 @@ Skills: use clean-code + karpathy-guidelines for code write/review/refactor. Sup
 ## Verification Gate
 Run before marking complete. For docs-only tasks, skip code builds unless repo rules/user ask. For code tasks, run in order:
 ```bash
-graphify update .
+./scripts/graphify update .
 cargo check
 cargo test
 sqlx migrate run

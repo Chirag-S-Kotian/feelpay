@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PYTHON="${GRAPHIFY_PYTHON:-}"
+
+if [[ -z "$PYTHON" && -f graphify-out/.graphify_python ]]; then
+  PYTHON="$(cat graphify-out/.graphify_python)"
+fi
+
+if [[ -z "$PYTHON" ]]; then
+  PYTHON="python3"
+fi
+
+"$PYTHON" -c "import graphify" 2>/dev/null || {
+  "$PYTHON" -m pip install graphifyy -q 2>/dev/null || \
+    "$PYTHON" -m pip install graphifyy -q --break-system-packages
+}
+
+mkdir -p graphify-out
+"$PYTHON" -c "import sys; open('graphify-out/.graphify_python', 'w').write(sys.executable)"
+exec "$PYTHON" -m graphify "$@"
