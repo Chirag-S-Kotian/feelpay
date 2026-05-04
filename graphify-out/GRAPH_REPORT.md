@@ -1,12 +1,12 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-05-04)
 
 ## Corpus Check
-- 219 files · ~325,719 words
+- 220 files · ~334,251 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1898 nodes · 3638 edges · 124 communities detected
-- Extraction: 64% EXTRACTED · 36% INFERRED · 0% AMBIGUOUS · INFERRED: 1297 edges (avg confidence: 0.8)
+- 1912 nodes · 3658 edges · 124 communities detected
+- Extraction: 64% EXTRACTED · 36% INFERRED · 0% AMBIGUOUS · INFERRED: 1300 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -137,7 +137,7 @@
 
 ## God Nodes (most connected - your core abstractions)
 1. `json()` - 273 edges
-2. `apiRequest()` - 57 edges
+2. `apiRequest()` - 58 edges
 3. `server_error()` - 34 edges
 4. `main()` - 30 edges
 5. `audit()` - 23 edges
@@ -149,8 +149,6 @@
 
 ## Surprising Connections (you probably didn't know these)
 - `main()` --calls--> `configure()`  [INFERRED]
-  /home/chiragskotian/Desktop/payment/admin/server/src/main.rs → /home/chiragskotian/Desktop/payment/src/api/emi_bnpl.rs
-- `main()` --calls--> `configure()`  [INFERRED]
   /home/chiragskotian/Desktop/payment/admin/server/src/main.rs → /home/chiragskotian/Desktop/payment/src/api/subscriptions.rs
 - `main()` --calls--> `configure()`  [INFERRED]
   /home/chiragskotian/Desktop/payment/admin/server/src/main.rs → /home/chiragskotian/Desktop/payment/src/api/checkout.rs
@@ -158,52 +156,54 @@
   /home/chiragskotian/Desktop/payment/admin/server/src/main.rs → /home/chiragskotian/Desktop/payment/src/api/documents.rs
 - `main()` --calls--> `configure()`  [INFERRED]
   /home/chiragskotian/Desktop/payment/admin/server/src/main.rs → /home/chiragskotian/Desktop/payment/src/api/webhooks.rs
+- `logout_all()` --calls--> `json()`  [INFERRED]
+  /home/chiragskotian/Desktop/payment/src/api/auth.rs → /home/chiragskotian/Desktop/payment/mock/provider-mock-server.js
 
 ## Communities
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (147): get_actionable_alerts(), health_cycle_json_shape(), health_cycle_should_return_ok(), check_password_history(), mask_bank_account(), add_bank_account(), AddBankAccountApiRequest, AddBankAccountApiResponse (+139 more)
+Nodes (138): get_actionable_alerts(), health_cycle_json_shape(), health_cycle_should_return_ok(), MfaService, mask_bank_account(), add_bank_account(), AddBankAccountApiRequest, AddBankAccountApiResponse (+130 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (181): AuditLogQuery, list_audit_logs(), list_kyc_audit_logs(), approve_refund(), audit(), auto_match_reconciliation(), BankConfigRequest, cancel_transaction() (+173 more)
+Nodes (135): mfa_setup(), accept_dispute(), get_dispute(), list_disputes(), merchant_id_from_req(), submit_evidence(), ApiError, FeelPayError (+127 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.02
-Nodes (75): fetchData(), load(), create(), load(), handleLogout(), handleSubmit(), loadProfileForEdit(), openProfileModal() (+67 more)
+Nodes (175): AuditLogQuery, list_audit_logs(), list_kyc_audit_logs(), approve_refund(), audit(), auto_match_reconciliation(), BankConfigRequest, cancel_transaction() (+167 more)
 
 ### Community 3 - "Community 3"
+Cohesion: 0.02
+Nodes (78): fetchData(), load(), create(), load(), getAdminClaims(), handleLogout(), handleSubmit(), loadProfileForEdit() (+70 more)
+
+### Community 4 - "Community 4"
 Cohesion: 0.04
 Nodes (87): hash_password(), ApiKeyMiddleware, ApiKeyMiddlewareService, ApiKeyMiddlewareService<S>, AuthResponse, bearer_token_from_request(), bearer_token_hash(), captcha() (+79 more)
 
-### Community 4 - "Community 4"
-Cohesion: 0.03
-Nodes (73): accept_dispute(), get_dispute(), list_disputes(), merchant_id_from_req(), submit_evidence(), ApiError, FeelPayError, LedgerService (+65 more)
-
 ### Community 5 - "Community 5"
 Cohesion: 0.03
-Nodes (39): webhook_verify_cycle_bad_signature(), webhook_verify_cycle_valid_signature(), AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse, BankAccountService, VerificationStatus (+31 more)
+Nodes (48): webhook_verify_cycle_bad_signature(), webhook_verify_cycle_valid_signature(), AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse, BankAccountService, VerificationStatus (+40 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.03
-Nodes (71): create_customer(), CustomerListResponse, delete_customer(), get_customer(), get_customer_payment_methods(), list_customers(), merchant_id_from_req(), PaginationMeta (+63 more)
+Nodes (45): checkout_connector_for_method(), checkout_method_name(), checkout_session_status(), CheckoutSessionResponse, configure(), CreateCheckoutSessionRequest, get_checkout_preview_config(), get_checkout_session() (+37 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.03
-Nodes (45): checkout_connector_for_method(), checkout_method_name(), checkout_session_status(), CheckoutSessionResponse, configure(), CreateCheckoutSessionRequest, get_checkout_preview_config(), get_checkout_session() (+37 more)
+Cohesion: 0.05
+Nodes (28): AmountRange, CreateExportJobRequest, DateRange, ExportJob, ExportJobType, ExportService, integration_test_bank_account_verification_flow(), integration_test_end_to_end_transaction_export() (+20 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.05
-Nodes (54): AdminUserRequest, create_admin_user(), deactivate_admin_user(), list_admin_users(), update_admin_user(), admin_id_from_claims(), log_audit(), actor_id_from_claims() (+46 more)
+Nodes (42): CardProcessor, LedgerService, Merchant Dashboard, PaymentEngine, SettlementService, UpiProcessor, Vault, AppConfig (+34 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.04
-Nodes (22): CardProcessor, LedgerService, Merchant Dashboard, PaymentEngine, SettlementService, SimulatorProcessor, UpiProcessor, Vault (+14 more)
+Cohesion: 0.06
+Nodes (8): SimulatorProcessor, handleSubmit(), validate(), NetBankingProcessor, PaymentEngine, TransactionPipeline, UpiProcessor, WalletProcessor
 
 ### Community 10 - "Community 10"
-Cohesion: 0.05
-Nodes (28): AmountRange, CreateExportJobRequest, DateRange, ExportJob, ExportJobType, ExportService, integration_test_bank_account_verification_flow(), integration_test_end_to_end_transaction_export() (+20 more)
+Cohesion: 0.07
+Nodes (37): AdminUserRequest, create_admin_user(), deactivate_admin_user(), list_admin_users(), update_admin_user(), admin_id_from_claims(), log_audit(), create_template() (+29 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.07
@@ -238,12 +238,12 @@ Cohesion: 0.13
 Nodes (7): InstantSettlement, ReconciliationRecord, SettlementAdvancedService, SettlementCycle, TdsCalculation, test_financial_year_april(), test_tds_calculation()
 
 ### Community 19 - "Community 19"
-Cohesion: 0.15
-Nodes (7): NotificationChannel, NotificationEventType, NotificationTemplate, NotificationTemplateService, RenderedNotification, test_missing_variables(), test_template_rendering()
-
-### Community 20 - "Community 20"
 Cohesion: 0.18
 Nodes (15): configure(), create_approval(), delete_document(), get_approval(), get_document(), list_approvals(), list_documents(), ListApprovalsQuery (+7 more)
+
+### Community 20 - "Community 20"
+Cohesion: 0.15
+Nodes (7): NotificationChannel, NotificationEventType, NotificationTemplate, NotificationTemplateService, RenderedNotification, test_missing_variables(), test_template_rendering()
 
 ### Community 21 - "Community 21"
 Cohesion: 0.17
@@ -274,72 +274,72 @@ Cohesion: 0.27
 Nodes (4): simulator_fail_action_declines_payment(), simulator_success_action_captures_payment(), SimulatorProcessor, txn()
 
 ### Community 28 - "Community 28"
+Cohesion: 0.26
+Nodes (10): create_customer(), CustomerListResponse, delete_customer(), get_customer(), get_customer_payment_methods(), list_customers(), merchant_id_from_req(), PaginationMeta (+2 more)
+
+### Community 29 - "Community 29"
 Cohesion: 0.27
 Nodes (4): createNote(), deleteNote(), fetchNotes(), updateNote()
 
-### Community 29 - "Community 29"
+### Community 30 - "Community 30"
 Cohesion: 0.22
 Nodes (8): Claims, CreateUserRequest, Permission, Role, RolePermission, User, UserResponse, UserRole
 
-### Community 30 - "Community 30"
+### Community 31 - "Community 31"
 Cohesion: 0.29
 Nodes (5): CreatePaymentLinkRequest, ListPaymentLinksQuery, PaymentLink, PaymentLinkResponse, PaymentLinkStatus
 
-### Community 31 - "Community 31"
+### Community 32 - "Community 32"
 Cohesion: 0.29
 Nodes (4): ReplayCheckPassed, ReplayPrevention, ReplayPreventionMiddleware, test_replay_nonce_format()
 
-### Community 32 - "Community 32"
+### Community 33 - "Community 33"
 Cohesion: 0.29
 Nodes (0): 
 
-### Community 33 - "Community 33"
+### Community 34 - "Community 34"
 Cohesion: 0.43
 Nodes (1): FeelPay
 
-### Community 34 - "Community 34"
+### Community 35 - "Community 35"
 Cohesion: 0.38
 Nodes (1): FeelPay
 
-### Community 35 - "Community 35"
+### Community 36 - "Community 36"
 Cohesion: 0.33
 Nodes (5): MethodData, PaymentMethod, PaymentMethodProcessor, ProcessorResponse, TransactionContext
 
-### Community 36 - "Community 36"
+### Community 37 - "Community 37"
 Cohesion: 0.33
 Nodes (5): PaginationQuery, send_test_webhook(), TestWebhookRequest, TestWebhookResponse, WebhookTestLogsResponse
 
-### Community 37 - "Community 37"
+### Community 38 - "Community 38"
 Cohesion: 0.33
 Nodes (4): get_revenue_dashboard(), MerchantRevenue, RevenueBreakdown, RevenueQuery
 
-### Community 38 - "Community 38"
+### Community 39 - "Community 39"
 Cohesion: 0.33
 Nodes (3): ApiKeyIpWhitelist, ApiKeyIpWhitelistMiddleware, ApiKeyWhitelistData
 
-### Community 39 - "Community 39"
+### Community 40 - "Community 40"
 Cohesion: 0.47
 Nodes (3): buildCsv(), downloadTextFile(), handleDownload()
 
-### Community 40 - "Community 40"
+### Community 41 - "Community 41"
 Cohesion: 0.33
 Nodes (6): Admin Panel, Escrow Account, FeelPay, PA/PG License, PCI-DSS, UPI AutoPay
 
-### Community 41 - "Community 41"
+### Community 42 - "Community 42"
 Cohesion: 0.4
 Nodes (4): BankAccount, CreateBankAccountRequest, CreatePayoutRequest, Payout
 
-### Community 42 - "Community 42"
+### Community 43 - "Community 43"
 Cohesion: 0.4
 Nodes (4): CreateNoteRequest, MerchantNote, MerchantNoteHistory, UpdateNoteRequest
 
-### Community 43 - "Community 43"
+### Community 44 - "Community 44"
 Cohesion: 0.6
 Nodes (4): pick_provider(), picks_highest_success_rate_when_all_healthy(), RoutingCandidate, skips_unhealthy_provider_even_if_success_rate_higher()
-
-### Community 44 - "Community 44"
-Cohesion: 0.4
-Nodes (1): fetchSettings()
 
 ### Community 45 - "Community 45"
 Cohesion: 0.4
@@ -359,7 +359,7 @@ Nodes (1): ResizeObserverMock
 
 ### Community 49 - "Community 49"
 Cohesion: 0.4
-Nodes (3): AdminAuthMiddleware, AdminAuthMiddlewareService, Claims
+Nodes (1): fetchSettings()
 
 ### Community 50 - "Community 50"
 Cohesion: 0.5
@@ -762,16 +762,16 @@ Nodes (1): HTTP Strict Transport Security
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `json()` connect `Community 1` to `Community 0`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 20`, `Community 24`, `Community 25`, `Community 34`, `Community 36`, `Community 37`, `Community 44`?**
-  _High betweenness centrality (0.241) - this node is a cross-community bridge._
-- **Why does `apiRequest()` connect `Community 2` to `Community 9`, `Community 28`?**
-  _High betweenness centrality (0.099) - this node is a cross-community bridge._
-- **Why does `fetchTemplates()` connect `Community 2` to `Community 1`?**
-  _High betweenness centrality (0.070) - this node is a cross-community bridge._
+- **Why does `json()` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 19`, `Community 24`, `Community 25`, `Community 28`, `Community 35`, `Community 37`, `Community 38`, `Community 49`?**
+  _High betweenness centrality (0.340) - this node is a cross-community bridge._
+- **Why does `apiRequest()` connect `Community 3` to `Community 9`, `Community 29`?**
+  _High betweenness centrality (0.172) - this node is a cross-community bridge._
+- **Why does `fetchTemplates()` connect `Community 3` to `Community 2`?**
+  _High betweenness centrality (0.130) - this node is a cross-community bridge._
 - **Are the 272 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 272 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 50 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**
-  _`apiRequest()` has 50 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 51 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**
+  _`apiRequest()` has 51 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 25 inferred relationships involving `main()` (e.g. with `.new()` and `.from_env()`) actually correct?**
   _`main()` has 25 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `AppState`, `ApiKey`, `CreateApiKeyRequest` to the rest of the system?**

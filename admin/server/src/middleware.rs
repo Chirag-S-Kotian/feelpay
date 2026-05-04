@@ -35,6 +35,8 @@ pub struct AdminAuthMiddlewareService<S> {
 #[derive(Debug, Deserialize)]
 struct Claims {
     sub: String,
+    role: Option<String>,
+    permissions: Option<Vec<String>>,
 }
 
 impl<S, B> Service<ServiceRequest> for AdminAuthMiddlewareService<S>
@@ -51,6 +53,7 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let path = req.path().to_string();
+        let method = req.method().as_str().to_string();
         if path.ends_with("/bootstrap-token") || path.ends_with("/login") {
             let fut = self.service.call(req);
             return Box::pin(async move { fut.await });
@@ -141,7 +144,129 @@ where
                 }
             }
 
+            let required_permission = match required_permission_for_path(&path, &method) {
+                Some(permission) => permission,
+                None => {
+                    tracing::warn!("Admin RBAC denied unmapped route: {} {}", method, path);
+                    return Err(actix_web::error::ErrorForbidden("Forbidden: Admin route is not permission mapped"));
+                }
+            };
+
+            let role = claims.role.as_deref().unwrap_or("Super Admin");
+            let has_claim_permission = claims
+                .permissions
+                .as_ref()
+                .map(|permissions| permissions.iter().any(|permission| permission == required_permission))
+                .unwrap_or(false);
+
+            if !role_has_permission(role, required_permission) && !has_claim_permission {
+                tracing::warn!("Admin RBAC denied role={} permission={}", role, required_permission);
+                return Err(actix_web::error::ErrorForbidden("Forbidden: Admin permission required"));
+            }
+
             fut.await
         })
+    }
+}
+
+fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str> {
+    let path = path
+        .strip_prefix("/api/v1/admin")
+        .or_else(|| path.strip_prefix("/v1/admin"))
+        .or_else(|| path.strip_prefix("/api/admin"))
+        .or_else(|| path.strip_prefix("/admin"))?;
+
+    if path.starts_with("/stats") || path.starts_with("/operations") || path.starts_with("/payments/dashboard") || path.starts_with("/payment-ops/dashboard") {
+        return Some("payment_ops.view");
+    }
+    if path.starts_with("/merchants") {
+        return Some("payment_ops.view");
+    }
+    if path.starts_with("/transactions") || path.starts_with("/payments/transactions") || path.starts_with("/payment-ops/transactions") {
+        return Some(if method == "GET" { "transactions.view" } else { "transactions.action" });
+    }
+    if path.contains("/refunds") {
+        if method == "GET" {
+            return Some("refunds.request");
+        }
+        if path.ends_with("/approve") || path.ends_with("/reject") {
+            return Some("refunds.approve");
+        }
+        if path.ends_with("/initiate") || path.ends_with("/retry") {
+            return Some("refunds.initiate");
+        }
+        return Some("refunds.request");
+    }
+    if path.starts_with("/settlements") || path.contains("/settlements") {
+        return Some("settlements.manage");
+    }
+    if path.starts_with("/disputes") || path.contains("/disputes") {
+        return Some("disputes.manage");
+    }
+    if path.contains("/risk-rules") || path.contains("/risk-reviews") {
+        return Some("risk_rules.manage");
+    }
+    if path.contains("/reconciliation") {
+        return Some("reconciliation.manage");
+    }
+    if path.starts_with("/provider-credentials") || path.contains("/providers") || path.contains("/credentials") {
+        return Some(if method == "GET" { "providers.manage" } else { "credentials.rotate" });
+    }
+    if path.contains("/bank-integrations") || path.starts_with("/bank-accounts") {
+        return Some("bank_integrations.manage");
+    }
+    if path.contains("/routing-rules") || path.contains("/routing/simulate") {
+        return Some("routing.manage");
+    }
+    if path.contains("/white-label-config") || path.contains("/webhook-configs") || path.contains("/webhook-events") || path.contains("/webhooks") {
+        return Some("webhook_config.manage");
+    }
+    if path.starts_with("/exports") || path.starts_with("/revenue") {
+        return Some("reports.export");
+    }
+    if path.contains("/audit-logs") {
+        return Some("audit_logs.view");
+    }
+    if path.contains("/admin-roles") || path.contains("/users") {
+        return Some("admin_users.manage");
+    }
+    None
+}
+
+fn role_has_permission(role: &str, permission: &str) -> bool {
+    if matches!(role, "Super Admin" | "super_admin" | "admin" | "merchant") {
+        return true;
+    }
+    permissions_for_role(role).contains(&permission)
+}
+
+fn permissions_for_role(role: &str) -> &'static [&'static str] {
+    match role {
+        "Payment Ops Admin" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "transactions.action",
+            "refunds.request",
+            "providers.manage",
+            "credentials.rotate",
+            "routing.manage",
+            "webhook_config.manage",
+        ],
+        "Finance Admin" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "refunds.request",
+            "refunds.approve",
+            "refunds.initiate",
+            "settlements.manage",
+            "reconciliation.manage",
+            "reports.export",
+        ],
+        "Risk Admin" => &["payment_ops.view", "transactions.view", "risk_rules.manage", "disputes.manage"],
+        "Support Admin" => &["payment_ops.view", "transactions.view", "transactions.action", "refunds.request", "disputes.manage"],
+        "Support Agent" => &["payment_ops.view", "transactions.view", "refunds.request"],
+        "Compliance Admin" => &["payment_ops.view", "transactions.view", "disputes.manage", "audit_logs.view"],
+        "Auditor" | "Auditor / Read Only" => &["payment_ops.view", "transactions.view", "audit_logs.view", "reports.export"],
+        _ => &[],
     }
 }

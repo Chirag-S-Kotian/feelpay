@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Users,
   Settings as SettingsIcon,
   Menu,
   X,
@@ -15,31 +14,121 @@ import {
   ListChecks,
   Cable,
   CreditCard,
+  RotateCcw,
+  Radar,
+  FileSearch,
+  Building2,
+  Webhook,
+  ShieldCheck,
+  Route as RouteIcon,
+  ClipboardList,
+  UserCog,
 } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
 import AdminDashboard from './pages/AdminDashboard';
-import Merchants from './pages/Merchants';
 import AdminBulkExport from './pages/AdminBulkExport';
-import Transactions from './pages/Transactions';
-import Settlements from './pages/Settlements';
-import Disputes from './pages/Disputes';
 import Revenue from './pages/Revenue';
-import AdminOperations from './pages/AdminOperations';
-import CredentialManagement from './pages/CredentialManagement';
+import {
+  AdminUsersRolesPage,
+  AuditLogsPage,
+  BankIntegrationsPage,
+  BusinessAccountsPage,
+  DisputesPage,
+  PaymentOpsPage,
+  PlatformSettingsPage,
+  ProviderConnectorsPage,
+  ReconciliationPage,
+  RefundsPage,
+  ReportsPage,
+  RiskRulesPage,
+  RoutingRulesPage,
+  SettlementsPage,
+  TransactionsPage,
+  WebhookConfigPage,
+  WhiteLabelCheckoutPage,
+} from './pages/CompanyAdminOps';
 
-const NAV = [
-  { path: '/', label: 'Overview', icon: LayoutDashboard },
-  { path: '/operations', label: 'Operations', icon: ListChecks },
-  { path: '/payment-ops', label: 'Payment Ops', icon: CreditCard },
-  { path: '/merchants', label: 'Business Accounts', icon: Users },
-  { path: '/transactions', label: 'Transactions', icon: Receipt },
-  { path: '/settlements', label: 'Settlements', icon: Landmark },
-  { path: '/disputes', label: 'Disputes', icon: Scale },
-  { path: '/revenue', label: 'Revenue', icon: IndianRupee },
-  { path: '/connectors', label: 'Provider Connectors', icon: Cable },
-  { path: '/bulk-export', label: 'Bulk Export', icon: Download },
-  { path: '/settings', label: 'Platform Settings', icon: SettingsIcon },
+type AdminPermission =
+  | 'payment_ops.view'
+  | 'transactions.view'
+  | 'transactions.action'
+  | 'refunds.request'
+  | 'refunds.approve'
+  | 'refunds.initiate'
+  | 'settlements.manage'
+  | 'disputes.manage'
+  | 'risk_rules.manage'
+  | 'reconciliation.manage'
+  | 'providers.manage'
+  | 'credentials.rotate'
+  | 'bank_integrations.manage'
+  | 'routing.manage'
+  | 'webhook_config.manage'
+  | 'reports.export'
+  | 'audit_logs.view'
+  | 'admin_users.manage'
+  | 'platform_settings.manage';
+
+type NavItem = {
+  path: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permission: AdminPermission;
+};
+
+type NavSection = {
+  title: string;
+  items: NavItem[];
+};
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'Overview',
+    items: [{ path: '/', label: 'Overview', icon: LayoutDashboard, permission: 'payment_ops.view' }],
+  },
+  {
+    title: 'Operations',
+    items: [
+      { path: '/payment-ops', label: 'Payment Ops', icon: CreditCard, permission: 'payment_ops.view' },
+      { path: '/transactions', label: 'Transactions', icon: Receipt, permission: 'transactions.view' },
+      { path: '/refunds', label: 'Refunds', icon: RotateCcw, permission: 'refunds.request' },
+      { path: '/settlements', label: 'Settlements', icon: Landmark, permission: 'settlements.manage' },
+      { path: '/disputes', label: 'Disputes', icon: Scale, permission: 'disputes.manage' },
+      { path: '/risk-rules', label: 'Risk Rules', icon: Radar, permission: 'risk_rules.manage' },
+      { path: '/reconciliation', label: 'Reconciliation', icon: FileSearch, permission: 'reconciliation.manage' },
+    ],
+  },
+  {
+    title: 'Accounts',
+    items: [{ path: '/business-accounts', label: 'Business Accounts', icon: Building2, permission: 'payment_ops.view' }],
+  },
+  {
+    title: 'Configuration',
+    items: [
+      { path: '/connectors', label: 'Provider Connectors', icon: Cable, permission: 'providers.manage' },
+      { path: '/bank-integrations', label: 'Bank Integrations', icon: Landmark, permission: 'bank_integrations.manage' },
+      { path: '/routing-rules', label: 'Routing Rules', icon: RouteIcon, permission: 'routing.manage' },
+      { path: '/white-label-checkout', label: 'White-label Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
+      { path: '/webhook-config', label: 'Webhook Config', icon: Webhook, permission: 'webhook_config.manage' },
+    ],
+  },
+  {
+    title: 'Reports',
+    items: [
+      { path: '/revenue', label: 'Revenue', icon: IndianRupee, permission: 'reports.export' },
+      { path: '/bulk-export', label: 'Bulk Export', icon: Download, permission: 'reports.export' },
+      { path: '/reports', label: 'Reports', icon: ClipboardList, permission: 'reports.export' },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      { path: '/audit-logs', label: 'Audit Logs', icon: ListChecks, permission: 'audit_logs.view' },
+      { path: '/admin-users-roles', label: 'Admin Users & Roles', icon: UserCog, permission: 'admin_users.manage' },
+      { path: '/settings', label: 'Platform Settings', icon: SettingsIcon, permission: 'platform_settings.manage' },
+    ],
+  },
 ];
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -50,17 +139,22 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <span className="logo-text">FeelPay</span>
       </div>
       <nav className="sidebar-nav">
-        {NAV.map(n => (
-          <NavLink
-            key={n.path}
-            to={n.path}
-            end={n.path === '/'}
-            onClick={onNavigate}
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          >
-            <n.icon size={18} />
-            <span>{n.label}</span>
-          </NavLink>
+        {NAV_SECTIONS.map(section => (
+          <div key={section.title} className="sidebar-nav-section">
+            <div className="sidebar-nav-title">{section.title}</div>
+            {section.items.map(n => (
+              <NavLink
+                key={n.path}
+                to={n.path}
+                end={n.path === '/'}
+                onClick={onNavigate}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              >
+                <n.icon size={18} />
+                <span>{n.label}</span>
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
       <div className="env-panel">
@@ -124,16 +218,27 @@ function Layout() {
         </header>
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
-          <Route path="/operations" element={<AdminOperations />} />
-          <Route path="/payment-ops" element={<CredentialManagement />} />
-          <Route path="/merchants" element={<Merchants />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/settlements" element={<Settlements />} />
-          <Route path="/disputes" element={<Disputes />} />
+          <Route path="/operations" element={<Navigate to="/payment-ops" replace />} />
+          <Route path="/payment-ops" element={<RequirePermission permission="payment_ops.view"><PaymentOpsPage /></RequirePermission>} />
+          <Route path="/business-accounts" element={<RequirePermission permission="payment_ops.view"><BusinessAccountsPage /></RequirePermission>} />
+          <Route path="/merchants" element={<Navigate to="/business-accounts" replace />} />
+          <Route path="/transactions" element={<RequirePermission permission="transactions.view"><TransactionsPage /></RequirePermission>} />
+          <Route path="/refunds" element={<RequirePermission permission="refunds.request"><RefundsPage /></RequirePermission>} />
+          <Route path="/settlements" element={<RequirePermission permission="settlements.manage"><SettlementsPage /></RequirePermission>} />
+          <Route path="/disputes" element={<RequirePermission permission="disputes.manage"><DisputesPage /></RequirePermission>} />
+          <Route path="/risk-rules" element={<RequirePermission permission="risk_rules.manage"><RiskRulesPage /></RequirePermission>} />
+          <Route path="/reconciliation" element={<RequirePermission permission="reconciliation.manage"><ReconciliationPage /></RequirePermission>} />
+          <Route path="/connectors" element={<RequirePermission permission="providers.manage"><ProviderConnectorsPage /></RequirePermission>} />
+          <Route path="/bank-integrations" element={<RequirePermission permission="bank_integrations.manage"><BankIntegrationsPage /></RequirePermission>} />
+          <Route path="/routing-rules" element={<RequirePermission permission="routing.manage"><RoutingRulesPage /></RequirePermission>} />
+          <Route path="/white-label-checkout" element={<RequirePermission permission="webhook_config.manage"><WhiteLabelCheckoutPage /></RequirePermission>} />
+          <Route path="/webhook-config" element={<RequirePermission permission="webhook_config.manage"><WebhookConfigPage /></RequirePermission>} />
           <Route path="/revenue" element={<Revenue />} />
-          <Route path="/connectors" element={<CredentialManagement />} />
           <Route path="/bulk-export" element={<AdminBulkExport />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/reports" element={<RequirePermission permission="reports.export"><ReportsPage /></RequirePermission>} />
+          <Route path="/audit-logs" element={<RequirePermission permission="audit_logs.view"><AuditLogsPage /></RequirePermission>} />
+          <Route path="/admin-users-roles" element={<RequirePermission permission="admin_users.manage"><AdminUsersRolesPage /></RequirePermission>} />
+          <Route path="/settings" element={<RequirePermission permission="platform_settings.manage"><PlatformSettingsPage /></RequirePermission>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
@@ -195,30 +300,48 @@ function LoginPage() {
   );
 }
 
-function SettingsPage() {
-  return (
-    <div className="page fade-in">
-      <div className="page-header">
-        <div>
-          <h1>Platform Settings</h1>
-          <p>Only verified modules enabled in this release train.</p>
-        </div>
-      </div>
-      <div className="card">
-        <h3 style={{ marginBottom: 10 }}>Production Notes</h3>
-        <p style={{ color: 'var(--fp-text-muted)' }}>
-          Admin surface now trimmed to fully functional DB-backed flows: overview, merchants, bulk export, impersonation, auth/session.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function ProtectedApp() {
   if (!getToken()) {
     return <Navigate to="/login" replace />;
   }
   return <Layout />;
+}
+
+function RequirePermission({ permission, children }: { permission: AdminPermission; children: ReactNode }) {
+  if (!hasPermission(permission)) {
+    return (
+      <div className="page fade-in">
+        <div className="page-header">
+          <div>
+            <h1>Access denied</h1>
+            <p>Company admin permission required: {permission}</p>
+          </div>
+        </div>
+        <div className="card">Route blocked by RBAC deny-by-default policy.</div>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
+function hasPermission(permission: AdminPermission) {
+  const claims = getAdminClaims();
+  if (!claims) return false;
+  if (claims.role === 'Super Admin' || claims.role === 'super_admin' || claims.role === 'admin' || claims.role === 'merchant') return true;
+  return (claims.permissions || []).includes(permission);
+}
+
+function getAdminClaims(): { role?: string; permissions?: string[] } | null {
+  const token = getToken();
+  if (!token) return null;
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  try {
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json) as { role?: string; permissions?: string[] };
+  } catch {
+    return null;
+  }
 }
 
 export default function App() {
