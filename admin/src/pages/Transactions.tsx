@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../hooks/useApi';
 
 type Txn = {
@@ -12,10 +13,11 @@ type Txn = {
 };
 
 export default function Transactions() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<Txn[]>([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('');
-  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState(searchParams.get('status') || '');
+  const [query, setQuery] = useState(searchParams.get('q') || '');
 
   useEffect(() => {
     const load = async () => {
@@ -36,6 +38,13 @@ export default function Transactions() {
     };
     load();
   }, [status, query]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (status) next.set('status', status);
+    if (query.trim()) next.set('q', query.trim());
+    setSearchParams(next, { replace: true });
+  }, [query, setSearchParams, status]);
 
   const volume = useMemo(() => items.reduce((sum, it) => sum + (it.amount || 0), 0), [items]);
 

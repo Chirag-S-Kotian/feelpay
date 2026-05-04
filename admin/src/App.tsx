@@ -12,6 +12,7 @@ import {
   Landmark,
   Scale,
   IndianRupee,
+  ListChecks,
 } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -22,9 +23,11 @@ import Transactions from './pages/Transactions';
 import Settlements from './pages/Settlements';
 import Disputes from './pages/Disputes';
 import Revenue from './pages/Revenue';
+import AdminOperations from './pages/AdminOperations';
 
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
+  { path: '/operations', label: 'Operations', icon: ListChecks },
   { path: '/merchants', label: 'Merchants', icon: Users },
   { path: '/transactions', label: 'Transactions', icon: Receipt },
   { path: '/settlements', label: 'Settlements', icon: Landmark },
@@ -75,6 +78,13 @@ function Layout() {
     clearToken();
     navigate('/login', { replace: true });
   };
+  const handleSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (query) {
+      navigate(`/transactions?q=${encodeURIComponent(query)}`);
+    }
+  };
 
   return (
     <div className="app-layout">
@@ -89,16 +99,16 @@ function Layout() {
       </div>
       <main className="main-content">
         <header className="top-header">
-          <div className="global-search">
+          <form className="global-search" onSubmit={handleSearch}>
             <Search size={16} />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Search payments or merchants"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               aria-label="Search transactions, merchants"
             />
-          </div>
+          </form>
           <button className="notification-bell" aria-label="Notifications">
             <Bell size={20} />
             {notificationCount > 0 && (
@@ -109,6 +119,7 @@ function Layout() {
         </header>
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
+          <Route path="/operations" element={<AdminOperations />} />
           <Route path="/merchants" element={<Merchants />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/settlements" element={<Settlements />} />

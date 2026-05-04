@@ -16,6 +16,16 @@ pub struct PlatformStats {
 }
 
 #[derive(Serialize)]
+struct OperationsSummary {
+    today_volume: i64,
+    failed_last_24h: i64,
+    disputes_needing_response: i64,
+    pending_settlements: i64,
+    queued_exports: i64,
+    capture_rate_bps: i64,
+}
+
+#[derive(Serialize)]
 struct MerchantLite {
     id: Uuid,
     name: String,
@@ -300,15 +310,13 @@ async fn list_transactions(
         }
         Err(e) => {
             tracing::error!("List transactions failed: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load transactions" }))
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load transactions" }))
         }
     }
 }
 
-async fn list_settlements(
-    pool: web::Data<PgPool>,
-    query: web::Query<ListQuery>,
-) -> impl Responder {
+async fn list_settlements(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
     let limit = query.limit.unwrap_or(25).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
     let status = query.status.clone().filter(|v| !v.trim().is_empty());
@@ -346,15 +354,13 @@ async fn list_settlements(
         }
         Err(e) => {
             tracing::error!("List settlements failed: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load settlements" }))
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load settlements" }))
         }
     }
 }
 
-async fn list_disputes(
-    pool: web::Data<PgPool>,
-    query: web::Query<ListQuery>,
-) -> impl Responder {
+async fn list_disputes(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
     let limit = query.limit.unwrap_or(25).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
     let status = query.status.clone().filter(|v| !v.trim().is_empty());
@@ -400,7 +406,8 @@ async fn list_disputes(
         }
         Err(e) => {
             tracing::error!("List disputes failed: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load disputes" }))
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load disputes" }))
         }
     }
 }
@@ -430,7 +437,50 @@ async fn revenue_summary(pool: web::Data<PgPool>) -> impl Responder {
         }
         Err(e) => {
             tracing::error!("Revenue summary failed: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({ "message": "Failed to load revenue summary" }))
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load revenue summary" }))
+        }
+    }
+}
+
+async fn operations_summary(pool: web::Data<PgPool>) -> impl Responder {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          COALESCE((SELECT SUM(amount) FROM payment_orders WHERE status = 'captured' AND created_at >= date_trunc('day', NOW())), 0)::bigint AS today_volume,
+          COALESCE((SELECT COUNT(*) FROM payment_orders WHERE status = 'failed' AND created_at >= NOW() - INTERVAL '24 hours'), 0)::bigint AS failed_last_24h,
+          COALESCE((SELECT COUNT(*) FROM disputes WHERE status = 'needs_response'), 0)::bigint AS disputes_needing_response,
+          COALESCE((SELECT COUNT(*) FROM settlements WHERE status IN ('pending', 'processing')), 0)::bigint AS pending_settlements,
+          COALESCE((SELECT COUNT(*) FROM export_jobs WHERE status IN ('queued', 'processing')), 0)::bigint AS queued_exports,
+          COALESCE((
+            SELECT
+              CASE WHEN COUNT(*) = 0 THEN 0
+              ELSE ROUND(10000.0 * COUNT(*) FILTER (WHERE status = 'captured') / COUNT(*))::bigint
+              END
+            FROM payment_orders
+            WHERE created_at >= NOW() - INTERVAL '24 hours'
+          ), 0)::bigint AS capture_rate_bps
+        "#,
+    )
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match row {
+        Ok(row) => {
+            use sqlx::Row;
+            HttpResponse::Ok().json(OperationsSummary {
+                today_volume: row.get("today_volume"),
+                failed_last_24h: row.get("failed_last_24h"),
+                disputes_needing_response: row.get("disputes_needing_response"),
+                pending_settlements: row.get("pending_settlements"),
+                queued_exports: row.get("queued_exports"),
+                capture_rate_bps: row.get("capture_rate_bps"),
+            })
+        }
+        Err(e) => {
+            tracing::error!("Operations summary failed: {}", e);
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "message": "Failed to load operations summary" }))
         }
     }
 }
@@ -513,21 +563,19 @@ async fn create_bulk_export(
     }
 }
 
-async fn get_export_download(
-    pool: web::Data<PgPool>,
-    path: web::Path<Uuid>,
-) -> impl Responder {
+async fn get_export_download(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let job_id = path.into_inner();
 
-    let file_url = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT file_url FROM export_jobs WHERE id = $1",
-    )
-    .bind(job_id)
-    .fetch_optional(pool.get_ref())
-    .await;
+    let file_url =
+        sqlx::query_scalar::<_, Option<String>>("SELECT file_url FROM export_jobs WHERE id = $1")
+            .bind(job_id)
+            .fetch_optional(pool.get_ref())
+            .await;
 
     match file_url {
-        Ok(Some(Some(url))) => HttpResponse::Ok().json(DownloadExportResponse { download_url: url }),
+        Ok(Some(Some(url))) => {
+            HttpResponse::Ok().json(DownloadExportResponse { download_url: url })
+        }
         Ok(Some(None)) => HttpResponse::BadRequest().json(serde_json::json!({
             "message": "Export file not ready"
         })),
@@ -549,20 +597,26 @@ use middleware::AdminAuthMiddleware;
 fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/stats", web::get().to(get_platform_stats))
         .route("/merchants", web::get().to(list_merchants))
-        .route("/merchants/{id}/impersonate", web::post().to(impersonate_merchant))
+        .route(
+            "/merchants/{id}/impersonate",
+            web::post().to(impersonate_merchant),
+        )
         .route("/exports", web::get().to(list_exports))
         .route("/exports/bulk", web::post().to(create_bulk_export))
         .route("/exports/{id}/download", web::get().to(get_export_download))
         .route("/transactions", web::get().to(list_transactions))
         .route("/settlements", web::get().to(list_settlements))
         .route("/disputes", web::get().to(list_disputes))
-        .route("/revenue/summary", web::get().to(revenue_summary));
+        .route("/revenue/summary", web::get().to(revenue_summary))
+        .route("/operations/summary", web::get().to(operations_summary));
 }
 
 async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder {
-    let admin = sqlx::query("SELECT id, name FROM merchants WHERE is_admin = true ORDER BY created_at ASC LIMIT 1")
-        .fetch_optional(pool.get_ref())
-        .await;
+    let admin = sqlx::query(
+        "SELECT id, name FROM merchants WHERE is_admin = true ORDER BY created_at ASC LIMIT 1",
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
 
     match admin {
         Ok(Some(row)) => {
@@ -591,34 +645,37 @@ async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder
     }
 }
 
-async fn admin_login(
-    pool: web::Data<PgPool>,
-    req: web::Json<AdminLoginRequest>,
-) -> impl Responder {
-    let row = sqlx::query("SELECT id, name, password_hash, is_admin FROM merchants WHERE email = $1 LIMIT 1")
-        .bind(req.email.trim().to_lowercase())
-        .fetch_optional(pool.get_ref())
-        .await;
+async fn admin_login(pool: web::Data<PgPool>, req: web::Json<AdminLoginRequest>) -> impl Responder {
+    let row = sqlx::query(
+        "SELECT id, name, password_hash, is_admin FROM merchants WHERE email = $1 LIMIT 1",
+    )
+    .bind(req.email.trim().to_lowercase())
+    .fetch_optional(pool.get_ref())
+    .await;
 
     let Some(row) = (match row {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Admin login DB error: {}", e);
-            return HttpResponse::InternalServerError().json(serde_json::json!({"message": "Login failed"}));
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"message": "Login failed"}));
         }
     }) else {
-        return HttpResponse::Unauthorized().json(serde_json::json!({"message": "Invalid credentials"}));
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({"message": "Invalid credentials"}));
     };
 
     use sqlx::Row;
     let is_admin: bool = row.get("is_admin");
     if !is_admin {
-        return HttpResponse::Forbidden().json(serde_json::json!({"message": "Admin access required"}));
+        return HttpResponse::Forbidden()
+            .json(serde_json::json!({"message": "Admin access required"}));
     }
     let password_hash: String = row.get("password_hash");
     let password_ok = bcrypt::verify(req.password.as_str(), &password_hash).unwrap_or(false);
     if !password_ok {
-        return HttpResponse::Unauthorized().json(serde_json::json!({"message": "Invalid credentials"}));
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({"message": "Invalid credentials"}));
     }
     let merchant_id: Uuid = row.get("id");
     let merchant_name: String = row.get("name");
@@ -653,7 +710,10 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/admin")
                     .route("/login", web::post().to(admin_login))
-                    .route("/bootstrap-token", web::get().to(create_admin_bootstrap_token))
+                    .route(
+                        "/bootstrap-token",
+                        web::get().to(create_admin_bootstrap_token),
+                    )
                     .service(
                         web::scope("")
                             .wrap(AdminAuthMiddleware)
@@ -663,7 +723,10 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api/admin")
                     .route("/login", web::post().to(admin_login))
-                    .route("/bootstrap-token", web::get().to(create_admin_bootstrap_token))
+                    .route(
+                        "/bootstrap-token",
+                        web::get().to(create_admin_bootstrap_token),
+                    )
                     .service(
                         web::scope("")
                             .wrap(AdminAuthMiddleware)
