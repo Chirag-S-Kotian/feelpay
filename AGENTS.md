@@ -26,10 +26,11 @@ scripts/              utilities; inspect before replacing
 2. Read graph/files/tests needed for change, no bulk context.
 3. Plan only for risky or multi-file work.
 4. Patch smallest surface.
-5. Run narrow check, then full gate.
-6. Report files + commands + exit status.
+5. After code changes, run `graphify update .` to refresh `graphify-out/`.
+6. Run narrow check, then full gate.
+7. Report files + commands + exit status.
 
-Skills: use clean-code + karpathy-guidelines for code write/review/refactor. Superpowers: writing/executing plans for multi-step work; systematic-debugging for bugs; verification-before-completion before success claims. Parallel agents only when user asks.
+Skills: use clean-code + karpathy-guidelines for code write/review/refactor. Superpowers: writing-plans for broad/risky work, executing-plans for task-by-task execution, systematic-debugging for bugs, verification-before-completion before success claims. Parallel agents only when user asks.
 
 ## Agent Files
 - `AGENTS.md`: canonical repo rules for Codex/agents.
@@ -49,8 +50,9 @@ Skills: use clean-code + karpathy-guidelines for code write/review/refactor. Sup
 - React: functional components only. SQL: add new migration for schema change.
 
 ## Verification Gate
-Run before marking complete:
+Run before marking complete. For docs-only tasks, skip code builds unless repo rules/user ask. For code tasks, run in order:
 ```bash
+graphify update .
 cargo check
 cargo test
 sqlx migrate run

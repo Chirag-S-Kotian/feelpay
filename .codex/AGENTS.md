@@ -18,12 +18,14 @@ Root `AGENTS.md` = repo truth. This file = Codex speed/discipline overlay.
    - risky/multi-file: short checklist
    - broad: Superpowers plan
 5. Patch minimal surface.
-6. Run cheapest relevant check first, then root gate if claiming done.
-7. Final: files changed, command exits, blockers.
+6. Code changed? Run `graphify update .` before final gate.
+7. Run cheapest relevant check first, then root gate if claiming done.
+8. Final: files changed, command exits, blockers.
 
 ## Anti-Stuck Rules
 - If command hangs: wait once, then report session/blocker or stop it safely.
 - If test fails unrelated: capture first failing names/errors; do not chase without ask.
+- If `graphify update .` missing/fails: state exact blocker; do not fake graph freshness.
 - If scope grows past 3 files: pause and confirm.
 - If env missing: state exact var/tool and command that failed.
 - If uncertain between paths: choose simpler reversible path; name assumption.
@@ -31,7 +33,7 @@ Root `AGENTS.md` = repo truth. This file = Codex speed/discipline overlay.
 ## Skills
 - Code write/review/refactor: `clean-code` + `karpathy-guidelines`.
 - Bugs: `systematic-debugging`; reproduce before fix.
-- Multi-step: `writing-plans` / `executing-plans`.
+- Multi-step/risky: `writing-plans`, then `executing-plans` task-by-task.
 - Completion claim: `verification-before-completion`.
 - Subagents only when user explicitly asks.
 
