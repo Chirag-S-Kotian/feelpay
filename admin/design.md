@@ -29,9 +29,9 @@ typography:
     fontWeight: 700
     letterSpacing: "0.08em"
 rounded:
-  sm: 500px
+  sm: 8px
   md: 500px
-  lg: 500px
+  lg: 16px
 spacing:
   sm: 8px
   md: 16px

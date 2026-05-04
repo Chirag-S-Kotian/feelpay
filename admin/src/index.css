@@ -21,10 +21,12 @@
   --fp-text-muted: #B3B3B3;
   --fp-text-dim: #7f7f7f;
   --fp-danger: #e22134;
-  --fp-radius: 500px;
-  --fp-radius-sm: 500px;
+  --fp-radius: 16px;
+  --fp-radius-sm: 8px;
+  --fp-radius-pill: 500px;
   --fp-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   --fp-transition: 200ms ease;
+  color-scheme: dark;
 }
 
 * {
@@ -53,7 +55,7 @@ select {
 
 button {
   border: 1px solid var(--fp-border);
-  border-radius: var(--fp-radius);
+  border-radius: var(--fp-radius-pill);
   background: var(--fp-bg-elevated);
   color: var(--fp-text);
   min-height: 40px;
@@ -102,7 +104,7 @@ select,
 textarea {
   width: 100%;
   border: 1px solid var(--fp-border);
-  border-radius: var(--fp-radius);
+  border-radius: var(--fp-radius-sm);
   background: var(--fp-bg-elevated);
   color: var(--fp-text);
   padding: 11px 14px;
@@ -354,8 +356,17 @@ a:focus-visible {
 }
 
 .page-header h1 {
-  font-size: 1.8rem;
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   line-height: 1.2;
+}
+
+h2, .card h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 20px;
 }
 
 .page-header p {
@@ -671,12 +682,12 @@ table tr:hover td {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 10px;
+  border-radius: var(--fp-radius-pill);
   padding: 10px 16px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: var(--fp-transition);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .btn-primary {
@@ -736,8 +747,10 @@ table tr:hover td {
 .form-group label {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--fp-text-muted);
 }
 
@@ -752,7 +765,7 @@ table tr:hover td {
 .search-box input,
 .period-select {
   width: 100%;
-  border-radius: 10px;
+  border-radius: var(--fp-radius-sm);
   border: 1px solid var(--fp-border);
   background: var(--fp-bg-elevated);
   color: var(--fp-text);

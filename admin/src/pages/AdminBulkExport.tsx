@@ -269,16 +269,64 @@ export default function AdminBulkExport() {
         .checkbox-group {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 12px;
+          margin-top: 8px;
         }
-        .checkbox {
+        .form-group label.checkbox {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 12px;
+          margin: 0;
+          cursor: pointer;
+          color: var(--fp-text);
+          text-transform: none;
+          font-size: 0.95rem;
+          font-weight: 500;
+          letter-spacing: normal;
+        }
+        .form-group label.checkbox input[type="checkbox"] {
+          appearance: none;
+          -webkit-appearance: none;
+          width: 20px;
+          min-width: 20px;
+          height: 20px;
+          border: 1px solid var(--fp-border);
+          border-radius: 4px;
+          background: var(--fp-bg-elevated);
+          margin: 0;
+          display: grid;
+          place-items: center;
+          cursor: pointer;
+          transition: var(--fp-transition);
+        }
+        .form-group label.checkbox:hover input[type="checkbox"] {
+          border-color: var(--fp-text-muted);
+        }
+        .form-group label.checkbox input[type="checkbox"]::before {
+          content: "";
+          width: 12px;
+          height: 12px;
+          transform: scale(0);
+          transition: 120ms transform ease-in-out;
+          background-color: var(--spotify-tertiary);
+          transform-origin: center;
+          clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+        .form-group label.checkbox input[type="checkbox"]:checked {
+          border-color: var(--spotify-tertiary);
+        }
+        .form-group label.checkbox input[type="checkbox"]:checked::before {
+          transform: scale(1);
+        }
+        .date-range {
           display: flex;
           align-items: center;
-          gap: 8px;
-          cursor: pointer;
+          gap: 12px;
         }
-        .checkbox input {
-          cursor: pointer;
+        .date-range span {
+          color: var(--fp-text-muted);
+          font-weight: 500;
         }
       `}</style>
     </div>

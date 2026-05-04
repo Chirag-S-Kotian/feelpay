@@ -1,67 +1,80 @@
-# FeelPay — AGENTS.md
+# FeelPay Agent Guide
 
-## Codebase context
-- Before exploring unfamiliar modules, read `/home/chiragskotian/Desktop/payment/graphify-out/GRAPH_REPORT.md`.
-- It contains the full dependency graph (215 nodes, 232 edges) — use it to understand call paths and cluster ownership before making changes.
-- Core hubs: `PaymentEngine`, `CardProcessor`, `UpiProcessor`, `SimulatorProcessor` — high-blast-radius; changes here affect the entire pipeline.
+Evidence first. Small context. Small diff.
 
-## Stack
-- Backend: Rust + Actix Web + sqlx + PostgreSQL
-- Frontend: React 19 + Vite + TypeScript (`dashboard/`)
-- Migrations: `migrations/` — numbered SQL files, run in order
-- Package manager: pnpm (frontend), cargo (backend)
+## Context
+- Unknown module? Read `graphify-out/GRAPH_REPORT.md` first; use inferred edges as hints only.
+- High-risk hubs: `PaymentEngine`, processors, auth, analytics, ledger, settlement, migrations.
+- Hub edit? Run `git status --short`, trace callers/tests with `rg`, inspect touched path.
 
-## Repo layout
-```
-src/
-  api/              # Actix route handlers (payments, disputes, analytics, settlements, onboarding)
-  engine/           # Payment pipeline + processors (card, upi, simulator)
-  engine/services/  # ledger.rs, settlement.rs
-  vault/            # Tokenization, AES-GCM crypto, BIN lookup
-  config.rs         # Vault / UPI / rate-limit / tenant config
-migrations/         # SQL schema — never edit existing files, always add new ones
-dashboard/src/
-  pages/            # React pages: Dashboard, Payments, Settlements, Analytics, Disputes, Settings
-  hooks/            # API hooks + protected routing
+## Stack / Map
+- Backend: Rust + Actix Web + sqlx + PostgreSQL.
+- Frontend: React 19 + Vite + TypeScript; use pnpm in `dashboard/`.
+- DB: numbered migrations in `migrations/`; never edit old migrations.
+
+```text
+src/api/              routes
+src/engine/           payment pipeline + processors
+src/engine/services/  ledger, settlement
+src/vault/            tokenization, AES-GCM, BIN lookup
+dashboard/src/        React pages/hooks
+scripts/              utilities; inspect before replacing
 ```
 
-## Environment
-Copy `.env.example` → `.env` and set:
-- `DATABASE_URL` — PostgreSQL connection string
-- `JWT_SECRET` — strong random secret
-- `VAULT_ENCRYPTION_KEY` — 32-byte key for AES-GCM vault
+## Workflow
+1. One-line task restatement.
+2. Read graph/files/tests needed for change, no bulk context.
+3. Plan only for risky or multi-file work.
+4. Patch smallest surface.
+5. Run narrow check, then full gate.
+6. Report files + commands + exit status.
 
-## Verification commands
-Run in this order before marking any task complete:
+Skills: use clean-code + karpathy-guidelines for code write/review/refactor. Superpowers: writing/executing plans for multi-step work; systematic-debugging for bugs; verification-before-completion before success claims. Parallel agents only when user asks.
+
+## Agent Files
+- `AGENTS.md`: canonical repo rules for Codex/agents.
+- `CLAUDE.md`: tiny Claude shim; points here, adds compact-summary rule.
+- `.codex/AGENTS.md`: Codex behavior overlay; repo facts stay here.
+- `.agents/skills/karpathy-guidelines/SKILL.md`: shared Karpathy skill; `.gitignore` keeps only this skill trackable.
+
+## Change Rules
+- Touch only task files. If fix needs more than 3 files, confirm scope first.
+- Every changed line must trace to task. No speculative abstractions.
+- Match local style; no unrelated formatting.
+- Do not revert user changes. Check `git status --short` before and after edits.
+- Clean code: intention names, small single-purpose functions, near-use variables, useful comments only, behavior tests.
+- Karpathy: state assumptions, prefer simplest viable path, make surgical edits, prove success with checks.
+- Rust: prefer `?`; never `unwrap()` DB results/Decimal.
+- TypeScript: strict; no `any`, no `@ts-ignore`.
+- React: functional components only. SQL: add new migration for schema change.
+
+## Verification Gate
+Run before marking complete:
 ```bash
 cargo check
 cargo test
 sqlx migrate run
 cd dashboard && pnpm build && pnpm exec tsc --noEmit
 ```
-All must exit 0. Task is NOT done until they do.
+All must exit 0. If blocked, state exact blocker + exit code.
 
-## Coding rules
-- Rust: prefer `?` over `unwrap()`. Never unwrap on DB results or Decimal types.
-- TypeScript: strict mode on. Fix type errors — never use `any` or `@ts-ignore`.
-- React: functional components only.
-- SQL: new numbered migration file for every schema change. Never edit existing migrations.
-- Match style of the file being edited. Do not reformat unrelated code.
-- Touch only files required by the task. If fix needs 3+ files, confirm scope first.
-- Every changed line must trace to the task. No speculative abstractions.
+## Fragile Areas
+- `src/api/analytics.rs`: Decimal-sensitive.
+- `dashboard/src/pages/Analytics.tsx`: do not add mocks.
+- `src/engine/processors/upi.rs`: stub only; no NPCI production connector.
+- T+2 settlement batch: no scheduler exists; do not assume one.
 
-## PR format
-```
+## PR Format
+```markdown
 ## What
 [one sentence: what changed and why]
+
 ## How
-[2–4 bullets: key decisions]
+[2-4 bullets]
+
 ## Tested
-[commands run and exit status]
+- `[command]` - [exit status]
 ```
 
-## Known fragile areas
-- `src/api/analytics.rs` — Decimal handling sensitive; run cargo test after any edit.
-- `dashboard/src/pages/Analytics.tsx` — some charts still mocked; do not add more mocks.
-- `src/engine/processors/upi.rs` — stub only, no NPCI production connector.
-- T+2 settlement batch — no scheduler exists; do not assume one.
+## Compact Summary
+If context compacts, preserve: task, changed files, decisions, commands/exit codes, blockers, next step.

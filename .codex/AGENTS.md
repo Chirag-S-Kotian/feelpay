@@ -1,32 +1,45 @@
-# Global agent defaults
+# Codex Mode
 
-## Working agreements
-- Use pnpm for JS/TS dependency installs, never npm or yarn.
-- Prefer `?` over `unwrap()` in Rust. Never unwrap on DB results or Decimal types.
-- TypeScript strict mode is always on. Fix type errors — never suppress with `any` or `@ts-ignore`.
-- Functional React components only. No class components.
-- Match the style of the file being edited. Do not reformat unrelated code.
-- Touch only files required by the task. Flag scope creep before acting on it.
-- Do not delete pre-existing dead code. Note it in the PR instead.
+Root `AGENTS.md` = repo truth. This file = Codex speed/discipline overlay.
 
-## Change discipline
-- Every changed line must trace directly to the task description.
-- If a fix requires touching more than 3 files, pause and confirm scope with the user.
-- No speculative abstractions, no unrequested flexibility or config options.
+## Token Budget
+- Default caveman-full: terse updates/finals; normal code, warnings, PR text.
+- Read narrow: `rg`, `rg --files`, `sed -n 'a,bp'`, `git diff -- file`.
+- Never paste whole large files. Summarize findings, cite paths/lines.
+- Skip repo tours. Open graph report only for unfamiliar modules or hub edits.
+- Prefer one decisive patch over chatter. Ask only when ambiguity risks wrong code.
 
-## PR message format
-```
-## What
-[One sentence: what changed and why]
+## Fast Loop
+1. `git status --short`.
+2. State goal in one line.
+3. Locate owner files/tests with `rg`.
+4. Plan scale:
+   - tiny: one-line intent
+   - risky/multi-file: short checklist
+   - broad: Superpowers plan
+5. Patch minimal surface.
+6. Run cheapest relevant check first, then root gate if claiming done.
+7. Final: files changed, command exits, blockers.
 
-## How
-[2–4 bullet points: key implementation decisions]
+## Anti-Stuck Rules
+- If command hangs: wait once, then report session/blocker or stop it safely.
+- If test fails unrelated: capture first failing names/errors; do not chase without ask.
+- If scope grows past 3 files: pause and confirm.
+- If env missing: state exact var/tool and command that failed.
+- If uncertain between paths: choose simpler reversible path; name assumption.
 
-## Tested
-[Commands run and their exit status]
-```
+## Skills
+- Code write/review/refactor: `clean-code` + `karpathy-guidelines`.
+- Bugs: `systematic-debugging`; reproduce before fix.
+- Multi-step: `writing-plans` / `executing-plans`.
+- Completion claim: `verification-before-completion`.
+- Subagents only when user explicitly asks.
 
-## Done when
-- All verification commands listed in the repo AGENTS.md exit 0.
-- The specific behavior described in the task is demonstrably working.
-- No regressions in adjacent files or routes.
+## Guardrails
+- No old migration edits, destructive git, user-change revert, Analytics mocks, production NPCI invention.
+- Clean code: intention names, small single-purpose fns, near-use vars, useful comments, behavior tests.
+- Karpathy: no hidden assumptions, no bloat, surgical edits, explicit success criteria.
+- Rust `?`, no DB/Decimal `unwrap()`. TS strict, no `any`/`@ts-ignore`. React functional only.
+
+## Compact Handoff
+Preserve: task, changed files, decisions, commands/exit codes, failures, blockers, next step.

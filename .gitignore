@@ -7,8 +7,12 @@ admin/node_modules
 
 /admin/server/target
 
-# ignore agents
-.agents
+# ignore local agents, keep shared skills
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/karpathy-guidelines/
+!.agents/skills/karpathy-guidelines/SKILL.md
 .claude
 .kilocode
 .kiro
