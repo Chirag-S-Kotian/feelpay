@@ -14,6 +14,7 @@ import {
   IndianRupee,
   ListChecks,
   Cable,
+  CreditCard,
 } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -30,12 +31,13 @@ import CredentialManagement from './pages/CredentialManagement';
 const NAV = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
   { path: '/operations', label: 'Operations', icon: ListChecks },
-  { path: '/merchants', label: 'Merchants', icon: Users },
+  { path: '/payment-ops', label: 'Payment Ops', icon: CreditCard },
+  { path: '/merchants', label: 'Business Accounts', icon: Users },
   { path: '/transactions', label: 'Transactions', icon: Receipt },
   { path: '/settlements', label: 'Settlements', icon: Landmark },
   { path: '/disputes', label: 'Disputes', icon: Scale },
   { path: '/revenue', label: 'Revenue', icon: IndianRupee },
-  { path: '/connectors', label: 'Banks & Connectors', icon: Cable },
+  { path: '/connectors', label: 'Provider Connectors', icon: Cable },
   { path: '/bulk-export', label: 'Bulk Export', icon: Download },
   { path: '/settings', label: 'Platform Settings', icon: SettingsIcon },
 ];
@@ -106,10 +108,10 @@ function Layout() {
             <Search size={16} />
             <input
               type="text"
-              placeholder="Search payments or merchants"
+              placeholder="Search payments, accounts, or providers"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              aria-label="Search transactions, merchants"
+              aria-label="Search payments, accounts, or providers"
             />
           </form>
           <button className="notification-bell" aria-label="Notifications">
@@ -123,6 +125,7 @@ function Layout() {
         <Routes>
           <Route path="/" element={<AdminDashboard />} />
           <Route path="/operations" element={<AdminOperations />} />
+          <Route path="/payment-ops" element={<CredentialManagement />} />
           <Route path="/merchants" element={<Merchants />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/settlements" element={<Settlements />} />
@@ -179,7 +182,7 @@ function LoginPage() {
       <form className="login-card" onSubmit={handleSubmit}>
         <div className="login-header">
           <h2>FeelPay Admin Login</h2>
-          <p>Use admin merchant email + password</p>
+          <p>Use internal company admin email + password</p>
         </div>
         {error && <div className="alert alert-error">{error}</div>}
         <input type="email" placeholder="Email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />

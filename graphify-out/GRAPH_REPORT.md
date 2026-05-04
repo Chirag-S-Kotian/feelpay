@@ -1,12 +1,12 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-05-04)
 
 ## Corpus Check
-- 218 files · ~309,766 words
+- 219 files · ~325,719 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1755 nodes · 3302 edges · 126 communities detected
-- Extraction: 63% EXTRACTED · 37% INFERRED · 0% AMBIGUOUS · INFERRED: 1229 edges (avg confidence: 0.8)
+- 1898 nodes · 3638 edges · 124 communities detected
+- Extraction: 64% EXTRACTED · 36% INFERRED · 0% AMBIGUOUS · INFERRED: 1297 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -134,20 +134,18 @@
 - [[_COMMUNITY_Community 121|Community 121]]
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
-- [[_COMMUNITY_Community 124|Community 124]]
-- [[_COMMUNITY_Community 125|Community 125]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `json()` - 232 edges
+1. `json()` - 273 edges
 2. `apiRequest()` - 57 edges
-3. `main()` - 29 edges
-4. `create_payment()` - 20 edges
-5. `merchant_id_from_req()` - 17 edges
-6. `ExportService` - 16 edges
-7. `merchant_id_from_req()` - 16 edges
-8. `login_merchant()` - 15 edges
-9. `log_audit()` - 15 edges
-10. `NotificationService` - 14 edges
+3. `server_error()` - 34 edges
+4. `main()` - 30 edges
+5. `audit()` - 23 edges
+6. `create_payment()` - 20 edges
+7. `merchant_id_from_req()` - 17 edges
+8. `ExportService` - 16 edges
+9. `merchant_id_from_req()` - 16 edges
+10. `MockProviderConnector` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `main()` --calls--> `configure()`  [INFERRED]
@@ -165,11 +163,11 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (132): get_actionable_alerts(), health_cycle_json_shape(), health_cycle_should_return_ok(), check_password_history(), mask_bank_account(), add_bank_account(), AddBankAccountApiRequest, AddBankAccountApiResponse (+124 more)
+Nodes (147): get_actionable_alerts(), health_cycle_json_shape(), health_cycle_should_return_ok(), check_password_history(), mask_bank_account(), add_bank_account(), AddBankAccountApiRequest, AddBankAccountApiResponse (+139 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (122): AuditLogQuery, list_audit_logs(), list_kyc_audit_logs(), create_customer(), CustomerListResponse, delete_customer(), get_customer(), get_customer_payment_methods() (+114 more)
+Nodes (181): AuditLogQuery, list_audit_logs(), list_kyc_audit_logs(), approve_refund(), audit(), auto_match_reconciliation(), BankConfigRequest, cancel_transaction() (+173 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.02
@@ -177,275 +175,275 @@ Nodes (75): fetchData(), load(), create(), load(), handleLogout(), handleSubmit(
 
 ### Community 3 - "Community 3"
 Cohesion: 0.04
-Nodes (90): hash_password(), webhook_verify_cycle_bad_signature(), webhook_verify_cycle_valid_signature(), ApiKeyMiddleware, ApiKeyMiddlewareService, ApiKeyMiddlewareService<S>, AuthResponse, bearer_token_from_request() (+82 more)
+Nodes (87): hash_password(), ApiKeyMiddleware, ApiKeyMiddlewareService, ApiKeyMiddlewareService<S>, AuthResponse, bearer_token_from_request(), bearer_token_hash(), captcha() (+79 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.03
-Nodes (75): mfa_setup(), MfaService, accept_dispute(), get_dispute(), list_disputes(), merchant_id_from_req(), submit_evidence(), ApiError (+67 more)
+Nodes (73): accept_dispute(), get_dispute(), list_disputes(), merchant_id_from_req(), submit_evidence(), ApiError, FeelPayError, LedgerService (+65 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.04
-Nodes (27): AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse, BankAccountService, VerificationStatus, BinInfo, BinLookup (+19 more)
+Cohesion: 0.03
+Nodes (39): webhook_verify_cycle_bad_signature(), webhook_verify_cycle_valid_signature(), AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse, BankAccountService, VerificationStatus (+31 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.03
-Nodes (45): checkout_connector_for_method(), checkout_method_name(), checkout_session_status(), CheckoutSessionResponse, configure(), CreateCheckoutSessionRequest, get_checkout_preview_config(), get_checkout_session() (+37 more)
+Nodes (71): create_customer(), CustomerListResponse, delete_customer(), get_customer(), get_customer_payment_methods(), list_customers(), merchant_id_from_req(), PaginationMeta (+63 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.05
-Nodes (29): AmountRange, CreateExportJobRequest, DateRange, ExportJob, ExportJobType, ExportService, integration_test_bank_account_verification_flow(), integration_test_end_to_end_transaction_export() (+21 more)
+Cohesion: 0.03
+Nodes (45): checkout_connector_for_method(), checkout_method_name(), checkout_session_status(), CheckoutSessionResponse, configure(), CreateCheckoutSessionRequest, get_checkout_preview_config(), get_checkout_session() (+37 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.07
-Nodes (39): AdminUserRequest, create_admin_user(), deactivate_admin_user(), list_admin_users(), update_admin_user(), admin_id_from_claims(), log_audit(), create_template() (+31 more)
+Cohesion: 0.05
+Nodes (54): AdminUserRequest, create_admin_user(), deactivate_admin_user(), list_admin_users(), update_admin_user(), admin_id_from_claims(), log_audit(), actor_id_from_claims() (+46 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.06
-Nodes (8): SimulatorProcessor, handleSubmit(), validate(), NetBankingProcessor, PaymentEngine, TransactionPipeline, UpiProcessor, WalletProcessor
+Cohesion: 0.04
+Nodes (22): CardProcessor, LedgerService, Merchant Dashboard, PaymentEngine, SettlementService, SimulatorProcessor, UpiProcessor, Vault (+14 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.07
-Nodes (44): BankAccountSubmissionRequest, BrandingRequest, BusinessInfoRequest, DigiLockerCallbackRequest, DigiLockerDocsResponse, DigiLockerInitiateRequest, DigiLockerTokenResponse, evaluate_digilocker_rules() (+36 more)
+Cohesion: 0.05
+Nodes (28): AmountRange, CreateExportJobRequest, DateRange, ExportJob, ExportJobType, ExportService, integration_test_bank_account_verification_flow(), integration_test_end_to_end_transaction_export() (+20 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.07
 Nodes (36): BillingCycle, cancel_subscription(), create_plan(), create_subscription(), CreatePlanRequest, CreateSubscriptionRequest, generate_invoice(), get_subscription() (+28 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.13
-Nodes (7): CreateScheduledReportRequest, ReportFormat, ReportFrequency, ReportService, ReportType, ScheduledReport, UpdateScheduledReportRequest
+Cohesion: 0.1
+Nodes (9): accepted(), mock_connector_preserves_idempotency_reference(), MockProviderConnector, webhook_signature_invalid_should_fail(), webhook_signature_roundtrip_should_verify(), test_sign_webhook(), test_verify_webhook_signature(), WebhookTestResult (+1 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.09
-Nodes (26): AnalyticsQuery, AnalyticsSummary, AnalyticsSummaryRow, ApiLogQuery, configure(), DateRange, DayVolume, DayVolumeRow (+18 more)
+Nodes (30): BankAccountSubmissionRequest, BrandingRequest, BusinessInfoRequest, DigiLockerCallbackRequest, DigiLockerDocsResponse, DigiLockerInitiateRequest, DigiLockerTokenResponse, evaluate_digilocker_rules() (+22 more)
 
 ### Community 14 - "Community 14"
+Cohesion: 0.13
+Nodes (7): CreateScheduledReportRequest, ReportFormat, ReportFrequency, ReportService, ReportType, ScheduledReport, UpdateScheduledReportRequest
+
+### Community 15 - "Community 15"
+Cohesion: 0.09
+Nodes (26): AnalyticsQuery, AnalyticsSummary, AnalyticsSummaryRow, ApiLogQuery, configure(), DateRange, DayVolume, DayVolumeRow (+18 more)
+
+### Community 16 - "Community 16"
 Cohesion: 0.09
 Nodes (7): ExportFormat, GeneratedReport, GstReportRow, RefundReportRow, ReportGeneratorService, ReportType, SettlementReportRow
 
-### Community 15 - "Community 15"
+### Community 17 - "Community 17"
 Cohesion: 0.1
 Nodes (4): BlacklistedBin, BlacklistedDomain, BlacklistedIp, BlacklistService
 
-### Community 16 - "Community 16"
+### Community 18 - "Community 18"
 Cohesion: 0.13
 Nodes (7): InstantSettlement, ReconciliationRecord, SettlementAdvancedService, SettlementCycle, TdsCalculation, test_financial_year_april(), test_tds_calculation()
 
-### Community 17 - "Community 17"
+### Community 19 - "Community 19"
 Cohesion: 0.15
 Nodes (7): NotificationChannel, NotificationEventType, NotificationTemplate, NotificationTemplateService, RenderedNotification, test_missing_variables(), test_template_rendering()
 
-### Community 18 - "Community 18"
+### Community 20 - "Community 20"
 Cohesion: 0.18
 Nodes (15): configure(), create_approval(), delete_document(), get_approval(), get_document(), list_approvals(), list_documents(), ListApprovalsQuery (+7 more)
 
-### Community 19 - "Community 19"
+### Community 21 - "Community 21"
 Cohesion: 0.17
 Nodes (14): handle_retry(), process_webhook_queue(), queue_webhook(), sign_webhook(), trigger_dispute_webhook(), trigger_payment_webhook(), trigger_refund_webhook(), trigger_settlement_webhook() (+6 more)
 
-### Community 20 - "Community 20"
+### Community 22 - "Community 22"
 Cohesion: 0.17
 Nodes (7): RiskLevel, test_3ds_requirement(), test_risk_assessment_high(), test_risk_assessment_low(), ThreeDsChallenge, ThreeDsService, ThreeDsStatus
 
-### Community 21 - "Community 21"
+### Community 23 - "Community 23"
 Cohesion: 0.17
 Nodes (6): DeviceFingerprint, DeviceFingerprintService, StoredDeviceFingerprint, test_fingerprint_consistency(), test_fingerprint_difference(), test_fingerprint_generation()
 
-### Community 22 - "Community 22"
-Cohesion: 0.15
-Nodes (14): CardProcessor, LedgerService, Merchant Dashboard, PaymentEngine, SettlementService, UpiProcessor, Vault, get_reconciliation_summary() (+6 more)
-
-### Community 23 - "Community 23"
+### Community 24 - "Community 24"
 Cohesion: 0.18
 Nodes (5): EmailLog, EmailProvider, EmailService, SendEmailRequest, test_email_provider_variants()
 
-### Community 24 - "Community 24"
+### Community 25 - "Community 25"
 Cohesion: 0.19
 Nodes (5): SendSmsRequest, SmsLog, SmsProvider, SmsService, test_sms_provider_variants()
 
-### Community 25 - "Community 25"
-Cohesion: 0.23
-Nodes (12): actor_id_from_claims(), approve_merchant(), claims_tenant_scope(), ensure_admin_role(), list_merchants(), MerchantAdminAction, MerchantsListResponse, MerchantsMeta (+4 more)
-
 ### Community 26 - "Community 26"
-Cohesion: 0.22
-Nodes (6): webhook_signature_invalid_should_fail(), webhook_signature_roundtrip_should_verify(), test_sign_webhook(), test_verify_webhook_signature(), WebhookTestResult, WebhookTestService
-
-### Community 27 - "Community 27"
 Cohesion: 0.14
 Nodes (13): ApprovalRequest, CreateApprovalRequest, Document, DocumentResponse, GenerateUploadUrlRequest, OtpResponse, OtpVerification, ProcessApprovalRequest (+5 more)
 
-### Community 28 - "Community 28"
+### Community 27 - "Community 27"
 Cohesion: 0.27
 Nodes (4): simulator_fail_action_declines_payment(), simulator_success_action_captures_payment(), SimulatorProcessor, txn()
 
-### Community 29 - "Community 29"
-Cohesion: 0.2
-Nodes (9): AssignFeePlanRequest, CreateFeePlanRequest, CreateSettlementBatchRequest, FeePlan, FeePlanResponse, MerchantFeeAssignment, SettlementBatch, UpdateFeePlanRequest (+1 more)
-
-### Community 30 - "Community 30"
+### Community 28 - "Community 28"
 Cohesion: 0.27
 Nodes (4): createNote(), deleteNote(), fetchNotes(), updateNote()
 
-### Community 31 - "Community 31"
-Cohesion: 0.22
-Nodes (6): CircuitBreakerState, CreateProviderRequest, CreateRoutingRuleRequest, PaymentProvider, ProviderHealthResponse, ProviderRoutingRule
-
-### Community 32 - "Community 32"
+### Community 29 - "Community 29"
 Cohesion: 0.22
 Nodes (8): Claims, CreateUserRequest, Permission, Role, RolePermission, User, UserResponse, UserRole
 
-### Community 33 - "Community 33"
-Cohesion: 0.33
-Nodes (7): count_pdf_pages(), DocumentMetadata, DocumentViewResponse, fetch_document_content(), get_document_for_viewing(), log_document_view(), view_document()
-
-### Community 34 - "Community 34"
+### Community 30 - "Community 30"
 Cohesion: 0.29
 Nodes (5): CreatePaymentLinkRequest, ListPaymentLinksQuery, PaymentLink, PaymentLinkResponse, PaymentLinkStatus
 
-### Community 35 - "Community 35"
+### Community 31 - "Community 31"
 Cohesion: 0.29
 Nodes (4): ReplayCheckPassed, ReplayPrevention, ReplayPreventionMiddleware, test_replay_nonce_format()
 
-### Community 36 - "Community 36"
+### Community 32 - "Community 32"
 Cohesion: 0.29
 Nodes (0): 
 
-### Community 37 - "Community 37"
+### Community 33 - "Community 33"
 Cohesion: 0.43
 Nodes (1): FeelPay
 
-### Community 38 - "Community 38"
+### Community 34 - "Community 34"
 Cohesion: 0.38
 Nodes (1): FeelPay
 
-### Community 39 - "Community 39"
+### Community 35 - "Community 35"
 Cohesion: 0.33
 Nodes (5): MethodData, PaymentMethod, PaymentMethodProcessor, ProcessorResponse, TransactionContext
 
-### Community 40 - "Community 40"
+### Community 36 - "Community 36"
 Cohesion: 0.33
 Nodes (5): PaginationQuery, send_test_webhook(), TestWebhookRequest, TestWebhookResponse, WebhookTestLogsResponse
 
-### Community 41 - "Community 41"
+### Community 37 - "Community 37"
+Cohesion: 0.33
+Nodes (4): get_revenue_dashboard(), MerchantRevenue, RevenueBreakdown, RevenueQuery
+
+### Community 38 - "Community 38"
 Cohesion: 0.33
 Nodes (3): ApiKeyIpWhitelist, ApiKeyIpWhitelistMiddleware, ApiKeyWhitelistData
 
-### Community 42 - "Community 42"
+### Community 39 - "Community 39"
 Cohesion: 0.47
 Nodes (3): buildCsv(), downloadTextFile(), handleDownload()
 
-### Community 43 - "Community 43"
+### Community 40 - "Community 40"
 Cohesion: 0.33
 Nodes (6): Admin Panel, Escrow Account, FeelPay, PA/PG License, PCI-DSS, UPI AutoPay
 
-### Community 44 - "Community 44"
+### Community 41 - "Community 41"
 Cohesion: 0.4
 Nodes (4): BankAccount, CreateBankAccountRequest, CreatePayoutRequest, Payout
 
-### Community 45 - "Community 45"
+### Community 42 - "Community 42"
 Cohesion: 0.4
 Nodes (4): CreateNoteRequest, MerchantNote, MerchantNoteHistory, UpdateNoteRequest
 
-### Community 46 - "Community 46"
+### Community 43 - "Community 43"
 Cohesion: 0.6
 Nodes (4): pick_provider(), picks_highest_success_rate_when_all_healthy(), RoutingCandidate, skips_unhealthy_provider_even_if_success_rate_higher()
 
-### Community 47 - "Community 47"
+### Community 44 - "Community 44"
+Cohesion: 0.4
+Nodes (1): fetchSettings()
+
+### Community 45 - "Community 45"
 Cohesion: 0.4
 Nodes (0): 
 
-### Community 48 - "Community 48"
+### Community 46 - "Community 46"
 Cohesion: 0.5
 Nodes (2): fetchExportJobs(), handleExport()
 
-### Community 49 - "Community 49"
+### Community 47 - "Community 47"
 Cohesion: 0.5
 Nodes (2): fetchLogs(), handleFilterChange()
 
-### Community 50 - "Community 50"
+### Community 48 - "Community 48"
 Cohesion: 0.4
 Nodes (1): ResizeObserverMock
 
-### Community 51 - "Community 51"
+### Community 49 - "Community 49"
 Cohesion: 0.4
 Nodes (3): AdminAuthMiddleware, AdminAuthMiddlewareService, Claims
 
-### Community 52 - "Community 52"
+### Community 50 - "Community 50"
 Cohesion: 0.5
 Nodes (1): Client
 
-### Community 53 - "Community 53"
+### Community 51 - "Community 51"
 Cohesion: 0.4
 Nodes (5): NPCI, PSP, RBI, UPI, VPA
 
-### Community 54 - "Community 54"
+### Community 52 - "Community 52"
 Cohesion: 0.5
 Nodes (3): Dispute, ListDisputesQuery, SubmitEvidenceRequest
 
-### Community 55 - "Community 55"
+### Community 53 - "Community 53"
 Cohesion: 0.5
 Nodes (3): CreateTenantRequest, Tenant, UpdateTenantRequest
 
-### Community 56 - "Community 56"
+### Community 54 - "Community 54"
 Cohesion: 0.5
 Nodes (2): RateLimiter, RateLimiterMiddleware
 
-### Community 57 - "Community 57"
+### Community 55 - "Community 55"
 Cohesion: 0.67
 Nodes (2): fetchExportJobs(), handleExport()
 
+### Community 56 - "Community 56"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 57 - "Community 57"
+Cohesion: 0.5
+Nodes (0): 
+
 ### Community 58 - "Community 58"
-Cohesion: 0.5
-Nodes (0): 
-
-### Community 59 - "Community 59"
-Cohesion: 0.5
-Nodes (0): 
-
-### Community 60 - "Community 60"
 Cohesion: 0.67
 Nodes (1): WC_Gateway_FeelPay
 
-### Community 61 - "Community 61"
+### Community 59 - "Community 59"
 Cohesion: 0.5
 Nodes (4): Phase 1: Core Engine, Phase 2: Vault, Phase_3_UPI_Engine, Phase_4_Ledger_Settlements
 
-### Community 62 - "Community 62"
+### Community 60 - "Community 60"
 Cohesion: 0.5
 Nodes (4): Lower Infrastructure Cost Rationale, Shared-table Tenant Isolation Model, Security Audit Item, Role-Based Access Control
 
-### Community 63 - "Community 63"
+### Community 61 - "Community 61"
 Cohesion: 0.67
 Nodes (2): ApiKey, CreateApiKeyRequest
 
-### Community 64 - "Community 64"
+### Community 62 - "Community 62"
 Cohesion: 0.67
 Nodes (2): KycVerification, MerchantTier
 
-### Community 65 - "Community 65"
+### Community 63 - "Community 63"
 Cohesion: 0.67
 Nodes (2): LedgerAccount, LedgerEntry
 
-### Community 66 - "Community 66"
+### Community 64 - "Community 64"
 Cohesion: 0.67
 Nodes (2): CreateRefundRequest, Refund
 
-### Community 67 - "Community 67"
+### Community 65 - "Community 65"
 Cohesion: 0.67
 Nodes (2): Settlement, SettlementItem
 
-### Community 68 - "Community 68"
+### Community 66 - "Community 66"
 Cohesion: 0.67
 Nodes (2): CreateVirtualAccountRequest, VirtualAccount
 
-### Community 69 - "Community 69"
+### Community 67 - "Community 67"
 Cohesion: 0.67
 Nodes (2): CreateMandateRequest, Mandate
 
-### Community 70 - "Community 70"
+### Community 68 - "Community 68"
 Cohesion: 0.67
 Nodes (1): PaginatedResponse<T>
+
+### Community 69 - "Community 69"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 70 - "Community 70"
+Cohesion: 0.67
+Nodes (0): 
 
 ### Community 71 - "Community 71"
 Cohesion: 0.67
@@ -461,31 +459,31 @@ Nodes (0):
 
 ### Community 74 - "Community 74"
 Cohesion: 0.67
-Nodes (0): 
-
-### Community 75 - "Community 75"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 76 - "Community 76"
-Cohesion: 0.67
 Nodes (3): POST /v1/checkout/session, POST /v1/payments, Webhook Idempotency Rule
 
-### Community 77 - "Community 77"
+### Community 75 - "Community 75"
 Cohesion: 1.0
 Nodes (1): AuditLog
 
-### Community 78 - "Community 78"
+### Community 76 - "Community 76"
 Cohesion: 1.0
 Nodes (1): FeeRule
 
-### Community 79 - "Community 79"
+### Community 77 - "Community 77"
 Cohesion: 1.0
 Nodes (1): KycAuditLog
 
-### Community 80 - "Community 80"
+### Community 78 - "Community 78"
 Cohesion: 1.0
 Nodes (1): ApiDoc
+
+### Community 79 - "Community 79"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 80 - "Community 80"
+Cohesion: 1.0
+Nodes (0): 
 
 ### Community 81 - "Community 81"
 Cohesion: 1.0
@@ -517,19 +515,19 @@ Nodes (0):
 
 ### Community 88 - "Community 88"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Actix Web Framework, High Throughput Performance
 
 ### Community 89 - "Community 89"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): HMAC-SHA256 Webhook Signature, X-FeelPay-Signature Header
 
 ### Community 90 - "Community 90"
 Cohesion: 1.0
-Nodes (2): Actix Web Framework, High Throughput Performance
+Nodes (0): 
 
 ### Community 91 - "Community 91"
 Cohesion: 1.0
-Nodes (2): HMAC-SHA256 Webhook Signature, X-FeelPay-Signature Header
+Nodes (0): 
 
 ### Community 92 - "Community 92"
 Cohesion: 1.0
@@ -641,66 +639,62 @@ Nodes (0):
 
 ### Community 119 - "Community 119"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Phase_5_Onboarding
 
 ### Community 120 - "Community 120"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Phase_6_Dashboard
 
 ### Community 121 - "Community 121"
 Cohesion: 1.0
-Nodes (1): Phase_5_Onboarding
+Nodes (1): Rust Programming Language
 
 ### Community 122 - "Community 122"
 Cohesion: 1.0
-Nodes (1): Phase_6_Dashboard
-
-### Community 123 - "Community 123"
-Cohesion: 1.0
-Nodes (1): Rust Programming Language
-
-### Community 124 - "Community 124"
-Cohesion: 1.0
 Nodes (1): sqlx Library
 
-### Community 125 - "Community 125"
+### Community 123 - "Community 123"
 Cohesion: 1.0
 Nodes (1): HTTP Strict Transport Security
 
 ## Knowledge Gaps
-- **364 isolated node(s):** `AppState`, `ApiKey`, `CreateApiKeyRequest`, `AuditLog`, `CreateCustomerRequest` (+359 more)
+- **392 isolated node(s):** `AppState`, `ApiKey`, `CreateApiKeyRequest`, `AuditLog`, `CreateCustomerRequest` (+387 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 77`** (2 nodes): `AuditLog`, `audit.rs`
+- **Thin community `Community 75`** (2 nodes): `AuditLog`, `audit.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (2 nodes): `FeeRule`, `fee.rs`
+- **Thin community `Community 76`** (2 nodes): `FeeRule`, `fee.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 79`** (2 nodes): `kyc_audit_log.rs`, `KycAuditLog`
+- **Thin community `Community 77`** (2 nodes): `kyc_audit_log.rs`, `KycAuditLog`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 80`** (2 nodes): `mod.rs`, `ApiDoc`
+- **Thin community `Community 78`** (2 nodes): `mod.rs`, `ApiDoc`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 81`** (2 nodes): `Login.tsx`, `Login()`
+- **Thin community `Community 79`** (2 nodes): `Login.tsx`, `Login()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 82`** (2 nodes): `Analytics()`, `Analytics.tsx`
+- **Thin community `Community 80`** (2 nodes): `Analytics()`, `Analytics.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 83`** (2 nodes): `Pricing.tsx`, `load()`
+- **Thin community `Community 81`** (2 nodes): `Pricing.tsx`, `load()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 84`** (2 nodes): `KycAuditLog.tsx`, `KycAuditLog()`
+- **Thin community `Community 82`** (2 nodes): `KycAuditLog.tsx`, `KycAuditLog()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 85`** (2 nodes): `TransactionSearch.tsx`, `TransactionSearch()`
+- **Thin community `Community 83`** (2 nodes): `TransactionSearch.tsx`, `TransactionSearch()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 86`** (2 nodes): `TransactionDetail.tsx`, `TransactionDetail()`
+- **Thin community `Community 84`** (2 nodes): `TransactionDetail.tsx`, `TransactionDetail()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 87`** (2 nodes): `SettlementManagement.tsx`, `SettlementManagement()`
+- **Thin community `Community 85`** (2 nodes): `SettlementManagement.tsx`, `SettlementManagement()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 88`** (2 nodes): `Transactions.tsx`, `load()`
+- **Thin community `Community 86`** (2 nodes): `Transactions.tsx`, `load()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 89`** (2 nodes): `fetchAnalytics()`, `AnalyticsCharts.tsx`
+- **Thin community `Community 87`** (2 nodes): `fetchAnalytics()`, `AnalyticsCharts.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 90`** (2 nodes): `Actix Web Framework`, `High Throughput Performance`
+- **Thin community `Community 88`** (2 nodes): `Actix Web Framework`, `High Throughput Performance`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (2 nodes): `HMAC-SHA256 Webhook Signature`, `X-FeelPay-Signature Header`
+- **Thin community `Community 89`** (2 nodes): `HMAC-SHA256 Webhook Signature`, `X-FeelPay-Signature Header`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 92`** (1 nodes): `lib.rs`
+- **Thin community `Community 90`** (1 nodes): `lib.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 91`** (1 nodes): `mod.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 92`** (1 nodes): `mod.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 93`** (1 nodes): `mod.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -712,77 +706,73 @@ Nodes (1): HTTP Strict Transport Security
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 97`** (1 nodes): `mod.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (1 nodes): `mod.rs`
+- **Thin community `Community 98`** (1 nodes): `vite.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (1 nodes): `mod.rs`
+- **Thin community `Community 99`** (1 nodes): `vitest.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (1 nodes): `vite.config.js`
+- **Thin community `Community 100`** (1 nodes): `playwright.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (1 nodes): `vitest.config.ts`
+- **Thin community `Community 101`** (1 nodes): `main.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 102`** (1 nodes): `playwright.config.ts`
+- **Thin community `Community 102`** (1 nodes): `CheckoutPreview.test.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 103`** (1 nodes): `main.tsx`
+- **Thin community `Community 103`** (1 nodes): `AddBankAccountForm.test.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 104`** (1 nodes): `CheckoutPreview.test.tsx`
+- **Thin community `Community 104`** (1 nodes): `AnalyticsCharts.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 105`** (1 nodes): `AddBankAccountForm.test.tsx`
+- **Thin community `Community 105`** (1 nodes): `setup.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (1 nodes): `AnalyticsCharts.tsx`
+- **Thin community `Community 106`** (1 nodes): `login-flow.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 107`** (1 nodes): `setup.ts`
+- **Thin community `Community 107`** (1 nodes): `full-journey.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 108`** (1 nodes): `login-flow.spec.ts`
+- **Thin community `Community 108`** (1 nodes): `vite.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 109`** (1 nodes): `full-journey.spec.ts`
+- **Thin community `Community 109`** (1 nodes): `vitest.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 110`** (1 nodes): `vite.config.js`
+- **Thin community `Community 110`** (1 nodes): `tailwind.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 111`** (1 nodes): `vitest.config.ts`
+- **Thin community `Community 111`** (1 nodes): `postcss.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 112`** (1 nodes): `tailwind.config.js`
+- **Thin community `Community 112`** (1 nodes): `vite-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 113`** (1 nodes): `postcss.config.js`
+- **Thin community `Community 113`** (1 nodes): `App.test.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 114`** (1 nodes): `vite-env.d.ts`
+- **Thin community `Community 114`** (1 nodes): `RevenueDashboard.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 115`** (1 nodes): `App.test.tsx`
+- **Thin community `Community 115`** (1 nodes): `AuditLogViewer.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 116`** (1 nodes): `RevenueDashboard.tsx`
+- **Thin community `Community 116`** (1 nodes): `DocumentViewer.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 117`** (1 nodes): `AuditLogViewer.tsx`
+- **Thin community `Community 117`** (1 nodes): `k6-payments.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 118`** (1 nodes): `DocumentViewer.tsx`
+- **Thin community `Community 118`** (1 nodes): `server.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 119`** (1 nodes): `k6-payments.js`
+- **Thin community `Community 119`** (1 nodes): `Phase_5_Onboarding`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 120`** (1 nodes): `server.js`
+- **Thin community `Community 120`** (1 nodes): `Phase_6_Dashboard`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 121`** (1 nodes): `Phase_5_Onboarding`
+- **Thin community `Community 121`** (1 nodes): `Rust Programming Language`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 122`** (1 nodes): `Phase_6_Dashboard`
+- **Thin community `Community 122`** (1 nodes): `sqlx Library`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 123`** (1 nodes): `Rust Programming Language`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (1 nodes): `sqlx Library`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 125`** (1 nodes): `HTTP Strict Transport Security`
+- **Thin community `Community 123`** (1 nodes): `HTTP Strict Transport Security`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `json()` connect `Community 1` to `Community 0`, `Community 33`, `Community 2`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 40`, `Community 10`, `Community 11`, `Community 38`, `Community 13`, `Community 18`, `Community 22`, `Community 23`, `Community 24`, `Community 25`?**
-  _High betweenness centrality (0.238) - this node is a cross-community bridge._
-- **Why does `apiRequest()` connect `Community 2` to `Community 9`, `Community 30`?**
-  _High betweenness centrality (0.123) - this node is a cross-community bridge._
+- **Why does `json()` connect `Community 1` to `Community 0`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 20`, `Community 24`, `Community 25`, `Community 34`, `Community 36`, `Community 37`, `Community 44`?**
+  _High betweenness centrality (0.241) - this node is a cross-community bridge._
+- **Why does `apiRequest()` connect `Community 2` to `Community 9`, `Community 28`?**
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
 - **Why does `fetchTemplates()` connect `Community 2` to `Community 1`?**
-  _High betweenness centrality (0.085) - this node is a cross-community bridge._
-- **Are the 231 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
-  _`json()` has 231 INFERRED edges - model-reasoned connections that need verification._
+  _High betweenness centrality (0.070) - this node is a cross-community bridge._
+- **Are the 272 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
+  _`json()` has 272 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 50 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**
   _`apiRequest()` has 50 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 24 inferred relationships involving `main()` (e.g. with `.new()` and `.from_env()`) actually correct?**
-  _`main()` has 24 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 11 inferred relationships involving `create_payment()` (e.g. with `.to_string()` and `json()`) actually correct?**
-  _`create_payment()` has 11 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 25 inferred relationships involving `main()` (e.g. with `.new()` and `.from_env()`) actually correct?**
+  _`main()` has 25 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `AppState`, `ApiKey`, `CreateApiKeyRequest` to the rest of the system?**
+  _392 weakly-connected nodes found - possible documentation gaps or missing edges._
