@@ -187,6 +187,8 @@ a:focus-visible {
   flex-direction: column;
   gap: 6px;
   padding: 0 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .nav-item {
@@ -486,6 +488,7 @@ h2, .card h2 {
 table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 760px;
 }
 
 .data-table th,
@@ -509,6 +512,66 @@ table td {
 .data-table tr:hover td,
 table tr:hover td {
   background: rgba(29, 185, 84, 0.06);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--fp-bg-card);
+}
+
+thead .sticky-col {
+  z-index: 2;
+}
+
+.id-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-family: 'Inter', monospace;
+}
+
+.skeleton-card {
+  display: grid;
+  gap: 10px;
+  color: var(--fp-text-muted);
+}
+
+.skeleton-line {
+  height: 12px;
+  width: 45%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--fp-bg-elevated), var(--fp-bg-hover), var(--fp-bg-elevated));
+}
+
+.skeleton-line.wide {
+  width: 70%;
+}
+
+.error-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rich-empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 26px;
+  text-align: center;
+  color: var(--fp-text-muted);
+}
+
+.rich-empty strong {
+  color: var(--fp-text);
 }
 
 .badge,

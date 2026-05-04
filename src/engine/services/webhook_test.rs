@@ -382,8 +382,8 @@ mod tests {
         assert!(!SUPPORTED_WEBHOOK_EVENTS.contains(&"invalid.event"));
     }
 
-    #[test]
-    fn test_sign_webhook() {
+    #[tokio::test]
+    async fn test_sign_webhook() {
         let service = WebhookTestService::new(
             sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)
@@ -399,8 +399,8 @@ mod tests {
         assert_eq!(signature.len(), 64); // SHA256 hex is 64 chars
     }
 
-    #[test]
-    fn test_verify_webhook_signature() {
+    #[tokio::test]
+    async fn test_verify_webhook_signature() {
         let service = WebhookTestService::new(
             sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)

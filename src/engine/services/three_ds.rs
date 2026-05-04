@@ -193,24 +193,24 @@ impl ThreeDsService {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_risk_assessment_low() {
+    #[tokio::test]
+    async fn test_risk_assessment_low() {
         let service =
             ThreeDsService::new(sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap());
         let risk = service.assess_risk(5000, false, false, false);
         assert!(matches!(risk, RiskLevel::Low));
     }
 
-    #[test]
-    fn test_risk_assessment_high() {
+    #[tokio::test]
+    async fn test_risk_assessment_high() {
         let service =
             ThreeDsService::new(sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap());
         let risk = service.assess_risk(150000, true, true, true);
         assert!(matches!(risk, RiskLevel::High));
     }
 
-    #[test]
-    fn test_3ds_requirement() {
+    #[tokio::test]
+    async fn test_3ds_requirement() {
         let service =
             ThreeDsService::new(sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap());
         assert!(service.should_require_3ds(&RiskLevel::High));

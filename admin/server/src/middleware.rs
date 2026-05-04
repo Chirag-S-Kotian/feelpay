@@ -5,9 +5,9 @@ use actix_web::{
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::Deserialize;
+use sqlx::PgPool;
 use std::future::{ready, Ready};
 use uuid::Uuid;
-use sqlx::PgPool;
 
 pub struct AdminAuthMiddleware;
 
@@ -81,7 +81,9 @@ where
 
         let Some(token) = token else {
             return Box::pin(async {
-                Err(actix_web::error::ErrorUnauthorized("Missing Authorization bearer token"))
+                Err(actix_web::error::ErrorUnauthorized(
+                    "Missing Authorization bearer token",
+                ))
             });
         };
 
@@ -96,7 +98,9 @@ where
             Ok(v) => v.claims,
             Err(_) => {
                 return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized("Invalid or expired token"))
+                    Err(actix_web::error::ErrorUnauthorized(
+                        "Invalid or expired token",
+                    ))
                 });
             }
         };
@@ -105,7 +109,9 @@ where
             Ok(id) => id,
             Err(_) => {
                 return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized("Invalid identity in token"))
+                    Err(actix_web::error::ErrorUnauthorized(
+                        "Invalid identity in token",
+                    ))
                 });
             }
         };
@@ -115,8 +121,9 @@ where
         let fut = self.service.call(req);
 
         Box::pin(async move {
-            let pool = pool.ok_or_else(|| actix_web::error::ErrorInternalServerError("DB pool missing"))?;
-            
+            let pool =
+                pool.ok_or_else(|| actix_web::error::ErrorInternalServerError("DB pool missing"))?;
+
             // Check if is_admin
             let merchant = sqlx::query("SELECT is_admin, name FROM merchants WHERE id = $1")
                 .bind(merchant_id)
@@ -133,9 +140,11 @@ where
                     let is_admin: bool = row.get("is_admin");
                     let name: String = row.get("name");
                     tracing::info!("Auth check for {}: is_admin={}", name, is_admin);
-                    
+
                     if !is_admin {
-                        return Err(actix_web::error::ErrorForbidden("Forbidden: Admin access required"));
+                        return Err(actix_web::error::ErrorForbidden(
+                            "Forbidden: Admin access required",
+                        ));
                     }
                 }
                 None => {
@@ -148,7 +157,9 @@ where
                 Some(permission) => permission,
                 None => {
                     tracing::warn!("Admin RBAC denied unmapped route: {} {}", method, path);
-                    return Err(actix_web::error::ErrorForbidden("Forbidden: Admin route is not permission mapped"));
+                    return Err(actix_web::error::ErrorForbidden(
+                        "Forbidden: Admin route is not permission mapped",
+                    ));
                 }
             };
 
@@ -156,12 +167,22 @@ where
             let has_claim_permission = claims
                 .permissions
                 .as_ref()
-                .map(|permissions| permissions.iter().any(|permission| permission == required_permission))
+                .map(|permissions| {
+                    permissions
+                        .iter()
+                        .any(|permission| permission == required_permission)
+                })
                 .unwrap_or(false);
 
             if !role_has_permission(role, required_permission) && !has_claim_permission {
-                tracing::warn!("Admin RBAC denied role={} permission={}", role, required_permission);
-                return Err(actix_web::error::ErrorForbidden("Forbidden: Admin permission required"));
+                tracing::warn!(
+                    "Admin RBAC denied role={} permission={}",
+                    role,
+                    required_permission
+                );
+                return Err(actix_web::error::ErrorForbidden(
+                    "Forbidden: Admin permission required",
+                ));
             }
 
             fut.await
@@ -176,14 +197,32 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
         .or_else(|| path.strip_prefix("/api/admin"))
         .or_else(|| path.strip_prefix("/admin"))?;
 
-    if path.starts_with("/stats") || path.starts_with("/operations") || path.starts_with("/payments/dashboard") || path.starts_with("/payment-ops/dashboard") {
+    if path.starts_with("/stats")
+        || path.starts_with("/operations")
+        || path.starts_with("/payments/dashboard")
+        || path.starts_with("/payment-ops/dashboard")
+    {
         return Some("payment_ops.view");
     }
     if path.starts_with("/merchants") {
         return Some("payment_ops.view");
     }
-    if path.starts_with("/transactions") || path.starts_with("/payments/transactions") || path.starts_with("/payment-ops/transactions") {
-        return Some(if method == "GET" { "transactions.view" } else { "transactions.action" });
+    if path.contains("/business-accounts") {
+        return Some(if method == "GET" {
+            "payment_ops.view"
+        } else {
+            "business_accounts.manage"
+        });
+    }
+    if path.starts_with("/transactions")
+        || path.starts_with("/payments/transactions")
+        || path.starts_with("/payment-ops/transactions")
+    {
+        return Some(if method == "GET" {
+            "transactions.view"
+        } else {
+            "transactions.action"
+        });
     }
     if path.contains("/refunds") {
         if method == "GET" {
@@ -200,6 +239,13 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.starts_with("/settlements") || path.contains("/settlements") {
         return Some("settlements.manage");
     }
+    if path.contains("/ledger") {
+        return Some(if path.ends_with("/export") {
+            "ledger.export"
+        } else {
+            "ledger.view"
+        });
+    }
     if path.starts_with("/disputes") || path.contains("/disputes") {
         return Some("disputes.manage");
     }
@@ -209,8 +255,15 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.contains("/reconciliation") {
         return Some("reconciliation.manage");
     }
-    if path.starts_with("/provider-credentials") || path.contains("/providers") || path.contains("/credentials") {
-        return Some(if method == "GET" { "providers.manage" } else { "credentials.rotate" });
+    if path.starts_with("/provider-credentials")
+        || path.contains("/providers")
+        || path.contains("/credentials")
+    {
+        return Some(if method == "GET" {
+            "providers.manage"
+        } else {
+            "credentials.rotate"
+        });
     }
     if path.contains("/bank-integrations") || path.starts_with("/bank-accounts") {
         return Some("bank_integrations.manage");
@@ -218,7 +271,11 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.contains("/routing-rules") || path.contains("/routing/simulate") {
         return Some("routing.manage");
     }
-    if path.contains("/white-label-config") || path.contains("/webhook-configs") || path.contains("/webhook-events") || path.contains("/webhooks") {
+    if path.contains("/white-label-config")
+        || path.contains("/webhook-configs")
+        || path.contains("/webhook-events")
+        || path.contains("/webhooks")
+    {
         return Some("webhook_config.manage");
     }
     if path.starts_with("/exports") || path.starts_with("/revenue") {
@@ -227,14 +284,46 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.contains("/audit-logs") {
         return Some("audit_logs.view");
     }
-    if path.contains("/admin-roles") || path.contains("/users") {
-        return Some("admin_users.manage");
+    if path.contains("/admin-roles") {
+        return Some(if method == "GET" {
+            "roles.view"
+        } else {
+            "roles.manage"
+        });
+    }
+    if path.starts_with("/users") {
+        return Some(if method == "GET" {
+            "admin_users.view"
+        } else {
+            "admin_users.manage"
+        });
+    }
+    if path.starts_with("/system-health") {
+        return Some(if method == "GET" {
+            "system_health.view"
+        } else {
+            "system_health.manage"
+        });
+    }
+    if path.starts_with("/notifications") {
+        return Some(if method == "GET" {
+            "notifications.view"
+        } else {
+            "notifications.manage"
+        });
+    }
+    if path.starts_with("/platform-settings") {
+        return Some(if method == "GET" {
+            "platform_settings.view"
+        } else {
+            "platform_settings.manage"
+        });
     }
     None
 }
 
 fn role_has_permission(role: &str, permission: &str) -> bool {
-    if matches!(role, "Super Admin" | "super_admin" | "admin" | "merchant") {
+    if matches!(role, "Super Admin" | "super_admin" | "admin") {
         return true;
     }
     permissions_for_role(role).contains(&permission)
@@ -251,6 +340,9 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "credentials.rotate",
             "routing.manage",
             "webhook_config.manage",
+            "system_health.view",
+            "notifications.view",
+            "ledger.view",
         ],
         "Finance Admin" => &[
             "payment_ops.view",
@@ -261,12 +353,52 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "settlements.manage",
             "reconciliation.manage",
             "reports.export",
+            "notifications.view",
+            "ledger.view",
+            "ledger.export",
         ],
-        "Risk Admin" => &["payment_ops.view", "transactions.view", "risk_rules.manage", "disputes.manage"],
-        "Support Admin" => &["payment_ops.view", "transactions.view", "transactions.action", "refunds.request", "disputes.manage"],
-        "Support Agent" => &["payment_ops.view", "transactions.view", "refunds.request"],
-        "Compliance Admin" => &["payment_ops.view", "transactions.view", "disputes.manage", "audit_logs.view"],
-        "Auditor" | "Auditor / Read Only" => &["payment_ops.view", "transactions.view", "audit_logs.view", "reports.export"],
+        "Risk Admin" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "risk_rules.manage",
+            "disputes.manage",
+            "notifications.view",
+            "business_accounts.manage",
+            "business_accounts.kyc_review",
+            "business_accounts.risk_review",
+        ],
+        "Support Admin" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "transactions.action",
+            "refunds.request",
+            "disputes.manage",
+            "notifications.view",
+            "notifications.manage",
+            "business_accounts.manage",
+        ],
+        "Support Agent" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "refunds.request",
+            "notifications.view",
+        ],
+        "Compliance Admin" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "disputes.manage",
+            "audit_logs.view",
+            "notifications.view",
+            "business_accounts.kyc_review",
+            "business_accounts.risk_review",
+        ],
+        "Auditor" | "Auditor / Read Only" => &[
+            "payment_ops.view",
+            "transactions.view",
+            "audit_logs.view",
+            "reports.export",
+            "ledger.view",
+        ],
         _ => &[],
     }
 }

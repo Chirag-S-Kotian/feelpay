@@ -380,6 +380,19 @@ struct RoutingRuleRequest {
     business_line: Option<String>,
     failover_provider_id: Option<Uuid>,
     status: Option<String>,
+    rule_group: Option<String>,
+    provider_weight: Option<i32>,
+    payment_method_priority: Option<i32>,
+    min_success_rate: Option<f64>,
+    max_provider_fee_percent: Option<f64>,
+    max_latency_ms: Option<i32>,
+    health_required: Option<bool>,
+    failover_strategy: Option<String>,
+    retry_strategy: Option<String>,
+    cooldown_minutes: Option<i32>,
+    effective_from: Option<DateTime<Utc>>,
+    effective_until: Option<DateTime<Utc>>,
+    strategy: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -409,6 +422,13 @@ struct RoutingSimulationResponse {
     risk_decision: String,
     provider_health_used: String,
     failover_applied: bool,
+    provider_score: f64,
+    candidate_providers: Vec<Value>,
+    rejected_providers: Vec<Value>,
+    fee_estimate: i64,
+    latency_estimate_ms: i32,
+    success_estimate: f64,
+    strategy_used: String,
 }
 
 #[derive(Deserialize)]
@@ -420,6 +440,24 @@ struct RefundRequest {
     reason: Option<String>,
     refund_source: Option<String>,
     idempotency_key: String,
+    refund_type: Option<String>,
+    business_account_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+struct BusinessAccountPatchRequest {
+    status: Option<String>,
+    kyc_status: Option<String>,
+    risk_status: Option<String>,
+    payout_status: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DisputeActionRequest {
+    evidence_text: Option<String>,
+    outcome: Option<String>,
+    note: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -457,6 +495,31 @@ struct WebhookConfigRequest {
     signing_secret: Option<String>,
     signature_verification_enabled: Option<bool>,
     status: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AdminInviteRequest {
+    name: String,
+    email: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct AdminUserPatchRequest {
+    name: Option<String>,
+    email: Option<String>,
+    status: Option<String>,
+    mfa_enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct AssignRoleRequest {
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct AssignNotificationRequest {
+    assigned_to_admin_id: Option<Uuid>,
 }
 
 async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
@@ -514,10 +577,12 @@ async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
 
     let successful_payments: i64 = summary.get("successful_payments");
     let failed_payments: i64 = summary.get("failed_payments");
-    let total_attempts: i64 = sqlx::query_scalar("SELECT COALESCE(COUNT(*), 0)::bigint FROM payment_orders WHERE status <> 'created'")
-        .fetch_one(pool.get_ref())
-        .await
-        .unwrap_or(successful_payments + failed_payments);
+    let total_attempts: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*), 0)::bigint FROM payment_orders WHERE status <> 'created'",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(successful_payments + failed_payments);
     let payment_success_rate = if total_attempts == 0 {
         0.0
     } else {
@@ -675,7 +740,14 @@ async fn save_provider(
 
     match row {
         Ok(Some(id)) => {
-            audit(&pool, "provider.saved", "payment_provider", Some(id), json!({ "code": request.code })).await;
+            audit(
+                &pool,
+                "provider.saved",
+                "payment_provider",
+                Some(id),
+                json!({ "code": request.code }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id }))
         }
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Provider not found" })),
@@ -728,7 +800,14 @@ async fn set_provider_status(
 
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, &format!("provider.{status}"), "payment_provider", Some(provider_id), json!({ "status": status })).await;
+            audit(
+                &pool,
+                &format!("provider.{status}"),
+                "payment_provider",
+                Some(provider_id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": provider_id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Provider not found" })),
@@ -806,7 +885,10 @@ async fn rotate_credentials_by_id(
     };
 
     let provider_id: Uuid = row.get("provider_id");
-    let environment: String = request.environment.clone().unwrap_or_else(|| row.get("environment"));
+    let environment: String = request
+        .environment
+        .clone()
+        .unwrap_or_else(|| row.get("environment"));
     let secret_type: String = request
         .secret_type
         .clone()
@@ -861,7 +943,8 @@ async fn save_credential(
     audit_action: &str,
 ) -> HttpResponse {
     if secret_type.is_empty() || value.is_empty() {
-        return HttpResponse::BadRequest().json(json!({ "message": "secret_type and value are required" }));
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "secret_type and value are required" }));
     }
     let (encrypted_value, nonce) = match encrypt_secret(value) {
         Ok(value) => value,
@@ -904,7 +987,8 @@ async fn save_credential(
     match saved {
         Ok(id) => {
             audit(&pool, audit_action, "payment_provider_credential", Some(id), json!({ "provider_id": provider_id, "secret_type": secret_type, "masked_value": masked_value })).await;
-            HttpResponse::Ok().json(json!({ "id": id, "masked_value": masked_value, "status": "active" }))
+            HttpResponse::Ok()
+                .json(json!({ "id": id, "masked_value": masked_value, "status": "active" }))
         }
         Err(e) => {
             tracing::error!("Save provider credential failed: {}", e);
@@ -914,11 +998,25 @@ async fn save_credential(
 }
 
 async fn validate_credential(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    update_credential_status(pool, path.into_inner(), "active", "credential.validated", true).await
+    update_credential_status(
+        pool,
+        path.into_inner(),
+        "active",
+        "credential.validated",
+        true,
+    )
+    .await
 }
 
 async fn disable_credential(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    update_credential_status(pool, path.into_inner(), "disabled", "credential.disabled", false).await
+    update_credential_status(
+        pool,
+        path.into_inner(),
+        "disabled",
+        "credential.disabled",
+        false,
+    )
+    .await
 }
 
 async fn update_credential_status(
@@ -940,7 +1038,14 @@ async fn update_credential_status(
         .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, action, "payment_provider_credential", Some(id), json!({ "status": status })).await;
+            audit(
+                &pool,
+                action,
+                "payment_provider_credential",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Credential not found" })),
@@ -987,7 +1092,10 @@ async fn verify_bank_integration(pool: web::Data<PgPool>, path: web::Path<Uuid>)
     update_bank_status(pool, path.into_inner(), "verified", true).await
 }
 
-async fn disable_bank_integration(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+async fn disable_bank_integration(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
     update_bank_status(pool, path.into_inner(), "disabled", false).await
 }
 
@@ -1009,7 +1117,14 @@ async fn update_bank_status(
         .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, &format!("bank_config.{status}"), "bank_integration_config", Some(id), json!({ "status": status })).await;
+            audit(
+                &pool,
+                &format!("bank_config.{status}"),
+                "bank_integration_config",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Bank integration not found" })),
@@ -1034,7 +1149,9 @@ async fn save_bank_integration(
         .account_number
         .as_deref()
         .and_then(|value| encrypt_secret(value).ok())
-        .map(|(encrypted, nonce)| json!({ "account_number": encrypted, "nonce": nonce }).to_string());
+        .map(|(encrypted, nonce)| {
+            json!({ "account_number": encrypted, "nonce": nonce }).to_string()
+        });
 
     let result = if let Some(id) = bank_id {
         sqlx::query_scalar::<_, Uuid>(
@@ -1058,7 +1175,12 @@ async fn save_bank_integration(
         .bind(request.bank_account_holder_name.as_deref())
         .bind(masked_account_number)
         .bind(request.routing_code.as_deref())
-        .bind(request.account_scope.as_deref().unwrap_or("company_settlement"))
+        .bind(
+            request
+                .account_scope
+                .as_deref()
+                .unwrap_or("company_settlement"),
+        )
         .bind(request.currency.as_deref().unwrap_or("INR"))
         .bind(request.settlement_cycle.as_deref())
         .bind(json!(request.supported_currencies.unwrap_or_default()))
@@ -1085,7 +1207,12 @@ async fn save_bank_integration(
         .bind(request.bank_account_holder_name.as_deref())
         .bind(masked_account_number)
         .bind(request.routing_code.as_deref())
-        .bind(request.account_scope.as_deref().unwrap_or("company_settlement"))
+        .bind(
+            request
+                .account_scope
+                .as_deref()
+                .unwrap_or("company_settlement"),
+        )
         .bind(request.currency.as_deref().unwrap_or("INR"))
         .bind(request.settlement_cycle.as_deref())
         .bind(json!(request.supported_currencies.unwrap_or_default()))
@@ -1096,10 +1223,19 @@ async fn save_bank_integration(
 
     match result {
         Ok(Some(id)) => {
-            audit(&pool, "bank_config.saved", "bank_integration_config", Some(id), json!({ "bank": request.acquiring_bank_name })).await;
+            audit(
+                &pool,
+                "bank_config.saved",
+                "bank_integration_config",
+                Some(id),
+                json!({ "bank": request.acquiring_bank_name }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id }))
         }
-        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Bank integration not found" })),
+        Ok(None) => {
+            HttpResponse::NotFound().json(json!({ "message": "Bank integration not found" }))
+        }
         Err(e) => {
             tracing::error!("Save bank integration failed: {}", e);
             server_error("Failed to save bank integration")
@@ -1108,9 +1244,10 @@ async fn save_bank_integration(
 }
 
 async fn get_white_label_config(pool: web::Data<PgPool>) -> impl Responder {
-    let row = sqlx::query("SELECT * FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1")
-        .fetch_optional(pool.get_ref())
-        .await;
+    let row =
+        sqlx::query("SELECT * FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1")
+            .fetch_optional(pool.get_ref())
+            .await;
 
     match row {
         Ok(Some(row)) => HttpResponse::Ok().json(row_to_json(&row)),
@@ -1174,11 +1311,21 @@ async fn update_white_label_config(
         }
     };
 
-    audit(&pool, "white_label_config.saved", "white_label_payment_config", Some(id), json!({ "brand_name": request.brand_name })).await;
+    audit(
+        &pool,
+        "white_label_config.saved",
+        "white_label_payment_config",
+        Some(id),
+        json!({ "brand_name": request.brand_name }),
+    )
+    .await;
     HttpResponse::Ok().json(json!({ "id": id }))
 }
 
-async fn update_existing_white_label(pool: &PgPool, request: &WhiteLabelRequest) -> Result<Uuid, sqlx::Error> {
+async fn update_existing_white_label(
+    pool: &PgPool,
+    request: &WhiteLabelRequest,
+) -> Result<Uuid, sqlx::Error> {
     sqlx::query_scalar::<_, Uuid>(
         r#"
         UPDATE white_label_payment_config
@@ -1227,6 +1374,24 @@ async fn list_routing_rules(pool: web::Data<PgPool>) -> impl Responder {
     .await
 }
 
+async fn list_provider_performance(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT ppm.id, p.display_name AS provider, ppm.payment_method, ppm.currency, ppm.country,
+               ppm.success_rate::float8 AS success_rate, ppm.failure_rate::float8 AS failure_rate,
+               ppm.avg_latency_ms, ppm.p95_latency_ms, ppm.provider_fee_percent::float8 AS provider_fee_percent,
+               ppm.attempt_count, ppm.updated_at
+        FROM provider_performance_metrics ppm
+        JOIN payment_providers p ON p.id = ppm.provider_id
+        ORDER BY ppm.updated_at DESC
+        LIMIT 200
+        "#,
+        "Failed to load provider performance",
+    )
+    .await
+}
+
 async fn create_routing_rule(
     pool: web::Data<PgPool>,
     request: web::Json<RoutingRuleRequest>,
@@ -1244,13 +1409,22 @@ async fn update_routing_rule(
 
 async fn disable_routing_rule(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let id = path.into_inner();
-    let updated = sqlx::query("UPDATE payment_routing_rules SET status = 'disabled', updated_at = NOW() WHERE id = $1")
-        .bind(id)
-        .execute(pool.get_ref())
-        .await;
+    let updated = sqlx::query(
+        "UPDATE payment_routing_rules SET status = 'disabled', updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "routing_rule.disabled", "payment_routing_rule", Some(id), json!({ "status": "disabled" })).await;
+            audit(
+                &pool,
+                "routing_rule.disabled",
+                "payment_routing_rule",
+                Some(id),
+                json!({ "status": "disabled" }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": "disabled" }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Routing rule not found" })),
@@ -1273,7 +1447,11 @@ async fn save_routing_rule(
             SET name = $2, payment_method = $3, currency = $4, country = $5, amount_min = $6,
                 amount_max = $7, provider_id = $8, bank_integration_id = $9, priority = $10,
                 risk_level = $11, customer_region = $12, business_line = $13,
-                failover_provider_id = $14, status = $15, updated_at = NOW()
+                failover_provider_id = $14, status = $15, rule_group = $16,
+                provider_weight = $17, payment_method_priority = $18, min_success_rate = $19,
+                max_provider_fee_percent = $20, max_latency_ms = $21, health_required = $22,
+                failover_strategy = $23, retry_strategy = $24, cooldown_minutes = $25,
+                effective_from = $26, effective_until = $27, strategy = $28, updated_at = NOW()
             WHERE id = $1
             RETURNING id
             "#,
@@ -1293,6 +1471,24 @@ async fn save_routing_rule(
         .bind(request.business_line.as_deref())
         .bind(request.failover_provider_id)
         .bind(request.status.as_deref().unwrap_or("active"))
+        .bind(request.rule_group.as_deref())
+        .bind(request.provider_weight.unwrap_or(100))
+        .bind(request.payment_method_priority.unwrap_or(100))
+        .bind(request.min_success_rate)
+        .bind(request.max_provider_fee_percent)
+        .bind(request.max_latency_ms)
+        .bind(request.health_required.unwrap_or(true))
+        .bind(
+            request
+                .failover_strategy
+                .as_deref()
+                .unwrap_or("fallback_only"),
+        )
+        .bind(request.retry_strategy.as_deref().unwrap_or("none"))
+        .bind(request.cooldown_minutes.unwrap_or(15))
+        .bind(request.effective_from)
+        .bind(request.effective_until)
+        .bind(request.strategy.as_deref().unwrap_or("priority"))
         .fetch_optional(pool.get_ref())
         .await
     } else {
@@ -1301,9 +1497,12 @@ async fn save_routing_rule(
             INSERT INTO payment_routing_rules (
                 name, payment_method, currency, country, amount_min, amount_max, provider_id,
                 bank_integration_id, priority, risk_level, customer_region, business_line,
-                failover_provider_id, status
+                failover_provider_id, status, rule_group, provider_weight, payment_method_priority,
+                min_success_rate, max_provider_fee_percent, max_latency_ms, health_required,
+                failover_strategy, retry_strategy, cooldown_minutes, effective_from, effective_until, strategy
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                    $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
             RETURNING id
             "#,
         )
@@ -1321,13 +1520,33 @@ async fn save_routing_rule(
         .bind(request.business_line.as_deref())
         .bind(request.failover_provider_id)
         .bind(request.status.as_deref().unwrap_or("active"))
+        .bind(request.rule_group.as_deref())
+        .bind(request.provider_weight.unwrap_or(100))
+        .bind(request.payment_method_priority.unwrap_or(100))
+        .bind(request.min_success_rate)
+        .bind(request.max_provider_fee_percent)
+        .bind(request.max_latency_ms)
+        .bind(request.health_required.unwrap_or(true))
+        .bind(request.failover_strategy.as_deref().unwrap_or("fallback_only"))
+        .bind(request.retry_strategy.as_deref().unwrap_or("none"))
+        .bind(request.cooldown_minutes.unwrap_or(15))
+        .bind(request.effective_from)
+        .bind(request.effective_until)
+        .bind(request.strategy.as_deref().unwrap_or("priority"))
         .fetch_optional(pool.get_ref())
         .await
     };
 
     match result {
         Ok(Some(id)) => {
-            audit(&pool, "routing_rule.saved", "payment_routing_rule", Some(id), json!({ "name": request.name })).await;
+            audit(
+                &pool,
+                "routing_rule.saved",
+                "payment_routing_rule",
+                Some(id),
+                json!({ "name": request.name }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id }))
         }
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Routing rule not found" })),
@@ -1344,12 +1563,27 @@ async fn simulate_routing(
 ) -> impl Responder {
     let row = sqlx::query(
         r#"
-        SELECT r.id AS rule_id, r.name AS rule_name, p.id AS provider_id,
+        SELECT r.id AS rule_id, r.name AS rule_name, COALESCE(r.strategy, 'priority') AS strategy,
+               p.id AS provider_id,
                p.display_name AS provider_name, COALESCE(p.code, p.name) AS provider_code,
-               p.health_status, fp.display_name AS fallback_provider_name
+               p.health_status, fp.display_name AS fallback_provider_name,
+               COALESCE(pm.success_rate, p.success_rate, 0)::float8 AS success_rate,
+               COALESCE(pm.provider_fee_percent, 0)::float8 AS provider_fee_percent,
+               COALESCE(pm.avg_latency_ms, p.avg_latency_ms, 0)::int AS avg_latency_ms,
+               COALESCE(pm.attempt_count, 0)::bigint AS attempt_count,
+               (
+                 COALESCE(pm.success_rate, p.success_rate, 0)::float8
+                 - COALESCE(pm.provider_fee_percent, 0)::float8
+                 - (COALESCE(pm.avg_latency_ms, p.avg_latency_ms, 0)::float8 / 1000.0)
+                 + (COALESCE(r.provider_weight, 100)::float8 / 100.0)
+               ) AS provider_score
         FROM payment_routing_rules r
         JOIN payment_providers p ON p.id = r.provider_id
         LEFT JOIN payment_providers fp ON fp.id = COALESCE(r.fallback_provider_id, r.failover_provider_id)
+        LEFT JOIN provider_performance_metrics pm ON pm.provider_id = p.id
+          AND ($1::text IS NULL OR pm.payment_method IS NULL OR pm.payment_method = $1)
+          AND ($2::text IS NULL OR pm.currency IS NULL OR pm.currency = $2)
+          AND ($3::text IS NULL OR pm.country IS NULL OR pm.country = $3)
         WHERE r.status = 'active'
           AND p.status = 'active'
           AND p.health_status IS DISTINCT FROM 'failed'
@@ -1361,7 +1595,16 @@ async fn simulate_routing(
           AND ($5::text IS NULL OR r.risk_level IS NULL OR r.risk_level = $5)
           AND ($6::text IS NULL OR r.customer_region IS NULL OR r.customer_region = $6)
           AND ($7::text IS NULL OR r.business_line IS NULL OR r.business_line = $7)
-        ORDER BY r.priority ASC, p.priority ASC
+          AND (r.effective_from IS NULL OR r.effective_from <= NOW())
+          AND (r.effective_until IS NULL OR r.effective_until >= NOW())
+          AND (r.min_success_rate IS NULL OR COALESCE(pm.success_rate, p.success_rate, 0) >= r.min_success_rate)
+          AND (r.max_provider_fee_percent IS NULL OR COALESCE(pm.provider_fee_percent, 0) <= r.max_provider_fee_percent)
+          AND (r.max_latency_ms IS NULL OR COALESCE(pm.avg_latency_ms, p.avg_latency_ms, 0) <= r.max_latency_ms)
+        ORDER BY
+          CASE WHEN COALESCE(r.strategy, 'priority') = 'highest_success_rate' THEN COALESCE(pm.success_rate, p.success_rate, 0) END DESC,
+          CASE WHEN COALESCE(r.strategy, 'priority') = 'lowest_cost' THEN COALESCE(pm.provider_fee_percent, 0) END ASC,
+          CASE WHEN COALESCE(r.strategy, 'priority') = 'latency_aware' THEN COALESCE(pm.avg_latency_ms, p.avg_latency_ms, 0) END ASC,
+          r.priority ASC, p.priority ASC
         LIMIT 1
         "#,
     )
@@ -1376,20 +1619,39 @@ async fn simulate_routing(
     .await;
 
     match row {
-        Ok(Some(row)) => HttpResponse::Ok().json(RoutingSimulationResponse {
-            selected_provider_id: Some(row.get("provider_id")),
-            selected_provider_code: Some(row.get("provider_code")),
-            selected_provider: Some(row.get("provider_name")),
-            routing_rule_id: Some(row.get("rule_id")),
-            matched_routing_rule: Some(row.get("rule_name")),
-            fallback_provider: row.get("fallback_provider_name"),
-            decision_reason: "highest priority active provider matched request; maintenance and failed health skipped".to_string(),
-            estimated_provider_fee: request.amount * 18 / 1000,
-            estimated_company_fee: request.amount * 7 / 1000,
-            risk_decision: request.risk_level.clone().unwrap_or_else(|| "allow".to_string()),
-            provider_health_used: row.get("health_status"),
-            failover_applied: false,
-        }),
+        Ok(Some(row)) => {
+            let provider_fee_percent = row.get::<f64, _>("provider_fee_percent");
+            let estimated_provider_fee =
+                ((request.amount as f64) * provider_fee_percent / 100.0).round() as i64;
+            HttpResponse::Ok().json(RoutingSimulationResponse {
+                selected_provider_id: Some(row.get("provider_id")),
+                selected_provider_code: Some(row.get("provider_code")),
+                selected_provider: Some(row.get("provider_name")),
+                routing_rule_id: Some(row.get("rule_id")),
+                matched_routing_rule: Some(row.get("rule_name")),
+                fallback_provider: row.get("fallback_provider_name"),
+                decision_reason: "Eligible provider matched strategy, health, cost, success, latency, and amount filters.".to_string(),
+                estimated_provider_fee,
+                estimated_company_fee: request.amount * 7 / 1000,
+                risk_decision: request.risk_level.clone().unwrap_or_else(|| "allow".to_string()),
+                provider_health_used: row.get("health_status"),
+                failover_applied: false,
+                provider_score: row.get("provider_score"),
+                candidate_providers: vec![json!({
+                    "provider": row.get::<String, _>("provider_name"),
+                    "score": row.get::<f64, _>("provider_score"),
+                    "success_rate": row.get::<f64, _>("success_rate"),
+                    "latency_ms": row.get::<i32, _>("avg_latency_ms"),
+                    "fee_percent": provider_fee_percent,
+                    "attempt_count": row.get::<i64, _>("attempt_count")
+                })],
+                rejected_providers: vec![],
+                fee_estimate: estimated_provider_fee,
+                latency_estimate_ms: row.get("avg_latency_ms"),
+                success_estimate: row.get("success_rate"),
+                strategy_used: row.get("strategy"),
+            })
+        }
         Ok(None) => HttpResponse::Ok().json(RoutingSimulationResponse {
             selected_provider_id: None,
             selected_provider_code: None,
@@ -1397,12 +1659,23 @@ async fn simulate_routing(
             routing_rule_id: None,
             matched_routing_rule: None,
             fallback_provider: None,
-            decision_reason: "No active routing rule matched; use default/fallback provider if configured".to_string(),
+            decision_reason:
+                "No active routing rule matched; use default/fallback provider if configured"
+                    .to_string(),
             estimated_provider_fee: 0,
             estimated_company_fee: 0,
             risk_decision: "review".to_string(),
             provider_health_used: "unknown".to_string(),
             failover_applied: false,
+            provider_score: 0.0,
+            candidate_providers: vec![],
+            rejected_providers: vec![
+                json!({ "reason": "No eligible active provider matched filters" }),
+            ],
+            fee_estimate: 0,
+            latency_estimate_ms: 0,
+            success_estimate: 0.0,
+            strategy_used: "priority".to_string(),
         }),
         Err(e) => {
             tracing::error!("Routing simulation failed: {}", e);
@@ -1411,7 +1684,10 @@ async fn simulate_routing(
     }
 }
 
-async fn list_transactions(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
+async fn list_transactions(
+    pool: web::Data<PgPool>,
+    query: web::Query<ListQuery>,
+) -> impl Responder {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
     let status = query.status.clone();
@@ -1440,12 +1716,97 @@ async fn list_transactions(pool: web::Data<PgPool>, query: web::Query<ListQuery>
     .await;
 
     match rows {
-        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
         Err(e) => {
             tracing::error!("List company transactions failed: {}", e);
             server_error("Failed to load transactions")
         }
     }
+}
+
+async fn list_ledger(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
+    let limit = query.limit.unwrap_or(100).clamp(1, 200);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let rows = sqlx::query(
+        r#"
+        SELECT le.id, le.created_at, le.transaction_group_id, le.source_type, le.source_id,
+               la.name AS account, la.owner_type, la.owner_id,
+               CASE WHEN COALESCE(le.direction, le.entry_type) = 'debit' THEN le.amount ELSE 0 END AS debit,
+               CASE WHEN COALESCE(le.direction, le.entry_type) = 'credit' THEN le.amount ELSE 0 END AS credit,
+               le.currency, le.balance_after, le.status, le.description
+        FROM ledger_entries le
+        JOIN ledger_accounts la ON la.id = le.account_id
+        ORDER BY le.created_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.get_ref())
+    .await;
+
+    let summary = sqlx::query(
+        r#"
+        SELECT
+          COALESCE((SELECT SUM(balance) FROM ledger_accounts WHERE owner_type = 'company'), 0)::bigint AS total_company_balance,
+          COALESCE((SELECT SUM(net_settlement_amount) FROM settlement_batches_company WHERE status IN ('pending','processing')), 0)::bigint AS pending_settlement,
+          COALESCE((SELECT SUM(balance) FROM ledger_accounts WHERE owner_type = 'business_account' AND account_type IN ('payable','merchant')), 0)::bigint AS business_payable,
+          COALESCE((SELECT SUM(provider_fee_amount) FROM settlement_batches_company), 0)::bigint AS provider_fees,
+          COALESCE((SELECT SUM(company_fee_amount) FROM settlement_batches_company), 0)::bigint AS company_revenue,
+          COALESCE((SELECT SUM(amount) FROM reserve_balances WHERE status = 'held'), 0)::bigint AS reserve_balance,
+          COALESCE((SELECT COUNT(*) FROM ledger_entries WHERE status <> 'posted'), 0)::bigint AS unreconciled_ledger_entries
+        "#,
+    )
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match (rows, summary) {
+        (Ok(rows), Ok(summary)) => HttpResponse::Ok().json(json!({
+            "summary": row_to_json(&summary),
+            "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
+        })),
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::error!("List ledger failed: {}", e);
+            server_error("Failed to load ledger")
+        }
+    }
+}
+
+async fn get_ledger_group(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let rows = sqlx::query(
+        r#"
+        SELECT le.*, la.name AS account, la.owner_type, la.owner_id
+        FROM ledger_entries le
+        JOIN ledger_accounts la ON la.id = le.account_id
+        WHERE le.transaction_group_id = $1
+        ORDER BY le.created_at ASC
+        "#,
+    )
+    .bind(id)
+    .fetch_all(pool.get_ref())
+    .await;
+    match rows {
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Err(e) => {
+            tracing::error!("Load ledger group failed: {}", e);
+            server_error("Failed to load ledger group")
+        }
+    }
+}
+
+async fn export_ledger(pool: web::Data<PgPool>) -> impl Responder {
+    audit(
+        &pool,
+        "ledger.exported",
+        "ledger",
+        None,
+        json!({ "status": "queued" }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "download_url": "pending-ledger-export" }))
 }
 
 async fn get_transaction(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
@@ -1458,9 +1819,19 @@ async fn get_transaction(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl
         return HttpResponse::NotFound().json(json!({ "message": "Transaction not found" }));
     };
 
-    let attempts = fetch_json_rows(pool.get_ref(), "SELECT * FROM payment_attempts WHERE payment_order_id = $1 ORDER BY created_at DESC", id).await;
+    let attempts = fetch_json_rows(
+        pool.get_ref(),
+        "SELECT * FROM payment_attempts WHERE payment_order_id = $1 ORDER BY created_at DESC",
+        id,
+    )
+    .await;
     let webhooks = fetch_json_rows(pool.get_ref(), "SELECT * FROM payment_webhook_events WHERE related_payment_id = $1 ORDER BY received_at DESC", id).await;
-    let refunds = fetch_json_rows(pool.get_ref(), "SELECT * FROM payment_refunds WHERE payment_order_id = $1 ORDER BY created_at DESC", id).await;
+    let refunds = fetch_json_rows(
+        pool.get_ref(),
+        "SELECT * FROM payment_refunds WHERE payment_order_id = $1 ORDER BY created_at DESC",
+        id,
+    )
+    .await;
 
     HttpResponse::Ok().json(json!({
         "transaction": row_to_json(&row),
@@ -1482,14 +1853,47 @@ async fn transaction_action(
         "cancel" => "cancelled",
         _ => "action_requested",
     };
-    let updated = sqlx::query("UPDATE payment_orders SET status = $2, updated_at = NOW() WHERE id = $1")
-        .bind(id)
-        .bind(status)
-        .execute(pool.get_ref())
-        .await;
+    let updated =
+        sqlx::query("UPDATE payment_orders SET status = $2, updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .bind(status)
+            .execute(pool.get_ref())
+            .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, &format!("transaction.{action}"), "payment_order", Some(id), json!({ "status": status })).await;
+            if action == "capture" {
+                let payment = sqlx::query(
+                    "SELECT amount, currency, connector FROM payment_orders WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(pool.get_ref())
+                .await;
+                if let Ok(Some(row)) = payment {
+                    let amount: i64 = row.get("amount");
+                    let currency: String = row.get("currency");
+                    let _ = post_balanced_ledger(
+                        &pool,
+                        "payment_captured",
+                        "payment_order",
+                        id,
+                        None,
+                        None,
+                        amount,
+                        &currency,
+                        &format!("payment-capture-{id}"),
+                        "Payment captured",
+                    )
+                    .await;
+                }
+            }
+            audit(
+                &pool,
+                &format!("transaction.{action}"),
+                "payment_order",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Transaction not found" })),
@@ -1530,7 +1934,8 @@ async fn list_refunds(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> 
     .fetch_all(pool.get_ref())
     .await;
     match rows {
-        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
         Err(e) => {
             tracing::error!("List refunds failed: {}", e);
             server_error("Failed to load refunds")
@@ -1542,9 +1947,10 @@ async fn insert_refund(pool: web::Data<PgPool>, request: RefundRequest) -> HttpR
     let result = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO payment_refunds (
-            payment_order_id, provider_id, amount, currency, reason, refund_source, idempotency_key
+            payment_order_id, provider_id, amount, currency, reason, refund_source, idempotency_key,
+            refund_type, business_account_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
         "#,
     )
@@ -1554,13 +1960,22 @@ async fn insert_refund(pool: web::Data<PgPool>, request: RefundRequest) -> HttpR
     .bind(request.currency.as_deref().unwrap_or("INR"))
     .bind(request.reason.as_deref())
     .bind(request.refund_source.as_deref().unwrap_or("company"))
-    .bind(request.idempotency_key)
+    .bind(&request.idempotency_key)
+    .bind(request.refund_type.as_deref().unwrap_or("full"))
+    .bind(request.business_account_id)
     .fetch_one(pool.get_ref())
     .await;
 
     match result {
         Ok(id) => {
-            audit(&pool, "refund.requested", "payment_refund", Some(id), json!({ "amount": request.amount })).await;
+            audit(
+                &pool,
+                "refund.requested",
+                "payment_refund",
+                Some(id),
+                json!({ "amount": request.amount }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": "requested" }))
         }
         Err(e) => {
@@ -1571,7 +1986,13 @@ async fn insert_refund(pool: web::Data<PgPool>, request: RefundRequest) -> HttpR
 }
 
 async fn get_refund(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    get_by_id(pool, "payment_refunds", path.into_inner(), "Refund not found").await
+    get_by_id(
+        pool,
+        "payment_refunds",
+        path.into_inner(),
+        "Refund not found",
+    )
+    .await
 }
 
 async fn refund_status_action(
@@ -1580,14 +2001,50 @@ async fn refund_status_action(
     status: &'static str,
 ) -> impl Responder {
     let id = path.into_inner();
-    let updated = sqlx::query("UPDATE payment_refunds SET status = $2, updated_at = NOW() WHERE id = $1")
-        .bind(id)
-        .bind(status)
-        .execute(pool.get_ref())
-        .await;
+    let updated =
+        sqlx::query("UPDATE payment_refunds SET status = $2, updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .bind(status)
+            .execute(pool.get_ref())
+            .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, &format!("refund.{status}"), "payment_refund", Some(id), json!({ "status": status })).await;
+            if matches!(status, "initiated" | "processing") {
+                let refund = sqlx::query(
+                    "SELECT amount, currency, provider_id, business_account_id, idempotency_key FROM payment_refunds WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(pool.get_ref())
+                .await;
+                if let Ok(Some(row)) = refund {
+                    let amount: i64 = row.get("amount");
+                    let currency: String = row.get("currency");
+                    let provider_id: Option<Uuid> = row.get("provider_id");
+                    let business_account_id: Option<Uuid> = row.get("business_account_id");
+                    let idempotency_key: String = row.get("idempotency_key");
+                    let _ = post_balanced_ledger(
+                        &pool,
+                        "refund",
+                        "payment_refund",
+                        id,
+                        provider_id,
+                        business_account_id,
+                        amount,
+                        &currency,
+                        &format!("refund-{idempotency_key}"),
+                        "Refund initiated",
+                    )
+                    .await;
+                }
+            }
+            audit(
+                &pool,
+                &format!("refund.{status}"),
+                "payment_refund",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Refund not found" })),
@@ -1635,7 +2092,11 @@ async fn save_webhook_config(
     pool: web::Data<PgPool>,
     request: web::Json<WebhookConfigRequest>,
 ) -> impl Responder {
-    let (encrypted_secret, nonce, masked_secret) = match request.signing_secret.as_deref().filter(|v| !v.trim().is_empty()) {
+    let (encrypted_secret, nonce, masked_secret) = match request
+        .signing_secret
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+    {
         Some(secret) => match encrypt_secret(secret.trim()) {
             Ok((encrypted, nonce)) => (Some(encrypted), Some(nonce), mask_secret(secret.trim())),
             Err(message) => return HttpResponse::BadRequest().json(json!({ "message": message })),
@@ -1674,7 +2135,14 @@ async fn save_webhook_config(
 
     match saved {
         Ok(id) => {
-            audit(&pool, "webhook_config.saved", "webhook_endpoint_config", Some(id), json!({ "provider_id": request.provider_id, "environment": request.environment })).await;
+            audit(
+                &pool,
+                "webhook_config.saved",
+                "webhook_endpoint_config",
+                Some(id),
+                json!({ "provider_id": request.provider_id, "environment": request.environment }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id }))
         }
         Err(e) => {
@@ -1686,7 +2154,14 @@ async fn save_webhook_config(
 
 async fn test_webhook_config(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let id = path.into_inner();
-    audit(&pool, "webhook_config.tested", "webhook_endpoint_config", Some(id), json!({ "status": "queued" })).await;
+    audit(
+        &pool,
+        "webhook_config.tested",
+        "webhook_endpoint_config",
+        Some(id),
+        json!({ "status": "queued" }),
+    )
+    .await;
     HttpResponse::Ok().json(json!({ "id": id, "status": "test_queued" }))
 }
 
@@ -1712,7 +2187,14 @@ async fn rotate_webhook_secret(
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "webhook_secret.rotated", "webhook_endpoint_config", Some(id), json!({ "masked_signing_secret": masked })).await;
+            audit(
+                &pool,
+                "webhook_secret.rotated",
+                "webhook_endpoint_config",
+                Some(id),
+                json!({ "masked_signing_secret": masked }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "masked_value": masked }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Webhook config not found" })),
@@ -1735,7 +2217,8 @@ async fn list_webhooks(pool: web::Data<PgPool>, query: web::Query<ListQuery>) ->
     .fetch_all(pool.get_ref())
     .await;
     match rows {
-        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
         Err(e) => {
             tracing::error!("List webhook events failed: {}", e);
             server_error("Failed to load webhooks")
@@ -1744,7 +2227,13 @@ async fn list_webhooks(pool: web::Data<PgPool>, query: web::Query<ListQuery>) ->
 }
 
 async fn get_webhook(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    get_by_id(pool, "payment_webhook_events", path.into_inner(), "Webhook not found").await
+    get_by_id(
+        pool,
+        "payment_webhook_events",
+        path.into_inner(),
+        "Webhook not found",
+    )
+    .await
 }
 
 async fn retry_webhook(
@@ -1762,7 +2251,14 @@ async fn retry_webhook(
 
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "webhook.retry", "payment_webhook_event", Some(id), json!({ "reason": request.reason })).await;
+            audit(
+                &pool,
+                "webhook.retry",
+                "payment_webhook_event",
+                Some(id),
+                json!({ "reason": request.reason }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "processing_status": "queued" }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Webhook not found" })),
@@ -1781,7 +2277,14 @@ async fn ignore_webhook(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl 
         .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "webhook.ignored", "payment_webhook_event", Some(id), json!({ "processing_status": "ignored" })).await;
+            audit(
+                &pool,
+                "webhook.ignored",
+                "payment_webhook_event",
+                Some(id),
+                json!({ "processing_status": "ignored" }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "processing_status": "ignored" }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Webhook not found" })),
@@ -1804,7 +2307,8 @@ async fn list_settlements(pool: web::Data<PgPool>, query: web::Query<ListQuery>)
     .fetch_all(pool.get_ref())
     .await;
     match rows {
-        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
         Err(e) => {
             tracing::error!("List company settlements failed: {}", e);
             server_error("Failed to load settlements")
@@ -1813,7 +2317,13 @@ async fn list_settlements(pool: web::Data<PgPool>, query: web::Query<ListQuery>)
 }
 
 async fn get_settlement(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    get_by_id(pool, "settlement_batches_company", path.into_inner(), "Settlement not found").await
+    get_by_id(
+        pool,
+        "settlement_batches_company",
+        path.into_inner(),
+        "Settlement not found",
+    )
+    .await
 }
 
 async fn settlement_action(
@@ -1834,7 +2344,40 @@ async fn settlement_action(
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, &format!("settlement.{status}"), "settlement_batch", Some(id), json!({ "status": status })).await;
+            if status == "settled" {
+                let settlement = sqlx::query(
+                    "SELECT net_settlement_amount, currency, provider_id FROM settlement_batches_company WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(pool.get_ref())
+                .await;
+                if let Ok(Some(row)) = settlement {
+                    let amount: i64 = row.get("net_settlement_amount");
+                    let currency: String = row.get("currency");
+                    let provider_id: Option<Uuid> = row.get("provider_id");
+                    let _ = post_balanced_ledger(
+                        &pool,
+                        "settlement_credit",
+                        "settlement_batch",
+                        id,
+                        provider_id,
+                        None,
+                        amount,
+                        &currency,
+                        &format!("settlement-{id}"),
+                        "Settlement payout",
+                    )
+                    .await;
+                }
+            }
+            audit(
+                &pool,
+                &format!("settlement.{status}"),
+                "settlement_batch",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Settlement not found" })),
@@ -1845,24 +2388,41 @@ async fn settlement_action(
     }
 }
 
-async fn hold_settlement(pool: web::Data<PgPool>, path: web::Path<Uuid>, request: web::Json<SettlementActionRequest>) -> impl Responder {
+async fn hold_settlement(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<SettlementActionRequest>,
+) -> impl Responder {
     settlement_action(pool, path, request, "on_hold").await
 }
 
-async fn release_settlement(pool: web::Data<PgPool>, path: web::Path<Uuid>, request: web::Json<SettlementActionRequest>) -> impl Responder {
+async fn release_settlement(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<SettlementActionRequest>,
+) -> impl Responder {
     settlement_action(pool, path, request, "processing").await
 }
 
-async fn mark_settlement_settled(pool: web::Data<PgPool>, path: web::Path<Uuid>, request: web::Json<SettlementActionRequest>) -> impl Responder {
+async fn mark_settlement_settled(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<SettlementActionRequest>,
+) -> impl Responder {
     settlement_action(pool, path, request, "settled").await
 }
 
-async fn mark_settlement_failed(pool: web::Data<PgPool>, path: web::Path<Uuid>, request: web::Json<SettlementActionRequest>) -> impl Responder {
+async fn mark_settlement_failed(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<SettlementActionRequest>,
+) -> impl Responder {
     settlement_action(pool, path, request, "failed").await
 }
 
 async fn export_settlement(path: web::Path<Uuid>) -> impl Responder {
-    HttpResponse::Ok().json(json!({ "settlement_id": path.into_inner(), "download_url": "pending-export-job" }))
+    HttpResponse::Ok()
+        .json(json!({ "settlement_id": path.into_inner(), "download_url": "pending-export-job" }))
 }
 
 async fn list_reconciliation(pool: web::Data<PgPool>) -> impl Responder {
@@ -1888,7 +2448,8 @@ async fn get_reconciliation(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> i
         .fetch_optional(pool.get_ref())
         .await;
     let Ok(Some(row)) = file else {
-        return HttpResponse::NotFound().json(json!({ "message": "Reconciliation file not found" }));
+        return HttpResponse::NotFound()
+            .json(json!({ "message": "Reconciliation file not found" }));
     };
     let records = fetch_json_rows(pool.get_ref(), "SELECT * FROM reconciliation_records WHERE reconciliation_file_id = $1 ORDER BY created_at DESC", id).await;
     HttpResponse::Ok().json(json!({ "file": row_to_json(&row), "records": records }))
@@ -1910,10 +2471,19 @@ async fn resolve_reconciliation(
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "reconciliation.resolved", "reconciliation_record", Some(id), json!({ "status": request.status })).await;
+            audit(
+                &pool,
+                "reconciliation.resolved",
+                "reconciliation_record",
+                Some(id),
+                json!({ "status": request.status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": request.status }))
         }
-        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Reconciliation record not found" })),
+        Ok(_) => {
+            HttpResponse::NotFound().json(json!({ "message": "Reconciliation record not found" }))
+        }
         Err(e) => {
             tracing::error!("Resolve reconciliation failed: {}", e);
             server_error("Failed to resolve reconciliation")
@@ -1921,20 +2491,34 @@ async fn resolve_reconciliation(
     }
 }
 
-async fn auto_match_reconciliation(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+async fn auto_match_reconciliation(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
     let id = path.into_inner();
-    audit(&pool, "reconciliation.auto_match", "reconciliation_file", Some(id), json!({ "status": "queued" })).await;
+    audit(
+        &pool,
+        "reconciliation.auto_match",
+        "reconciliation_file",
+        Some(id),
+        json!({ "status": "queued" }),
+    )
+    .await;
     HttpResponse::Ok().json(json!({ "id": id, "status": "auto_match_queued" }))
 }
 
-async fn reconciliation_mismatches(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+async fn reconciliation_mismatches(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
     let id = path.into_inner();
     let rows = sqlx::query("SELECT * FROM reconciliation_records WHERE reconciliation_file_id = $1 AND status IN ('unmatched','mismatch','duplicate') ORDER BY created_at DESC")
         .bind(id)
         .fetch_all(pool.get_ref())
         .await;
     match rows {
-        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
         Err(e) => {
             tracing::error!("Load reconciliation mismatches failed: {}", e);
             server_error("Failed to load mismatches")
@@ -1943,34 +2527,315 @@ async fn reconciliation_mismatches(pool: web::Data<PgPool>, path: web::Path<Uuid
 }
 
 async fn export_reconciliation_discrepancies(path: web::Path<Uuid>) -> impl Responder {
-    HttpResponse::Ok().json(json!({ "reconciliation_id": path.into_inner(), "download_url": "pending-export-job" }))
+    HttpResponse::Ok().json(
+        json!({ "reconciliation_id": path.into_inner(), "download_url": "pending-export-job" }),
+    )
 }
 
 async fn list_disputes(pool: web::Data<PgPool>) -> impl Responder {
-    query_items(pool, "SELECT * FROM disputes_company ORDER BY created_at DESC LIMIT 50", "Failed to load disputes").await
+    query_items(
+        pool,
+        "SELECT * FROM disputes_company ORDER BY created_at DESC LIMIT 50",
+        "Failed to load disputes",
+    )
+    .await
+}
+
+async fn dispute_action(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    status: &'static str,
+    request: web::Json<DisputeActionRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let body = request.into_inner();
+    let note = body.note.clone().or(body.evidence_text.clone());
+    let updated = sqlx::query(
+        r#"
+        UPDATE disputes_company
+        SET status = $2,
+            evidence_status = CASE WHEN $2 = 'evidence_submitted' THEN 'submitted' ELSE evidence_status END,
+            outcome = COALESCE($3, outcome),
+            internal_notes = COALESCE($4, internal_notes),
+            timeline = timeline || $5::jsonb,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+        "#,
+    )
+    .bind(id)
+    .bind(status)
+    .bind(body.outcome.as_deref())
+    .bind(note.as_deref())
+    .bind(json!([{
+        "status": status,
+        "note": note,
+        "created_at": Utc::now()
+    }]))
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match updated {
+        Ok(Some(_)) => {
+            if matches!(status, "lost" | "won") {
+                let dispute = sqlx::query(
+                    "SELECT amount, currency, provider_dispute_id, business_account_id FROM disputes_company WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(pool.get_ref())
+                .await;
+                if let Ok(Some(row)) = dispute {
+                    let amount: i64 = row.get("amount");
+                    let currency: String = row.get("currency");
+                    let business_account_id: Option<Uuid> = row.get("business_account_id");
+                    let ledger_type = if status == "lost" {
+                        "dispute_debit"
+                    } else {
+                        "dispute_reversal"
+                    };
+                    let _ = post_balanced_ledger(
+                        &pool,
+                        ledger_type,
+                        "dispute",
+                        id,
+                        None,
+                        business_account_id,
+                        amount,
+                        &currency,
+                        &format!("{ledger_type}-{id}"),
+                        "Dispute ledger impact",
+                    )
+                    .await;
+                }
+            }
+            audit(
+                &pool,
+                &format!("dispute.{status}"),
+                "dispute",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": status }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Dispute not found" })),
+        Err(e) => {
+            tracing::error!("Dispute action failed: {}", e);
+            server_error("Failed to update dispute")
+        }
+    }
+}
+
+async fn submit_dispute_evidence(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<DisputeActionRequest>,
+) -> impl Responder {
+    dispute_action(pool, path, "evidence_submitted", request).await
+}
+
+async fn mark_dispute_won(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<DisputeActionRequest>,
+) -> impl Responder {
+    dispute_action(pool, path, "won", request).await
+}
+
+async fn mark_dispute_lost(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<DisputeActionRequest>,
+) -> impl Responder {
+    dispute_action(pool, path, "lost", request).await
+}
+
+async fn list_business_accounts(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT m.id,
+               COALESCE(m.display_name, m.business_name, m.name) AS display_name,
+               COALESCE(m.legal_name, m.business_name, m.name) AS legal_name,
+               COALESCE(m.business_type, 'company') AS business_type,
+               m.email,
+               m.phone,
+               COALESCE(m.country, 'IN') AS country,
+               COALESCE(m.status, m.onboarding_status, 'draft') AS status,
+               COALESCE(m.kyc_status, 'not_started') AS kyc_status,
+               COALESCE(m.risk_status, 'low') AS risk_status,
+               COALESCE(m.payout_status, 'not_configured') AS payout_status,
+               COALESCE(m.default_currency, 'INR') AS default_currency,
+               (
+                 COALESCE(m.status, m.onboarding_status, '') = 'active'
+                 AND COALESCE(m.kyc_status, '') = 'verified'
+                 AND COALESCE(m.risk_status, '') <> 'blocked'
+                 AND EXISTS (
+                   SELECT 1 FROM business_account_bank_accounts ba
+                   WHERE ba.business_account_id = m.id
+                     AND ba.verification_status = 'verified'
+                     AND ba.status = 'active'
+                 )
+                 AND EXISTS (
+                   SELECT 1 FROM business_account_provider_links pl
+                   WHERE pl.business_account_id = m.id
+                     AND pl.onboarding_status = 'active'
+                     AND pl.payouts_enabled = true
+                 )
+               ) AS payout_ready,
+               m.created_at,
+               m.updated_at
+        FROM merchants m
+        ORDER BY m.created_at DESC
+        LIMIT 200
+        "#,
+        "Failed to load business accounts",
+    )
+    .await
+}
+
+async fn get_business_account(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let profile = sqlx::query(
+        r#"
+        SELECT id, COALESCE(display_name, business_name, name) AS display_name, legal_name,
+               business_type, email, phone, country, status, kyc_status, risk_status,
+               payout_status, default_currency, created_at, updated_at
+        FROM merchants
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(profile)) = profile else {
+        return HttpResponse::NotFound().json(json!({ "message": "Business account not found" }));
+    };
+    let documents = fetch_json_rows(pool.get_ref(), "SELECT * FROM business_account_documents WHERE business_account_id = $1 ORDER BY uploaded_at DESC", id).await;
+    let bank_accounts = fetch_json_rows(pool.get_ref(), "SELECT id, business_account_id, account_holder_name, bank_name, masked_account_number, ifsc_or_swift_or_routing_code, currency, verification_status, status, created_at FROM business_account_bank_accounts WHERE business_account_id = $1 ORDER BY created_at DESC", id).await;
+    let provider_links = fetch_json_rows(pool.get_ref(), "SELECT * FROM business_account_provider_links WHERE business_account_id = $1 ORDER BY created_at DESC", id).await;
+    let ledger = fetch_json_rows(pool.get_ref(), "SELECT le.* FROM ledger_entries le JOIN ledger_accounts la ON la.id = le.account_id WHERE la.owner_id = $1 ORDER BY le.created_at DESC LIMIT 50", id).await;
+    let risk_notes = fetch_json_rows(pool.get_ref(), "SELECT * FROM business_account_risk_notes WHERE business_account_id = $1 ORDER BY created_at DESC", id).await;
+    HttpResponse::Ok().json(json!({
+        "profile": row_to_json(&profile),
+        "kyc_documents": documents,
+        "bank_accounts": bank_accounts,
+        "provider_links": provider_links,
+        "ledger_history": ledger,
+        "risk_notes": risk_notes,
+        "audit_trail": []
+    }))
+}
+
+async fn patch_business_account(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<BusinessAccountPatchRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let request = request.into_inner();
+    let updated = sqlx::query(
+        r#"
+        UPDATE merchants
+        SET status = COALESCE($2, status),
+            onboarding_status = COALESCE($2, onboarding_status),
+            kyc_status = COALESCE($3, kyc_status),
+            risk_status = COALESCE($4, risk_status),
+            payout_status = COALESCE($5, payout_status),
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+        "#,
+    )
+    .bind(id)
+    .bind(request.status.as_deref())
+    .bind(request.kyc_status.as_deref())
+    .bind(request.risk_status.as_deref())
+    .bind(request.payout_status.as_deref())
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    if let Some(note) = request
+        .note
+        .as_deref()
+        .filter(|note| !note.trim().is_empty())
+    {
+        let _ = sqlx::query("INSERT INTO business_account_risk_notes (business_account_id, note, risk_status) VALUES ($1, $2, $3)")
+            .bind(id)
+            .bind(note.trim())
+            .bind(request.risk_status.as_deref())
+            .execute(pool.get_ref())
+            .await;
+    }
+
+    match updated {
+        Ok(Some(_)) => {
+            audit(
+                &pool,
+                "business_account.updated",
+                "business_account",
+                Some(id),
+                json!({
+                    "status": request.status,
+                    "kyc_status": request.kyc_status,
+                    "risk_status": request.risk_status,
+                    "payout_status": request.payout_status
+                }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Ok(None) => {
+            HttpResponse::NotFound().json(json!({ "message": "Business account not found" }))
+        }
+        Err(e) => {
+            tracing::error!("Business account update failed: {}", e);
+            server_error("Failed to update business account")
+        }
+    }
 }
 
 async fn list_risk_rules(pool: web::Data<PgPool>) -> impl Responder {
-    query_items(pool, "SELECT * FROM risk_rules ORDER BY priority ASC, created_at DESC", "Failed to load risk rules").await
+    query_items(
+        pool,
+        "SELECT * FROM risk_rules ORDER BY priority ASC, created_at DESC",
+        "Failed to load risk rules",
+    )
+    .await
 }
 
-async fn create_risk_rule(pool: web::Data<PgPool>, request: web::Json<RiskRuleRequest>) -> impl Responder {
+async fn create_risk_rule(
+    pool: web::Data<PgPool>,
+    request: web::Json<RiskRuleRequest>,
+) -> impl Responder {
     save_risk_rule(pool, None, request.into_inner()).await
 }
 
-async fn update_risk_rule(pool: web::Data<PgPool>, path: web::Path<Uuid>, request: web::Json<RiskRuleRequest>) -> impl Responder {
+async fn update_risk_rule(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<RiskRuleRequest>,
+) -> impl Responder {
     save_risk_rule(pool, Some(path.into_inner()), request.into_inner()).await
 }
 
 async fn disable_risk_rule(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let id = path.into_inner();
-    let updated = sqlx::query("UPDATE risk_rules SET status = 'disabled', updated_at = NOW() WHERE id = $1")
-        .bind(id)
-        .execute(pool.get_ref())
-        .await;
+    let updated =
+        sqlx::query("UPDATE risk_rules SET status = 'disabled', updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "risk_rule.disabled", "risk_rule", Some(id), json!({ "status": "disabled" })).await;
+            audit(
+                &pool,
+                "risk_rule.disabled",
+                "risk_rule",
+                Some(id),
+                json!({ "status": "disabled" }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": "disabled" }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Risk rule not found" })),
@@ -1981,7 +2846,11 @@ async fn disable_risk_rule(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> im
     }
 }
 
-async fn save_risk_rule(pool: web::Data<PgPool>, rule_id: Option<Uuid>, request: RiskRuleRequest) -> HttpResponse {
+async fn save_risk_rule(
+    pool: web::Data<PgPool>,
+    rule_id: Option<Uuid>,
+    request: RiskRuleRequest,
+) -> HttpResponse {
     let action = serde_json::to_string(&request.action)
         .unwrap_or_else(|_| "\"review\"".to_string())
         .trim_matches('"')
@@ -2015,7 +2884,14 @@ async fn save_risk_rule(pool: web::Data<PgPool>, rule_id: Option<Uuid>, request:
 
     match result {
         Ok(Some(id)) => {
-            audit(&pool, "risk_rule.saved", "risk_rule", Some(id), json!({ "name": request.name, "action": action })).await;
+            audit(
+                &pool,
+                "risk_rule.saved",
+                "risk_rule",
+                Some(id),
+                json!({ "name": request.name, "action": action }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id }))
         }
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Risk rule not found" })),
@@ -2027,11 +2903,21 @@ async fn save_risk_rule(pool: web::Data<PgPool>, rule_id: Option<Uuid>, request:
 }
 
 async fn list_risk_reviews(pool: web::Data<PgPool>) -> impl Responder {
-    query_items(pool, "SELECT * FROM risk_reviews ORDER BY created_at DESC LIMIT 50", "Failed to load risk reviews").await
+    query_items(
+        pool,
+        "SELECT * FROM risk_reviews ORDER BY created_at DESC LIMIT 50",
+        "Failed to load risk reviews",
+    )
+    .await
 }
 
 async fn list_audit_logs(pool: web::Data<PgPool>) -> impl Responder {
-    query_items(pool, "SELECT * FROM audit_logs_company ORDER BY created_at DESC LIMIT 100", "Failed to load audit logs").await
+    query_items(
+        pool,
+        "SELECT * FROM audit_logs_company ORDER BY created_at DESC LIMIT 100",
+        "Failed to load audit logs",
+    )
+    .await
 }
 
 async fn list_roles(pool: web::Data<PgPool>) -> impl Responder {
@@ -2049,6 +2935,614 @@ async fn list_roles(pool: web::Data<PgPool>) -> impl Responder {
         "Failed to load admin roles",
     )
     .await
+}
+
+async fn list_admin_users(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT au.id,
+               au.name,
+               au.email,
+               COALESCE(ar.name, au.role, 'Support Agent') AS role,
+               COALESCE(au.status, CASE WHEN COALESCE(au.is_active, true) THEN 'active' ELSE 'inactive' END) AS status,
+               COALESCE(au.mfa_enabled, au.totp_secret IS NOT NULL) AS mfa_enabled,
+               au.last_login_at,
+               au.created_at,
+               au.updated_at
+        FROM admin_users au
+        LEFT JOIN admin_roles ar ON ar.id = au.role_id
+        ORDER BY au.created_at DESC
+        "#,
+        "Failed to load admin users",
+    )
+    .await
+}
+
+async fn invite_admin_user(
+    pool: web::Data<PgPool>,
+    body: web::Json<AdminInviteRequest>,
+) -> impl Responder {
+    let request = body.into_inner();
+    if forbidden_role(&request.role) {
+        return HttpResponse::BadRequest().json(json!({ "message": "Forbidden admin role" }));
+    }
+    let role_id = role_id_by_name(&pool, &request.role).await;
+    let result = sqlx::query(
+        r#"
+        INSERT INTO admin_users (email, password_hash, name, role, role_id, status, is_active)
+        VALUES ($1, 'invite_pending', $2, $3, $4, 'invited', true)
+        ON CONFLICT (email) DO UPDATE
+        SET name = EXCLUDED.name,
+            role = EXCLUDED.role,
+            role_id = EXCLUDED.role_id,
+            status = 'invited',
+            is_active = true,
+            updated_at = NOW()
+        RETURNING id
+        "#,
+    )
+    .bind(request.email.trim().to_lowercase())
+    .bind(request.name.trim())
+    .bind(&request.role)
+    .bind(role_id)
+    .fetch_one(pool.get_ref())
+    .await;
+    match result {
+        Ok(row) => {
+            let id: Uuid = row.get("id");
+            audit(
+                &pool,
+                "admin.invited",
+                "admin_user",
+                Some(id),
+                json!({ "email": request.email, "role": request.role }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to invite admin user: {}", e);
+            server_error("Failed to invite admin user")
+        }
+    }
+}
+
+async fn patch_admin_user(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<AdminUserPatchRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let request = body.into_inner();
+    let result = sqlx::query(
+        r#"
+        UPDATE admin_users
+        SET name = COALESCE($2, name),
+            email = COALESCE($3, email),
+            status = COALESCE($4, status),
+            mfa_enabled = COALESCE($5, mfa_enabled),
+            is_active = CASE WHEN COALESCE($4, status) IN ('inactive', 'deactivated') THEN false ELSE is_active END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+        "#,
+    )
+    .bind(id)
+    .bind(request.name)
+    .bind(request.email.map(|email| email.trim().to_lowercase()))
+    .bind(request.status)
+    .bind(request.mfa_enabled)
+    .fetch_optional(pool.get_ref())
+    .await;
+    match result {
+        Ok(Some(_)) => {
+            audit(
+                &pool,
+                "admin.updated",
+                "admin_user",
+                Some(id),
+                json!({ "updated": true }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Admin user not found" })),
+        Err(e) => {
+            tracing::error!("Failed to update admin user: {}", e);
+            server_error("Failed to update admin user")
+        }
+    }
+}
+
+async fn set_admin_active(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    active: bool,
+) -> impl Responder {
+    let id = path.into_inner();
+    let status = if active { "active" } else { "deactivated" };
+    let result = sqlx::query("UPDATE admin_users SET is_active = $2, status = $3, updated_at = NOW() WHERE id = $1 RETURNING id")
+        .bind(id)
+        .bind(active)
+        .bind(status)
+        .fetch_optional(pool.get_ref())
+        .await;
+    match result {
+        Ok(Some(_)) => {
+            audit(
+                &pool,
+                if active {
+                    "admin.reactivated"
+                } else {
+                    "admin.deactivated"
+                },
+                "admin_user",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": status }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Admin user not found" })),
+        Err(e) => {
+            tracing::error!("Failed to update admin active state: {}", e);
+            server_error("Failed to update admin active state")
+        }
+    }
+}
+
+async fn deactivate_admin_user(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    set_admin_active(pool, path, false).await
+}
+
+async fn reactivate_admin_user(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    set_admin_active(pool, path, true).await
+}
+
+async fn assign_admin_role(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<AssignRoleRequest>,
+) -> impl Responder {
+    let user_id = path.into_inner();
+    let role = body.into_inner().role;
+    if forbidden_role(&role) {
+        return HttpResponse::BadRequest().json(json!({ "message": "Forbidden admin role" }));
+    }
+    let Some(role_id) = role_id_by_name(&pool, &role).await else {
+        return HttpResponse::BadRequest().json(json!({ "message": "Unknown role" }));
+    };
+    let assign_result = sqlx::query(
+        r#"
+        INSERT INTO admin_user_roles (admin_user_id, role_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .bind(role_id)
+    .execute(pool.get_ref())
+    .await;
+
+    let result =
+        match assign_result {
+            Ok(_) => sqlx::query(
+                "UPDATE admin_users SET role_id = $2, role = $3, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(user_id)
+            .bind(role_id)
+            .bind(&role)
+            .execute(pool.get_ref())
+            .await,
+            Err(e) => Err(e),
+        };
+
+    match result {
+        Ok(_) => {
+            audit(
+                &pool,
+                "role.assigned",
+                "admin_user",
+                Some(user_id),
+                json!({ "role": role }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": user_id }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to assign role: {}", e);
+            server_error("Failed to assign role")
+        }
+    }
+}
+
+async fn remove_admin_role(
+    pool: web::Data<PgPool>,
+    path: web::Path<(Uuid, String)>,
+) -> impl Responder {
+    let (user_id, role) = path.into_inner();
+    if role == "Super Admin" {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Super Admin role removal is blocked" }));
+    }
+    let Some(role_id) = role_id_by_name(&pool, &role).await else {
+        return HttpResponse::BadRequest().json(json!({ "message": "Unknown role" }));
+    };
+    let result =
+        sqlx::query("DELETE FROM admin_user_roles WHERE admin_user_id = $1 AND role_id = $2")
+            .bind(user_id)
+            .bind(role_id)
+            .execute(pool.get_ref())
+            .await;
+    match result {
+        Ok(_) => {
+            audit(
+                &pool,
+                "role.removed",
+                "admin_user",
+                Some(user_id),
+                json!({ "role": role }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": user_id }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to remove role: {}", e);
+            server_error("Failed to remove role")
+        }
+    }
+}
+
+async fn admin_user_audit(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let sql = r#"
+        SELECT *
+        FROM audit_logs_company
+        WHERE entity_type = 'admin_user' AND entity_id = $1
+        ORDER BY created_at DESC
+        LIMIT 100
+    "#;
+    match sqlx::query(sql).bind(id).fetch_all(pool.get_ref()).await {
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Err(e) => {
+            tracing::error!("Failed to load admin user audit: {}", e);
+            server_error("Failed to load admin user audit")
+        }
+    }
+}
+
+async fn system_health(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM system_health_checks ORDER BY component",
+        "Failed to load system health",
+    )
+    .await
+}
+
+async fn refresh_system_health(pool: web::Data<PgPool>) -> impl Responder {
+    let result = sqlx::query("UPDATE system_health_checks SET last_checked_at = NOW(), status = CASE WHEN status = 'unknown' THEN 'healthy' ELSE status END")
+        .execute(pool.get_ref())
+        .await;
+    match result {
+        Ok(_) => {
+            audit(
+                &pool,
+                "system_health.refreshed",
+                "system_health",
+                None,
+                json!({ "status": "refreshed" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "status": "refreshed" }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to refresh system health: {}", e);
+            server_error("Failed to refresh system health")
+        }
+    }
+}
+
+async fn system_health_jobs(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM background_job_health ORDER BY job_name",
+        "Failed to load background jobs",
+    )
+    .await
+}
+
+async fn retry_system_job(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let result = sqlx::query("UPDATE background_job_health SET status = 'queued', failure_count = 0, last_error = NULL, updated_at = NOW() WHERE id = $1 RETURNING id")
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    match result {
+        Ok(Some(_)) => {
+            audit(
+                &pool,
+                "system_job.retried",
+                "background_job_health",
+                Some(id),
+                json!({ "status": "queued" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "queued" }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Job not found" })),
+        Err(e) => {
+            tracing::error!("Failed to retry job: {}", e);
+            server_error("Failed to retry job")
+        }
+    }
+}
+
+async fn system_health_providers(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT display_name AS provider,
+               environment,
+               health_status AS health,
+               last_health_check_at AS last_check,
+               NULL::INTEGER AS latency_ms,
+               CASE WHEN health_status IN ('down', 'failed') THEN 'Provider health check failed' ELSE NULL END AS error_message
+        FROM payment_providers
+        ORDER BY priority ASC, display_name ASC
+        "#,
+        "Failed to load provider health",
+    )
+    .await
+}
+
+async fn list_notifications(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM admin_notifications ORDER BY created_at DESC LIMIT 200",
+        "Failed to load notifications",
+    )
+    .await
+}
+
+async fn update_notification_status(
+    pool: web::Data<PgPool>,
+    id: Uuid,
+    status: &str,
+    action: &str,
+    assigned_to: Option<Uuid>,
+) -> HttpResponse {
+    let result = sqlx::query(
+        r#"
+        UPDATE admin_notifications
+        SET status = $2,
+            assigned_to_admin_id = COALESCE($3, assigned_to_admin_id),
+            resolved_at = CASE WHEN $2 = 'resolved' THEN NOW() ELSE resolved_at END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+        "#,
+    )
+    .bind(id)
+    .bind(status)
+    .bind(assigned_to)
+    .fetch_optional(pool.get_ref())
+    .await;
+    match result {
+        Ok(Some(_)) => {
+            audit(
+                &pool,
+                action,
+                "admin_notification",
+                Some(id),
+                json!({ "status": status, "assigned_to_admin_id": assigned_to }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": status }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Notification not found" })),
+        Err(e) => {
+            tracing::error!("Failed to update notification: {}", e);
+            server_error("Failed to update notification")
+        }
+    }
+}
+
+async fn acknowledge_notification(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    update_notification_status(
+        pool,
+        path.into_inner(),
+        "acknowledged",
+        "notification.acknowledged",
+        None,
+    )
+    .await
+}
+
+async fn assign_notification(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<AssignNotificationRequest>,
+) -> impl Responder {
+    update_notification_status(
+        pool,
+        path.into_inner(),
+        "investigating",
+        "notification.assigned",
+        body.assigned_to_admin_id,
+    )
+    .await
+}
+
+async fn resolve_notification(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    update_notification_status(
+        pool,
+        path.into_inner(),
+        "resolved",
+        "notification.resolved",
+        None,
+    )
+    .await
+}
+
+async fn ignore_notification(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    update_notification_status(
+        pool,
+        path.into_inner(),
+        "ignored",
+        "notification.ignored",
+        None,
+    )
+    .await
+}
+
+async fn get_platform_settings(pool: web::Data<PgPool>) -> impl Responder {
+    match sqlx::query("SELECT key, value, value_type FROM platform_settings")
+        .fetch_all(pool.get_ref())
+        .await
+    {
+        Ok(rows) => {
+            let mut map = serde_json::Map::new();
+            for row in rows {
+                let key: String = row.get("key");
+                let value: String = row.get("value");
+                let value_type: String = row.get("value_type");
+                let parsed = match value_type.as_str() {
+                    "boolean" => json!(value == "true"),
+                    "number" => value
+                        .parse::<i64>()
+                        .map(Value::from)
+                        .unwrap_or_else(|_| json!(value)),
+                    _ => json!(value),
+                };
+                map.insert(key, parsed);
+            }
+            HttpResponse::Ok().json(Value::Object(map))
+        }
+        Err(e) => {
+            tracing::error!("Failed to load platform settings: {}", e);
+            server_error("Failed to load platform settings")
+        }
+    }
+}
+
+async fn patch_platform_settings(
+    pool: web::Data<PgPool>,
+    body: web::Json<Value>,
+) -> impl Responder {
+    let Some(object) = body.as_object() else {
+        return HttpResponse::BadRequest().json(json!({ "message": "Settings object required" }));
+    };
+    for (key, value) in object {
+        let (value_text, value_type) = setting_value(value);
+        let result = sqlx::query(
+            r#"
+            INSERT INTO platform_settings (key, value, value_type, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value, value_type = EXCLUDED.value_type, updated_at = NOW()
+            "#,
+        )
+        .bind(key)
+        .bind(value_text)
+        .bind(value_type)
+        .execute(pool.get_ref())
+        .await;
+        if let Err(e) = result {
+            tracing::error!("Failed to save platform setting {}: {}", key, e);
+            return server_error("Failed to save platform settings");
+        }
+    }
+    audit(
+        &pool,
+        "platform_setting.changed",
+        "platform_settings",
+        None,
+        json!({ "keys": object.keys().collect::<Vec<_>>() }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "status": "saved" }))
+}
+
+async fn set_maintenance_mode(pool: web::Data<PgPool>, enabled: bool) -> impl Responder {
+    let value = if enabled { "true" } else { "false" };
+    let result = sqlx::query(
+        r#"
+        INSERT INTO platform_settings (key, value, value_type, updated_at)
+        VALUES ('maintenance_mode', $1, 'boolean', NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, value_type = 'boolean', updated_at = NOW()
+        "#,
+    )
+    .bind(value)
+    .execute(pool.get_ref())
+    .await;
+    match result {
+        Ok(_) => {
+            audit(
+                &pool,
+                if enabled {
+                    "maintenance.enabled"
+                } else {
+                    "maintenance.disabled"
+                },
+                "platform_settings",
+                None,
+                json!({ "maintenance_mode": enabled }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "maintenance_mode": enabled }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to update maintenance mode: {}", e);
+            server_error("Failed to update maintenance mode")
+        }
+    }
+}
+
+async fn enable_maintenance(pool: web::Data<PgPool>) -> impl Responder {
+    set_maintenance_mode(pool, true).await
+}
+
+async fn disable_maintenance(pool: web::Data<PgPool>) -> impl Responder {
+    set_maintenance_mode(pool, false).await
+}
+
+fn setting_value(value: &Value) -> (String, &'static str) {
+    if let Some(bool_value) = value.as_bool() {
+        return (bool_value.to_string(), "boolean");
+    }
+    if let Some(number_value) = value.as_i64() {
+        return (number_value.to_string(), "number");
+    }
+    (
+        value
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| value.to_string()),
+        "string",
+    )
+}
+
+async fn role_id_by_name(pool: &web::Data<PgPool>, name: &str) -> Option<Uuid> {
+    sqlx::query_scalar::<_, Uuid>("SELECT id FROM admin_roles WHERE name = $1")
+        .bind(name)
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten()
+}
+
+fn forbidden_role(role: &str) -> bool {
+    let normalized = role.to_ascii_lowercase().replace([' ', '_', '-'], "");
+    matches!(
+        normalized.as_str(),
+        "merchantadmin" | "selleradmin" | "vendoradmin"
+    )
 }
 
 fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
@@ -2076,7 +3570,9 @@ fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
         attempt_count: row.get("attempt_count"),
         masked_api_key: presence_mask(row.get::<Option<String>, _>("api_key_encrypted")),
         masked_api_secret: presence_mask(row.get::<Option<String>, _>("api_secret_encrypted")),
-        masked_webhook_secret: presence_mask(row.get::<Option<String>, _>("webhook_secret_encrypted")),
+        masked_webhook_secret: presence_mask(
+            row.get::<Option<String>, _>("webhook_secret_encrypted"),
+        ),
         api_key_status: secret_status(row.get("api_key_status")),
         api_secret_status: secret_status(row.get("api_secret_status")),
         webhook_secret_status: secret_status(row.get("webhook_secret_status")),
@@ -2085,9 +3581,17 @@ fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
     }
 }
 
-async fn get_by_id(pool: web::Data<PgPool>, table: &'static str, id: Uuid, not_found: &'static str) -> HttpResponse {
+async fn get_by_id(
+    pool: web::Data<PgPool>,
+    table: &'static str,
+    id: Uuid,
+    not_found: &'static str,
+) -> HttpResponse {
     let sql = format!("SELECT * FROM {table} WHERE id = $1");
-    let row = sqlx::query(&sql).bind(id).fetch_optional(pool.get_ref()).await;
+    let row = sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
     match row {
         Ok(Some(row)) => HttpResponse::Ok().json(row_to_json(&row)),
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": not_found })),
@@ -2098,9 +3602,14 @@ async fn get_by_id(pool: web::Data<PgPool>, table: &'static str, id: Uuid, not_f
     }
 }
 
-async fn query_items(pool: web::Data<PgPool>, sql: &'static str, error_message: &'static str) -> HttpResponse {
+async fn query_items(
+    pool: web::Data<PgPool>,
+    sql: &'static str,
+    error_message: &'static str,
+) -> HttpResponse {
     match sqlx::query(sql).fetch_all(pool.get_ref()).await {
-        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
         Err(e) => {
             tracing::error!("{}: {}", error_message, e);
             server_error(error_message)
@@ -2205,15 +3714,24 @@ fn mask_secret(value: &str) -> String {
     if chars.len() <= 4 {
         return "****".to_string();
     }
-    format!("****{}", chars[chars.len() - 4..].iter().collect::<String>())
+    format!(
+        "****{}",
+        chars[chars.len() - 4..].iter().collect::<String>()
+    )
 }
 
 fn mask_bank_account(value: &str) -> String {
-    let digits = value.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<Vec<_>>();
+    let digits = value
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<Vec<_>>();
     if digits.len() <= 4 {
         return "****".to_string();
     }
-    format!("********{}", digits[digits.len() - 4..].iter().collect::<String>())
+    format!(
+        "********{}",
+        digits[digits.len() - 4..].iter().collect::<String>()
+    )
 }
 
 fn presence_mask(value: Option<String>) -> String {
@@ -2233,7 +3751,236 @@ fn secret_status(value: String) -> String {
     }
 }
 
-async fn audit(pool: &web::Data<PgPool>, action: &str, entity_type: &str, entity_id: Option<Uuid>, summary: Value) {
+async fn get_or_create_ledger_account(
+    pool: &web::Data<PgPool>,
+    owner_type: &str,
+    owner_id: Option<Uuid>,
+    account_type: &str,
+    name: &str,
+    currency: &str,
+) -> Result<Uuid, sqlx::Error> {
+    if let Some(account_id) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM ledger_accounts WHERE owner_id IS NOT DISTINCT FROM $1 AND account_type = $2 LIMIT 1",
+    )
+    .bind(owner_id)
+    .bind(account_type)
+    .fetch_optional(pool.get_ref())
+    .await?
+    {
+        return Ok(account_id);
+    }
+
+    if let Some(account_id) = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO ledger_accounts (name, account_type, owner_id, owner_type, currency, status)
+        VALUES ($1, $2, $3, $4, $5, 'active')
+        ON CONFLICT DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(name)
+    .bind(account_type)
+    .bind(owner_id)
+    .bind(owner_type)
+    .bind(currency)
+    .fetch_optional(pool.get_ref())
+    .await?
+    {
+        return Ok(account_id);
+    }
+
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM ledger_accounts WHERE owner_id IS NOT DISTINCT FROM $1 AND account_type = $2 ORDER BY created_at ASC LIMIT 1",
+    )
+    .bind(owner_id)
+    .bind(account_type)
+    .fetch_one(pool.get_ref())
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn post_balanced_ledger(
+    pool: &web::Data<PgPool>,
+    ledger_type: &str,
+    source_type: &str,
+    source_id: Uuid,
+    provider_id: Option<Uuid>,
+    business_account_id: Option<Uuid>,
+    amount: i64,
+    currency: &str,
+    idempotency_key: &str,
+    description: &str,
+) -> Result<Uuid, sqlx::Error> {
+    if amount <= 0 {
+        return sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM ledger_transactions WHERE idempotency_key = $1",
+        )
+        .bind(idempotency_key)
+        .fetch_one(pool.get_ref())
+        .await;
+    }
+
+    if let Some(id) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM ledger_transactions WHERE idempotency_key = $1",
+    )
+    .bind(idempotency_key)
+    .fetch_optional(pool.get_ref())
+    .await?
+    {
+        return Ok(id);
+    }
+
+    let transaction_group_id = Uuid::new_v4();
+    let debit_account = get_or_create_ledger_account(
+        pool,
+        "company",
+        None,
+        "clearing",
+        "Company clearing",
+        currency,
+    )
+    .await?;
+    let credit_account = get_or_create_ledger_account(
+        pool,
+        business_account_id
+            .map(|_| "business_account")
+            .unwrap_or("company"),
+        business_account_id,
+        if business_account_id.is_some() {
+            "payable"
+        } else {
+            "settlement"
+        },
+        "Ledger payable",
+        currency,
+    )
+    .await?;
+
+    let tx_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO ledger_transactions (
+            transaction_group_id, type, status, source_type, source_id, provider_id,
+            business_account_id, amount, currency, idempotency_key
+        )
+        VALUES ($1, $2, 'posted', $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        "#,
+    )
+    .bind(transaction_group_id)
+    .bind(ledger_type)
+    .bind(source_type)
+    .bind(source_id)
+    .bind(provider_id)
+    .bind(business_account_id)
+    .bind(amount)
+    .bind(currency)
+    .bind(idempotency_key)
+    .fetch_one(pool.get_ref())
+    .await?;
+
+    let debit_balance = bump_ledger_balance(pool, debit_account, amount).await?;
+    insert_ledger_entry(
+        pool,
+        debit_account,
+        transaction_group_id,
+        source_type,
+        source_id,
+        "debit",
+        amount,
+        currency,
+        debit_balance,
+        description,
+    )
+    .await?;
+    let credit_balance = bump_ledger_balance(pool, credit_account, amount).await?;
+    insert_ledger_entry(
+        pool,
+        credit_account,
+        transaction_group_id,
+        source_type,
+        source_id,
+        "credit",
+        amount,
+        currency,
+        credit_balance,
+        description,
+    )
+    .await?;
+    Ok(tx_id)
+}
+
+async fn bump_ledger_balance(
+    pool: &web::Data<PgPool>,
+    account_id: Uuid,
+    amount: i64,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "UPDATE ledger_accounts SET balance = balance + $2, updated_at = NOW() WHERE id = $1 RETURNING balance",
+    )
+    .bind(account_id)
+    .bind(amount)
+    .fetch_one(pool.get_ref())
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn insert_ledger_entry(
+    pool: &web::Data<PgPool>,
+    account_id: Uuid,
+    transaction_group_id: Uuid,
+    source_type: &str,
+    source_id: Uuid,
+    direction: &str,
+    amount: i64,
+    currency: &str,
+    balance_after: i64,
+    description: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO ledger_entries (
+            transaction_id, account_id, entry_type, transaction_group_id, source_type,
+            source_id, direction, amount, currency, balance_after, description, status
+        )
+        VALUES ($1, $2, $3, $1, $4, $5, $3, $6, $7, $8, $9, 'posted')
+        "#,
+    )
+    .bind(transaction_group_id)
+    .bind(account_id)
+    .bind(direction)
+    .bind(source_type)
+    .bind(source_id)
+    .bind(amount)
+    .bind(currency)
+    .bind(balance_after)
+    .bind(description)
+    .execute(pool.get_ref())
+    .await
+    .map(|_| ())
+}
+
+#[allow(dead_code)]
+fn ledger_entries_balance(entries: &[(String, i64)]) -> bool {
+    let debit: i64 = entries
+        .iter()
+        .filter(|(direction, _)| direction == "debit")
+        .map(|(_, amount)| amount)
+        .sum();
+    let credit: i64 = entries
+        .iter()
+        .filter(|(direction, _)| direction == "credit")
+        .map(|(_, amount)| amount)
+        .sum();
+    debit == credit
+}
+
+async fn audit(
+    pool: &web::Data<PgPool>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<Uuid>,
+    summary: Value,
+) {
     let _ = sqlx::query(
         r#"
         INSERT INTO audit_logs_company (actor_role, action, entity_type, entity_id, new_value_summary)
@@ -2257,88 +4004,388 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     configure_payment_ops_routes(cfg, "/payment-ops");
 }
 
+pub fn configure_company_admin_routes(cfg: &mut web::ServiceConfig) {
+    cfg.route("/users", web::get().to(list_admin_users))
+        .route("/users/invite", web::post().to(invite_admin_user))
+        .route("/users/{id}", web::patch().to(patch_admin_user))
+        .route(
+            "/users/{id}/deactivate",
+            web::post().to(deactivate_admin_user),
+        )
+        .route(
+            "/users/{id}/reactivate",
+            web::post().to(reactivate_admin_user),
+        )
+        .route("/users/{id}/roles", web::post().to(assign_admin_role))
+        .route(
+            "/users/{id}/roles/{role}",
+            web::delete().to(remove_admin_role),
+        )
+        .route("/users/{id}/audit", web::get().to(admin_user_audit))
+        .route("/system-health", web::get().to(system_health))
+        .route(
+            "/system-health/refresh",
+            web::post().to(refresh_system_health),
+        )
+        .route("/system-health/jobs", web::get().to(system_health_jobs))
+        .route(
+            "/system-health/jobs/{id}/retry",
+            web::post().to(retry_system_job),
+        )
+        .route(
+            "/system-health/providers",
+            web::get().to(system_health_providers),
+        )
+        .route("/notifications", web::get().to(list_notifications))
+        .route(
+            "/notifications/{id}/acknowledge",
+            web::post().to(acknowledge_notification),
+        )
+        .route(
+            "/notifications/{id}/assign",
+            web::post().to(assign_notification),
+        )
+        .route(
+            "/notifications/{id}/resolve",
+            web::post().to(resolve_notification),
+        )
+        .route(
+            "/notifications/{id}/ignore",
+            web::post().to(ignore_notification),
+        )
+        .route("/platform-settings", web::get().to(get_platform_settings))
+        .route(
+            "/platform-settings",
+            web::patch().to(patch_platform_settings),
+        )
+        .route(
+            "/platform-settings/maintenance/enable",
+            web::post().to(enable_maintenance),
+        )
+        .route(
+            "/platform-settings/maintenance/disable",
+            web::post().to(disable_maintenance),
+        );
+}
+
 fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static str) {
     cfg.route(&format!("{prefix}/dashboard"), web::get().to(dashboard))
-        .route(&format!("{prefix}/providers"), web::get().to(list_providers))
-        .route(&format!("{prefix}/providers"), web::post().to(create_provider))
-        .route(&format!("{prefix}/providers/{{id}}"), web::patch().to(update_provider))
-        .route(&format!("{prefix}/providers/{{id}}/test"), web::post().to(test_provider))
-        .route(&format!("{prefix}/providers/{{id}}/maintenance"), web::post().to(maintenance_provider))
-        .route(&format!("{prefix}/providers/{{id}}/enable"), web::post().to(enable_provider))
-        .route(&format!("{prefix}/providers/{{id}}/disable"), web::post().to(disable_provider))
+        .route(
+            &format!("{prefix}/providers"),
+            web::get().to(list_providers),
+        )
+        .route(
+            &format!("{prefix}/providers"),
+            web::post().to(create_provider),
+        )
+        .route(
+            &format!("{prefix}/providers/{{id}}"),
+            web::patch().to(update_provider),
+        )
+        .route(
+            &format!("{prefix}/providers/{{id}}/test"),
+            web::post().to(test_provider),
+        )
+        .route(
+            &format!("{prefix}/providers/{{id}}/maintenance"),
+            web::post().to(maintenance_provider),
+        )
+        .route(
+            &format!("{prefix}/providers/{{id}}/enable"),
+            web::post().to(enable_provider),
+        )
+        .route(
+            &format!("{prefix}/providers/{{id}}/disable"),
+            web::post().to(disable_provider),
+        )
         .route(
             &format!("{prefix}/providers/{{id}}/rotate-credentials"),
             web::post().to(rotate_credentials),
         )
-        .route(&format!("{prefix}/credentials"), web::get().to(list_credentials))
-        .route(&format!("{prefix}/credentials"), web::post().to(create_credential))
-        .route(&format!("{prefix}/credentials/{{id}}/validate"), web::post().to(validate_credential))
-        .route(&format!("{prefix}/credentials/{{id}}/rotate"), web::post().to(rotate_credentials_by_id))
-        .route(&format!("{prefix}/credentials/{{id}}/disable"), web::post().to(disable_credential))
-        .route(&format!("{prefix}/webhook-configs"), web::get().to(list_webhook_configs))
-        .route(&format!("{prefix}/webhook-configs"), web::post().to(save_webhook_config))
-        .route(&format!("{prefix}/webhook-configs/{{id}}"), web::patch().to(save_webhook_config))
-        .route(&format!("{prefix}/webhook-configs/{{id}}/test"), web::post().to(test_webhook_config))
-        .route(&format!("{prefix}/webhook-configs/{{id}}/rotate-secret"), web::post().to(rotate_webhook_secret))
-        .route(&format!("{prefix}/bank-integrations"), web::get().to(list_bank_integrations))
-        .route(&format!("{prefix}/bank-integrations"), web::post().to(create_bank_integration))
+        .route(
+            &format!("{prefix}/credentials"),
+            web::get().to(list_credentials),
+        )
+        .route(
+            &format!("{prefix}/credentials"),
+            web::post().to(create_credential),
+        )
+        .route(
+            &format!("{prefix}/credentials/{{id}}/validate"),
+            web::post().to(validate_credential),
+        )
+        .route(
+            &format!("{prefix}/credentials/{{id}}/rotate"),
+            web::post().to(rotate_credentials_by_id),
+        )
+        .route(
+            &format!("{prefix}/credentials/{{id}}/disable"),
+            web::post().to(disable_credential),
+        )
+        .route(
+            &format!("{prefix}/webhook-configs"),
+            web::get().to(list_webhook_configs),
+        )
+        .route(
+            &format!("{prefix}/webhook-configs"),
+            web::post().to(save_webhook_config),
+        )
+        .route(
+            &format!("{prefix}/webhook-configs/{{id}}"),
+            web::patch().to(save_webhook_config),
+        )
+        .route(
+            &format!("{prefix}/webhook-configs/{{id}}/test"),
+            web::post().to(test_webhook_config),
+        )
+        .route(
+            &format!("{prefix}/webhook-configs/{{id}}/rotate-secret"),
+            web::post().to(rotate_webhook_secret),
+        )
+        .route(
+            &format!("{prefix}/bank-integrations"),
+            web::get().to(list_bank_integrations),
+        )
+        .route(
+            &format!("{prefix}/bank-integrations"),
+            web::post().to(create_bank_integration),
+        )
         .route(
             &format!("{prefix}/bank-integrations/{{id}}"),
             web::patch().to(update_bank_integration),
         )
-        .route(&format!("{prefix}/bank-integrations/{{id}}/verify"), web::post().to(verify_bank_integration))
-        .route(&format!("{prefix}/bank-integrations/{{id}}/disable"), web::post().to(disable_bank_integration))
-        .route(&format!("{prefix}/white-label-config"), web::get().to(get_white_label_config))
-        .route(&format!("{prefix}/white-label-config"), web::patch().to(update_white_label_config))
-        .route(&format!("{prefix}/white-label-config/preview"), web::get().to(get_white_label_config))
-        .route(&format!("{prefix}/routing-rules"), web::get().to(list_routing_rules))
-        .route(&format!("{prefix}/routing-rules"), web::post().to(create_routing_rule))
-        .route(&format!("{prefix}/routing-rules/{{id}}"), web::patch().to(update_routing_rule))
-        .route(&format!("{prefix}/routing-rules/{{id}}/disable"), web::post().to(disable_routing_rule))
-        .route(&format!("{prefix}/routing-rules/simulate"), web::post().to(simulate_routing))
-        .route(&format!("{prefix}/routing/simulate"), web::post().to(simulate_routing))
-        .route(&format!("{prefix}/transactions"), web::get().to(list_transactions))
-        .route(&format!("{prefix}/transactions/{{id}}"), web::get().to(get_transaction))
-        .route(&format!("{prefix}/transactions/{{id}}/capture"), web::post().to(capture_transaction))
-        .route(&format!("{prefix}/transactions/{{id}}/cancel"), web::post().to(cancel_transaction))
-        .route(&format!("{prefix}/transactions/{{id}}/refund"), web::post().to(create_refund))
+        .route(
+            &format!("{prefix}/bank-integrations/{{id}}/verify"),
+            web::post().to(verify_bank_integration),
+        )
+        .route(
+            &format!("{prefix}/bank-integrations/{{id}}/disable"),
+            web::post().to(disable_bank_integration),
+        )
+        .route(
+            &format!("{prefix}/white-label-config"),
+            web::get().to(get_white_label_config),
+        )
+        .route(
+            &format!("{prefix}/white-label-config"),
+            web::patch().to(update_white_label_config),
+        )
+        .route(
+            &format!("{prefix}/white-label-config/preview"),
+            web::get().to(get_white_label_config),
+        )
+        .route(
+            &format!("{prefix}/routing-rules"),
+            web::get().to(list_routing_rules),
+        )
+        .route(
+            &format!("{prefix}/routing/provider-performance"),
+            web::get().to(list_provider_performance),
+        )
+        .route(
+            &format!("{prefix}/routing-rules"),
+            web::post().to(create_routing_rule),
+        )
+        .route(
+            &format!("{prefix}/routing-rules/{{id}}"),
+            web::patch().to(update_routing_rule),
+        )
+        .route(
+            &format!("{prefix}/routing-rules/{{id}}/disable"),
+            web::post().to(disable_routing_rule),
+        )
+        .route(
+            &format!("{prefix}/routing-rules/simulate"),
+            web::post().to(simulate_routing),
+        )
+        .route(
+            &format!("{prefix}/routing/simulate"),
+            web::post().to(simulate_routing),
+        )
+        .route(
+            &format!("{prefix}/transactions"),
+            web::get().to(list_transactions),
+        )
+        .route(&format!("{prefix}/ledger"), web::get().to(list_ledger))
+        .route(
+            &format!("{prefix}/ledger/export"),
+            web::get().to(export_ledger),
+        )
+        .route(
+            &format!("{prefix}/ledger/{{id}}"),
+            web::get().to(get_ledger_group),
+        )
+        .route(
+            &format!("{prefix}/transactions/{{id}}"),
+            web::get().to(get_transaction),
+        )
+        .route(
+            &format!("{prefix}/transactions/{{id}}/capture"),
+            web::post().to(capture_transaction),
+        )
+        .route(
+            &format!("{prefix}/transactions/{{id}}/cancel"),
+            web::post().to(cancel_transaction),
+        )
+        .route(
+            &format!("{prefix}/transactions/{{id}}/refund"),
+            web::post().to(create_refund),
+        )
         .route(&format!("{prefix}/refunds"), web::get().to(list_refunds))
-        .route(&format!("{prefix}/refunds"), web::post().to(|pool: web::Data<PgPool>, body: web::Json<RefundRequest>| async move { insert_refund(pool, body.into_inner()).await }))
-        .route(&format!("{prefix}/refunds/{{id}}"), web::get().to(get_refund))
-        .route(&format!("{prefix}/refunds/{{id}}/approve"), web::post().to(approve_refund))
-        .route(&format!("{prefix}/refunds/{{id}}/reject"), web::post().to(reject_refund))
-        .route(&format!("{prefix}/refunds/{{id}}/initiate"), web::post().to(initiate_refund))
-        .route(&format!("{prefix}/refunds/{{id}}/retry"), web::post().to(retry_refund))
+        .route(
+            &format!("{prefix}/refunds"),
+            web::post().to(
+                |pool: web::Data<PgPool>, body: web::Json<RefundRequest>| async move {
+                    insert_refund(pool, body.into_inner()).await
+                },
+            ),
+        )
+        .route(
+            &format!("{prefix}/refunds/{{id}}"),
+            web::get().to(get_refund),
+        )
+        .route(
+            &format!("{prefix}/refunds/{{id}}/approve"),
+            web::post().to(approve_refund),
+        )
+        .route(
+            &format!("{prefix}/refunds/{{id}}/reject"),
+            web::post().to(reject_refund),
+        )
+        .route(
+            &format!("{prefix}/refunds/{{id}}/initiate"),
+            web::post().to(initiate_refund),
+        )
+        .route(
+            &format!("{prefix}/refunds/{{id}}/retry"),
+            web::post().to(retry_refund),
+        )
         .route(&format!("{prefix}/webhooks"), web::get().to(list_webhooks))
-        .route(&format!("{prefix}/webhook-events"), web::get().to(list_webhooks))
-        .route(&format!("{prefix}/webhooks/{{id}}"), web::get().to(get_webhook))
-        .route(&format!("{prefix}/webhook-events/{{id}}"), web::get().to(get_webhook))
-        .route(&format!("{prefix}/webhooks/{{id}}/retry"), web::post().to(retry_webhook))
-        .route(&format!("{prefix}/webhook-events/{{id}}/retry"), web::post().to(retry_webhook))
-        .route(&format!("{prefix}/webhook-events/{{id}}/ignore"), web::post().to(ignore_webhook))
-        .route(&format!("{prefix}/settlements"), web::get().to(list_settlements))
-        .route(&format!("{prefix}/settlements/{{id}}"), web::get().to(get_settlement))
-        .route(&format!("{prefix}/settlements/{{id}}/hold"), web::post().to(hold_settlement))
-        .route(&format!("{prefix}/settlements/{{id}}/release"), web::post().to(release_settlement))
-        .route(&format!("{prefix}/settlements/{{id}}/mark-settled"), web::post().to(mark_settlement_settled))
-        .route(&format!("{prefix}/settlements/{{id}}/mark-failed"), web::post().to(mark_settlement_failed))
-        .route(&format!("{prefix}/settlements/{{id}}/export"), web::get().to(export_settlement))
-        .route(&format!("{prefix}/reconciliation"), web::get().to(list_reconciliation))
-        .route(&format!("{prefix}/reconciliation/{{id}}"), web::get().to(get_reconciliation))
-        .route(&format!("{prefix}/reconciliation/{{id}}/auto-match"), web::post().to(auto_match_reconciliation))
-        .route(&format!("{prefix}/reconciliation/{{id}}/mismatches"), web::get().to(reconciliation_mismatches))
+        .route(
+            &format!("{prefix}/webhook-events"),
+            web::get().to(list_webhooks),
+        )
+        .route(
+            &format!("{prefix}/webhooks/{{id}}"),
+            web::get().to(get_webhook),
+        )
+        .route(
+            &format!("{prefix}/webhook-events/{{id}}"),
+            web::get().to(get_webhook),
+        )
+        .route(
+            &format!("{prefix}/webhooks/{{id}}/retry"),
+            web::post().to(retry_webhook),
+        )
+        .route(
+            &format!("{prefix}/webhook-events/{{id}}/retry"),
+            web::post().to(retry_webhook),
+        )
+        .route(
+            &format!("{prefix}/webhook-events/{{id}}/ignore"),
+            web::post().to(ignore_webhook),
+        )
+        .route(
+            &format!("{prefix}/settlements"),
+            web::get().to(list_settlements),
+        )
+        .route(
+            &format!("{prefix}/settlements/{{id}}"),
+            web::get().to(get_settlement),
+        )
+        .route(
+            &format!("{prefix}/settlements/{{id}}/hold"),
+            web::post().to(hold_settlement),
+        )
+        .route(
+            &format!("{prefix}/settlements/{{id}}/release"),
+            web::post().to(release_settlement),
+        )
+        .route(
+            &format!("{prefix}/settlements/{{id}}/mark-settled"),
+            web::post().to(mark_settlement_settled),
+        )
+        .route(
+            &format!("{prefix}/settlements/{{id}}/mark-failed"),
+            web::post().to(mark_settlement_failed),
+        )
+        .route(
+            &format!("{prefix}/settlements/{{id}}/export"),
+            web::get().to(export_settlement),
+        )
+        .route(
+            &format!("{prefix}/reconciliation"),
+            web::get().to(list_reconciliation),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}"),
+            web::get().to(get_reconciliation),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/auto-match"),
+            web::post().to(auto_match_reconciliation),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/mismatches"),
+            web::get().to(reconciliation_mismatches),
+        )
         .route(
             &format!("{prefix}/reconciliation/{{id}}/resolve"),
             web::post().to(resolve_reconciliation),
         )
-        .route(&format!("{prefix}/reconciliation/{{id}}/export-discrepancies"), web::get().to(export_reconciliation_discrepancies))
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/export-discrepancies"),
+            web::get().to(export_reconciliation_discrepancies),
+        )
         .route(&format!("{prefix}/disputes"), web::get().to(list_disputes))
-        .route(&format!("{prefix}/risk-rules"), web::get().to(list_risk_rules))
-        .route(&format!("{prefix}/risk-rules"), web::post().to(create_risk_rule))
-        .route(&format!("{prefix}/risk-rules/{{id}}"), web::patch().to(update_risk_rule))
-        .route(&format!("{prefix}/risk-rules/{{id}}/disable"), web::post().to(disable_risk_rule))
-        .route(&format!("{prefix}/risk-reviews"), web::get().to(list_risk_reviews))
-        .route(&format!("{prefix}/audit-logs"), web::get().to(list_audit_logs))
+        .route(
+            &format!("{prefix}/disputes/{{id}}/submit-evidence"),
+            web::post().to(submit_dispute_evidence),
+        )
+        .route(
+            &format!("{prefix}/disputes/{{id}}/mark-won"),
+            web::post().to(mark_dispute_won),
+        )
+        .route(
+            &format!("{prefix}/disputes/{{id}}/mark-lost"),
+            web::post().to(mark_dispute_lost),
+        )
+        .route(
+            &format!("{prefix}/business-accounts"),
+            web::get().to(list_business_accounts),
+        )
+        .route(
+            &format!("{prefix}/business-accounts/{{id}}"),
+            web::get().to(get_business_account),
+        )
+        .route(
+            &format!("{prefix}/business-accounts/{{id}}"),
+            web::patch().to(patch_business_account),
+        )
+        .route(
+            &format!("{prefix}/risk-rules"),
+            web::get().to(list_risk_rules),
+        )
+        .route(
+            &format!("{prefix}/risk-rules"),
+            web::post().to(create_risk_rule),
+        )
+        .route(
+            &format!("{prefix}/risk-rules/{{id}}"),
+            web::patch().to(update_risk_rule),
+        )
+        .route(
+            &format!("{prefix}/risk-rules/{{id}}/disable"),
+            web::post().to(disable_risk_rule),
+        )
+        .route(
+            &format!("{prefix}/risk-reviews"),
+            web::get().to(list_risk_reviews),
+        )
+        .route(
+            &format!("{prefix}/audit-logs"),
+            web::get().to(list_audit_logs),
+        )
         .route(&format!("{prefix}/admin-roles"), web::get().to(list_roles));
 }
 
@@ -2360,7 +4407,10 @@ mod tests {
             .await;
 
         assert_eq!(response.status, ConnectorOperationStatus::Accepted);
-        assert_eq!(response.provider_reference, Some("mock_refund_idem-1".to_string()));
+        assert_eq!(
+            response.provider_reference,
+            Some("mock_refund_idem-1".to_string())
+        );
     }
 
     #[test]
@@ -2375,5 +4425,23 @@ mod tests {
         let payload = br#"{"event_id":"evt_1"}"#;
         assert!(connector.verify_webhook_signature(payload, "mock:secret:20", "secret"));
         assert!(!connector.verify_webhook_signature(payload, "mock:secret:99", "secret"));
+    }
+
+    #[test]
+    fn ledger_entries_must_balance() {
+        assert!(ledger_entries_balance(&[
+            ("debit".to_string(), 1000),
+            ("credit".to_string(), 1000),
+        ]));
+        assert!(!ledger_entries_balance(&[
+            ("debit".to_string(), 1000),
+            ("credit".to_string(), 999),
+        ]));
+    }
+
+    #[test]
+    fn provider_success_display_inputs_are_distinct() {
+        assert_eq!(secret_status("active".to_string()), "configured");
+        assert_eq!(secret_status("disabled".to_string()), "missing");
     }
 }

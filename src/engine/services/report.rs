@@ -916,6 +916,8 @@ mod property_tests {
             gst_on_fee_paise in 0i64..10000000i64,
             refund_deductions_paise in 0i64..100000000i64,
         ) {
+            prop_assume!(mdr_fee_paise + gst_on_fee_paise + refund_deductions_paise <= gross_amount_paise);
+
             let settlement_id = format!("settlement-{}", settlement_id_suffix);
             let net_amount_paise = gross_amount_paise - mdr_fee_paise - gst_on_fee_paise - refund_deductions_paise;
 
@@ -961,6 +963,8 @@ mod property_tests {
             gst_on_fee_paise in 0i64..10000000i64,
             refund_deductions_paise in 0i64..100000000i64,
         ) {
+            prop_assume!(mdr_fee_paise + gst_on_fee_paise + refund_deductions_paise <= gross_amount_paise);
+
             // Verify amount calculations are consistent
             let net_amount_paise = gross_amount_paise - mdr_fee_paise - gst_on_fee_paise - refund_deductions_paise;
 

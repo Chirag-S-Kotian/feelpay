@@ -19,24 +19,25 @@ export interface PlatformStats {
   system_health: string;
 }
 
-interface MerchantsResponse {
-  merchants: Merchant[];
+interface BusinessAccountsResponse {
+  merchants?: Merchant[];
+  data?: Merchant[];
 }
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
-  const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [businessAccounts, setBusinessAccounts] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState<string | null>(null);
 
-  const handleImpersonate = async (merchantId: string) => {
-    setImpersonating(merchantId);
+  const handleOpenAccount = async (businessAccountId: string) => {
+    setImpersonating(businessAccountId);
     try {
-      const res = await apiRequest<{ token: string }>('POST', `/admin/merchants/${merchantId}/impersonate`);
+      const res = await apiRequest<{ token: string }>('POST', `/admin/merchants/${businessAccountId}/impersonate`);
       window.open(`http://localhost:5173/login?token=${res.token}`, '_blank');
     } catch (err) {
-      console.error('Failed to impersonate merchant', err);
+      console.error('Failed to open business account', err);
     } finally {
       setImpersonating(null);
     }
@@ -45,12 +46,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsData, merchantsData] = await Promise.all([
+        const [statsData, accountsData] = await Promise.all([
           apiRequest<PlatformStats>('GET', '/admin/stats'),
-          apiRequest<Merchant[] | MerchantsResponse>('GET', '/admin/merchants'),
+          apiRequest<Merchant[] | BusinessAccountsResponse>('GET', '/admin/merchants'),
         ]);
         setStats(statsData);
-        setMerchants(Array.isArray(merchantsData) ? merchantsData : merchantsData.merchants || []);
+        setBusinessAccounts(Array.isArray(accountsData) ? accountsData : accountsData.data || accountsData.merchants || []);
       } catch (err) {
         console.error('Failed to fetch admin data:', err);
         setError('Could not load admin data from server.');
@@ -61,7 +62,7 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  const recentMerchants = useMemo(() => merchants.slice(0, 8), [merchants]);
+  const recentBusinessAccounts = useMemo(() => businessAccounts.slice(0, 8), [businessAccounts]);
 
   if (loading) {
     return <div className="page">Loading platform data...</div>;
@@ -97,7 +98,7 @@ export default function AdminDashboard() {
           <div className="stat-value">₹{(stats?.total_volume || 0).toLocaleString('en-IN')}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Active Merchants</div>
+          <div className="stat-label">Active Business Accounts</div>
           <div className="stat-value">{(stats?.active_merchants || 0).toLocaleString('en-IN')}</div>
         </div>
         <div className="stat-card">
@@ -108,13 +109,13 @@ export default function AdminDashboard() {
 
       <div className="table-card" style={{ marginTop: '20px' }}>
         <div className="page-header" style={{ marginBottom: '15px' }}>
-          <h3>Recent Merchants</h3>
+          <h3>Recent Business Accounts</h3>
         </div>
         <table>
           <thead>
             <tr>
-              <th>Merchant</th>
-              <th>Email</th>
+              <th>Business Account</th>
+              <th>Business Account Email</th>
               <th>Business Type</th>
               <th>Status</th>
               <th>Date Joined</th>
@@ -122,7 +123,7 @@ export default function AdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {recentMerchants.map(m => (
+            {recentBusinessAccounts.map(m => (
               <tr key={m.id}>
                 <td>{m.business_name || m.name}</td>
                 <td>{m.email || 'N/A'}</td>
@@ -133,7 +134,7 @@ export default function AdminDashboard() {
                   <button
                     className="btn-primary"
                     style={{ padding: '4px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    onClick={() => handleImpersonate(m.id)}
+                    onClick={() => handleOpenAccount(m.id)}
                     disabled={impersonating === m.id}
                   >
                     <ExternalLink size={12} />
@@ -142,9 +143,9 @@ export default function AdminDashboard() {
                 </td>
               </tr>
             ))}
-            {recentMerchants.length === 0 && (
+            {recentBusinessAccounts.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>No merchants found</td>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>No business accounts found</td>
               </tr>
             )}
           </tbody>

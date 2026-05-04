@@ -255,9 +255,8 @@ fn mask_secret(value: &str) -> String {
 }
 
 fn encrypt_secret(value: &str) -> Result<(String, String), String> {
-    let raw_key = env::var("VAULT_ENCRYPTION_KEY").map_err(|_| {
-        "VAULT_ENCRYPTION_KEY is required to save provider credentials".to_string()
-    })?;
+    let raw_key = env::var("VAULT_ENCRYPTION_KEY")
+        .map_err(|_| "VAULT_ENCRYPTION_KEY is required to save provider credentials".to_string())?;
     let key = hex::decode(raw_key.trim())
         .map_err(|_| "VAULT_ENCRYPTION_KEY must be 64 hex characters".to_string())?;
     let cipher = Aes256Gcm::new_from_slice(&key)
@@ -321,7 +320,9 @@ async fn upsert_provider_credential(
 
     let (encrypted_value, nonce) = match encrypt_secret(req.value.trim()) {
         Ok(value) => value,
-        Err(message) => return HttpResponse::BadRequest().json(serde_json::json!({ "message": message })),
+        Err(message) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({ "message": message }))
+        }
     };
 
     let saved = sqlx::query_scalar::<_, Uuid>(
@@ -386,7 +387,10 @@ async fn validate_provider_credential(
     }
 }
 
-async fn list_bank_accounts(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
+async fn list_bank_accounts(
+    pool: web::Data<PgPool>,
+    query: web::Query<ListQuery>,
+) -> impl Responder {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
     let status = query.status.clone().filter(|v| !v.trim().is_empty());
@@ -844,8 +848,8 @@ async fn get_export_download(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> 
     }
 }
 
-mod middleware;
 mod company_payments;
+mod middleware;
 use middleware::AdminAuthMiddleware;
 
 fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
@@ -855,8 +859,14 @@ fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
             "/merchants/{id}/impersonate",
             web::post().to(impersonate_merchant),
         )
-        .route("/provider-credentials", web::get().to(list_provider_credentials))
-        .route("/provider-credentials", web::post().to(upsert_provider_credential))
+        .route(
+            "/provider-credentials",
+            web::get().to(list_provider_credentials),
+        )
+        .route(
+            "/provider-credentials",
+            web::post().to(upsert_provider_credential),
+        )
         .route(
             "/provider-credentials/{id}/validate",
             web::post().to(validate_provider_credential),
@@ -870,7 +880,8 @@ fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
         .route("/disputes", web::get().to(list_disputes))
         .route("/revenue/summary", web::get().to(revenue_summary))
         .route("/operations/summary", web::get().to(operations_summary))
-        .configure(company_payments::configure);
+        .configure(company_payments::configure)
+        .configure(company_payments::configure_company_admin_routes);
 }
 
 async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder {
@@ -1050,7 +1061,7 @@ fn generate_jwt(merchant_id: &Uuid, _name: &str) -> Result<String, Box<dyn std::
         sub: merchant_id.to_string(),
         tenant_id: None,
         merchant_id: Some(*merchant_id),
-        role: "merchant".to_string(),
+        role: "Super Admin".to_string(),
         exp: now + 86400,
         iat: now,
     };

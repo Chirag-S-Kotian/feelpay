@@ -26,7 +26,11 @@ describe("Admin App", () => {
     render(<App />);
     expect((await screen.findAllByText(/FeelPay/i)).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Business Accounts/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Ledger/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Refunds/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Admin Users & Roles/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/System Health/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Notifications/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Platform Settings/i).length).toBeGreaterThan(0);
   });
 });

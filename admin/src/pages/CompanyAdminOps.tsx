@@ -4,18 +4,23 @@ import {
   AlertTriangle,
   BadgeCheck,
   Banknote,
+  Bell,
   Cable,
+  Copy,
   Download,
   Eye,
   FileSearch,
   KeyRound,
   Landmark,
+  Mail,
   Receipt,
   RefreshCw,
   Route,
   ShieldCheck,
   SlidersHorizontal,
   Upload,
+  UserPlus,
+  Wallet,
 } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
@@ -26,6 +31,7 @@ type GenericRecord = Record<string, GenericValue>;
 type LoadState = 'loading' | 'ready' | 'error';
 type ConfirmState = { title: string; body: string; action: () => Promise<void> } | null;
 type DrawerState = { title: string; body: GenericRecord } | null;
+type EmptyStateConfig = { title: string; body: string; action?: string; onAction?: () => void };
 
 type Dashboard = {
   total_gmv: number;
@@ -54,6 +60,10 @@ type Provider = GenericRecord & {
 
 type RoutingSimulation = {
   selected_provider?: string | null;
+  selected_provider_code?: string | null;
+  provider_score?: number | null;
+  candidate_providers?: GenericRecord[];
+  rejected_providers?: GenericRecord[];
   matched_routing_rule?: string | null;
   fallback_provider?: string | null;
   decision_reason: string;
@@ -62,6 +72,9 @@ type RoutingSimulation = {
   risk_decision: string;
   provider_health_used: string;
   failover_applied: boolean;
+  strategy_used?: string;
+  latency_estimate_ms?: number;
+  success_estimate?: number;
 };
 
 type WhiteLabelForm = {
@@ -133,12 +146,127 @@ const ADMIN_PERMISSIONS = [
   'webhook_config.manage',
   'reports.export',
   'audit_logs.view',
+  'admin_users.view',
   'admin_users.manage',
+  'roles.view',
+  'roles.manage',
+  'system_health.view',
+  'system_health.manage',
+  'notifications.view',
+  'notifications.manage',
+  'platform_settings.view',
   'platform_settings.manage',
+  'ledger.view',
+  'ledger.export',
+  'business_accounts.manage',
+  'business_accounts.kyc_review',
+  'business_accounts.risk_review',
+  'business_accounts.payouts_manage',
 ];
+
+const ALERT_TYPES = [
+  'provider_down',
+  'webhook_failure',
+  'settlement_failed',
+  'refund_failed',
+  'reconciliation_mismatch',
+  'high_refund_rate',
+  'high_chargeback_rate',
+  'credential_rotation_due',
+  'bank_verification_failed',
+  'suspicious_risk_activity',
+  'background_job_failed',
+];
+
+type PlatformSettingsForm = {
+  platform_name: string;
+  support_email: string;
+  support_phone: string;
+  default_country: string;
+  default_currency: string;
+  maintenance_mode: boolean;
+  session_timeout: string;
+  mfa_required: boolean;
+  audit_retention_days: string;
+  export_retention_days: string;
+  notification_email_sender: string;
+  timezone: string;
+  date_format: string;
+};
+
+const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
+  platform_name: 'FeelPay',
+  support_email: 'support@feelpay.local',
+  support_phone: '',
+  default_country: 'IN',
+  default_currency: 'INR',
+  maintenance_mode: false,
+  session_timeout: '86400',
+  mfa_required: true,
+  audit_retention_days: '365',
+  export_retention_days: '30',
+  notification_email_sender: 'alerts@feelpay.local',
+  timezone: 'Asia/Kolkata',
+  date_format: 'DD MMM YYYY',
+};
 
 function money(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value / 100);
+}
+
+function formatDateTime(value: GenericRecord[string] | undefined) {
+  if (typeof value !== 'string' || !value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const formatted = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date).replace(',', '');
+  return formatted.replace(/\//g, '-');
+}
+
+function isDateColumn(column: string) {
+  return column.endsWith('_at') || column.endsWith('_date') || column === 'created' || column === 'last_check';
+}
+
+function isIdColumn(column: string) {
+  return column === 'id' || column.endsWith('_id') || column.includes('transaction_group');
+}
+
+function shortId(value: string) {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 8)}…${value.slice(-5)}`;
+}
+
+function copyText(value: string) {
+  void navigator.clipboard?.writeText(value);
+}
+
+function statusClass(value: string) {
+  const normalized = value.toLowerCase().replaceAll(' ', '_');
+  if (['active', 'captured', 'successful', 'success', 'settled', 'verified', 'enabled', 'won', 'healthy', 'matched', 'resolved', 'approved'].includes(normalized)) return 'success';
+  if (['failed', 'rejected', 'disabled', 'blocked', 'lost', 'critical', 'down', 'mismatch', 'overdue'].includes(normalized)) return 'failed';
+  if (['pending', 'processing', 'requested', 'review', 'warning', 'unknown', 'unmatched', 'investigating', 'open'].includes(normalized)) return 'pending';
+  return normalized;
+}
+
+function isBadgeColumn(column: string) {
+  return column === 'status' || column.endsWith('_status') || column === 'severity' || column === 'health' || column === 'health_status' || column === 'approval_status' || column === 'risk_status' || column === 'kyc_status' || column === 'payout_status';
+}
+
+function providerSuccessLabel(row: GenericRecord) {
+  const status = String(row.status || '');
+  const health = String(row.health_status || row.health || '');
+  const attempts = Number(row.attempt_count || row.attempts || 0);
+  if (status === 'disabled') return '—';
+  if (!health || health === 'unknown') return 'Unknown';
+  if (attempts === 0) return 'No traffic';
+  const rate = Number(row.success_rate || 0);
+  return `${rate.toFixed(1)}%`;
 }
 
 function list(value: string) {
@@ -151,6 +279,29 @@ function renderValue(value: GenericRecord[string] | undefined) {
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
+}
+
+function renderCell(row: GenericRecord, column: string) {
+  const value = row[column];
+  if (column === 'success_rate') return providerSuccessLabel(row);
+  if (column === 'amount' || column.endsWith('_amount') || column === 'debit' || column === 'credit' || column === 'balance_after' || column === 'chargeback_fee') return money(Number(value || 0));
+  if (isDateColumn(column)) {
+    const formatted = formatDateTime(value);
+    return <span title={typeof value === 'string' ? value : formatted}>{formatted}</span>;
+  }
+  if (isIdColumn(column) && typeof value === 'string' && value) {
+    return (
+      <span className="id-cell" title={value}>
+        <span>{shortId(value)}</span>
+        <button className="btn-small" type="button" aria-label={`Copy ${column}`} onClick={() => copyText(value)}><Copy size={12} /></button>
+      </span>
+    );
+  }
+  if (isBadgeColumn(column) && value !== null && value !== undefined && value !== '') {
+    const text = renderValue(value);
+    return <span className={`badge ${statusClass(text)}`}>{text}</span>;
+  }
+  return renderValue(value);
 }
 
 function rowsFrom(value: { items?: GenericRecord[] }) {
@@ -305,17 +456,104 @@ export function TransactionsPage() {
   );
 }
 
-export function RefundsPage() {
-  const { rows, state, error, load } = useRows(`${API}/refunds?limit=100`);
+export function LedgerPage() {
+  const [summary, setSummary] = useState<GenericRecord>({});
+  const [rows, setRows] = useState<GenericRecord[]>([]);
+  const [state, setState] = useState<LoadState>('loading');
+  const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
+  const load = async () => {
+    setState('loading');
+    setError('');
+    try {
+      const data = await apiRequest<{ summary: GenericRecord; items: GenericRecord[] }>('GET', `${API}/ledger?limit=100`);
+      setSummary(data.summary || {});
+      setRows(data.items || []);
+      setState('ready');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ledger load failed');
+      setState('error');
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const exportLedger = () => {
+    helpers.setConfirm({
+      title: 'Export ledger',
+      body: 'Ledger export includes money movement records and creates audit log.',
+      action: () => helpers.run('Ledger export queued.', () => apiRequest('GET', `${API}/ledger/export`)),
+    });
+  };
+  return (
+    <CrudPage title="Ledger" subtitle="Double-entry money movement across payments, fees, refunds, disputes, settlements, and reserves" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="stats-grid">
+        <Metric label="Total company balance" value={money(Number(summary.total_company_balance || 0))} icon={Wallet} />
+        <Metric label="Pending settlement" value={money(Number(summary.pending_settlement || 0))} icon={Landmark} />
+        <Metric label="Business payable" value={money(Number(summary.business_payable || 0))} icon={Receipt} />
+        <Metric label="Provider fees" value={money(Number(summary.provider_fees || 0))} icon={Cable} />
+        <Metric label="Company revenue" value={money(Number(summary.company_revenue || 0))} icon={BadgeCheck} />
+        <Metric label="Reserve balance" value={money(Number(summary.reserve_balance || 0))} icon={ShieldCheck} />
+        <Metric label="Unreconciled ledger entries" value={String(summary.unreconciled_ledger_entries || 0)} icon={AlertTriangle} />
+      </div>
+      <div className="button-row">
+        <button className="btn-primary" type="button" onClick={exportLedger}><Download size={14} /> Export ledger</button>
+      </div>
+      <DataTable
+        rows={rows}
+        columns={['created_at', 'transaction_group_id', 'source_type', 'source_id', 'account', 'debit', 'credit', 'currency', 'balance_after', 'status']}
+        empty={{ title: 'No ledger entries yet', body: 'Ledger entries will appear when payments, refunds, settlements, or disputes post money movement.', action: 'Export ledger', onAction: exportLedger }}
+        renderActions={row => <ActionButtons actions={['View ledger group', 'Link to transaction', 'Link to settlement', 'Link to refund', 'Link to dispute']} onClick={action => helpers.setDrawer({ title: action, body: row })} />}
+      />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
+export function RefundsPage() {
+  const [filters, setFilters] = useState({ status: '', provider: '', currency: '', business_account: '', refund_source: '', amount_range: '' });
+  const [path, setPath] = useState(`${API}/refunds?limit=100`);
+  const { rows, state, error, load } = useRows(path);
+  const helpers = useDrawerConfirm();
+  const applyFilters = (event: FormEvent) => {
+    event.preventDefault();
+    const params = new URLSearchParams({ limit: '100' });
+    Object.entries(filters).forEach(([key, value]) => value.trim() && params.set(key, value.trim()));
+    setPath(`${API}/refunds?${params.toString()}`);
+  };
   const act = (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
     const calls: Record<string, string> = { approve: 'approve', reject: 'reject', initiate: 'initiate', retry: 'retry' };
     if (action === 'request') helpers.setConfirm({ title: 'Request refund', body: 'Refund request will be audit logged.', action: () => helpers.run('Refund request queued.', () => apiRequest('POST', `${API}/refunds`, row)).then(load) });
     if (calls[action]) helpers.setConfirm({ title: `${action} refund`, body: 'Sensitive refund action. Confirm actor, amount, and provider state.', action: () => helpers.run(`Refund ${action} requested.`, () => apiRequest('POST', `${API}/refunds/${id}/${calls[action]}`)).then(load) });
-    if (action === 'view_provider_response') helpers.setDrawer({ title: 'Provider response', body: row });
+    if (action === 'view_provider_response' || action === 'view_ledger' || action === 'view_audit_trail') helpers.setDrawer({ title: action.replaceAll('_', ' '), body: row });
   };
-  return <TableRoute title="Refunds" subtitle="Refund requests, approvals, provider initiation, and retries" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'payment_id', 'provider_id', 'amount', 'currency', 'status', 'refund_source', 'requested_by_admin_id', 'approved_by_admin_id', 'created_at']} actions={['Request', 'Approve', 'Reject', 'Initiate', 'Retry', 'View provider response']} onAction={act} onRefresh={load} helpers={helpers} />;
+  return (
+    <CrudPage title="Refunds" subtitle="Full, partial, batch, manual, approval, reversal, and provider refund workflows" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div className="stats-grid">
+        <Metric label="Pending approval" value={rows.filter(row => row.approval_status === 'pending').length} icon={Receipt} />
+        <Metric label="Processing" value={rows.filter(row => row.status === 'processing' || row.status === 'initiated').length} icon={RefreshCw} />
+        <Metric label="Successful" value={rows.filter(row => row.status === 'successful').length} icon={BadgeCheck} />
+        <Metric label="Failed" value={rows.filter(row => row.status === 'failed').length} icon={AlertTriangle} />
+        <Metric label="Total refunded" value={money(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))} icon={Banknote} />
+      </div>
+      <form className="card filter-grid" onSubmit={applyFilters}>
+        {Object.entries(filters).map(([key, value]) => (
+          <Field key={key} label={key.replaceAll('_', ' ')}>
+            <input value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />
+          </Field>
+        ))}
+        <button className="btn-primary" type="submit">Filter</button>
+      </form>
+      <DataTable
+        rows={rows}
+        columns={['id', 'payment_id', 'provider_id', 'business_account_id', 'refund_type', 'amount', 'currency', 'status', 'approval_status', 'refund_source', 'reversal_status', 'ledger_transaction_id', 'created_at']}
+        empty={{ title: 'No refunds yet', body: 'Refunds will appear here when support or finance creates a refund request.', action: 'Request refund', onAction: () => helpers.setConfirm({ title: 'Request refund', body: 'Create refund from transaction detail or support workflow.', action: () => helpers.run('Refund request queued.', () => Promise.resolve()) }) }}
+        renderActions={row => <ActionButtons actions={['Approve', 'Reject', 'Initiate', 'Retry', 'View provider response', 'View ledger', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />}
+      />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function SettlementsPage() {
@@ -333,7 +571,24 @@ export function SettlementsPage() {
 export function DisputesPage() {
   const { rows, state, error, load } = useRows(`${API}/disputes?limit=100`);
   const helpers = useDrawerConfirm();
-  return <TableRoute title="Disputes" subtitle="Company dispute and chargeback queue" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'payment_id', 'provider_id', 'amount', 'reason', 'status', 'evidence_due_date', 'created_at']} actions={['View detail', 'Manage evidence', 'View audit trail']} onAction={(row) => helpers.setDrawer({ title: 'Dispute detail', body: row })} onRefresh={load} helpers={helpers} />;
+  const act = (row: GenericRecord, action: string) => {
+    const id = String(row.id || '');
+    if (action === 'view_detail' || action === 'view_audit_trail' || action === 'view_ledger') helpers.setDrawer({ title: action.replaceAll('_', ' '), body: row });
+    if (action === 'submit_evidence') helpers.setConfirm({ title: 'Submit dispute evidence', body: 'Evidence submission affects provider dispute workflow and creates audit log.', action: () => helpers.run('Evidence submitted.', () => apiRequest('POST', `${API}/disputes/${id}/submit-evidence`, { evidence_text: 'Submitted from company admin' })).then(load) });
+    if (action === 'mark_won') helpers.setConfirm({ title: 'Mark dispute won', body: 'Won dispute creates reversal ledger impact when applicable.', action: () => helpers.run('Dispute marked won.', () => apiRequest('POST', `${API}/disputes/${id}/mark-won`, { outcome: 'won' })).then(load) });
+    if (action === 'mark_lost') helpers.setConfirm({ title: 'Mark dispute lost', body: 'Lost dispute creates debit ledger impact and settlement adjustment when applicable.', action: () => helpers.run('Dispute marked lost.', () => apiRequest('POST', `${API}/disputes/${id}/mark-lost`, { outcome: 'lost' })).then(load) });
+  };
+  return (
+    <CrudPage title="Disputes" subtitle="Company dispute, evidence, chargeback, reversal, and ledger impact queue" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <DataTable
+        rows={rows}
+        columns={['id', 'payment_id', 'business_account_id', 'provider_dispute_id', 'amount', 'currency', 'reason', 'status', 'evidence_status', 'outcome', 'chargeback_fee', 'ledger_transaction_id', 'evidence_due_date', 'created_at']}
+        empty={{ title: 'No disputes yet', body: 'Disputes and chargebacks will appear here when providers report a dispute event.' }}
+        renderActions={row => <ActionButtons actions={['View detail', 'Submit evidence', 'Mark won', 'Mark lost', 'View ledger', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />}
+      />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function RiskRulesPage() {
@@ -374,25 +629,50 @@ export function ReconciliationPage() {
 }
 
 export function BusinessAccountsPage() {
-  const [rows, setRows] = useState<GenericRecord[]>([]);
-  const [state, setState] = useState<LoadState>('loading');
-  const [error, setError] = useState('');
-  const load = async () => {
-    setState('loading');
-    setError('');
+  const { rows, state, error, load } = useRows(`${API}/business-accounts`);
+  const helpers = useDrawerConfirm();
+  const openDetail = async (row: GenericRecord) => {
     try {
-      const data = await apiRequest<{ merchants?: GenericRecord[] }>('GET', '/admin/merchants');
-      setRows(data.merchants || []);
-      setState('ready');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Business accounts load failed');
-      setState('error');
+      const detail = await apiRequest<GenericRecord>('GET', `${API}/business-accounts/${String(row.id || '')}`);
+      helpers.setDrawer({ title: 'Business account detail', body: detail });
+    } catch {
+      helpers.setDrawer({ title: 'Business account detail', body: row });
     }
   };
-  useEffect(() => {
-    void load();
-  }, []);
-  return <TableRoute title="Business Accounts" subtitle="Internal company-managed businesses and tenants only" rows={rows} state={state} error={error} columns={['business_name', 'business_type', 'status', 'risk_status', 'payout_status', 'created_at']} actions={['View detail', 'Review risk', 'Manage payouts']} onAction={() => undefined} onRefresh={load} />;
+  const updateAccount = (row: GenericRecord, patch: GenericRecord, label: string) => {
+    const id = String(row.id || '');
+    helpers.setConfirm({
+      title: label,
+      body: 'Business account KYC, risk, or payout readiness change requires confirmation and audit logging.',
+      action: () => helpers.run('Business account updated.', () => apiRequest('PATCH', `${API}/business-accounts/${id}`, patch)).then(load),
+    });
+  };
+  const act = (row: GenericRecord, action: string) => {
+    if (action === 'view_detail') void openDetail(row);
+    if (action === 'review_kyc') updateAccount(row, { kyc_status: 'verified', note: 'KYC approved from company admin' }, 'Approve KYC');
+    if (action === 'review_risk') updateAccount(row, { risk_status: 'medium', note: 'Risk reviewed from company admin' }, 'Review risk');
+    if (action === 'manage_payouts') updateAccount(row, { payout_status: 'enabled', note: 'Payout readiness reviewed' }, 'Enable payouts');
+    if (action === 'suspend') updateAccount(row, { status: 'suspended', payout_status: 'disabled', note: 'Suspended by company admin' }, 'Suspend business account');
+    if (action === 'reactivate') updateAccount(row, { status: 'active', note: 'Reactivated by company admin' }, 'Reactivate business account');
+  };
+  return (
+    <CrudPage title="Business Accounts" subtitle="Internal company-managed businesses and tenants only" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="stats-grid">
+        <Metric label="Total accounts" value={rows.length} icon={Receipt} />
+        <Metric label="Pending KYC" value={rows.filter(row => row.kyc_status === 'pending' || row.kyc_status === 'not_started').length} icon={FileSearch} />
+        <Metric label="Payout enabled" value={rows.filter(row => row.payout_status === 'enabled').length} icon={Landmark} />
+        <Metric label="High risk" value={rows.filter(row => row.risk_status === 'high').length} icon={AlertTriangle} />
+        <Metric label="Suspended" value={rows.filter(row => row.status === 'suspended').length} icon={ShieldCheck} />
+      </div>
+      <DataTable
+        rows={rows}
+        columns={['display_name', 'business_type', 'email', 'status', 'kyc_status', 'risk_status', 'payout_status', 'payout_ready', 'created_at']}
+        empty={{ title: 'No business accounts yet', body: 'Internal company-managed business accounts will appear here after onboarding records are created.' }}
+        renderActions={row => <ActionButtons actions={['View detail', 'Review KYC', 'Review risk', 'Manage payouts', 'Suspend', 'Reactivate']} onClick={action => act(row, normalizeAction(action))} />}
+      />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function ProviderConnectorsPage() {
@@ -468,21 +748,25 @@ export function BankIntegrationsPage() {
 
 export function RoutingRulesPage() {
   const { rows, state, error, load } = useRows(`${API}/routing-rules`);
+  const performance = useRows(`${API}/routing/provider-performance`);
   const helpers = useDrawerConfirm();
-  const [form, setForm] = useState({ payment_method: 'upi', currency: 'INR', country: 'IN', amount: 10000, business_account: '', customer_region: '', risk_level: '' });
+  const [tab, setTab] = useState('Rules');
+  const [form, setForm] = useState({ payment_method: 'upi', currency: 'INR', country: 'IN', amount: 10000, business_account: '', customer_region: '', risk_level: '', strategy: 'priority' });
   const [result, setResult] = useState<RoutingSimulation | null>(null);
   const simulate = async (event: FormEvent) => {
     event.preventDefault();
     setResult(await apiRequest<RoutingSimulation>('POST', `${API}/routing/simulate`, form));
   };
   return (
-    <CrudPage title="Routing Rules" subtitle="Routing rules, simulator, match logs, and failover rules" state={state} error={error} notice={helpers.notice} onRefresh={load}>
-      <div className="grid grid-2">
-        <RoutingSimulator form={form} result={result} onChange={setForm} onSubmit={simulate} />
-        <TablePanel title="Failover rules" rows={rows} columns={['name', 'provider_name', 'failover_provider_name', 'priority', 'status']} />
+    <CrudPage title="Routing Rules" subtitle="Method, cost, success, health, risk, failover, and explainable provider routing" state={state} error={error || performance.error} notice={helpers.notice} onRefresh={() => void Promise.all([load(), performance.load()])}>
+      <div className="button-row">
+        {['Rules', 'Simulator', 'Provider Performance', 'Failover Rules', 'Match Logs'].map(item => <button key={item} className={tab === item ? 'btn-primary' : 'btn-secondary'} type="button" onClick={() => setTab(item)}>{item}</button>)}
       </div>
-      <DataTable rows={rows} columns={['name', 'payment_method', 'currency', 'country', 'amount_min', 'amount_max', 'provider_name', 'failover_provider_name', 'risk_level', 'last_matched_at', 'status']} empty="No routing rules configured" onView={row => helpers.setDrawer({ title: 'Routing rule', body: row })} />
-      <TablePanel title="Match logs" rows={rows} columns={['name', 'last_matched_at', 'provider_name', 'failover_provider_name', 'status']} />
+      {tab === 'Rules' && <DataTable rows={rows} columns={['name', 'rule_group', 'strategy', 'payment_method', 'currency', 'country', 'amount_min', 'amount_max', 'provider_name', 'provider_weight', 'min_success_rate', 'max_provider_fee_percent', 'max_latency_ms', 'health_required', 'failover_provider_name', 'risk_level', 'status']} empty={{ title: 'No routing rules configured', body: 'Create routing rules to choose providers by priority, cost, health, risk, success rate, or latency.' }} onView={row => helpers.setDrawer({ title: 'Routing rule', body: row })} />}
+      {tab === 'Simulator' && <RoutingSimulator form={form} result={result} onChange={setForm} onSubmit={simulate} />}
+      {tab === 'Provider Performance' && <DataTable rows={performance.rows} columns={['provider', 'payment_method', 'currency', 'country', 'success_rate', 'failure_rate', 'avg_latency_ms', 'p95_latency_ms', 'provider_fee_percent', 'attempt_count', 'updated_at']} empty={{ title: 'No provider performance yet', body: 'Performance metrics appear after payment attempts update provider success, latency, and fee data.' }} />}
+      {tab === 'Failover Rules' && <DataTable rows={rows} columns={['name', 'provider_name', 'failover_provider_name', 'failover_strategy', 'retry_strategy', 'cooldown_minutes', 'health_required', 'status']} empty="No failover rules configured" />}
+      {tab === 'Match Logs' && <DataTable rows={rows} columns={['name', 'last_matched_at', 'provider_name', 'failover_provider_name', 'status']} empty="No routing match logs yet" />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -569,35 +853,157 @@ export function AuditLogsPage() {
 }
 
 export function AdminUsersRolesPage() {
-  const { rows, state, error, load } = useRows(`${API}/admin-roles`);
+  const users = useRows('/admin/users');
+  const roles = useRows(`${API}/admin-roles`);
+  const helpers = useDrawerConfirm();
+  const [invite, setInvite] = useState({ name: '', email: '', role: 'Support Agent' });
+  const state = users.state === 'error' || roles.state === 'error' ? 'error' : users.state === 'loading' || roles.state === 'loading' ? 'loading' : 'ready';
+  const error = users.error || roles.error;
+  const load = () => void Promise.all([users.load(), roles.load()]);
+  const inviteAdmin = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Invite admin user',
+      body: 'New company admin invite will create audit log and least-privilege role assignment.',
+      action: () => helpers.run('Admin invite created.', () => apiRequest('POST', '/admin/users/invite', invite)).then(load),
+    });
+  };
+  const act = (row: GenericRecord, action: string) => {
+    const id = String(row.id || '');
+    const role = String(row.role || 'Support Agent');
+    if (action === 'edit_role') helpers.setConfirm({ title: 'Assign role', body: 'Role change requires confirmation and audit logging.', action: () => helpers.run('Role assigned.', () => apiRequest('POST', `/admin/users/${id}/roles`, { role })).then(load) });
+    if (action === 'deactivate') helpers.setConfirm({ title: 'Deactivate admin user', body: 'User session access may stop. Users cannot deactivate themselves.', action: () => helpers.run('Admin deactivated.', () => apiRequest('POST', `/admin/users/${id}/deactivate`)).then(load) });
+    if (action === 'reactivate') helpers.setConfirm({ title: 'Reactivate admin user', body: 'User regains company admin access according to assigned role.', action: () => helpers.run('Admin reactivated.', () => apiRequest('POST', `/admin/users/${id}/reactivate`)).then(load) });
+    if (action === 'view_audit_trail') helpers.setDrawer({ title: 'User audit trail', body: row });
+  };
   return (
-    <Page title="Admin Users & Roles" subtitle="Company admin users only, deny-by-default permissions" onRefresh={load}>
-      <Status state={state} error={error} loading="Loading admin roles..." />
+    <CrudPage title="Admin Users & Roles" subtitle="Company admin users only, deny-by-default permissions" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <form className="card filter-grid" onSubmit={inviteAdmin}>
+        <Field label="Name"><input value={invite.name} onChange={event => setInvite({ ...invite, name: event.target.value })} /></Field>
+        <Field label="Email"><input type="email" value={invite.email} onChange={event => setInvite({ ...invite, email: event.target.value })} /></Field>
+        <Field label="Role"><Select value={invite.role} options={ADMIN_ROLES} onChange={role => setInvite({ ...invite, role })} /></Field>
+        <button className="btn-primary" type="submit"><UserPlus size={14} /> Invite</button>
+      </form>
+      <DataTable rows={users.rows} columns={['id', 'name', 'email', 'role', 'status', 'mfa_enabled', 'last_login_at', 'created_at']} empty="No admin users found" renderActions={row => <ActionButtons actions={['Edit role', 'Deactivate', 'Reactivate', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />} />
       <div className="grid grid-2">
         <TablePanel title="Roles" rows={ADMIN_ROLES.map((role, index) => ({ id: String(index), role, scope: 'company_admin' }))} columns={['role', 'scope']} />
         <TablePanel title="Permissions" rows={ADMIN_PERMISSIONS.map((permission, index) => ({ id: String(index), permission }))} columns={['permission']} />
       </div>
-      <TablePanel title="Role permissions from server" rows={rows} columns={['name', 'description', 'permissions']} />
-    </Page>
+      <TablePanel title="Role permissions from server" rows={roles.rows} columns={['name', 'description', 'permissions']} />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
+export function SystemHealthPage() {
+  const health = useRows('/admin/system-health');
+  const jobs = useRows('/admin/system-health/jobs');
+  const providers = useRows('/admin/system-health/providers');
+  const helpers = useDrawerConfirm();
+  const state = health.state === 'error' || jobs.state === 'error' || providers.state === 'error' ? 'error' : health.state === 'loading' || jobs.state === 'loading' || providers.state === 'loading' ? 'loading' : 'ready';
+  const error = health.error || jobs.error || providers.error;
+  const load = () => void Promise.all([health.load(), jobs.load(), providers.load()]);
+  const retryJob = (row: GenericRecord) => {
+    helpers.setConfirm({ title: 'Retry failed job', body: 'Background job retry will be audit logged.', action: () => helpers.run('Job retry queued.', () => apiRequest('POST', `/admin/system-health/jobs/${String(row.id || '')}/retry`)).then(load) });
+  };
+  return (
+    <CrudPage title="System Health" subtitle="Internal health for company payment operations" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="stats-grid">
+        {['API status', 'Database status', 'Queue status', 'Webhook worker status', 'Settlement sync status', 'Reconciliation job status', 'Provider health', 'Failed background jobs'].map(component => {
+          const row = health.rows.find(item => String(item.component) === component);
+          return <Metric key={component} label={component} value={String(row?.status || 'unknown')} icon={Activity} />;
+        })}
+      </div>
+      <TablePanel title="Provider Health" rows={providers.rows} columns={['provider', 'environment', 'health', 'last_check', 'latency_ms', 'error_message']} />
+      <DataTable rows={jobs.rows} columns={['job_name', 'status', 'last_run_at', 'next_run_at', 'failure_count', 'last_error']} empty="No background jobs found" renderActions={row => <ActionButtons actions={['Retry failed job', 'View logs', 'Mark incident resolved']} onClick={action => action === 'Retry failed job' ? retryJob(row) : helpers.setDrawer({ title: action, body: row })} />} />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
+export function NotificationsPage() {
+  const { rows, state, error, load } = useRows('/admin/notifications');
+  const helpers = useDrawerConfirm();
+  const act = (row: GenericRecord, action: string) => {
+    const id = String(row.id || '');
+    if (action === 'view_related_record') helpers.setDrawer({ title: 'Related record', body: row });
+    else helpers.setConfirm({ title: action.replaceAll('_', ' '), body: 'Notification action updates alert status and creates audit log.', action: () => helpers.run('Notification updated.', () => apiRequest('POST', `/admin/notifications/${id}/${action}`, { assigned_to_admin_id: row.assigned_to_admin_id || null })).then(load) });
+  };
+  return (
+    <CrudPage title="Notifications" subtitle="Company admin alerts center" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="card">
+        <h2><Bell size={18} /> Alert types</h2>
+        <div className="button-row">{ALERT_TYPES.map(type => <span className="badge pending" key={type}>{type}</span>)}</div>
+      </div>
+      <DataTable rows={rows} columns={['id', 'severity', 'type', 'title', 'related_entity_type', 'status', 'created_at', 'assigned_to_admin_id']} empty="No admin notifications found" renderActions={row => <ActionButtons actions={['Acknowledge', 'Assign', 'Resolve', 'Ignore', 'View related record']} onClick={action => act(row, normalizeAction(action))} />} />
+      <Modals helpers={helpers} />
+    </CrudPage>
   );
 }
 
 export function PlatformSettingsPage() {
+  const [form, setForm] = useState<PlatformSettingsForm>(DEFAULT_PLATFORM_SETTINGS);
+  const [state, setState] = useState<LoadState>('loading');
+  const [error, setError] = useState('');
+  const helpers = useDrawerConfirm();
+  const load = async () => {
+    setState('loading');
+    setError('');
+    try {
+      const data = await apiRequest<Partial<PlatformSettingsForm>>('GET', '/admin/platform-settings');
+      setForm({ ...DEFAULT_PLATFORM_SETTINGS, ...data });
+      setState('ready');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Platform settings load failed');
+      setState('error');
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({ title: 'Save platform settings', body: 'Sensitive setting changes require confirmation and audit logging.', action: () => helpers.run('Platform settings saved.', () => apiRequest('PATCH', '/admin/platform-settings', form)).then(load) });
+  };
+  const maintenance = (enabled: boolean) => {
+    helpers.setConfirm({ title: `${enabled ? 'Enable' : 'Disable'} maintenance mode`, body: 'Maintenance mode change affects platform availability and creates audit log.', action: () => helpers.run('Maintenance mode updated.', () => apiRequest('POST', `/admin/platform-settings/maintenance/${enabled ? 'enable' : 'disable'}`)).then(load) });
+  };
   return (
-    <Page title="Platform Settings" subtitle="Company admin platform controls">
+    <CrudPage title="Platform Settings" subtitle="Company-level platform configuration" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <section className="card">
+        <h2><ShieldCheck size={18} /> Platform configuration</h2>
+        <form onSubmit={save}>
+          <div className="filter-grid">
+            <Field label="Platform name"><input value={form.platform_name} onChange={event => setForm({ ...form, platform_name: event.target.value })} /></Field>
+            <Field label="Support email"><input value={form.support_email} onChange={event => setForm({ ...form, support_email: event.target.value })} /></Field>
+            <Field label="Support phone"><input value={form.support_phone} onChange={event => setForm({ ...form, support_phone: event.target.value })} /></Field>
+            <Field label="Default country"><input value={form.default_country} onChange={event => setForm({ ...form, default_country: event.target.value })} /></Field>
+            <Field label="Default currency"><input value={form.default_currency} onChange={event => setForm({ ...form, default_currency: event.target.value })} /></Field>
+            <Field label="Session timeout"><input value={form.session_timeout} onChange={event => setForm({ ...form, session_timeout: event.target.value })} /></Field>
+            <Field label="Audit retention days"><input value={form.audit_retention_days} onChange={event => setForm({ ...form, audit_retention_days: event.target.value })} /></Field>
+            <Field label="Export retention days"><input value={form.export_retention_days} onChange={event => setForm({ ...form, export_retention_days: event.target.value })} /></Field>
+            <Field label="Notification email sender"><input value={form.notification_email_sender} onChange={event => setForm({ ...form, notification_email_sender: event.target.value })} /></Field>
+            <Field label="Timezone"><input value={form.timezone} onChange={event => setForm({ ...form, timezone: event.target.value })} /></Field>
+            <Field label="Date format"><input value={form.date_format} onChange={event => setForm({ ...form, date_format: event.target.value })} /></Field>
+            <label className="form-field"><span>Maintenance mode</span><input type="checkbox" checked={form.maintenance_mode} onChange={event => setForm({ ...form, maintenance_mode: event.target.checked })} /></label>
+            <label className="form-field"><span>MFA required</span><input type="checkbox" checked={form.mfa_required} onChange={event => setForm({ ...form, mfa_required: event.target.checked })} /></label>
+          </div>
+          <div className="button-row">
+            <button className="btn-primary" type="submit">Save settings</button>
+            <button type="button" onClick={() => maintenance(true)}>Enable maintenance mode</button>
+            <button type="button" onClick={() => maintenance(false)}>Disable maintenance mode</button>
+            <button type="button" onClick={() => setForm(DEFAULT_PLATFORM_SETTINGS)}>Reset defaults</button>
+          </div>
+        </form>
+      </section>
       <div className="card">
-        <h2><ShieldCheck size={18} /> Security posture</h2>
+        <h2><Mail size={18} /> Security posture</h2>
         <div className="security-list">
-          {[
-            'RBAC required on admin routes; deny by default.',
-            'Full secrets never displayed after save.',
-            'Full bank account numbers are masked.',
-            'Raw card data and CVV are not stored.',
-            'Sensitive actions require confirmation and audit logging.',
-          ].map(item => <div className="security-row" key={item}><span>{item}</span><strong>Enabled</strong></div>)}
+          {['Deny-by-default RBAC', 'Least privilege route guards', 'Confirmation for sensitive settings', 'Audit logs for setting changes'].map(item => <div className="security-row" key={item}><span>{item}</span><strong>Enabled</strong></div>)}
         </div>
       </div>
-    </Page>
+      <Modals helpers={helpers} />
+    </CrudPage>
   );
 }
 
@@ -636,9 +1042,39 @@ function Page({ title, subtitle, onRefresh, children }: { title: string; subtitl
 }
 
 function Status({ state, error, loading }: { state: LoadState; error: string; loading: string }) {
-  if (state === 'loading') return <div className="alert alert-success">{loading}</div>;
-  if (state === 'error') return <div className="alert alert-error">{error}</div>;
+  if (state === 'loading') return <Skeleton message={loading} />;
+  if (state === 'error') return <ErrorPanel message={error} />;
   return null;
+}
+
+function Skeleton({ message }: { message: string }) {
+  return (
+    <div className="card skeleton-card" aria-busy="true">
+      <div className="skeleton-line wide"></div>
+      <div className="skeleton-line"></div>
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function ErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="alert alert-error error-panel">
+      <span>{message}</span>
+      {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+    </div>
+  );
+}
+
+function EmptyState({ config }: { config: EmptyStateConfig }) {
+  return (
+    <div className="empty-state rich-empty">
+      <FileSearch size={28} />
+      <strong>{config.title}</strong>
+      <p>{config.body}</p>
+      {config.action && <button className="btn-primary" type="button" onClick={config.onAction}>{config.action}</button>}
+    </div>
+  );
 }
 
 function TablePanel({ title, rows, columns }: { title: string; rows: GenericRecord[]; columns: string[] }) {
@@ -650,24 +1086,24 @@ function TablePanel({ title, rows, columns }: { title: string; rows: GenericReco
   );
 }
 
-function DataTable({ rows, columns, empty, renderActions, onView }: { rows: GenericRecord[]; columns: string[]; empty: string; renderActions?: (row: GenericRecord) => ReactNode; onView?: (row: GenericRecord) => void }) {
+function DataTable({ rows, columns, empty, renderActions, onView }: { rows: GenericRecord[]; columns: string[]; empty: string | EmptyStateConfig; renderActions?: (row: GenericRecord) => ReactNode; onView?: (row: GenericRecord) => void }) {
   return (
-    <div className="table-card" style={{ padding: 0 }}>
+    <div className="table-card table-scroll" style={{ padding: 0 }}>
       <table>
         <thead>
           <tr>
-            {columns.map(column => <th key={column}>{column.replaceAll('_', ' ')}</th>)}
+            {columns.map((column, index) => <th key={column} className={index === 0 ? 'sticky-col' : undefined}>{column.replaceAll('_', ' ')}</th>)}
             {(renderActions || onView) && <th>Actions</th>}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, index) => (
             <tr key={String(row.id || index)}>
-              {columns.map(column => <td key={column}>{column === 'amount' || column.endsWith('_amount') ? money(Number(row[column] || 0)) : renderValue(row[column])}</td>)}
+              {columns.map((column, columnIndex) => <td key={column} className={columnIndex === 0 ? 'sticky-col' : undefined}>{renderCell(row, column)}</td>)}
               {(renderActions || onView) && <td>{renderActions ? renderActions(row) : <button type="button" onClick={() => onView?.(row)}><Eye size={14} /> View detail</button>}</td>}
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={columns.length + (renderActions || onView ? 1 : 0)}>{empty}</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={columns.length + (renderActions || onView ? 1 : 0)}>{typeof empty === 'string' ? empty : <EmptyState config={empty} />}</td></tr>}
         </tbody>
       </table>
     </div>
@@ -704,14 +1140,25 @@ function Select({ value, options, onChange }: { value: string; options: (string 
 }
 
 function ActionButtons({ actions, onClick }: { actions: string[]; onClick: (action: string) => void }) {
+  const primary = actions.slice(0, 3);
+  const overflow = actions.slice(3);
   return (
     <div className="button-row compact-actions">
-      {actions.map(action => <button key={action} type="button" onClick={() => onClick(action)}>{action}</button>)}
+      {primary.map(action => <button key={action} type="button" onClick={() => onClick(action)}>{action}</button>)}
+      {overflow.length > 0 && (
+        <select aria-label="More actions" onChange={event => {
+          if (event.target.value) onClick(event.target.value);
+          event.target.value = '';
+        }}>
+          <option value="">More</option>
+          {overflow.map(action => <option key={action} value={action}>{action}</option>)}
+        </select>
+      )}
     </div>
   );
 }
 
-function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { payment_method: string; currency: string; country: string; amount: number; business_account: string; customer_region: string; risk_level: string }; result: RoutingSimulation | null; onChange: (value: { payment_method: string; currency: string; country: string; amount: number; business_account: string; customer_region: string; risk_level: string }) => void; onSubmit: (event: FormEvent) => void }) {
+function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { payment_method: string; currency: string; country: string; amount: number; business_account: string; customer_region: string; risk_level: string; strategy: string }; result: RoutingSimulation | null; onChange: (value: { payment_method: string; currency: string; country: string; amount: number; business_account: string; customer_region: string; risk_level: string; strategy: string }) => void; onSubmit: (event: FormEvent) => void }) {
   return (
     <section className="card">
       <h2><Route size={18} /> Routing simulator</h2>
@@ -724,15 +1171,22 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
           <Field label="Business account"><input value={form.business_account} onChange={event => onChange({ ...form, business_account: event.target.value })} /></Field>
           <Field label="Customer region"><input value={form.customer_region} onChange={event => onChange({ ...form, customer_region: event.target.value })} /></Field>
           <Field label="Risk level"><input value={form.risk_level} onChange={event => onChange({ ...form, risk_level: event.target.value })} /></Field>
+          <Field label="Strategy"><Select value={form.strategy} options={['priority', 'weighted', 'lowest_cost', 'highest_success_rate', 'latency_aware', 'risk_aware', 'health_aware', 'round_robin', 'fallback_only']} onChange={strategy => onChange({ ...form, strategy })} /></Field>
         </div>
         <button className="btn-primary" type="submit">Simulate</button>
       </form>
       <div className="stats-grid">
         <Metric label="Selected provider" value={result?.selected_provider || 'No match'} icon={Cable} />
         <Metric label="Matched rule" value={result?.matched_routing_rule || '-'} icon={Route} />
+        <Metric label="Provider score" value={result?.provider_score?.toFixed(2) || '-'} icon={Activity} />
         <Metric label="Fallback provider" value={result?.fallback_provider || '-'} icon={AlertTriangle} />
         <Metric label="Provider fee" value={money(result?.estimated_provider_fee || 0)} icon={Receipt} />
+        <Metric label="Latency estimate" value={`${result?.latency_estimate_ms || 0} ms`} icon={RefreshCw} />
+        <Metric label="Success estimate" value={`${(result?.success_estimate || 0).toFixed(1)}%`} icon={BadgeCheck} />
+        <Metric label="Strategy used" value={result?.strategy_used || '-'} icon={SlidersHorizontal} />
       </div>
+      {result && <DataTable rows={result.candidate_providers || []} columns={['provider', 'score', 'success_rate', 'latency_ms', 'fee_percent', 'attempt_count']} empty="No candidate providers" />}
+      {result && <DataTable rows={result.rejected_providers || []} columns={['provider', 'reason']} empty="No rejected providers" />}
     </section>
   );
 }

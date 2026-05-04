@@ -273,8 +273,8 @@ impl SettlementAdvancedService {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_tds_calculation() {
+    #[tokio::test]
+    async fn test_tds_calculation() {
         let service = SettlementAdvancedService::new(
             sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
         );
@@ -283,8 +283,8 @@ mod tests {
         assert_eq!(tds, 1000); // 1% = 10 INR
     }
 
-    #[test]
-    fn test_financial_year_april() {
+    #[tokio::test]
+    async fn test_financial_year_april() {
         let service = SettlementAdvancedService::new(
             sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
         );

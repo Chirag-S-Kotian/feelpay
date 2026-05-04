@@ -23,6 +23,8 @@ import {
   Route as RouteIcon,
   ClipboardList,
   UserCog,
+  HeartPulse,
+  WalletCards,
 } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -35,6 +37,7 @@ import {
   BankIntegrationsPage,
   BusinessAccountsPage,
   DisputesPage,
+  LedgerPage,
   PaymentOpsPage,
   PlatformSettingsPage,
   ProviderConnectorsPage,
@@ -44,7 +47,9 @@ import {
   RiskRulesPage,
   RoutingRulesPage,
   SettlementsPage,
+  SystemHealthPage,
   TransactionsPage,
+  NotificationsPage,
   WebhookConfigPage,
   WhiteLabelCheckoutPage,
 } from './pages/CompanyAdminOps';
@@ -67,8 +72,18 @@ type AdminPermission =
   | 'webhook_config.manage'
   | 'reports.export'
   | 'audit_logs.view'
+  | 'admin_users.view'
   | 'admin_users.manage'
-  | 'platform_settings.manage';
+  | 'roles.view'
+  | 'roles.manage'
+  | 'system_health.view'
+  | 'system_health.manage'
+  | 'notifications.view'
+  | 'notifications.manage'
+  | 'platform_settings.view'
+  | 'platform_settings.manage'
+  | 'ledger.view'
+  | 'ledger.export';
 
 type NavItem = {
   path: string;
@@ -92,6 +107,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { path: '/payment-ops', label: 'Payment Ops', icon: CreditCard, permission: 'payment_ops.view' },
       { path: '/transactions', label: 'Transactions', icon: Receipt, permission: 'transactions.view' },
+      { path: '/ledger', label: 'Ledger', icon: WalletCards, permission: 'ledger.view' },
       { path: '/refunds', label: 'Refunds', icon: RotateCcw, permission: 'refunds.request' },
       { path: '/settlements', label: 'Settlements', icon: Landmark, permission: 'settlements.manage' },
       { path: '/disputes', label: 'Disputes', icon: Scale, permission: 'disputes.manage' },
@@ -125,8 +141,10 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Admin',
     items: [
       { path: '/audit-logs', label: 'Audit Logs', icon: ListChecks, permission: 'audit_logs.view' },
-      { path: '/admin-users-roles', label: 'Admin Users & Roles', icon: UserCog, permission: 'admin_users.manage' },
-      { path: '/settings', label: 'Platform Settings', icon: SettingsIcon, permission: 'platform_settings.manage' },
+      { path: '/admin-users-roles', label: 'Admin Users & Roles', icon: UserCog, permission: 'admin_users.view' },
+      { path: '/system-health', label: 'System Health', icon: HeartPulse, permission: 'system_health.view' },
+      { path: '/notifications', label: 'Notifications', icon: Bell, permission: 'notifications.view' },
+      { path: '/settings', label: 'Platform Settings', icon: SettingsIcon, permission: 'platform_settings.view' },
     ],
   },
 ];
@@ -223,6 +241,7 @@ function Layout() {
           <Route path="/business-accounts" element={<RequirePermission permission="payment_ops.view"><BusinessAccountsPage /></RequirePermission>} />
           <Route path="/merchants" element={<Navigate to="/business-accounts" replace />} />
           <Route path="/transactions" element={<RequirePermission permission="transactions.view"><TransactionsPage /></RequirePermission>} />
+          <Route path="/ledger" element={<RequirePermission permission="ledger.view"><LedgerPage /></RequirePermission>} />
           <Route path="/refunds" element={<RequirePermission permission="refunds.request"><RefundsPage /></RequirePermission>} />
           <Route path="/settlements" element={<RequirePermission permission="settlements.manage"><SettlementsPage /></RequirePermission>} />
           <Route path="/disputes" element={<RequirePermission permission="disputes.manage"><DisputesPage /></RequirePermission>} />
@@ -237,8 +256,10 @@ function Layout() {
           <Route path="/bulk-export" element={<AdminBulkExport />} />
           <Route path="/reports" element={<RequirePermission permission="reports.export"><ReportsPage /></RequirePermission>} />
           <Route path="/audit-logs" element={<RequirePermission permission="audit_logs.view"><AuditLogsPage /></RequirePermission>} />
-          <Route path="/admin-users-roles" element={<RequirePermission permission="admin_users.manage"><AdminUsersRolesPage /></RequirePermission>} />
-          <Route path="/settings" element={<RequirePermission permission="platform_settings.manage"><PlatformSettingsPage /></RequirePermission>} />
+          <Route path="/admin-users-roles" element={<RequirePermission permission="admin_users.view"><AdminUsersRolesPage /></RequirePermission>} />
+          <Route path="/system-health" element={<RequirePermission permission="system_health.view"><SystemHealthPage /></RequirePermission>} />
+          <Route path="/notifications" element={<RequirePermission permission="notifications.view"><NotificationsPage /></RequirePermission>} />
+          <Route path="/settings" element={<RequirePermission permission="platform_settings.view"><PlatformSettingsPage /></RequirePermission>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
@@ -327,7 +348,7 @@ function RequirePermission({ permission, children }: { permission: AdminPermissi
 function hasPermission(permission: AdminPermission) {
   const claims = getAdminClaims();
   if (!claims) return false;
-  if (claims.role === 'Super Admin' || claims.role === 'super_admin' || claims.role === 'admin' || claims.role === 'merchant') return true;
+  if (claims.role === 'Super Admin' || claims.role === 'super_admin' || claims.role === 'admin') return true;
   return (claims.permissions || []).includes(permission);
 }
 

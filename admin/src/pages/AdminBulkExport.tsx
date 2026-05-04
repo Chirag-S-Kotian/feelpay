@@ -175,9 +175,9 @@ export default function AdminBulkExport() {
           </div>
 
           <div className="form-group">
-            <label>Merchant Filter</label>
+            <label>Business Account Filter</label>
             <select value={merchantFilter} onChange={e => setMerchantFilter(e.target.value)}>
-              <option value="all">All Merchants</option>
+              <option value="all">All Business Accounts</option>
               {merchants.map(m => (
                 <option key={m.id} value={m.id}>
                   {m.name}

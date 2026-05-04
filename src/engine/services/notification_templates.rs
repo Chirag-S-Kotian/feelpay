@@ -244,8 +244,8 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    #[test]
-    fn test_template_rendering() {
+    #[tokio::test]
+    async fn test_template_rendering() {
         let service = NotificationTemplateService::new(
             sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
         );
@@ -271,8 +271,8 @@ mod tests {
         assert!(body.contains("₹1000"));
     }
 
-    #[test]
-    fn test_missing_variables() {
+    #[tokio::test]
+    async fn test_missing_variables() {
         let service = NotificationTemplateService::new(
             sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
         );

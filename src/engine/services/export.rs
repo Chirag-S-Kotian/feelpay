@@ -203,12 +203,10 @@ impl ExportService {
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-        sqlx::query(
-            r#"CREATE INDEX IF NOT EXISTS idx_export_jobs_status ON export_jobs(status)"#,
-        )
-        .execute(&self.db)
-        .await
-        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query(r#"CREATE INDEX IF NOT EXISTS idx_export_jobs_status ON export_jobs(status)"#)
+            .execute(&self.db)
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         sqlx::query(
             r#"CREATE INDEX IF NOT EXISTS idx_export_jobs_created_at ON export_jobs(created_at)"#,
@@ -1401,11 +1399,12 @@ fn mask_email(email: &str) -> String {
 
 /// Mask phone number for PII protection
 fn mask_phone(phone: &str) -> String {
-    if phone.len() < 4 {
+    let phone_chars: Vec<char> = phone.chars().collect();
+    if phone_chars.len() < 4 {
         return "XXXX XXXX XXXX".to_string();
     }
 
-    let last4 = &phone[phone.len() - 4..];
+    let last4: String = phone_chars[phone_chars.len() - 4..].iter().collect();
     format!("+91 XXXX XXXX {}", last4)
 }
 
@@ -1629,9 +1628,10 @@ mod property_tests {
         ) {
             let masked = mask_phone(&phone);
 
-            if phone.len() >= 4 {
-                let last_four = &phone[phone.len() - 4..];
-                prop_assert!(masked.contains(last_four), "Last 4 digits should be preserved");
+            let phone_chars: Vec<char> = phone.chars().collect();
+            if phone_chars.len() >= 4 {
+                let last_four: String = phone_chars[phone_chars.len() - 4..].iter().collect();
+                prop_assert!(masked.contains(&last_four), "Last 4 digits should be preserved");
             }
 
             // Verify masking characters are present
@@ -1653,9 +1653,10 @@ mod property_tests {
             prop_assert!(masked.contains("XXXX"), "Should contain XXXX masking pattern");
 
             // Verify last 4 digits are preserved
-            if phone.len() >= 4 {
-                let last_four = &phone[phone.len() - 4..];
-                prop_assert!(masked.ends_with(last_four), "Should end with last 4 digits");
+            let phone_chars: Vec<char> = phone.chars().collect();
+            if phone_chars.len() >= 4 {
+                let last_four: String = phone_chars[phone_chars.len() - 4..].iter().collect();
+                prop_assert!(masked.ends_with(&last_four), "Should end with last 4 digits");
             }
         }
     }
