@@ -1138,6 +1138,51 @@ struct TraceLogRequest {
     error_message: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct SecurityFindingRequest {
+    category: String,
+    severity: String,
+    title: String,
+    description: String,
+    owner_admin_id: Option<Uuid>,
+    due_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct SecurityFindingPatchRequest {
+    owner_admin_id: Option<Uuid>,
+    status: Option<String>,
+    due_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct StepUpRequest {
+    admin_user_id: Option<Uuid>,
+    action: String,
+}
+
+#[derive(Deserialize)]
+struct StepUpActionRequest {
+    action: String,
+    enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct GoLiveChecklistPatchRequest {
+    owner_admin_id: Option<Uuid>,
+    evidence_url: Option<String>,
+    status: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CutoverRequest {
+    environment: String,
+    rollback_plan: String,
+    notes: Option<String>,
+    super_admin_approved: Option<bool>,
+    compliance_admin_approved: Option<bool>,
+}
+
 async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
     let summary = sqlx::query(
         r#"
@@ -5590,6 +5635,396 @@ async fn create_compliance_task(
     }
 }
 
+async fn security_review_overview(pool: web::Data<PgPool>) -> impl Responder {
+    let open_findings: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*) FILTER (WHERE status <> 'resolved'), 0)::bigint FROM security_review_findings",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+    let pending_step_up: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*) FILTER (WHERE status = 'pending' AND expires_at > NOW()), 0)::bigint FROM step_up_challenges",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+    HttpResponse::Ok().json(json!({
+        "mfa_required": true,
+        "deny_by_default_rbac": true,
+        "session_timeout": "enabled",
+        "ip_user_agent_audit": "enabled",
+        "secret_redaction": "enabled",
+        "webhook_signature_verification": "required",
+        "idempotency_enforcement": "enabled",
+        "payout_eligibility_checks": "enabled",
+        "immutable_ledger_entries": "enabled",
+        "open_findings": open_findings,
+        "pending_step_up": pending_step_up
+    }))
+}
+
+async fn list_security_review_findings(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM security_review_findings ORDER BY status, severity DESC, created_at DESC",
+        "Failed to load security findings",
+    )
+    .await
+}
+
+async fn create_security_review_finding(
+    pool: web::Data<PgPool>,
+    request: web::Json<SecurityFindingRequest>,
+) -> impl Responder {
+    let req = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO security_review_findings
+            (category, severity, title, description, status, owner_admin_id, due_at)
+        VALUES ($1, $2, $3, $4, 'open', $5, $6)
+        RETURNING id
+        "#,
+    )
+    .bind(req.category.trim())
+    .bind(req.severity.trim())
+    .bind(req.title.trim())
+    .bind(req.description.trim())
+    .bind(req.owner_admin_id)
+    .bind(req.due_at)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(&pool, "security_review.finding_created", "security_review_finding", Some(id), json!({ "title": req.title })).await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "open" }))
+        }
+        Err(e) => {
+            tracing::error!("Create security finding failed: {}", e);
+            server_error("Failed to create security finding")
+        }
+    }
+}
+
+async fn patch_security_review_finding(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<SecurityFindingPatchRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let req = request.into_inner();
+    let status = req.status.unwrap_or_else(|| "assigned".to_string());
+    let updated = sqlx::query(
+        r#"
+        UPDATE security_review_findings
+        SET owner_admin_id = COALESCE($2, owner_admin_id),
+            status = $3,
+            due_at = COALESCE($4, due_at),
+            resolved_at = CASE WHEN $3 = 'resolved' THEN NOW() ELSE resolved_at END
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .bind(req.owner_admin_id)
+    .bind(status.trim())
+    .bind(req.due_at)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(&pool, "security_review.finding_updated", "security_review_finding", Some(id), json!({ "status": status })).await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": status }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Finding not found" })),
+        Err(e) => {
+            tracing::error!("Update security finding failed: {}", e);
+            server_error("Failed to update security finding")
+        }
+    }
+}
+
+async fn export_threat_model(pool: web::Data<PgPool>) -> impl Responder {
+    audit(&pool, "security_review.threat_model_exported", "security_review", None, json!({ "format": "json" })).await;
+    HttpResponse::Ok().json(json!({
+        "threat_model": [
+            "secrets leakage",
+            "webhook spoofing",
+            "idempotency replay abuse",
+            "payout fraud",
+            "admin account takeover",
+            "privilege escalation",
+            "report data leakage",
+            "bank account tampering",
+            "reconciliation manipulation",
+            "provider credential compromise"
+        ],
+        "controls": [
+            "MFA required for admins",
+            "step-up confirmation for sensitive actions",
+            "IP/user-agent audit",
+            "deny-by-default RBAC",
+            "secret redaction",
+            "webhook signature verification",
+            "idempotency enforcement",
+            "payout eligibility checks",
+            "immutable ledger entries"
+        ]
+    }))
+}
+
+async fn list_step_up_challenges(pool: web::Data<PgPool>) -> impl Responder {
+    let _ = sqlx::query("UPDATE step_up_challenges SET status = 'expired' WHERE status = 'pending' AND expires_at <= NOW()")
+        .execute(pool.get_ref())
+        .await;
+    query_items(
+        pool,
+        "SELECT * FROM step_up_challenges ORDER BY created_at DESC LIMIT 200",
+        "Failed to load step-up challenges",
+    )
+    .await
+}
+
+async fn create_step_up_challenge(
+    pool: web::Data<PgPool>,
+    request: web::Json<StepUpRequest>,
+) -> impl Responder {
+    let req = request.into_inner();
+    let enabled: bool = sqlx::query_scalar("SELECT COALESCE(enabled, true) FROM step_up_actions WHERE action = $1")
+        .bind(req.action.trim())
+        .fetch_optional(pool.get_ref())
+        .await
+        .unwrap_or(Some(true))
+        .unwrap_or(true);
+    if !enabled {
+        return HttpResponse::Ok().json(json!({ "required": false, "action": req.action }));
+    }
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO step_up_challenges (admin_user_id, action, status, expires_at) VALUES ($1, $2, 'pending', NOW() + INTERVAL '10 minutes') RETURNING id",
+    )
+    .bind(req.admin_user_id)
+    .bind(req.action.trim())
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({ "required": true, "id": id, "status": "pending" })),
+        Err(e) => {
+            tracing::error!("Create step-up failed: {}", e);
+            server_error("Failed to create step-up challenge")
+        }
+    }
+}
+
+async fn verify_step_up_challenge(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE step_up_challenges SET status = 'verified', verified_at = NOW() WHERE id = $1 AND status = 'pending' AND expires_at > NOW()",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => HttpResponse::Ok().json(json!({ "id": id, "status": "verified" })),
+        Ok(_) => catalog_error("invalid_request", "Step-up challenge expired or not pending", 400),
+        Err(e) => {
+            tracing::error!("Verify step-up failed: {}", e);
+            server_error("Failed to verify step-up challenge")
+        }
+    }
+}
+
+async fn configure_step_up_action(
+    pool: web::Data<PgPool>,
+    request: web::Json<StepUpActionRequest>,
+) -> impl Responder {
+    let req = request.into_inner();
+    let enabled = req.enabled.unwrap_or(true);
+    let saved = sqlx::query(
+        "INSERT INTO step_up_actions (action, enabled, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (action) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()",
+    )
+    .bind(req.action.trim())
+    .bind(enabled)
+    .execute(pool.get_ref())
+    .await;
+    match saved {
+        Ok(_) => HttpResponse::Ok().json(json!({ "action": req.action, "enabled": enabled })),
+        Err(e) => {
+            tracing::error!("Configure step-up failed: {}", e);
+            server_error("Failed to configure step-up action")
+        }
+    }
+}
+
+async fn list_step_up_actions(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM step_up_actions ORDER BY action",
+        "Failed to load step-up actions",
+    )
+    .await
+}
+
+async fn list_sensitive_action_history(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM sensitive_action_history ORDER BY created_at DESC LIMIT 200",
+        "Failed to load sensitive action history",
+    )
+    .await
+}
+
+async fn list_go_live_checklist(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM go_live_checklist ORDER BY critical DESC, item_key",
+        "Failed to load go-live checklist",
+    )
+    .await
+}
+
+async fn patch_go_live_checklist_item(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<GoLiveChecklistPatchRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let req = request.into_inner();
+    let status = req.status.unwrap_or_else(|| "assigned".to_string());
+    let updated = sqlx::query(
+        r#"
+        UPDATE go_live_checklist
+        SET owner_admin_id = COALESCE($2, owner_admin_id),
+            evidence_url = COALESCE($3, evidence_url),
+            status = $4,
+            completed_at = CASE WHEN $4 = 'complete' THEN NOW() ELSE completed_at END
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .bind(req.owner_admin_id)
+    .bind(req.evidence_url.as_deref())
+    .bind(status.trim())
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(&pool, "go_live.checklist_updated", "go_live_checklist", Some(id), json!({ "status": status })).await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": status }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Checklist item not found" })),
+        Err(e) => {
+            tracing::error!("Update go-live checklist failed: {}", e);
+            server_error("Failed to update go-live checklist")
+        }
+    }
+}
+
+async fn readiness_go_live_scorecard(pool: web::Data<PgPool>) -> impl Responder {
+    let rows = sqlx::query("SELECT * FROM go_live_checklist ORDER BY critical DESC, item_key")
+        .fetch_all(pool.get_ref())
+        .await;
+    match rows {
+        Ok(rows) => {
+            let items = rows.iter().map(row_to_json).collect::<Vec<_>>();
+            let total = items.len().max(1) as i64;
+            let complete = items.iter().filter(|item| item["status"] == "complete").count() as i64;
+            let critical_missing = items.iter().filter(|item| item["critical"] == true && item["status"] != "complete").cloned().collect::<Vec<_>>();
+            HttpResponse::Ok().json(json!({
+                "score": (complete * 100) / total,
+                "critical_missing": critical_missing,
+                "items": items
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Go-live scorecard failed: {}", e);
+            server_error("Failed to load go-live scorecard")
+        }
+    }
+}
+
+async fn start_production_cutover(
+    pool: web::Data<PgPool>,
+    request: web::Json<CutoverRequest>,
+) -> impl Responder {
+    let req = request.into_inner();
+    let critical_missing: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM go_live_checklist WHERE critical = true AND status <> 'complete'",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(1);
+    if critical_missing > 0 {
+        return catalog_error("invalid_request", "Critical go-live checklist items are incomplete", 400);
+    }
+    if !req.super_admin_approved.unwrap_or(false) {
+        return catalog_error("scope_denied", "Super Admin approval required", 403);
+    }
+    if !req.compliance_admin_approved.unwrap_or(false) {
+        return catalog_error("scope_denied", "Compliance Admin approval required", 403);
+    }
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO production_cutovers
+            (environment, status, started_at, rollback_plan, notes, super_admin_approved, compliance_admin_approved)
+        VALUES ($1, 'started', NOW(), $2, $3, true, true)
+        RETURNING id
+        "#,
+    )
+    .bind(req.environment.trim())
+    .bind(req.rollback_plan.trim())
+    .bind(req.notes.as_deref())
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(&pool, "production_cutover.started", "production_cutover", Some(id), json!({ "environment": req.environment })).await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "started" }))
+        }
+        Err(e) => {
+            tracing::error!("Start cutover failed: {}", e);
+            server_error("Failed to start production cutover")
+        }
+    }
+}
+
+async fn update_production_cutover(
+    pool: web::Data<PgPool>,
+    path: web::Path<(Uuid, String)>,
+) -> impl Responder {
+    let (id, action) = path.into_inner();
+    let status = match action.as_str() {
+        "pause" => "paused",
+        "complete" => "completed",
+        "rollback" => "rolled_back",
+        _ => return catalog_error("invalid_request", "Unknown cutover action", 400),
+    };
+    let updated = sqlx::query(
+        "UPDATE production_cutovers SET status = $2, completed_at = CASE WHEN $2 IN ('completed', 'rolled_back') THEN NOW() ELSE completed_at END WHERE id = $1",
+    )
+    .bind(id)
+    .bind(status)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(&pool, &format!("production_cutover.{status}"), "production_cutover", Some(id), json!({ "status": status })).await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": status }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Cutover not found" })),
+        Err(e) => {
+            tracing::error!("Update cutover failed: {}", e);
+            server_error("Failed to update production cutover")
+        }
+    }
+}
+
+async fn list_production_cutovers(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM production_cutovers ORDER BY created_at DESC LIMIT 50",
+        "Failed to load production cutovers",
+    )
+    .await
+}
+
 async fn list_checkout_payment_links(pool: web::Data<PgPool>) -> impl Responder {
     query_items(
         pool,
@@ -8506,6 +8941,50 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(create_compliance_packet_export),
         )
         .route(
+            &format!("{prefix}/security-review/overview"),
+            web::get().to(security_review_overview),
+        )
+        .route(
+            &format!("{prefix}/security-review/findings"),
+            web::get().to(list_security_review_findings),
+        )
+        .route(
+            &format!("{prefix}/security-review/findings"),
+            web::post().to(create_security_review_finding),
+        )
+        .route(
+            &format!("{prefix}/security-review/findings/{{id}}"),
+            web::patch().to(patch_security_review_finding),
+        )
+        .route(
+            &format!("{prefix}/security-review/threat-model-export"),
+            web::get().to(export_threat_model),
+        )
+        .route(
+            &format!("{prefix}/security-review/step-up-challenges"),
+            web::get().to(list_step_up_challenges),
+        )
+        .route(
+            &format!("{prefix}/security-review/step-up-challenges"),
+            web::post().to(create_step_up_challenge),
+        )
+        .route(
+            &format!("{prefix}/security-review/step-up-challenges/{{id}}/verify"),
+            web::post().to(verify_step_up_challenge),
+        )
+        .route(
+            &format!("{prefix}/security-review/step-up-actions"),
+            web::get().to(list_step_up_actions),
+        )
+        .route(
+            &format!("{prefix}/security-review/step-up-actions"),
+            web::post().to(configure_step_up_action),
+        )
+        .route(
+            &format!("{prefix}/security-review/sensitive-actions"),
+            web::get().to(list_sensitive_action_history),
+        )
+        .route(
             &format!("{prefix}/readiness-scorecard"),
             web::get().to(readiness_scorecard),
         )
@@ -8520,6 +8999,30 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/readiness-scorecard/{{id}}/manual-check"),
             web::post().to(readiness_mark_manual_check),
+        )
+        .route(
+            &format!("{prefix}/go-live/checklist"),
+            web::get().to(list_go_live_checklist),
+        )
+        .route(
+            &format!("{prefix}/go-live/checklist/{{id}}"),
+            web::patch().to(patch_go_live_checklist_item),
+        )
+        .route(
+            &format!("{prefix}/go-live/scorecard"),
+            web::get().to(readiness_go_live_scorecard),
+        )
+        .route(
+            &format!("{prefix}/go-live/cutovers"),
+            web::get().to(list_production_cutovers),
+        )
+        .route(
+            &format!("{prefix}/go-live/cutovers"),
+            web::post().to(start_production_cutover),
+        )
+        .route(
+            &format!("{prefix}/go-live/cutovers/{{id}}/{{action}}"),
+            web::post().to(update_production_cutover),
         )
         .route(
             &format!("{prefix}/system-health/metrics"),

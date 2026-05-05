@@ -255,7 +255,7 @@ async fn main() -> std::io::Result<()> {
             // Payment Links API
             .service(
                 web::scope("/v1/payment-links")
-                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .wrap(crate::middleware::external_api::ExternalApiGateway::new())
                     .route("", web::post().to(api::payment_links::create_payment_link))
                     .route("", web::get().to(api::payment_links::list_payment_links))
                     .route("/{id}", web::get().to(api::payment_links::get_payment_link))
@@ -300,7 +300,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/v1/payments")
                     // Authenticated via API keys or JWT (for dashboard)
-                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .wrap(crate::middleware::external_api::ExternalApiGateway::new())
                     .route("", web::post().to(api::payments::create_payment))
                     .route("", web::get().to(api::payments::list_payments))
                     .route("/{id}", web::get().to(api::payments::get_payment))

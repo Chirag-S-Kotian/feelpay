@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod external_api;
 pub mod ip_whitelist;
 pub mod maintenance_mode;
 pub mod rate_limit;
