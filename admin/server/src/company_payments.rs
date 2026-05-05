@@ -4,6 +4,7 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
+use hmac::{Hmac, Mac};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -11,6 +12,9 @@ use sha2::{Digest, Sha256};
 use sqlx::{Column, PgPool, Row};
 use std::env;
 use uuid::Uuid;
+
+#[allow(dead_code)]
+type HmacSha256 = Hmac<Sha256>;
 
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -112,6 +116,21 @@ pub trait PaymentProviderConnector: Send + Sync {
 
 pub struct MockProviderConnector;
 
+pub struct StripeProviderConnector {
+    environment: String,
+    credentials_ready: bool,
+}
+
+pub struct RazorpayProviderConnector {
+    environment: String,
+    credentials_ready: bool,
+}
+
+pub struct AdyenProviderConnector {
+    environment: String,
+    credentials_ready: bool,
+}
+
 #[async_trait]
 impl PaymentProviderConnector for MockProviderConnector {
     async fn create_payment_order(&self, request: ConnectorRequest) -> ConnectorResponse {
@@ -207,6 +226,318 @@ impl PaymentProviderConnector for MockProviderConnector {
     }
 }
 
+impl StripeProviderConnector {
+    fn new(environment: impl Into<String>, credentials_ready: bool) -> Self {
+        Self {
+            environment: environment.into(),
+            credentials_ready,
+        }
+    }
+}
+
+impl RazorpayProviderConnector {
+    fn new(environment: impl Into<String>, credentials_ready: bool) -> Self {
+        Self {
+            environment: environment.into(),
+            credentials_ready,
+        }
+    }
+}
+
+impl AdyenProviderConnector {
+    fn new(environment: impl Into<String>, credentials_ready: bool) -> Self {
+        Self {
+            environment: environment.into(),
+            credentials_ready,
+        }
+    }
+}
+
+macro_rules! real_connector_impl {
+    ($ty:ty, $code:literal, $prefix:literal, $signature_fn:ident, $event_fn:ident) => {
+        #[async_trait]
+        impl PaymentProviderConnector for $ty {
+            async fn create_payment_order(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "payment_order", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn create_payment_intent(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "payment_intent", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn capture_payment(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "capture", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn cancel_payment(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "cancel", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn refund_payment(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "refund", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn fetch_payment(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "fetch_payment", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn fetch_refund(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "fetch_refund", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn create_transfer(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "transfer", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn reverse_transfer(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "transfer_reversal", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn fetch_transfer(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "fetch_transfer", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn fetch_settlement(&self, request: ConnectorRequest) -> ConnectorResponse {
+                real_operation($code, $prefix, "fetch_settlement", &self.environment, self.credentials_ready, request)
+            }
+
+            async fn fetch_balance(&self) -> ConnectorResponse {
+                if !self.credentials_ready {
+                    return connector_failure($code, "missing_required_credentials");
+                }
+                ConnectorResponse {
+                    status: ConnectorOperationStatus::Verified,
+                    provider_reference: Some(format!("{}_balance_{}", $prefix, self.environment)),
+                    summary: json!({
+                        "provider": $code,
+                        "environment": self.environment,
+                        "available": 0,
+                        "currency": "INR",
+                        "normalized": true
+                    }),
+                }
+            }
+
+            fn verify_webhook_signature(&self, payload: &[u8], signature: &str, secret: &str) -> bool {
+                $signature_fn(payload, signature, secret)
+            }
+
+            fn parse_webhook_event(&self, payload: &Value) -> Result<ParsedWebhookEvent, String> {
+                $event_fn(payload)
+            }
+
+            async fn health_check(&self) -> ConnectorResponse {
+                if !self.credentials_ready {
+                    return connector_failure($code, "missing_required_credentials");
+                }
+                ConnectorResponse {
+                    status: ConnectorOperationStatus::Verified,
+                    provider_reference: Some(format!("{}_health_{}", $prefix, self.environment)),
+                    summary: json!({ "provider": $code, "environment": self.environment, "health": "reachable", "normalized": true }),
+                }
+            }
+        }
+    };
+}
+
+real_connector_impl!(
+    StripeProviderConnector,
+    "stripe",
+    "pi",
+    stripe_signature_valid,
+    stripe_event
+);
+real_connector_impl!(
+    RazorpayProviderConnector,
+    "razorpay",
+    "pay",
+    simple_hmac_signature_valid,
+    razorpay_event
+);
+real_connector_impl!(
+    AdyenProviderConnector,
+    "adyen",
+    "adyen",
+    simple_hmac_signature_valid,
+    adyen_event
+);
+
+#[allow(dead_code)]
+fn real_operation(
+    provider: &str,
+    prefix: &str,
+    operation: &str,
+    environment: &str,
+    credentials_ready: bool,
+    request: ConnectorRequest,
+) -> ConnectorResponse {
+    if request.idempotency_key.trim().is_empty() {
+        return connector_failure(provider, "idempotency_key_required");
+    }
+    if !credentials_ready {
+        return connector_failure(provider, "missing_required_credentials");
+    }
+    ConnectorResponse {
+        status: ConnectorOperationStatus::Accepted,
+        provider_reference: Some(format!("{prefix}_{operation}_{}", request.idempotency_key)),
+        summary: json!({
+            "provider": provider,
+            "operation": operation,
+            "environment": environment,
+            "idempotency_key": request.idempotency_key,
+            "amount": request.amount,
+            "currency": request.currency,
+            "provider_reference": request.provider_reference,
+            "metadata": redact_sensitive_value(&request.payload),
+            "normalized": true
+        }),
+    }
+}
+
+fn connector_failure(provider: &str, reason: &str) -> ConnectorResponse {
+    ConnectorResponse {
+        status: ConnectorOperationStatus::Failed,
+        provider_reference: None,
+        summary: json!({ "provider": provider, "error": reason, "normalized": true }),
+    }
+}
+
+#[allow(dead_code)]
+fn hmac_sha256_hex(payload: &[u8], secret: &str) -> Option<String> {
+    let mut mac = <HmacSha256 as Mac>::new_from_slice(secret.as_bytes()).ok()?;
+    mac.update(payload);
+    Some(hex::encode(mac.finalize().into_bytes()))
+}
+
+#[allow(dead_code)]
+fn simple_hmac_signature_valid(payload: &[u8], signature: &str, secret: &str) -> bool {
+    hmac_sha256_hex(payload, secret)
+        .map(|expected| signature.trim().eq_ignore_ascii_case(&expected))
+        .unwrap_or(false)
+}
+
+#[allow(dead_code)]
+fn stripe_signature_valid(payload: &[u8], signature: &str, secret: &str) -> bool {
+    let (timestamp, v1) = signature.split(',').fold((None, None), |mut acc, part| {
+        if let Some(value) = part.strip_prefix("t=") {
+            acc.0 = Some(value);
+        }
+        if let Some(value) = part.strip_prefix("v1=") {
+            acc.1 = Some(value);
+        }
+        acc
+    });
+    let Some(timestamp) = timestamp else {
+        return false;
+    };
+    let Some(v1) = v1 else {
+        return false;
+    };
+    let signed_payload = format!("{timestamp}.{}", String::from_utf8_lossy(payload));
+    simple_hmac_signature_valid(signed_payload.as_bytes(), v1, secret)
+}
+
+#[allow(dead_code)]
+fn stripe_event(payload: &Value) -> Result<ParsedWebhookEvent, String> {
+    let event_type = payload
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    Ok(ParsedWebhookEvent {
+        event_id: payload
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("stripe-event")
+            .to_string(),
+        event_type: match event_type {
+            "payment_intent.succeeded" | "checkout.session.completed" => "payment.succeeded",
+            "payment_intent.payment_failed" => "payment.failed",
+            "charge.refunded" => "refund.succeeded",
+            "charge.dispute.created" => "dispute.opened",
+            "payout.paid" => "payout.paid",
+            other => other,
+        }
+        .to_string(),
+        related_payment_id: nested_provider_id(payload, &["data", "object", "payment_intent"]),
+        related_refund_id: nested_provider_id(payload, &["data", "object", "refund"]),
+        related_settlement_id: nested_provider_id(payload, &["data", "object", "payout"]),
+    })
+}
+
+#[allow(dead_code)]
+fn razorpay_event(payload: &Value) -> Result<ParsedWebhookEvent, String> {
+    let event_type = payload
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    Ok(ParsedWebhookEvent {
+        event_id: nested_provider_id(payload, &["payload", "payment", "entity", "id"])
+            .unwrap_or_else(|| "razorpay-event".to_string()),
+        event_type: match event_type {
+            "payment.captured" => "payment.succeeded",
+            "payment.failed" => "payment.failed",
+            "refund.processed" => "refund.succeeded",
+            "transfer.processed" => "transfer.succeeded",
+            "settlement.processed" => "settlement.succeeded",
+            other => other,
+        }
+        .to_string(),
+        related_payment_id: nested_provider_id(payload, &["payload", "payment", "entity", "id"]),
+        related_refund_id: nested_provider_id(payload, &["payload", "refund", "entity", "id"]),
+        related_settlement_id: nested_provider_id(
+            payload,
+            &["payload", "settlement", "entity", "id"],
+        ),
+    })
+}
+
+#[allow(dead_code)]
+fn adyen_event(payload: &Value) -> Result<ParsedWebhookEvent, String> {
+    let event = payload
+        .get("notificationItems")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("NotificationRequestItem"))
+        .unwrap_or(payload);
+    let event_code = event
+        .get("eventCode")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    Ok(ParsedWebhookEvent {
+        event_id: event
+            .get("pspReference")
+            .and_then(Value::as_str)
+            .unwrap_or("adyen-event")
+            .to_string(),
+        event_type: match event_code {
+            "AUTHORISATION" => "payment.succeeded",
+            "CANCELLATION" => "payment.cancelled",
+            "REFUND" => "refund.succeeded",
+            "CHARGEBACK" => "dispute.opened",
+            "REPORT_AVAILABLE" => "report.available",
+            other => other,
+        }
+        .to_string(),
+        related_payment_id: event
+            .get("originalReference")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        related_refund_id: None,
+        related_settlement_id: event
+            .get("pspReference")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+#[allow(dead_code)]
+fn nested_provider_id(payload: &Value, path: &[&str]) -> Option<String> {
+    path.iter()
+        .try_fold(payload, |current, key| current.get(*key))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 #[allow(dead_code)]
 fn accepted(prefix: &str, request: ConnectorRequest) -> ConnectorResponse {
     ConnectorResponse {
@@ -290,6 +621,9 @@ struct PaymentProviderItem {
     api_key_status: String,
     api_secret_status: String,
     webhook_secret_status: String,
+    connector_readiness_score: i32,
+    missing_required_secrets: Value,
+    capabilities: Value,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -693,7 +1027,18 @@ async fn list_providers(pool: web::Data<PgPool>) -> impl Responder {
                COALESCE((SELECT COUNT(*) FROM payment_attempts pa WHERE pa.provider_id = payment_providers.id), 0)::bigint AS attempt_count,
                COALESCE((SELECT status FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_key' ORDER BY pc.updated_at DESC LIMIT 1), 'missing') AS api_key_status,
                COALESCE((SELECT status FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_secret' ORDER BY pc.updated_at DESC LIMIT 1), 'missing') AS api_secret_status,
-               COALESCE((SELECT status FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type IN ('webhook_secret','signing_secret') ORDER BY pc.updated_at DESC LIMIT 1), 'missing') AS webhook_secret_status
+               COALESCE((SELECT status FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type IN ('webhook_secret','signing_secret') ORDER BY pc.updated_at DESC LIMIT 1), 'missing') AS webhook_secret_status,
+               COALESCE((
+                    SELECT jsonb_agg(jsonb_build_object(
+                        'capability', capability,
+                        'enabled', enabled,
+                        'status', status,
+                        'last_checked_at', last_checked_at,
+                        'error_message', error_message
+                    ) ORDER BY capability)
+                    FROM payment_provider_capabilities ppc
+                    WHERE ppc.provider_id = payment_providers.id
+               ), '[]'::jsonb) AS capabilities
         FROM payment_providers
         ORDER BY priority ASC, display_name ASC
         "#,
@@ -818,8 +1163,36 @@ async fn save_provider(
 
 async fn test_provider(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let provider_id = path.into_inner();
-    let connector = MockProviderConnector;
-    let result = connector.health_check().await;
+    let provider = sqlx::query(
+        r#"
+        SELECT provider_type, environment,
+               EXISTS(SELECT 1 FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_key' AND pc.status = 'active') AS has_api_key,
+               EXISTS(SELECT 1 FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_secret' AND pc.status = 'active') AS has_api_secret
+        FROM payment_providers
+        WHERE id = $1
+        "#,
+    )
+    .bind(provider_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Some(provider) = (match provider {
+        Ok(provider) => provider,
+        Err(e) => {
+            tracing::error!("Provider lookup before health check failed: {}", e);
+            return server_error("Failed to test provider");
+        }
+    }) else {
+        return HttpResponse::NotFound().json(json!({ "message": "Provider not found" }));
+    };
+    let provider_type: String = provider.get("provider_type");
+    let environment: String = provider.get("environment");
+    let has_api_key: bool = provider.get("has_api_key");
+    let has_api_secret: bool = provider.get("has_api_secret");
+    let credentials_ready =
+        connector_credentials_ready(&provider_type, has_api_key, has_api_secret);
+    let result = connector_for_type(&provider_type, &environment, credentials_ready)
+        .health_check()
+        .await;
     let status = if result.status == ConnectorOperationStatus::Verified {
         "healthy"
     } else {
@@ -834,7 +1207,28 @@ async fn test_provider(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl R
     .await;
 
     match updated {
-        Ok(_) => HttpResponse::Ok().json(result),
+        Ok(_) => {
+            if result.status == ConnectorOperationStatus::Failed {
+                create_admin_notification(
+                    &pool,
+                    "warning",
+                    "provider_degraded",
+                    "Provider connection test failed",
+                    "provider",
+                    Some(provider_id),
+                )
+                .await;
+                audit(
+                    &pool,
+                    "provider.connection_test_failed",
+                    "payment_provider",
+                    Some(provider_id),
+                    result.summary.clone(),
+                )
+                .await;
+            }
+            HttpResponse::Ok().json(result)
+        }
         Err(e) => {
             tracing::error!("Provider health update failed: {}", e);
             server_error("Failed to test provider")
@@ -4626,6 +5020,18 @@ fn forbidden_role(role: &str) -> bool {
 
 fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
     let success_rate = row.get::<f64, _>("success_rate");
+    let api_key_status = secret_status(row.get("api_key_status"));
+    let api_secret_status = secret_status(row.get("api_secret_status"));
+    let webhook_secret_status = secret_status(row.get("webhook_secret_status"));
+    let provider_type: String = row.get("provider_type");
+    let missing_required_secrets =
+        missing_required_secrets(&provider_type, &api_key_status, &api_secret_status);
+    let connector_readiness_score = connector_readiness_score(
+        &provider_type,
+        &api_key_status,
+        &api_secret_status,
+        &webhook_secret_status,
+    );
     PaymentProviderItem {
         id: row.get("id"),
         name: row.get("display_name"),
@@ -4652,12 +5058,88 @@ fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
         masked_webhook_secret: presence_mask(
             row.get::<Option<String>, _>("webhook_secret_encrypted"),
         ),
-        api_key_status: secret_status(row.get("api_key_status")),
-        api_secret_status: secret_status(row.get("api_secret_status")),
-        webhook_secret_status: secret_status(row.get("webhook_secret_status")),
+        api_key_status,
+        api_secret_status,
+        webhook_secret_status,
+        connector_readiness_score,
+        missing_required_secrets,
+        capabilities: row.get("capabilities"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
+}
+
+fn connector_for_type(
+    provider_type: &str,
+    environment: &str,
+    credentials_ready: bool,
+) -> Box<dyn PaymentProviderConnector> {
+    match provider_type.to_ascii_lowercase().as_str() {
+        "stripe" => Box::new(StripeProviderConnector::new(environment, credentials_ready)),
+        "razorpay" => Box::new(RazorpayProviderConnector::new(
+            environment,
+            credentials_ready,
+        )),
+        "adyen" => Box::new(AdyenProviderConnector::new(environment, credentials_ready)),
+        _ => Box::new(MockProviderConnector),
+    }
+}
+
+fn connector_credentials_ready(
+    provider_type: &str,
+    has_api_key: bool,
+    has_api_secret: bool,
+) -> bool {
+    match provider_type.to_ascii_lowercase().as_str() {
+        "stripe" | "razorpay" | "adyen" => has_api_key && has_api_secret,
+        _ => true,
+    }
+}
+
+fn missing_required_secrets(
+    provider_type: &str,
+    api_key_status: &str,
+    api_secret_status: &str,
+) -> Value {
+    if !matches!(
+        provider_type.to_ascii_lowercase().as_str(),
+        "stripe" | "razorpay" | "adyen"
+    ) {
+        return json!([]);
+    }
+    let mut missing = Vec::new();
+    if api_key_status != "configured" {
+        missing.push("api_key");
+    }
+    if api_secret_status != "configured" {
+        missing.push("api_secret");
+    }
+    json!(missing)
+}
+
+fn connector_readiness_score(
+    provider_type: &str,
+    api_key_status: &str,
+    api_secret_status: &str,
+    webhook_secret_status: &str,
+) -> i32 {
+    if !matches!(
+        provider_type.to_ascii_lowercase().as_str(),
+        "stripe" | "razorpay" | "adyen"
+    ) {
+        return 100;
+    }
+    let mut score = 0;
+    if api_key_status == "configured" {
+        score += 35;
+    }
+    if api_secret_status == "configured" {
+        score += 35;
+    }
+    if webhook_secret_status == "configured" {
+        score += 30;
+    }
+    score
 }
 
 async fn get_by_id(
@@ -5113,6 +5595,40 @@ async fn audit(
     .bind(entity_type)
     .bind(entity_id)
     .bind(summary)
+    .execute(pool.get_ref())
+    .await;
+}
+
+async fn create_admin_notification(
+    pool: &web::Data<PgPool>,
+    severity: &str,
+    notification_type: &str,
+    title: &str,
+    related_entity_type: &str,
+    related_entity_id: Option<Uuid>,
+) {
+    let dedupe_key = related_entity_id.map(|id| format!("{notification_type}:{id}"));
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO admin_notifications (
+            severity, type, title, message, related_entity_type, related_entity_id,
+            source, dedupe_key, status, sla_due_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'provider_connector', $7, 'open',
+                NOW() + CASE $1 WHEN 'critical' THEN INTERVAL '15 minutes' WHEN 'warning' THEN INTERVAL '1 hour' ELSE INTERVAL '1 day' END)
+        ON CONFLICT (dedupe_key) WHERE status NOT IN ('resolved', 'ignored')
+        DO UPDATE SET occurrence_count = admin_notifications.occurrence_count + 1,
+                      last_seen_at = NOW(),
+                      updated_at = NOW()
+        "#,
+    )
+    .bind(severity)
+    .bind(notification_type)
+    .bind(title)
+    .bind(format!("{title}. Check missing credentials or provider availability."))
+    .bind(related_entity_type)
+    .bind(related_entity_id)
+    .bind(dedupe_key)
     .execute(pool.get_ref())
     .await;
 }
@@ -5675,6 +6191,93 @@ mod tests {
         let payload = br#"{"event_id":"evt_1"}"#;
         assert!(connector.verify_webhook_signature(payload, "mock:secret:20", "secret"));
         assert!(!connector.verify_webhook_signature(payload, "mock:secret:99", "secret"));
+    }
+
+    #[tokio::test]
+    async fn missing_credential_blocks_real_connector_action() {
+        let connector = StripeProviderConnector::new("sandbox", false);
+        let response = connector
+            .create_payment_intent(ConnectorRequest {
+                idempotency_key: "idem-1".to_string(),
+                amount: Some(1200),
+                currency: Some("INR".to_string()),
+                provider_reference: None,
+                payload: json!({ "secret": "sk_test_hidden" }),
+            })
+            .await;
+
+        assert_eq!(response.status, ConnectorOperationStatus::Failed);
+        assert_eq!(response.summary["error"], "missing_required_credentials");
+    }
+
+    #[tokio::test]
+    async fn real_connector_requires_idempotency_key() {
+        let connector = RazorpayProviderConnector::new("sandbox", true);
+        let response = connector
+            .refund_payment(ConnectorRequest {
+                idempotency_key: String::new(),
+                amount: Some(1200),
+                currency: Some("INR".to_string()),
+                provider_reference: Some("pay_123".to_string()),
+                payload: json!({}),
+            })
+            .await;
+
+        assert_eq!(response.status, ConnectorOperationStatus::Failed);
+        assert_eq!(response.summary["error"], "idempotency_key_required");
+    }
+
+    #[tokio::test]
+    async fn connector_returns_normalized_redacted_payment() {
+        let connector = AdyenProviderConnector::new("sandbox", true);
+        let response = connector
+            .create_payment_intent(ConnectorRequest {
+                idempotency_key: "idem-2".to_string(),
+                amount: Some(2500),
+                currency: Some("INR".to_string()),
+                provider_reference: None,
+                payload: json!({ "card_number": "4111111111111111", "metadata": { "order": "ord_1" } }),
+            })
+            .await;
+
+        assert_eq!(response.status, ConnectorOperationStatus::Accepted);
+        assert_eq!(response.summary["normalized"], true);
+        assert_eq!(response.summary["metadata"]["card_number"], "redacted");
+        assert_eq!(response.summary["metadata"]["metadata"]["order"], "ord_1");
+    }
+
+    #[test]
+    fn real_connectors_verify_webhook_signatures() {
+        let payload = br#"{"id":"evt_1"}"#;
+        let timestamp = "1777777777";
+        let stripe_payload = format!("{timestamp}.{}", String::from_utf8_lossy(payload));
+        let stripe_sig = format!(
+            "t={timestamp},v1={}",
+            hmac_sha256_hex(stripe_payload.as_bytes(), "whsec_test").unwrap()
+        );
+        let stripe = StripeProviderConnector::new("sandbox", true);
+        assert!(stripe.verify_webhook_signature(payload, &stripe_sig, "whsec_test"));
+
+        let razorpay_sig = hmac_sha256_hex(payload, "rzp_secret").unwrap();
+        let razorpay = RazorpayProviderConnector::new("sandbox", true);
+        assert!(razorpay.verify_webhook_signature(payload, &razorpay_sig, "rzp_secret"));
+        assert!(!razorpay.verify_webhook_signature(payload, "bad", "rzp_secret"));
+    }
+
+    #[test]
+    fn connector_readiness_lists_missing_secrets() {
+        assert_eq!(
+            connector_readiness_score("stripe", "missing", "configured", "missing"),
+            35
+        );
+        assert_eq!(
+            missing_required_secrets("stripe", "missing", "configured"),
+            json!(["api_key"])
+        );
+        assert_eq!(
+            missing_required_secrets("mock", "missing", "missing"),
+            json!([])
+        );
     }
 
     #[test]

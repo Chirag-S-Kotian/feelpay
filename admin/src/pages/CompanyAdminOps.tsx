@@ -26,7 +26,7 @@ import { apiRequest } from '../hooks/useApi';
 
 const API = '/admin/payment-ops';
 
-type GenericValue = string | number | boolean | null | string[] | Record<string, unknown>;
+type GenericValue = string | number | boolean | null | string[] | Record<string, unknown> | Record<string, unknown>[];
 type GenericRecord = Record<string, GenericValue>;
 type LoadState = 'loading' | 'ready' | 'error';
 type ConfirmState = { title: string; body: string; action: () => Promise<void> } | null;
@@ -56,6 +56,9 @@ type Provider = GenericRecord & {
   api_key_status: string;
   api_secret_status: string;
   webhook_secret_status: string;
+  connector_readiness_score: number;
+  missing_required_secrets: string[];
+  capabilities: GenericRecord[];
 };
 
 type RoutingSimulation = {
@@ -781,6 +784,19 @@ export function ProviderConnectorsPage() {
   useEffect(() => {
     void load();
   }, []);
+  const capabilityRows = providers.flatMap(provider => {
+    const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
+    return capabilities.map(capability => ({
+      id: `${provider.id}-${String((capability as GenericRecord).capability || '')}`,
+      provider: provider.name,
+      environment: provider.environment,
+      capability: (capability as GenericRecord).capability || '',
+      enabled: (capability as GenericRecord).enabled || false,
+      status: (capability as GenericRecord).status || 'unknown',
+      last_checked_at: (capability as GenericRecord).last_checked_at || '',
+      error_message: (capability as GenericRecord).error_message || '',
+    }));
+  });
 
   const saveSecret = (event: FormEvent) => {
     event.preventDefault();
@@ -810,7 +826,8 @@ export function ProviderConnectorsPage() {
         </section>
         <TablePanel title="Credential status" rows={credentials} columns={['provider_name', 'environment', 'secret_type', 'masked_value', 'status', 'last_validated_at', 'last_rotated_at', 'rotation_due_at']} />
       </div>
-      <TablePanel title="Providers" rows={providers} columns={['name', 'code', 'provider_type', 'environment', 'status', 'health_status', 'success_rate', 'attempt_count', 'api_key_status', 'api_secret_status', 'webhook_secret_status']} />
+      <TablePanel title="Providers" rows={providers} columns={['name', 'code', 'provider_type', 'environment', 'status', 'health_status', 'connector_readiness_score', 'missing_required_secrets', 'success_rate', 'attempt_count', 'api_key_status', 'api_secret_status', 'webhook_secret_status']} />
+      <DataTable rows={capabilityRows} columns={['provider', 'environment', 'capability', 'enabled', 'status', 'last_checked_at', 'error_message']} empty={{ title: 'No provider capabilities yet', body: 'Capability checks appear after providers are configured.' }} />
       <TablePanel title="Provider Health" rows={providers} columns={['name', 'health_status', 'success_rate', 'attempt_count', 'last_health_check_at']} />
       <TablePanel title="Provider Logs" rows={providers} columns={['name', 'status', 'health_status', 'updated_at']} />
       <Modals helpers={helpers} />
