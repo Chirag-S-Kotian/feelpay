@@ -940,21 +940,27 @@ export function BusinessAccountsPage() {
 export function ProviderConnectorsPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [credentials, setCredentials] = useState<GenericRecord[]>([]);
+  const [connectorStatuses, setConnectorStatuses] = useState<GenericRecord[]>([]);
+  const [testResults, setTestResults] = useState<Record<string, GenericRecord>>({});
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
   const [credentialForm, setCredentialForm] = useState({ provider_id: '', environment: 'sandbox', secret_type: 'api_secret', value: '', rotation_due_at: '', description: '' });
+  const [tab, setTab] = useState('Overview');
+  const [testing, setTesting] = useState<string | null>(null);
 
   const load = async () => {
     setState('loading');
     setError('');
     try {
-      const [providerData, credentialData] = await Promise.all([
+      const [providerData, credentialData, statusData] = await Promise.all([
         apiRequest<{ items: Provider[] }>('GET', `${API}/providers`),
         apiRequest<{ items: GenericRecord[] }>('GET', `${API}/credentials`),
+        apiRequest<GenericRecord[]>('GET', '/admin/connectors').catch(() => []),
       ]);
       setProviders(providerData.items || []);
       setCredentials(rowsFrom(credentialData));
+      setConnectorStatuses(Array.isArray(statusData) ? statusData : []);
       setCredentialForm(form => ({ ...form, provider_id: form.provider_id || providerData.items?.[0]?.id || '' }));
       setState('ready');
     } catch (err) {
@@ -965,6 +971,20 @@ export function ProviderConnectorsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  const runSandboxTest = async (providerCode: string) => {
+    setTesting(providerCode);
+    try {
+      const result = await apiRequest<GenericRecord>('POST', '/admin/connectors/test', { provider: providerCode });
+      setTestResults(prev => ({ ...prev, [providerCode]: result }));
+      helpers.setNotice(result.auth_ok ? `✓ ${providerCode} sandbox test passed` : `✗ ${providerCode} test failed: ${String(result.error || 'Auth failed')}`);
+    } catch (err) {
+      helpers.setNotice(`✗ ${providerCode} test error: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally {
+      setTesting(null);
+    }
+  };
+
   const capabilityRows = providers.flatMap(provider => {
     const capabilities = Array.isArray(provider.capabilities) ? provider.capabilities : [];
     return capabilities.map(capability => ({
@@ -988,29 +1008,107 @@ export function ProviderConnectorsPage() {
     });
   };
 
+  const readinessColor = (score: number) => score >= 100 ? '#1DB954' : score >= 50 ? '#F5A623' : '#E54D4D';
+
   return (
-    <CrudPage title="Provider Connectors" subtitle="Providers, encrypted credentials, health, and provider logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
-      <div className="grid grid-2">
-        <section className="card">
-          <h2><KeyRound size={18} /> Credential Management</h2>
-          <form onSubmit={saveSecret}>
-            <div className="filter-grid">
-              <Field label="Provider"><Select value={credentialForm.provider_id} options={providers.map(provider => ({ label: provider.name, value: provider.id }))} onChange={value => setCredentialForm({ ...credentialForm, provider_id: value })} /></Field>
-              <Field label="Environment"><Select value={credentialForm.environment} options={['sandbox', 'production']} onChange={value => setCredentialForm({ ...credentialForm, environment: value })} /></Field>
-              <Field label="Secret type"><Select value={credentialForm.secret_type} options={['api_key', 'api_secret', 'webhook_secret', 'signing_secret', 'client_id', 'client_secret']} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
-              <Field label="Secret value"><input type="password" value={credentialForm.value} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
-              <Field label="Rotation due at"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
-              <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
-            </div>
-            <button className="btn-primary" type="submit" disabled={!credentialForm.provider_id || !credentialForm.value}>Save encrypted secret</button>
-          </form>
-        </section>
-        <TablePanel title="Credential status" rows={credentials} columns={['provider_name', 'environment', 'secret_type', 'masked_value', 'status', 'last_validated_at', 'last_rotated_at', 'rotation_due_at']} />
+    <CrudPage title="Provider Connectors" subtitle="Integration health, sandbox testing, credentials, and capabilities" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="button-row">
+        {['Overview', 'Credentials', 'Capabilities', 'Health Log'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
-      <TablePanel title="Providers" rows={providers} columns={['name', 'code', 'provider_type', 'environment', 'status', 'health_status', 'connector_readiness_score', 'missing_required_secrets', 'success_rate', 'attempt_count', 'api_key_status', 'api_secret_status', 'webhook_secret_status']} />
-      <DataTable rows={capabilityRows} columns={['provider', 'environment', 'capability', 'enabled', 'status', 'last_checked_at', 'error_message']} empty={{ title: 'No provider capabilities yet', body: 'Capability checks appear after providers are configured.' }} />
-      <TablePanel title="Provider Health" rows={providers} columns={['name', 'health_status', 'success_rate', 'attempt_count', 'last_health_check_at']} />
-      <TablePanel title="Provider Logs" rows={providers} columns={['name', 'status', 'health_status', 'updated_at']} />
+
+      {tab === 'Overview' && (
+        <>
+          <div className="stats-grid">
+            {connectorStatuses.map(cs => {
+              const score = Number(cs.readiness_score ?? 0);
+              const result = testResults[String(cs.provider)];
+              return (
+                <div key={String(cs.provider)} className="card" style={{ borderLeft: `3px solid ${readinessColor(score)}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <h3 style={{ margin: 0, fontSize: 15 }}>{String(cs.display_name)}</h3>
+                    <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20, background: readinessColor(score) + '22', color: readinessColor(score), fontWeight: 600 }}>
+                      {score}%
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#b3b3b3', marginBottom: 6 }}>
+                    Keys: {(cs.available_keys as string[] || []).length}/{(cs.required_keys as string[] || []).length} configured
+                  </div>
+                  {(cs.required_keys as string[] || []).map(k => (
+                    <div key={k} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                      <span style={{ color: (cs.available_keys as string[] || []).includes(k) ? '#1DB954' : '#E54D4D' }}>
+                        {(cs.available_keys as string[] || []).includes(k) ? '●' : '○'}
+                      </span>
+                      {k}
+                    </div>
+                  ))}
+                  {cs.last_error && <div style={{ fontSize: 11, color: '#E54D4D', marginTop: 4 }}>Last error: {String(cs.last_error).slice(0, 60)}</div>}
+                  {cs.last_success && <div style={{ fontSize: 11, color: '#1DB954', marginTop: 2 }}>Last success: {String(cs.last_success).slice(0, 24)}</div>}
+                  {result && (
+                    <div style={{ marginTop: 8, fontSize: 11, padding: '6px 8px', borderRadius: 6, background: result.auth_ok ? '#1DB95411' : '#E54D4D11' }}>
+                      Auth: {result.auth_ok ? '✓' : '✗'} | Webhook: {result.webhook_verify_ok ? '✓' : '✗'} | Sandbox: {result.sandbox_payment_ok ? '✓' : '✗'} | {String(result.latency_ms)}ms
+                    </div>
+                  )}
+                  <button
+                    className="btn-secondary"
+                    style={{ marginTop: 8, fontSize: 11, padding: '4px 12px' }}
+                    disabled={testing === String(cs.provider)}
+                    onClick={() => runSandboxTest(String(cs.provider))}
+                  >
+                    {testing === String(cs.provider) ? 'Testing…' : 'Run sandbox test'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <TablePanel title="Providers" rows={providers} columns={['name', 'code', 'provider_type', 'environment', 'status', 'health_status', 'connector_readiness_score', 'missing_required_secrets', 'success_rate', 'attempt_count', 'api_key_status', 'api_secret_status', 'webhook_secret_status']} />
+        </>
+      )}
+
+      {tab === 'Credentials' && (
+        <div className="grid grid-2">
+          <section className="card">
+            <h2><KeyRound size={18} /> Credential Management</h2>
+            <form onSubmit={saveSecret}>
+              <div className="filter-grid">
+                <Field label="Provider"><Select value={credentialForm.provider_id} options={providers.map(provider => ({ label: provider.name, value: provider.id }))} onChange={value => setCredentialForm({ ...credentialForm, provider_id: value })} /></Field>
+                <Field label="Environment"><Select value={credentialForm.environment} options={['sandbox', 'production']} onChange={value => setCredentialForm({ ...credentialForm, environment: value })} /></Field>
+                <Field label="Secret type"><Select value={credentialForm.secret_type} options={['api_key', 'api_secret', 'webhook_secret', 'signing_secret', 'client_id', 'client_secret']} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
+                <Field label="Secret value"><input type="password" value={credentialForm.value} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
+                <Field label="Rotation due at"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
+                <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit" disabled={!credentialForm.provider_id || !credentialForm.value}>Save encrypted secret</button>
+            </form>
+          </section>
+          <TablePanel title="Credential status" rows={credentials} columns={['provider_name', 'environment', 'secret_type', 'masked_value', 'status', 'last_validated_at', 'last_rotated_at', 'rotation_due_at']} />
+        </div>
+      )}
+
+      {tab === 'Capabilities' && (
+        <>
+          {connectorStatuses.map(cs => (
+            <section key={String(cs.provider)} className="card" style={{ marginBottom: 12 }}>
+              <h3 style={{ marginBottom: 8 }}>{String(cs.display_name)} capabilities</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {(cs.capabilities as string[] || []).map(cap => (
+                  <span key={cap} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#1DB95418', color: '#1DB954', border: '1px solid #1DB95433' }}>
+                    {cap}
+                  </span>
+                ))}
+              </div>
+            </section>
+          ))}
+          <DataTable rows={capabilityRows} columns={['provider', 'environment', 'capability', 'enabled', 'status', 'last_checked_at', 'error_message']} empty={{ title: 'No provider capabilities yet', body: 'Capability checks appear after providers are configured.' }} />
+        </>
+      )}
+
+      {tab === 'Health Log' && (
+        <>
+          <TablePanel title="Provider Health" rows={providers} columns={['name', 'health_status', 'success_rate', 'attempt_count', 'last_health_check_at']} />
+          <TablePanel title="Provider Logs" rows={providers} columns={['name', 'status', 'health_status', 'updated_at']} />
+        </>
+      )}
+
       <Modals helpers={helpers} />
     </CrudPage>
   );

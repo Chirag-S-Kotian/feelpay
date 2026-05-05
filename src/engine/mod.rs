@@ -1,3 +1,4 @@
+pub mod connectors;
 pub mod fees;
 pub mod payment;
 pub mod payout;

@@ -613,6 +613,8 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::mandates::configure),
             )
+            // Provider Webhooks (Stripe, Razorpay, Adyen - no auth, signature-verified)
+            .configure(api::provider_webhooks::configure)
             // Admin API
             .service(
                 web::scope("/v1")

@@ -14,6 +14,7 @@ pub mod admin_users;
 pub mod analytics;
 pub mod audit_logs;
 mod audit_support;
+pub mod connectors;
 pub mod kyc_viewer;
 pub mod merchants;
 pub mod notes;
@@ -70,6 +71,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(admin_users::configure)
             .configure(audit_logs::configure)
             .configure(system_config::configure)
-            .configure(notification_templates::configure),
+            .configure(notification_templates::configure)
+            .configure(connectors::configure),
     );
 }
