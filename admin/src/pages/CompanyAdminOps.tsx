@@ -25,7 +25,7 @@ import {
   UserPlus,
   Wallet,
 } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { apiDownload, apiRequest } from '../hooks/useApi';
 
 const API = '/admin/payment-ops';
 
@@ -1387,15 +1387,36 @@ export function ReportsPage() {
   const state = reports.state === 'error' || history.state === 'error' || scheduled.state === 'error' ? 'error' : reports.state === 'loading' || history.state === 'loading' || scheduled.state === 'loading' ? 'loading' : 'ready';
   const error = reports.error || history.error || scheduled.error;
   const load = () => void Promise.all([reports.load(), history.load(), scheduled.load()]);
+  const hasPendingExports = history.rows.some(row => ['QUEUED', 'PROCESSING'].includes(String(row.status || '').toUpperCase()));
+  useEffect(() => {
+    if (!hasPendingExports) return undefined;
+    const timer = window.setInterval(() => {
+      void history.load();
+      void reports.load();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [hasPendingExports, history.load, reports.load]);
   const generate = (row: GenericRecord, format: string) => {
     helpers.setConfirm({
       title: `Generate ${format}`,
       body: 'Report export is permission-gated, masked, expiring, and audit logged.',
-      action: () => helpers.run('Report export queued.', () => apiRequest('POST', `${API}/reports/generate`, {
-        report_type: row.report_name || row.name,
-        format,
-        filters,
-      })).then(load),
+      action: async () => {
+        helpers.setNotice('');
+        helpers.setError('');
+        try {
+          const result = await apiRequest<GenericRecord>('POST', `${API}/reports/generate`, {
+            report_type: row.report_name || row.name,
+            format,
+            filters,
+          });
+          const status = String(result.status || '').toUpperCase();
+          helpers.setNotice(status === 'READY' ? 'Report generated.' : status === 'FAILED' ? 'Report failed.' : 'Report queued.');
+          await Promise.all([reports.load(), history.load()]);
+          if (status === 'FAILED') helpers.setDrawer({ title: 'Report failure', body: reportFailureDetail(result) });
+        } catch (err) {
+          helpers.setError(err instanceof Error ? err.message : 'Report generation failed');
+        }
+      },
     });
   };
   const schedule = (row: GenericRecord) => {
@@ -1416,7 +1437,36 @@ export function ReportsPage() {
     helpers.setConfirm({
       title: 'Download latest',
       body: 'Download links expire and report download is audit logged.',
-      action: () => helpers.run('Report export starting. Check download link when ready.', () => apiRequest('GET', `${API}/reports/export-history/${id}/download`)).then(load),
+      action: async () => {
+        await helpers.run('Report download ready.', async () => {
+          const { blob, fileName } = await apiDownload(`${API}/reports/export-history/${id}/download`);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+        });
+        load();
+      },
+    });
+  };
+  const retry = (row: GenericRecord) => {
+    helpers.setConfirm({
+      title: 'Retry report',
+      body: 'Retry uses same report type, format, and saved filters.',
+      action: async () => {
+        const savedFilters = typeof row.filters_json === 'object' && row.filters_json !== null ? row.filters_json : filters;
+        await apiRequest('POST', `${API}/reports/generate`, {
+          report_type: row.report_type,
+          format: row.format,
+          filters: savedFilters,
+        });
+        await Promise.all([reports.load(), history.load()]);
+        helpers.setNotice('Report retry started.');
+      },
     });
   };
   return (
@@ -1441,11 +1491,27 @@ export function ReportsPage() {
         else if (action === 'View history') setTab('Export History');
         else helpers.setDrawer({ title: 'Latest report', body: row });
       }} />} />}
-      {tab === 'Export History' && <DataTable rows={history.rows} columns={['id', 'report_type', 'file_name', 'format', 'status', 'row_count', 'generated_by', 'generated_at', 'expires_at']} empty={{ title: 'No report exports yet', body: 'Generated reports appear here with expiring download links.' }} renderActions={row => <ActionButtons actions={['Download latest', 'View detail']} onClick={action => action === 'Download latest' ? download(row) : helpers.setDrawer({ title: 'Export history', body: row })} />} />}
+      {tab === 'Export History' && <DataTable rows={history.rows} columns={['id', 'report_type', 'format', 'status', 'row_count', 'generated_by', 'generated_at', 'expires_at', 'error_message']} empty={{ title: 'No report exports yet', body: 'Generated reports appear here with expiring download links.' }} renderActions={row => {
+        const status = String(row.status || '').toUpperCase();
+        const actions = status === 'READY' ? ['Download', 'View detail'] : status === 'FAILED' ? ['Retry', 'View failure'] : ['View detail'];
+        return <ActionButtons actions={actions} onClick={action => action === 'Download' ? download(row) : action === 'Retry' ? retry(row) : helpers.setDrawer({ title: status === 'FAILED' ? 'Report failure' : 'Export history', body: status === 'FAILED' ? reportFailureDetail(row) : row })} />;
+      }} />}
       {tab === 'Scheduled Reports' && <DataTable rows={scheduled.rows} columns={['id', 'report_type', 'frequency', 'recipients', 'format', 'status', 'created_by', 'next_run_at', 'last_run_at', 'created_at']} empty={{ title: 'No scheduled reports yet', body: 'Schedule recurring daily, weekly, or monthly reports for finance recipients.' }} onView={row => helpers.setDrawer({ title: 'Scheduled report', body: row })} />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
+}
+
+function reportFailureDetail(row: GenericRecord): GenericRecord {
+  const format = String(row.format || '').toUpperCase();
+  const message = String(row.error_message || '');
+  return {
+    ...row,
+    message: format === 'PDF' && message.includes('not configured')
+      ? 'PDF export is not configured on this server.'
+      : message || 'Report export failed.',
+    suggestion: 'Use CSV export or configure PDF generator.',
+  };
 }
 
 export function AuditLogsPage() {

@@ -1,4 +1,4 @@
-use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Responder};
+use actix_web::{http::header, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use async_trait::async_trait;
@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{Column, PgPool, Row};
 use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::middleware::AdminClaims;
@@ -3893,12 +3895,13 @@ async fn list_reports_catalog(pool: web::Data<PgPool>) -> impl Responder {
                au.name AS generated_by_name,
                au.email AS generated_by_email,
                COALESCE(ar.name, au.role) AS generated_by_role,
-               COALESCE(h.status, 'ready') AS status
+               COALESCE(h.status, 'READY') AS status
         FROM catalog c
         LEFT JOIN LATERAL (
-            SELECT *
+            SELECT report_type, format, status, generated_at, generated_by_admin_id
             FROM admin_report_exports h
             WHERE h.report_type = c.report_name
+              AND h.status IN ('READY', 'FAILED')
             ORDER BY h.generated_at DESC
             LIMIT 1
         ) h ON true
@@ -3915,7 +3918,18 @@ async fn list_report_exports(pool: web::Data<PgPool>) -> impl Responder {
     query_items(
         pool,
         r#"
-        SELECT e.*,
+        SELECT e.id,
+               e.report_type,
+               e.file_name,
+               e.format,
+               e.status,
+               e.row_count,
+               e.filters_json,
+               e.generated_by_admin_id,
+               e.generated_at,
+               e.expires_at,
+               e.file_reference,
+               e.error_message,
                au.name AS generated_by_name,
                au.email AS generated_by_email,
                COALESCE(ar.name, au.role) AS generated_by_role
@@ -3959,28 +3973,47 @@ async fn generate_admin_report(
     if !matches!(format.as_str(), "CSV" | "PDF" | "XLSX") {
         return HttpResponse::BadRequest().json(json!({ "message": "Unsupported report format" }));
     }
-    let file_name = format!(
-        "{}-{}.{}",
-        request.report_type.to_ascii_lowercase().replace(' ', "-"),
-        Utc::now().format("%Y%m%d%H%M%S"),
-        format.to_ascii_lowercase()
-    );
+    let report_type = request.report_type.trim().to_string();
+    let filters = redact_sensitive_value(&request.filters.unwrap_or_else(|| json!({})));
+    let export_id = Uuid::new_v4();
+    let extension = format.to_ascii_lowercase();
+    let file_name = report_file_name(&report_type, &extension, export_id);
+    let generated_by_admin_id = admin_user_id_from_request(pool.get_ref(), &http_request).await;
+    let generated_by = report_generated_by(&http_request);
+    let (status, row_count, file_reference, error_message) = match build_report_export(
+        pool.get_ref(),
+        export_id,
+        &report_type,
+        &format,
+        &filters,
+        &file_name,
+        &generated_by,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(message) => ("FAILED".to_string(), 0, None, Some(message)),
+    };
     let saved = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO admin_report_exports (
-            report_type, file_name, format, status, row_count, filters_json,
-            generated_at, expires_at
+            id, report_type, file_name, format, status, row_count, filters_json,
+            generated_by_admin_id, generated_at, expires_at, file_reference, error_message
         )
-        VALUES ($1, $2, $3, 'queued', 0, $4::jsonb, NOW(), NOW() + INTERVAL '7 days')
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW(), NOW() + INTERVAL '7 days', $9, $10)
         RETURNING id
         "#,
     )
-    .bind(request.report_type.trim())
+    .bind(export_id)
+    .bind(&report_type)
     .bind(&file_name)
     .bind(&format)
-    .bind(redact_sensitive_value(
-        &request.filters.unwrap_or_else(|| json!({})),
-    ))
+    .bind(&status)
+    .bind(row_count)
+    .bind(&filters)
+    .bind(generated_by_admin_id)
+    .bind(&file_reference)
+    .bind(&error_message)
     .fetch_one(pool.get_ref())
     .await;
     match saved {
@@ -3991,16 +4024,681 @@ async fn generate_admin_report(
                 "report.exported",
                 "admin_report_export",
                 Some(id),
-                json!({ "report_type": request.report_type, "format": format, "masked": true }),
+                json!({
+                    "report_type": report_type,
+                    "format": format,
+                    "status": status,
+                    "masked": true,
+                    "error_message": error_message
+                }),
             )
             .await;
-            HttpResponse::Ok().json(json!({ "id": id, "status": "queued", "file_name": file_name }))
+            HttpResponse::Ok().json(json!({
+                "id": id,
+                "status": status,
+                "file_name": file_name,
+                "file_reference": file_reference,
+                "row_count": row_count,
+                "error_message": error_message,
+                "download_url": if status == "READY" {
+                    Some(build_report_download_url(id))
+                } else {
+                    None
+                }
+            }))
         }
         Err(e) => {
             tracing::error!("Generate report failed: {}", e);
             server_error("Failed to generate report")
         }
     }
+}
+
+struct BuiltReport {
+    status: String,
+    row_count: i64,
+    file_reference: Option<String>,
+    error_message: Option<String>,
+}
+
+async fn build_report_export(
+    pool: &PgPool,
+    export_id: Uuid,
+    report_type: &str,
+    format: &str,
+    filters: &Value,
+    file_name: &str,
+    generated_by: &str,
+) -> Result<(String, i64, Option<String>, Option<String>), String> {
+    let built = match format {
+        "CSV" => generate_report_csv(pool, export_id, report_type, filters, file_name).await?,
+        "PDF" => generate_report_pdf(pool, export_id, report_type, filters, file_name, generated_by).await?,
+        "XLSX" => generate_report_xlsx(format),
+        _ => return Err("Unsupported report format".to_string()),
+    };
+    Ok((
+        built.status,
+        built.row_count,
+        built.file_reference,
+        built.error_message,
+    ))
+}
+
+fn generate_report_xlsx(format: &str) -> BuiltReport {
+    BuiltReport {
+        status: "FAILED".to_string(),
+        row_count: 0,
+        file_reference: None,
+        error_message: Some(format!("{format} generator not configured")),
+    }
+}
+
+async fn generate_report_csv(
+    pool: &PgPool,
+    export_id: Uuid,
+    report_type: &str,
+    filters: &Value,
+    file_name: &str,
+) -> Result<BuiltReport, String> {
+    let rows = report_rows(pool, report_type).await?;
+    let mut csv = String::new();
+    csv.push_str("Report Type,Generated At,Filters Masked\n");
+    csv.push_str(&format!(
+        "{},{},{}\n\n",
+        csv_cell(report_type),
+        csv_cell(&Utc::now().to_rfc3339()),
+        csv_cell(&redact_sensitive_value(filters).to_string())
+    ));
+    let headers = report_headers(&rows);
+    if headers.is_empty() {
+        csv.push_str("message\nNo records\n");
+    } else {
+        csv.push_str(
+            &headers
+                .iter()
+                .map(|header| csv_cell(header))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push('\n');
+        for row in &rows {
+            csv.push_str(
+                &headers
+                    .iter()
+                    .map(|header| csv_cell(&csv_value(row.get(header).unwrap_or(&Value::Null))))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+            csv.push('\n');
+        }
+    }
+
+    let relative = format!("{export_id}/{file_name}");
+    write_report_file(&relative, csv.as_bytes())?;
+    Ok(BuiltReport {
+        status: "READY".to_string(),
+        row_count: rows.len() as i64,
+        file_reference: Some(relative),
+        error_message: None,
+    })
+}
+
+async fn generate_report_pdf(
+    pool: &PgPool,
+    export_id: Uuid,
+    report_type: &str,
+    filters: &Value,
+    file_name: &str,
+    generated_by: &str,
+) -> Result<BuiltReport, String> {
+    let rows = report_rows(pool, report_type).await?;
+    let generated_at = Utc::now();
+    let pdf = generate_finance_pdf(PdfReport {
+        export_id,
+        report_type,
+        generated_by,
+        generated_at,
+        filters,
+        rows: &rows,
+    });
+    let relative = format!("{export_id}/{file_name}");
+    write_report_file(&relative, &pdf)?;
+    Ok(BuiltReport {
+        status: "READY".to_string(),
+        row_count: rows.len() as i64,
+        file_reference: Some(relative),
+        error_message: None,
+    })
+}
+
+fn write_report_file(reference: &str, bytes: &[u8]) -> Result<(), String> {
+    let Some(path) = safe_report_path(reference) else {
+        return Err("Report file reference invalid".to_string());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Report storage unavailable: {e}"))?;
+    }
+    fs::write(path, bytes).map_err(|e| format!("Report write failed: {e}"))
+}
+
+fn build_report_download_url(id: Uuid) -> String {
+    format!("/admin/payment-ops/reports/exports/{id}/download")
+}
+
+fn report_file_name(report_type: &str, extension: &str, export_id: Uuid) -> String {
+    let slug = report_type
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let short = export_id.to_string().chars().take(8).collect::<String>();
+    format!("feelpay-{}-{}-{}.{}", slug, Utc::now().format("%Y-%m-%d"), short, extension)
+}
+
+async fn report_rows(pool: &PgPool, report_type: &str) -> Result<Vec<Value>, String> {
+    let lowered = report_type.to_ascii_lowercase();
+    let sql = if lowered.contains("audit") {
+        "SELECT action, entity_type, entity_id, actor_role, ip_address, created_at FROM audit_logs_company ORDER BY created_at DESC LIMIT 500"
+    } else if lowered.contains("settlement") {
+        "SELECT id, provider_id, status, expected_settlement_date, created_at FROM settlement_batches_company ORDER BY created_at DESC LIMIT 500"
+    } else if lowered.contains("refund") {
+        "SELECT id, payment_order_id, provider_id, amount, currency, status, created_at FROM payment_refunds ORDER BY created_at DESC LIMIT 500"
+    } else if lowered.contains("dispute") {
+        "SELECT id, payment_order_id, provider_id, amount, currency, status, created_at FROM disputes_company ORDER BY created_at DESC LIMIT 500"
+    } else if lowered.contains("provider") {
+        "SELECT id, name, code, provider_type, environment, status, health_status, success_rate, created_at FROM payment_providers ORDER BY created_at DESC LIMIT 500"
+    } else {
+        "SELECT id, amount, currency, status, payment_method, provider_id, created_at FROM payment_orders ORDER BY created_at DESC LIMIT 500"
+    };
+    sqlx::query(sql)
+        .fetch_all(pool)
+        .await
+        .map(|rows| rows.iter().map(|row| redact_report_row(&row_to_json(row))).collect())
+        .map_err(|e| format!("Report query failed: {e}"))
+}
+
+fn redact_report_row(row: &Value) -> Value {
+    redact_sensitive_value(row)
+}
+
+fn report_headers(rows: &[Value]) -> Vec<String> {
+    rows.iter()
+        .filter_map(Value::as_object)
+        .flat_map(|map| map.keys().cloned())
+        .fold(Vec::new(), |mut headers, key| {
+            if !headers.contains(&key) {
+                headers.push(key);
+            }
+            headers
+        })
+}
+
+fn csv_value(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        _ => redact_sensitive_value(value).to_string(),
+    }
+}
+
+fn csv_cell(value: &str) -> String {
+    let escaped = value.replace('"', "\"\"");
+    format!("\"{escaped}\"")
+}
+
+fn report_storage_dir() -> std::io::Result<PathBuf> {
+    let path = env::var("REPORT_EXPORT_DIR")
+        .or_else(|_| env::var("REPORT_STORAGE_DIR"))
+        .unwrap_or_else(|_| "storage/reports".to_string());
+    let storage = PathBuf::from(path);
+    fs::create_dir_all(&storage)?;
+    Ok(storage)
+}
+
+fn safe_report_path(reference: &str) -> Option<PathBuf> {
+    let relative = Path::new(reference);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+    Some(report_storage_dir().ok()?.join(relative))
+}
+
+async fn admin_user_id_from_request(pool: &PgPool, request: &HttpRequest) -> Option<Uuid> {
+    let candidate = request
+        .extensions()
+        .get::<AdminClaims>()
+        .map(|claims| claims.admin_id)?;
+    sqlx::query_scalar::<_, Uuid>("SELECT id FROM admin_users WHERE id = $1")
+        .bind(candidate)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+}
+
+fn report_generated_by(request: &HttpRequest) -> String {
+    request
+        .extensions()
+        .get::<AdminClaims>()
+        .and_then(|claims| claims.role.clone())
+        .unwrap_or_else(|| "Company admin".to_string())
+}
+
+struct PdfReport<'a> {
+    export_id: Uuid,
+    report_type: &'a str,
+    generated_by: &'a str,
+    generated_at: DateTime<Utc>,
+    filters: &'a Value,
+    rows: &'a [Value],
+}
+
+struct PdfCanvas {
+    pages: Vec<String>,
+    current: String,
+    page_no: usize,
+    y: f64,
+    export_id: Uuid,
+    generated_at: DateTime<Utc>,
+}
+
+fn generate_finance_pdf(report: PdfReport<'_>) -> Vec<u8> {
+    let mut canvas = PdfCanvas::new(report.export_id, report.generated_at);
+    render_pdf_header(&mut canvas, &report);
+    render_pdf_summary_cards(&mut canvas, &report);
+    render_pdf_filters(&mut canvas, report.filters);
+    render_pdf_table(&mut canvas, &report);
+    canvas.finish_page();
+    render_pdf_document(
+        canvas.pages,
+        &format!("{} - FeelPay", report.report_type),
+        "FeelPay",
+        "company admin report",
+        "FeelPay admin",
+        &format!("{}, finance, masked", report.report_type),
+    )
+}
+
+impl PdfCanvas {
+    fn new(export_id: Uuid, generated_at: DateTime<Utc>) -> Self {
+        Self {
+            pages: Vec::new(),
+            current: String::new(),
+            page_no: 1,
+            y: 806.0,
+            export_id,
+            generated_at,
+        }
+    }
+
+    fn finish_page(&mut self) {
+        render_pdf_footer(self);
+        self.pages.push(std::mem::take(&mut self.current));
+        self.page_no += 1;
+        self.y = 806.0;
+    }
+
+    fn ensure_space(&mut self, height: f64, report: &PdfReport<'_>, table_header: bool) {
+        if self.y - height >= 86.0 {
+            return;
+        }
+        self.finish_page();
+        render_pdf_header(self, report);
+        if table_header {
+            render_pdf_table_header(self);
+        }
+    }
+
+    fn text(&mut self, x: f64, y: f64, size: f64, text: &str, bold: bool, color: &str) {
+        self.current.push_str(color);
+        self.current.push_str(&format!(
+            "BT /{} {} Tf {:.1} {:.1} Td ({}) Tj ET\n",
+            if bold { "F2" } else { "F1" },
+            size,
+            x,
+            y,
+            pdf_text(text)
+        ));
+    }
+
+    fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, fill: &str, stroke: Option<&str>) {
+        self.current.push_str(fill);
+        self.current.push_str(&format!("{x:.1} {y:.1} {w:.1} {h:.1} re f\n"));
+        if let Some(stroke) = stroke {
+            self.current.push_str(stroke);
+            self.current.push_str(&format!("{x:.1} {y:.1} {w:.1} {h:.1} re S\n"));
+        }
+    }
+}
+
+fn render_pdf_header(canvas: &mut PdfCanvas, report: &PdfReport<'_>) {
+    canvas.rect(36.0, 768.0, 523.0, 42.0, "0.973 0.980 0.988 rg\n", None);
+    canvas.rect(56.0, 778.0, 28.0, 24.0, "0.114 0.725 0.329 rg\n", None);
+    canvas.text(62.0, 783.0, 12.0, "FP", true, "1 1 1 rg\n");
+    canvas.text(96.0, 792.0, 15.0, "FeelPay", true, "0.067 0.094 0.153 rg\n");
+    canvas.text(96.0, 777.0, 8.5, "Company finance and operations export", false, "0.420 0.447 0.502 rg\n");
+    canvas.text(384.0, 792.0, 8.5, &format!("Report ID {}", short_id(&report.export_id.to_string())), false, "0.420 0.447 0.502 rg\n");
+    canvas.text(384.0, 777.0, 8.5, "Environment: sandbox / production", false, "0.420 0.447 0.502 rg\n");
+    canvas.text(36.0, 736.0, 22.0, report.report_type, true, "0.067 0.094 0.153 rg\n");
+    canvas.text(36.0, 718.0, 10.0, &format!("Generated by {}", report.generated_by), false, "0.420 0.447 0.502 rg\n");
+    canvas.text(300.0, 718.0, 10.0, &format!("Generated at {}", format_datetime(report.generated_at)), false, "0.420 0.447 0.502 rg\n");
+    canvas.text(36.0, 700.0, 9.0, "Sensitive values are masked", true, "0.114 0.725 0.329 rg\n");
+    canvas.y = 670.0;
+}
+
+fn render_pdf_summary_cards(canvas: &mut PdfCanvas, report: &PdfReport<'_>) {
+    let cards = report_summary_cards(report.report_type, report.rows, report.filters);
+    for (idx, (label, value)) in cards.iter().enumerate() {
+        let x = 36.0 + (idx as f64 * 132.0);
+        canvas.rect(x, canvas.y - 54.0, 122.0, 48.0, "1 1 1 rg\n", Some("0.898 0.906 0.922 RG\n"));
+        canvas.text(x + 10.0, canvas.y - 25.0, 8.0, label, false, "0.420 0.447 0.502 rg\n");
+        canvas.text(x + 10.0, canvas.y - 43.0, 12.0, value, true, "0.067 0.094 0.153 rg\n");
+    }
+    canvas.y -= 76.0;
+}
+
+fn render_pdf_filters(canvas: &mut PdfCanvas, filters: &Value) {
+    canvas.text(36.0, canvas.y, 12.0, "Applied filters", true, "0.067 0.094 0.153 rg\n");
+    canvas.y -= 22.0;
+    let fields = [
+        ("Start date", "start_date"),
+        ("End date", "end_date"),
+        ("Provider", "provider"),
+        ("Business Account", "business_account"),
+        ("Currency", "currency"),
+        ("Payment Method", "payment_method"),
+        ("Status", "status"),
+        ("Format", "format"),
+    ];
+    for (idx, (label, key)) in fields.iter().enumerate() {
+        let x = 36.0 + ((idx % 4) as f64 * 132.0);
+        let y = canvas.y - ((idx / 4) as f64 * 24.0);
+        canvas.rect(x, y - 15.0, 122.0, 18.0, "0.953 0.956 0.965 rg\n", Some("0.898 0.906 0.922 RG\n"));
+        canvas.text(x + 6.0, y - 10.0, 7.5, &format!("{label}: {}", filter_value(filters, key)), false, "0.067 0.094 0.153 rg\n");
+    }
+    canvas.y -= 68.0;
+}
+
+fn render_pdf_table(canvas: &mut PdfCanvas, report: &PdfReport<'_>) {
+    canvas.text(36.0, canvas.y, 12.0, "Report rows", true, "0.067 0.094 0.153 rg\n");
+    canvas.y -= 22.0;
+    render_pdf_table_header(canvas);
+    for (index, row) in report.rows.iter().take(120).enumerate() {
+        canvas.ensure_space(22.0, report, true);
+        let y = canvas.y;
+        if index % 2 == 0 {
+            canvas.rect(36.0, y - 14.0, 523.0, 18.0, "0.988 0.989 0.992 rg\n", None);
+        }
+        let cells = report_table_cells(row);
+        let widths = [82.0, 94.0, 62.0, 78.0, 46.0, 74.0, 70.0];
+        let mut x = 40.0;
+        for (idx, cell) in cells.iter().enumerate() {
+            let align_right = idx == 5;
+            let text = truncate(cell, if idx == 1 { 22 } else { 16 });
+            let tx = if align_right { x + widths[idx] - (text.len() as f64 * 4.3).min(widths[idx] - 4.0) } else { x };
+            canvas.text(tx, y - 8.0, 7.2, &text, false, status_color(if idx == 6 { cell } else { "" }));
+            x += widths[idx];
+        }
+        canvas.current.push_str(&format!("0.898 0.906 0.922 RG\n36 {:.1} m 559 {:.1} l S\n", y - 16.0, y - 16.0));
+        canvas.y -= 20.0;
+    }
+}
+
+fn render_pdf_table_header(canvas: &mut PdfCanvas) {
+    canvas.rect(36.0, canvas.y - 16.0, 523.0, 20.0, "0.953 0.956 0.965 rg\n", Some("0.898 0.906 0.922 RG\n"));
+    let headers = ["Payment ID", "Created At", "Method", "Provider", "Currency", "Amount", "Status"];
+    let widths = [82.0, 94.0, 62.0, 78.0, 46.0, 74.0, 70.0];
+    let mut x = 40.0;
+    for (idx, header) in headers.iter().enumerate() {
+        canvas.text(x, canvas.y - 9.0, 7.3, header, true, "0.067 0.094 0.153 rg\n");
+        x += widths[idx];
+    }
+    canvas.y -= 22.0;
+}
+
+fn render_pdf_footer(canvas: &mut PdfCanvas) {
+    canvas.current.push_str("0.898 0.906 0.922 RG\n36 56 m 559 56 l S\n");
+    canvas.text(36.0, 38.0, 7.5, "Generated by FeelPay company admin · Sensitive values are masked", false, "0.420 0.447 0.502 rg\n");
+    canvas.text(360.0, 38.0, 7.5, &format!("Report ID {} · Page {}", short_id(&canvas.export_id.to_string()), canvas.page_no), false, "0.420 0.447 0.502 rg\n");
+    canvas.text(36.0, 24.0, 7.0, &format!("Generated {}", format_datetime(canvas.generated_at)), false, "0.420 0.447 0.502 rg\n");
+}
+
+fn render_pdf_document(
+    pages: Vec<String>,
+    title: &str,
+    author: &str,
+    subject: &str,
+    creator: &str,
+    keywords: &str,
+) -> Vec<u8> {
+    let page_count = pages.len();
+    let font_1 = 3 + page_count * 2;
+    let font_2 = font_1 + 1;
+    let info = font_2 + 1;
+    let kids = (0..page_count)
+        .map(|idx| format!("{} 0 R", 3 + idx * 2))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut objects = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        format!("<< /Type /Pages /Kids [{kids}] /Count {page_count} >>"),
+    ];
+    for (idx, content) in pages.iter().enumerate() {
+        let page_obj = 3 + idx * 2;
+        let content_obj = page_obj + 1;
+        objects.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 {font_1} 0 R /F2 {font_2} 0 R >> >> /Contents {content_obj} 0 R >>"));
+        objects.push(format!("<< /Length {} >>\nstream\n{}endstream", content.len(), content));
+    }
+    objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string());
+    objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_string());
+    objects.push(format!(
+        "<< /Title ({}) /Author ({}) /Subject ({}) /Creator ({}) /Keywords ({}) >>",
+        pdf_text(title),
+        pdf_text(author),
+        pdf_text(subject),
+        pdf_text(creator),
+        pdf_text(keywords)
+    ));
+    let mut pdf = b"%PDF-1.4\n".to_vec();
+    let mut offsets = vec![0usize];
+    for (index, object) in objects.iter().enumerate() {
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+    }
+    let xref_at = pdf.len();
+    pdf.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len()).as_bytes());
+    for offset in offsets.iter().skip(1) {
+        pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+    }
+    pdf.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R /Info {} 0 R >>\nstartxref\n{}\n%%EOF\n",
+            offsets.len(),
+            info,
+            xref_at
+        )
+        .as_bytes(),
+    );
+    pdf
+}
+
+fn report_summary_cards(report_type: &str, rows: &[Value], filters: &Value) -> Vec<(String, String)> {
+    let lowered = report_type.to_ascii_lowercase();
+    let total = rows
+        .iter()
+        .filter_map(|row| row.get("amount").and_then(Value::as_i64))
+        .sum::<i64>();
+    let currency = rows
+        .iter()
+        .find_map(|row| row.get("currency").and_then(Value::as_str))
+        .unwrap_or("INR");
+    let date_range = format!(
+        "{} to {}",
+        filter_value(filters, "start_date"),
+        filter_value(filters, "end_date")
+    );
+    if lowered.contains("settlement") {
+        return vec![
+            ("Gross amount".to_string(), format_currency(total, currency)),
+            ("Net amount".to_string(), format_currency(total, currency)),
+            ("Settlement count".to_string(), rows.len().to_string()),
+            ("Reconciliation".to_string(), "—".to_string()),
+        ];
+    }
+    if lowered.contains("refund") {
+        let failed = count_status(rows, "failed");
+        let pending = count_status(rows, "pending");
+        return vec![
+            ("Total refunded".to_string(), format_currency(total, currency)),
+            ("Refund count".to_string(), rows.len().to_string()),
+            ("Failed refunds".to_string(), failed.to_string()),
+            ("Pending refunds".to_string(), pending.to_string()),
+        ];
+    }
+    if lowered.contains("dispute") {
+        let open = count_status(rows, "open");
+        let lost = count_status(rows, "lost");
+        return vec![
+            ("Dispute amount".to_string(), format_currency(total, currency)),
+            ("Dispute count".to_string(), rows.len().to_string()),
+            ("Open disputes".to_string(), open.to_string()),
+            ("Lost disputes".to_string(), lost.to_string()),
+        ];
+    }
+    vec![
+        ("Total amount".to_string(), format_currency(total, currency)),
+        ("Row count".to_string(), rows.len().to_string()),
+        ("Currency".to_string(), currency.to_string()),
+        ("Date range".to_string(), date_range),
+    ]
+}
+
+fn count_status(rows: &[Value], needle: &str) -> usize {
+    rows.iter()
+        .filter(|row| {
+            row.get("status")
+                .and_then(Value::as_str)
+                .map(|status| status.eq_ignore_ascii_case(needle))
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+fn filter_value(filters: &Value, key: &str) -> String {
+    filters
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            if key == "format" {
+                "PDF".to_string()
+            } else {
+                "All".to_string()
+            }
+        })
+}
+
+fn report_table_cells(row: &Value) -> Vec<String> {
+    vec![
+        format_report_value(row.get("id").or_else(|| row.get("payment_order_id")), "id"),
+        format_report_value(row.get("created_at").or_else(|| row.get("expected_settlement_date")), "created_at"),
+        format_report_value(row.get("payment_method"), "payment_method"),
+        format_report_value(row.get("provider_id").or_else(|| row.get("provider_type")).or_else(|| row.get("code")), "provider"),
+        format_report_value(row.get("currency"), "currency"),
+        format_report_value(row.get("amount"), "amount"),
+        format_report_value(row.get("status").or_else(|| row.get("health_status")), "status"),
+    ]
+}
+
+fn format_report_value(value: Option<&Value>, column: &str) -> String {
+    let value = value.unwrap_or(&Value::Null);
+    if column == "amount" {
+        return value.as_i64().map(|amount| format_currency(amount, "INR")).unwrap_or_else(|| "—".to_string());
+    }
+    if column.contains("created") || column.contains("date") {
+        return value
+            .as_str()
+            .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
+            .map(|date| format_datetime(date.with_timezone(&Utc)))
+            .unwrap_or_else(|| "—".to_string());
+    }
+    let rendered = csv_value(&redact_report_value(value));
+    if rendered.is_empty() {
+        "—".to_string()
+    } else if column.contains("id") || looks_like_uuid(&rendered) {
+        short_id(&rendered)
+    } else {
+        rendered
+    }
+}
+
+fn redact_report_value(value: &Value) -> Value {
+    redact_sensitive_value(value)
+}
+
+fn format_currency(amount: i64, currency: &str) -> String {
+    let major = amount as f64 / 100.0;
+    if currency == "INR" {
+        format!("Rs. {major:.2}")
+    } else {
+        format!("{currency} {major:.2}")
+    }
+}
+
+fn format_datetime(value: DateTime<Utc>) -> String {
+    value.format("%d %b %Y, %I:%M %p UTC").to_string()
+}
+
+fn short_id(value: &str) -> String {
+    if value.len() <= 14 {
+        return value.to_string();
+    }
+    format!("{}...{}", &value[..8], &value[value.len() - 5..])
+}
+
+fn looks_like_uuid(value: &str) -> bool {
+    value.len() >= 32 && value.chars().filter(|ch| *ch == '-').count() >= 4
+}
+
+fn truncate(value: &str, max: usize) -> String {
+    if value.chars().count() <= max {
+        return value.to_string();
+    }
+    let mut out = value.chars().take(max.saturating_sub(1)).collect::<String>();
+    out.push('…');
+    out
+}
+
+fn status_color(value: &str) -> &'static str {
+    match value.to_ascii_lowercase().as_str() {
+        "ready" | "success" | "successful" | "settled" | "captured" | "active" | "pass" => "0.114 0.725 0.329 rg\n",
+        "failed" | "lost" | "rejected" => "0.863 0.149 0.149 rg\n",
+        "pending" | "queued" | "processing" | "open" => "0.850 0.467 0.024 rg\n",
+        _ => "0.067 0.094 0.153 rg\n",
+    }
+}
+
+fn pdf_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '(' => "\\(".to_string(),
+            ')' => "\\)".to_string(),
+            '\\' => "\\\\".to_string(),
+            ch if ch.is_ascii_graphic() || ch == ' ' => ch.to_string(),
+            _ => " ".to_string(),
+        })
+        .collect()
 }
 
 async fn schedule_admin_report(
@@ -4055,7 +4753,7 @@ async fn download_report_export(
 ) -> impl Responder {
     let id = path.into_inner();
     let export =
-        sqlx::query("SELECT id, file_name, expires_at FROM admin_report_exports WHERE id = $1")
+        sqlx::query("SELECT id, file_name, format, status, file_reference, expires_at FROM admin_report_exports WHERE id = $1")
             .bind(id)
             .fetch_optional(pool.get_ref())
             .await;
@@ -4063,8 +4761,39 @@ async fn download_report_export(
         Ok(Some(row)) => {
             let expires_at: Option<DateTime<Utc>> = row.get("expires_at");
             if expires_at.is_some_and(|value| value < Utc::now()) {
+                let _ = sqlx::query("UPDATE admin_report_exports SET status = 'EXPIRED' WHERE id = $1")
+                    .bind(id)
+                    .execute(pool.get_ref())
+                    .await;
                 return HttpResponse::Gone().json(json!({ "message": "Export link expired" }));
             }
+            let status: String = row.get("status");
+            if status != "READY" {
+                return HttpResponse::Conflict()
+                    .json(json!({ "message": "Report export is not ready", "status": status }));
+            }
+            let file_reference: Option<String> = row.get("file_reference");
+            let Some(file_reference) = file_reference else {
+                return server_error("Report file reference missing");
+            };
+            let Some(path) = safe_report_path(&file_reference) else {
+                return server_error("Report file reference invalid");
+            };
+            let bytes = match fs::read(&path) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::error!("Report file read failed: {}", e);
+                    return HttpResponse::NotFound().json(json!({ "message": "Report file missing" }));
+                }
+            };
+            let file_name: String = row.get("file_name");
+            let format: String = row.get("format");
+            let content_type = match format.as_str() {
+                "CSV" => "text/csv; charset=utf-8",
+                "PDF" => "application/pdf",
+                "XLSX" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                _ => "application/octet-stream",
+            };
             audit_with_request(
                 &pool,
                 &http_request,
@@ -4074,10 +4803,13 @@ async fn download_report_export(
                 json!({ "masked": true }),
             )
             .await;
-            HttpResponse::Ok().json(json!({
-                "download_url": format!("pending-report-export/{}", row.get::<String, _>("file_name")),
-                "expires_at": expires_at
-            }))
+            HttpResponse::Ok()
+                .insert_header((header::CONTENT_TYPE, content_type))
+                .insert_header((
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", file_name.replace('"', "")),
+                ))
+                .body(bytes)
         }
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Report export not found" })),
         Err(e) => {
@@ -8945,6 +9677,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::get().to(download_report_export),
         )
         .route(
+            &format!("{prefix}/reports/exports/{{id}}/download"),
+            web::get().to(download_report_export),
+        )
+        .route(
             &format!("{prefix}/audit-logs"),
             web::get().to(list_audit_logs),
         )
@@ -9400,5 +10136,52 @@ mod tests {
         assert_eq!(redacted["cvv"], "redacted");
         assert_eq!(redacted["bank_account_number"], "redacted");
         assert_eq!(redacted["provider"], "razorpay");
+    }
+
+    #[test]
+    fn csv_cells_escape_quotes_and_commas() {
+        assert_eq!(csv_cell("alpha,beta \"quoted\""), "\"alpha,beta \"\"quoted\"\"\"");
+    }
+
+    #[test]
+    fn unsupported_report_formats_fail_cleanly() {
+        let xlsx = generate_report_xlsx("XLSX");
+        assert_eq!(xlsx.status, "FAILED");
+        assert_eq!(xlsx.error_message.as_deref(), Some("XLSX generator not configured"));
+        assert!(xlsx.file_reference.is_none());
+    }
+
+    #[test]
+    fn finance_pdf_has_pdf_header_and_footer_text() {
+        let export_id = Uuid::nil();
+        let rows = vec![json!({
+            "id": "01fb45e5-1111-2222-3333-aaaaaaaaadbe69",
+            "created_at": Utc::now().to_rfc3339(),
+            "amount": 249900,
+            "currency": "INR",
+            "status": "READY",
+            "api_secret": "must_not_leak"
+        })];
+        let filters = json!({ "start_date": "", "status": "", "format": "PDF" });
+        let pdf = generate_finance_pdf(PdfReport {
+            export_id,
+            report_type: "Balance Report",
+            generated_by: "Super Admin",
+            generated_at: Utc::now(),
+            filters: &filters,
+            rows: &rows,
+        });
+        assert!(pdf.starts_with(b"%PDF-1.4"));
+        let body = String::from_utf8_lossy(&pdf);
+        assert!(body.contains("Generated by FeelPay company admin"));
+        assert!(body.contains("FeelPay"));
+        assert!(body.contains("All"));
+        assert!(!body.contains("must_not_leak"));
+    }
+
+    #[test]
+    fn unsafe_report_paths_are_rejected() {
+        assert!(safe_report_path("../secret.csv").is_none());
+        assert!(safe_report_path("/tmp/secret.csv").is_none());
     }
 }

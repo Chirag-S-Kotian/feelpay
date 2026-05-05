@@ -74,3 +74,30 @@ export async function apiRequest<T = unknown>(
 
   return data as T;
 }
+
+export async function apiDownload(path: string): Promise<{ blob: Blob; fileName: string }> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(buildUrl(path), { method: 'GET', headers });
+  if (!res.ok) {
+    const text = await res.text();
+    let message = `API request failed (${res.status})`;
+    try {
+      const data = text ? JSON.parse(text) as { message?: string } : null;
+      message = data?.message || message;
+    } catch {
+      message = text || message;
+    }
+    if (res.status === 401) clearToken();
+    throw new Error(message);
+  }
+
+  const disposition = res.headers.get('content-disposition') || '';
+  const match = /filename="?([^"]+)"?/i.exec(disposition);
+  return {
+    blob: await res.blob(),
+    fileName: match?.[1] || 'report-export',
+  };
+}

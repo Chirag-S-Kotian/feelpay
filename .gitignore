@@ -17,6 +17,7 @@ dashboard/.env.*
 admin/node_modules
 
 /admin/server/target
+/admin/server/storage/reports
 
 # ignore local agents, keep shared skills and domain context
 .agents/*
