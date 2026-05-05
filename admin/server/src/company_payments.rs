@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use async_trait::async_trait;
@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 use sqlx::{Column, PgPool, Row};
 use std::env;
 use uuid::Uuid;
+
+use crate::middleware::AdminClaims;
 
 #[allow(dead_code)]
 type HmacSha256 = Hmac<Sha256>;
@@ -3949,6 +3951,7 @@ async fn list_scheduled_admin_reports(pool: web::Data<PgPool>) -> impl Responder
 
 async fn generate_admin_report(
     pool: web::Data<PgPool>,
+    http_request: HttpRequest,
     request: web::Json<ReportGenerateRequest>,
 ) -> impl Responder {
     let request = request.into_inner();
@@ -3982,8 +3985,9 @@ async fn generate_admin_report(
     .await;
     match saved {
         Ok(id) => {
-            audit(
+            audit_with_request(
                 &pool,
+                &http_request,
                 "report.exported",
                 "admin_report_export",
                 Some(id),
@@ -4044,7 +4048,11 @@ async fn schedule_admin_report(
     }
 }
 
-async fn download_report_export(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+async fn download_report_export(
+    pool: web::Data<PgPool>,
+    http_request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
     let id = path.into_inner();
     let export =
         sqlx::query("SELECT id, file_name, expires_at FROM admin_report_exports WHERE id = $1")
@@ -4057,8 +4065,9 @@ async fn download_report_export(pool: web::Data<PgPool>, path: web::Path<Uuid>) 
             if expires_at.is_some_and(|value| value < Utc::now()) {
                 return HttpResponse::Gone().json(json!({ "message": "Export link expired" }));
             }
-            audit(
+            audit_with_request(
                 &pool,
+                &http_request,
                 "report.downloaded",
                 "admin_report_export",
                 Some(id),
@@ -4688,6 +4697,7 @@ async fn get_platform_settings(pool: web::Data<PgPool>) -> impl Responder {
 
 async fn patch_platform_settings(
     pool: web::Data<PgPool>,
+    http_request: HttpRequest,
     body: web::Json<Value>,
 ) -> impl Responder {
     let Some(object) = body.as_object() else {
@@ -4713,8 +4723,9 @@ async fn patch_platform_settings(
             return server_error("Failed to save platform settings");
         }
     }
-    audit(
+    audit_with_request(
         &pool,
+        &http_request,
         "platform_setting.changed",
         "platform_settings",
         None,
@@ -7941,10 +7952,20 @@ fn redact_sensitive_value(value: &Value) -> Value {
             map.iter()
                 .map(|(key, value)| {
                     let lowered = key.to_ascii_lowercase();
-                    if lowered.contains("authorization")
+                    if lowered == "api_key"
+                        || lowered.contains("api_key")
+                        || lowered == "api_secret"
+                        || lowered.contains("api_secret")
+                        || lowered.contains("webhook_secret")
+                        || lowered.contains("signing_secret")
+                        || lowered.contains("password")
+                        || lowered.contains("token")
+                        || lowered.contains("authorization")
                         || lowered.contains("secret")
-                        || lowered.contains("card")
+                        || lowered.contains("card_number")
+                        || lowered == "card"
                         || lowered.contains("cvv")
+                        || lowered.contains("cvc")
                         || lowered.contains("account_number")
                         || lowered.contains("bank")
                     {
@@ -8231,6 +8252,65 @@ async fn audit(
     .bind(entity_type)
     .bind(entity_id)
     .bind(summary)
+    .execute(pool.get_ref())
+    .await;
+}
+
+async fn audit_with_request(
+    pool: &web::Data<PgPool>,
+    request: &HttpRequest,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<Uuid>,
+    summary: Value,
+) {
+    let claims = request.extensions().get::<AdminClaims>().cloned();
+    let actor_admin_id = claims.as_ref().map(|claims| claims.admin_id);
+    let actor_role = claims
+        .and_then(|claims| claims.role)
+        .unwrap_or_else(|| "Payment Ops Admin".to_string());
+    let ip_address = request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            request
+                .peer_addr()
+                .map(|addr| addr.ip().to_string())
+        });
+    let user_agent = request
+        .headers()
+        .get("user-agent")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs_company (
+            actor_admin_id, actor_role, action, entity_type, entity_id,
+            new_value_summary, ip_address, user_agent, request_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+        "#,
+    )
+    .bind(actor_admin_id)
+    .bind(actor_role)
+    .bind(action)
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(redact_sensitive_value(&summary))
+    .bind(ip_address)
+    .bind(user_agent)
+    .bind(request_id)
     .execute(pool.get_ref())
     .await;
 }
@@ -9279,16 +9359,30 @@ mod tests {
     fn api_log_redaction_removes_sensitive_values() {
         let redacted = redact_sensitive_value(&json!({
             "Authorization": "Bearer secret",
+            "api_key": "fp_live_secret",
+            "api_secret": "provider_secret",
+            "webhook_secret": "whsec_123",
+            "signing_secret": "sign_123",
+            "password": "pass",
+            "token": "jwt",
             "card_number": "4111111111111111",
             "nested": {
                 "cvv": "123",
+                "cvc": "456",
                 "bank_account_number": "1234567890",
                 "safe": "kept"
             }
         }));
         assert_eq!(redacted["Authorization"], "redacted");
+        assert_eq!(redacted["api_key"], "redacted");
+        assert_eq!(redacted["api_secret"], "redacted");
+        assert_eq!(redacted["webhook_secret"], "redacted");
+        assert_eq!(redacted["signing_secret"], "redacted");
+        assert_eq!(redacted["password"], "redacted");
+        assert_eq!(redacted["token"], "redacted");
         assert_eq!(redacted["card_number"], "redacted");
         assert_eq!(redacted["nested"]["cvv"], "redacted");
+        assert_eq!(redacted["nested"]["cvc"], "redacted");
         assert_eq!(redacted["nested"]["bank_account_number"], "redacted");
         assert_eq!(redacted["nested"]["safe"], "kept");
     }

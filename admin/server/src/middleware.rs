@@ -2,7 +2,7 @@ use actix_web::{
     body::{EitherBody, MessageBody},
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     http::header,
-    web, Error, HttpResponse, HttpResponseBuilder,
+    web, Error, HttpMessage, HttpResponse, HttpResponseBuilder,
 };
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, DecodingKey, Validation};
@@ -113,7 +113,13 @@ pub struct AdminAuthMiddlewareService<S> {
     service: S,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug)]
+pub struct AdminClaims {
+    pub admin_id: Uuid,
+    pub role: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct Claims {
     sub: String,
     role: Option<String>,
@@ -207,6 +213,11 @@ where
 
         let pool = req.app_data::<web::Data<PgPool>>().cloned();
 
+        let req = req;
+        req.extensions_mut().insert(AdminClaims {
+            admin_id: merchant_id,
+            role: claims.role.clone(),
+        });
         let fut = self.service.call(req);
 
         Box::pin(async move {

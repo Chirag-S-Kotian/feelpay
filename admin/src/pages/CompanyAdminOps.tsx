@@ -36,6 +36,20 @@ type ConfirmState = { title: string; body: string; action: () => Promise<void> }
 type DrawerState = { title: string; body: GenericRecord } | null;
 type EmptyStateConfig = { title: string; body: string; action?: string; onAction?: () => void };
 
+const SENSITIVE_SUMMARY_KEYS = [
+  'api_key',
+  'api_secret',
+  'webhook_secret',
+  'signing_secret',
+  'password',
+  'token',
+  'authorization',
+  'account_number',
+  'card_number',
+  'cvv',
+  'cvc',
+];
+
 type Dashboard = {
   total_gmv: number;
   payment_success_rate: number;
@@ -292,7 +306,7 @@ function list(value: string) {
 
 function renderValue(value: GenericRecord[string] | undefined) {
   if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  if (typeof value === 'object' && value !== null) return JSON.stringify(redactSensitiveSummary(value));
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
@@ -300,8 +314,10 @@ function renderValue(value: GenericRecord[string] | undefined) {
 
 function renderCell(row: GenericRecord, column: string) {
   const value = row[column];
+  if (column === 'actor') return renderAuditActor(row);
+  if (column === 'ip_address') return renderValue(value) === '-' ? 'Local / Unknown' : renderValue(value);
   if (column === 'success_rate') return providerSuccessLabel(row);
-  if (column === 'actor' || column === 'assigned_to' || column === 'started_by' || column === 'completed_by' || column === 'resolved_by' || column === 'uploaded_by' || column === 'replayed_by') return renderAdminIdentity(row, column);
+  if (column === 'assigned_to' || column === 'started_by' || column === 'completed_by' || column === 'resolved_by' || column === 'uploaded_by' || column === 'replayed_by') return renderAdminIdentity(row, column);
   if (column === 'amount' || column.endsWith('_amount') || column === 'debit' || column === 'credit' || column === 'balance_after' || column === 'chargeback_fee') return money(Number(value || 0));
   if (isDateColumn(column)) {
     const formatted = formatDateTime(value);
@@ -320,6 +336,50 @@ function renderCell(row: GenericRecord, column: string) {
     return <span className={`badge ${statusClass(text, column)}`}>{text}</span>;
   }
   return renderValue(value);
+}
+
+function isSensitiveSummaryKey(key: string) {
+  const normalized = key.toLowerCase();
+  return SENSITIVE_SUMMARY_KEYS.some(sensitive => normalized === sensitive || normalized.includes(sensitive));
+}
+
+function redactSensitiveSummary(value: GenericRecord[string] | undefined, key = ''): GenericRecord[string] | undefined {
+  if (isSensitiveSummaryKey(key)) return 'redacted';
+  if (Array.isArray(value)) {
+    return value.map(item => (typeof item === 'object' && item !== null ? redactSensitiveSummary(item) : item)) as GenericRecord[string];
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([entryKey, entryValue]) => [
+        entryKey,
+        redactSensitiveSummary(entryValue as GenericRecord[string], entryKey),
+      ]),
+    );
+  }
+  return value;
+}
+
+function renderAuditActor(row: GenericRecord) {
+  const actor = renderAdminIdentity(row, 'actor');
+  return actor === '-' ? 'System / Unknown' : actor;
+}
+
+function auditDetail(row: GenericRecord): GenericRecord {
+  return {
+    action: row.action ?? null,
+    entity_type: row.entity_type ?? null,
+    entity_id: row.entity_id ?? null,
+    actor_admin_id: row.actor_admin_id ?? null,
+    actor_email: row.actor_email ?? null,
+    actor_role: row.actor_role ?? null,
+    ip_address: row.ip_address || 'Local / Unknown',
+    user_agent: row.user_agent ?? null,
+    request_id: row.request_id ?? null,
+    old_value_summary: redactSensitiveSummary(row.old_value_summary) ?? null,
+    new_value_summary: redactSensitiveSummary(row.new_value_summary) ?? null,
+    created_at: row.created_at ?? null,
+    masking_status: row.masking_status || row.masking || null,
+  };
 }
 
 function renderAdminIdentity(row: GenericRecord, prefix: string) {
@@ -1391,7 +1451,7 @@ export function ReportsPage() {
 export function AuditLogsPage() {
   const { rows, state, error, load } = useRows(`${API}/audit-logs`);
   const helpers = useDrawerConfirm();
-  return <TableRoute title="Audit Logs" subtitle="Sensitive company admin action history" rows={rows} state={state} error={error} columns={['action', 'entity_type', 'entity_id', 'actor', 'ip_address', 'new_value_summary', 'created_at']} actions={['View detail']} onAction={(row) => helpers.setDrawer({ title: 'Audit details', body: row })} onRefresh={load} helpers={helpers} />;
+  return <TableRoute title="Audit Logs" subtitle="Sensitive company admin action history" rows={rows} state={state} error={error} columns={['action', 'entity_type', 'entity_id', 'actor', 'ip_address', 'created_at']} actions={['View detail']} onAction={(row) => helpers.setDrawer({ title: 'Audit details', body: auditDetail(row) })} onRefresh={load} helpers={helpers} />;
 }
 
 export function AdminUsersRolesPage() {
@@ -2238,10 +2298,27 @@ function Drawer({ state, onClose }: { state: NonNullable<DrawerState>; onClose: 
           <h2>{state.title}</h2>
           <button type="button" onClick={onClose}>Close</button>
         </div>
-        <pre className="json-preview">{JSON.stringify(state.body, null, 2)}</pre>
+        <div className="detail-list">
+          {Object.entries(state.body).map(([key, value]) => (
+            <div key={key}>
+              <span>{key.replaceAll('_', ' ')}</span>
+              <strong title={typeof value === 'string' ? value : undefined}>
+                {isDateColumn(key) ? formatDateTime(value) : renderDetailValue(value)}
+              </strong>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
+}
+
+function renderDetailValue(value: GenericRecord[string] | undefined) {
+  const safeValue = redactSensitiveSummary(value);
+  if (typeof safeValue === 'object' && safeValue !== null) {
+    return <pre className="json-preview">{JSON.stringify(safeValue, null, 2)}</pre>;
+  }
+  return renderValue(safeValue);
 }
 
 function normalizeAction(action: string) {

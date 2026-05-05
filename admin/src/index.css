@@ -1255,6 +1255,38 @@ pre {
   font-size: 12px;
 }
 
+.detail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-list > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--fp-border);
+}
+
+.detail-list span {
+  color: var(--fp-text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.detail-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--fp-text);
+  font-weight: 500;
+}
+
+.detail-list .json-preview {
+  margin: 0;
+  max-height: 260px;
+}
+
 .check-list {
   display: grid;
   gap: 12px;
