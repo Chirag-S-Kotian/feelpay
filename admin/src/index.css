@@ -497,6 +497,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 760px;
+  table-layout: auto;
 }
 
 .data-table th,
@@ -508,6 +509,7 @@ table th {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid var(--fp-border);
+  white-space: nowrap;
 }
 
 .data-table td,
@@ -515,6 +517,10 @@ table td {
   padding: 12px;
   border-bottom: 1px solid rgba(46, 63, 96, 0.7);
   font-size: 14px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-table tr:hover td,
@@ -531,10 +537,15 @@ table tr:hover td {
   left: 0;
   z-index: 1;
   background: var(--fp-bg-card);
+  min-width: 140px;
 }
 
 thead .sticky-col {
   z-index: 2;
+}
+
+tr:hover .sticky-col {
+  background: var(--fp-bg-card);
 }
 
 .id-cell {

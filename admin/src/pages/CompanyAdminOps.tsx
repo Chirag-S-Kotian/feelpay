@@ -985,6 +985,13 @@ export function BusinessAccountsPage() {
       action: () => helpers.run('Business account updated.', () => apiRequest('PATCH', `${API}/business-accounts/${id}`, patch)).then(load),
     });
   };
+  const actionsForAccount = (row: GenericRecord): string[] => {
+    const status = String(row.status || '').toLowerCase();
+    const actions = ['View detail', 'Review KYC', 'Review risk', 'Manage payouts'];
+    if (status !== 'suspended') actions.push('Suspend');
+    if (status === 'suspended') actions.push('Reactivate');
+    return actions;
+  };
   const act = (row: GenericRecord, action: string) => {
     if (action === 'view_detail') void openDetail(row);
     if (action === 'review_kyc') updateAccount(row, { kyc_status: 'verified', note: 'KYC approved from company admin' }, 'Approve KYC');
@@ -1006,7 +1013,7 @@ export function BusinessAccountsPage() {
         rows={rows}
         columns={['display_name', 'business_type', 'email', 'status', 'kyc_status', 'risk_status', 'payout_status', 'payout_ready', 'created_at']}
         empty={{ title: 'No business accounts yet', body: 'Internal company-managed business accounts will appear here after onboarding records are created.' }}
-        renderActions={row => <ActionButtons actions={['View detail', 'Review KYC', 'Review risk', 'Manage payouts', 'Suspend', 'Reactivate']} onClick={action => act(row, normalizeAction(action))} />}
+        renderActions={row => <ActionButtons actions={actionsForAccount(row)} onClick={action => act(row, normalizeAction(action))} dropdownOnly />}
       />
       <Modals helpers={helpers} />
     </CrudPage>
@@ -1067,7 +1074,9 @@ export function ProviderConnectorsPage() {
       if (!provider) throw new Error('Provider not found');
       const result = await apiRequest<GenericRecord>('POST', `${API}/providers/${provider.id}/test`);
       setTestResults(prev => ({ ...prev, [providerCode]: result }));
-      helpers.setNotice(result.auth_ok ? `✓ ${providerCode} sandbox test passed` : `✗ ${providerCode} test failed: ${String(result.error || 'Auth failed')}`);
+      const passed = String(result.status || '').toLowerCase() === 'verified';
+      const errorDetail = (result.summary as GenericRecord)?.error || (passed ? '' : 'Credentials required');
+      helpers.setNotice(passed ? `✓ ${providerCode} sandbox test passed` : `✗ ${providerCode} test failed: ${String(errorDetail)}`);
     } catch (err) {
       helpers.setNotice(`✗ ${providerCode} test error: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally {
@@ -1140,11 +1149,16 @@ export function ProviderConnectorsPage() {
                   ))}
                   {cs.last_error && <div style={{ fontSize: 11, color: '#E54D4D', marginTop: 4 }}>Last error: {String(cs.last_error).slice(0, 60)}</div>}
                   {cs.last_success && <div style={{ fontSize: 11, color: '#1DB954', marginTop: 2 }}>Last success: {String(cs.last_success).slice(0, 24)}</div>}
-                  {result && (
-                    <div style={{ marginTop: 8, fontSize: 11, padding: '6px 8px', borderRadius: 6, background: result.auth_ok ? '#1DB95411' : '#E54D4D11' }}>
-                      Auth: {result.auth_ok ? '✓' : '✗'} | Webhook: {result.webhook_verify_ok ? '✓' : '✗'} | Sandbox: {result.sandbox_payment_ok ? '✓' : '✗'} | {String(result.latency_ms)}ms
-                    </div>
-                  )}
+                  {result && (() => {
+                    const passed = String(result.status || '').toLowerCase() === 'verified';
+                    const summary = (result.summary || {}) as GenericRecord;
+                    return (
+                      <div style={{ marginTop: 8, fontSize: 11, padding: '6px 8px', borderRadius: 6, background: passed ? '#1DB95411' : '#E54D4D11' }}>
+                        Status: {passed ? '✓ Healthy' : `✗ ${String(summary.error || 'Credentials required')}`}
+                        {result.provider_reference && <> · Ref: {String(result.provider_reference)}</>}
+                      </div>
+                    );
+                  })()}
                   <button
                     className="btn-secondary"
                     style={{ marginTop: 8, fontSize: 11, padding: '4px 12px' }}
@@ -1170,6 +1184,7 @@ export function ProviderConnectorsPage() {
                 <Field label="Provider"><Select value={credentialForm.provider_id} options={providers.map(provider => ({ label: provider.name, value: provider.id }))} onChange={value => setCredentialForm({ ...credentialForm, provider_id: value })} /></Field>
                 <Field label="Environment"><Select value={credentialForm.environment} options={['sandbox', 'production']} onChange={value => setCredentialForm({ ...credentialForm, environment: value })} /></Field>
                 <Field label="Secret type"><Select value={credentialForm.secret_type} options={['api_key', 'api_secret', 'webhook_secret', 'signing_secret', 'client_id', 'client_secret']} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
+                <input type="text" autoComplete="username" name="provider-secret-username" value="admin" readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }} />
                 <Field label="Secret value"><input type="password" autoComplete="new-password" name="provider-secret-value" value={str(credentialForm.value)} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
                 <Field label="Rotation due at"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
                 <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
@@ -2290,14 +2305,19 @@ function Select({ value, options, onChange }: { value: string; options: (string 
 }
 
 function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; onClick: (action: string) => void; dropdownOnly?: boolean }) {
+  const handleSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    if (value) {
+      onClick(value);
+      // Reset via React-friendly deferred update to avoid controlled/uncontrolled warning
+      requestAnimationFrame(() => { event.target.value = ''; });
+    }
+  };
   if (dropdownOnly) {
     return (
       <div className="button-row compact-actions">
-        <select aria-label="Actions" onChange={event => {
-          if (event.target.value) onClick(event.target.value);
-          event.target.value = '';
-        }} style={{ minHeight: '32px', fontSize: '13px' }}>
-          <option value="">Actions</option>
+        <select aria-label="Actions" defaultValue="" onChange={handleSelect} style={{ minHeight: '32px', fontSize: '13px' }}>
+          <option value="" disabled>Actions</option>
           {actions.map(action => <option key={action} value={action}>{action}</option>)}
         </select>
       </div>
@@ -2309,11 +2329,8 @@ function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; 
     <div className="button-row compact-actions">
       {primary.map(action => <button key={action} type="button" onClick={() => onClick(action)}>{action}</button>)}
       {overflow.length > 0 && (
-        <select aria-label="More actions" onChange={event => {
-          if (event.target.value) onClick(event.target.value);
-          event.target.value = '';
-        }}>
-          <option value="">More actions</option>
+        <select aria-label="More actions" defaultValue="" onChange={handleSelect}>
+          <option value="" disabled>More actions</option>
           {overflow.map(action => <option key={action} value={action}>{action}</option>)}
         </select>
       )}
