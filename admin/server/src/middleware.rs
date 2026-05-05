@@ -443,7 +443,7 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
             "admin_users.manage"
         });
     }
-    if path.starts_with("/system-health") {
+    if path.starts_with("/system-health") || path.starts_with("/payment-ops/system-health") {
         return Some(if method == "GET" {
             "system_health.view"
         } else {
@@ -581,6 +581,18 @@ mod tests {
         assert_eq!(
             required_permission_for_path("/admin/payment-ops/developer/request-logs", "GET"),
             Some("api_logs.view")
+        );
+    }
+
+    #[test]
+    fn payment_ops_system_health_routes_map_permissions() {
+        assert_eq!(
+            required_permission_for_path("/admin/payment-ops/system-health/metrics", "GET"),
+            Some("system_health.view")
+        );
+        assert_eq!(
+            required_permission_for_path("/admin/payment-ops/system-health/slos/refresh", "POST"),
+            Some("system_health.manage")
         );
     }
 
