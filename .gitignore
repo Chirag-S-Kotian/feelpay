@@ -7,8 +7,9 @@ admin/node_modules
 
 /admin/server/target
 
-# ignore local agents, keep shared skills
+# ignore local agents, keep shared skills and domain context
 .agents/*
+!.agents/*.md
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/karpathy-guidelines/

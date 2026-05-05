@@ -1,47 +1,32 @@
-# Codex Mode
+## Codex Mode (Root Truth)
 
-Root `AGENTS.md` = repo truth. This file = Codex speed/discipline overlay.
+Read `AGENTS.md` first. Load `.agents/*.md` for domain-specific context.
 
-## Token Budget
-- Default caveman-full: terse updates/finals; normal code, warnings, PR text.
-- Read narrow: `rg`, `rg --files`, `sed -n 'a,bp'`, `git diff -- file`.
-- Never paste whole large files. Summarize findings, cite paths/lines.
-- Skip repo tours. Open graph report only for unfamiliar modules or hub edits.
-- Prefer one decisive patch over chatter. Ask only when ambiguity risks wrong code.
+### Loop
 
-## Fast Loop
-1. `git status --short`.
-2. State goal in one line.
-3. Locate owner files/tests with `rg`.
-4. Plan scale:
-   - tiny: one-line intent
-   - risky/multi-file: short checklist
-   - broad: Superpowers plan
-5. Patch minimal surface.
-6. Code changed? Run `./scripts/graphify update .` before final gate.
-7. Run cheapest relevant check first, then root gate if claiming done.
-8. Final: files changed, command exits, blockers.
+1. `git status --short`
+2. Restate task (1 line)
+3. Load relevant `.agents/` module (backend, frontend, payments, db)
+4. Find files via `rg` — never paste large files
+5. Plan: tiny → 1 line; risky → short checklist
+6. Patch minimal surface (max 3 files unless confirmed)
+7. If code changed: `./scripts/graphify update .`
+8. Run smallest relevant check → full gate if done
+9. Output: files + commands + exit status
 
-## Anti-Stuck Rules
-- If command hangs: wait once, then report session/blocker or stop it safely.
-- If test fails unrelated: capture first failing names/errors; do not chase without ask.
-- If `./scripts/graphify update .` fails: state exact blocker; do not fake graph freshness.
-- If scope grows past 3 files: pause and confirm.
-- If env missing: state exact var/tool and command that failed.
-- If uncertain between paths: choose simpler reversible path; name assumption.
+### Constraints
 
-## Skills
-- Code write/review/refactor: `clean-code` + `karpathy-guidelines`.
-- Bugs: `systematic-debugging`; reproduce before fix.
-- Multi-step/risky: `writing-plans`, then `executing-plans` task-by-task.
-- Completion claim: `verification-before-completion`.
-- Subagents only when user explicitly asks.
+- Match existing style; no unrelated edits
+- No assumptions without evidence
+- Scope >3 files → confirm first
 
-## Guardrails
-- No old migration edits, destructive git, user-change revert, Analytics mocks, production NPCI invention.
-- Clean code: intention names, small single-purpose fns, near-use vars, useful comments, behavior tests.
-- Karpathy: no hidden assumptions, no bloat, surgical edits, explicit success criteria.
-- Rust `?`, no DB/Decimal `unwrap()`. TS strict, no `any`/`@ts-ignore`. React functional only.
+### Failure Rules
 
-## Compact Handoff
-Preserve: task, changed files, decisions, commands/exit codes, failures, blockers, next step.
+- Hanging command → stop + report
+- Unrelated test fail → report only
+- Missing env/tool → state exact error
+- Graphify fail → report, don't fake
+
+### Output Rule
+
+Final ≤20 lines: what changed, files, commands + exit codes.
