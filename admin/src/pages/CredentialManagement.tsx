@@ -454,7 +454,7 @@ export default function CredentialManagement() {
               <Field label="Provider"><Select value={credentialForm.provider_id} options={providers.map(provider => ({ label: provider.name, value: provider.id }))} onChange={value => setCredentialForm({ ...credentialForm, provider_id: value })} /></Field>
               <Field label="Environment"><Select value={credentialForm.environment} options={['sandbox', 'production']} onChange={value => setCredentialForm({ ...credentialForm, environment: value })} /></Field>
               <Field label="Secret Type"><Select value={credentialForm.secret_type} options={SECRET_TYPES} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
-              <Field label="Secret Value"><input type="password" value={credentialForm.value} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
+              <Field label="Secret Value"><input type="password" autoComplete="new-password" name="provider-secret-value" value={credentialForm.value || ''} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
               <Field label="Rotation Due Date"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
               <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
             </div>

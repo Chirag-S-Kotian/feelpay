@@ -159,6 +159,7 @@ const ADMIN_PERMISSIONS = [
   'disputes.manage',
   'risk_rules.manage',
   'reconciliation.manage',
+  'providers.view',
   'providers.manage',
   'credentials.rotate',
   'bank_integrations.manage',
@@ -236,6 +237,9 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
   timezone: 'Asia/Kolkata',
   date_format: 'DD MMM YYYY',
 };
+
+const str = (value: unknown) => value == null ? '' : String(value);
+const valueList = (value: unknown, fallback: string[] = []) => Array.isArray(value) ? value.join(',') : value == null ? fallback.join(',') : String(value);
 
 function money(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value / 100);
@@ -1028,11 +1032,23 @@ export function ProviderConnectorsPage() {
       const [providerData, credentialData, statusData] = await Promise.all([
         apiRequest<{ items: Provider[] }>('GET', `${API}/providers`),
         apiRequest<{ items: GenericRecord[] }>('GET', `${API}/credentials`),
-        apiRequest<GenericRecord[]>('GET', '/admin/connectors').catch(() => []),
+        apiRequest<{ items?: GenericRecord[] }>('GET', `${API}/providers`).catch(() => ({ items: [] })),
       ]);
+      const credentialRows = rowsFrom(credentialData);
       setProviders(providerData.items || []);
-      setCredentials(rowsFrom(credentialData));
-      setConnectorStatuses(Array.isArray(statusData) ? statusData : []);
+      setCredentials(credentialRows);
+      setConnectorStatuses((statusData.items || []).map(provider => ({
+        provider: str(provider.code || provider.name || provider.id),
+        display_name: str(provider.name || provider.code || 'Provider'),
+        readiness_score: Number(provider.connector_readiness_score ?? 0),
+        required_keys: Array.isArray(provider.missing_required_secrets) ? provider.missing_required_secrets.map(String) : [],
+        available_keys: credentialRows
+          .filter(row => String(row.provider_id || '') === String(provider.id || '') && String(row.status || 'active') !== 'disabled')
+          .map(row => String(row.secret_type || ''))
+          .filter(Boolean),
+        last_error: '',
+        last_success: str(provider.last_health_check_at),
+      })));
       setCredentialForm(form => ({ ...form, provider_id: form.provider_id || providerData.items?.[0]?.id || '' }));
       setState('ready');
     } catch (err) {
@@ -1047,7 +1063,9 @@ export function ProviderConnectorsPage() {
   const runSandboxTest = async (providerCode: string) => {
     setTesting(providerCode);
     try {
-      const result = await apiRequest<GenericRecord>('POST', '/admin/connectors/test', { provider: providerCode });
+      const provider = providers.find(item => String(item.code || item.name) === providerCode);
+      if (!provider) throw new Error('Provider not found');
+      const result = await apiRequest<GenericRecord>('POST', `${API}/providers/${provider.id}/test`);
       setTestResults(prev => ({ ...prev, [providerCode]: result }));
       helpers.setNotice(result.auth_ok ? `✓ ${providerCode} sandbox test passed` : `✗ ${providerCode} test failed: ${String(result.error || 'Auth failed')}`);
     } catch (err) {
@@ -1081,6 +1099,13 @@ export function ProviderConnectorsPage() {
   };
 
   const readinessColor = (score: number) => score >= 100 ? '#1DB954' : score >= 50 ? '#F5A623' : '#E54D4D';
+  const secretStatus = (cs: GenericRecord, key: string) => {
+    const required = (cs.required_keys as string[] || []).includes(key);
+    const available = (cs.available_keys as string[] || []).includes(key);
+    if (!required) return 'Not required';
+    if (available) return 'Configured';
+    return 'Missing';
+  };
 
   return (
     <CrudPage title="Provider Connectors" subtitle="Integration health, sandbox testing, credentials, and capabilities" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
@@ -1103,14 +1128,14 @@ export function ProviderConnectorsPage() {
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: '#b3b3b3', marginBottom: 6 }}>
-                    Keys: {(cs.available_keys as string[] || []).length}/{(cs.required_keys as string[] || []).length} configured
+                    Credentials: {['api_key', 'api_secret', 'webhook_secret'].map(key => `${key.replaceAll('_', ' ')}: ${secretStatus(cs, key)}`).join(' · ')}
                   </div>
-                  {(cs.required_keys as string[] || []).map(k => (
+                  {['api_key', 'api_secret', 'webhook_secret'].map(k => (
                     <div key={k} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                      <span style={{ color: (cs.available_keys as string[] || []).includes(k) ? '#1DB954' : '#E54D4D' }}>
-                        {(cs.available_keys as string[] || []).includes(k) ? '●' : '○'}
+                      <span style={{ color: secretStatus(cs, k) === 'Missing' ? '#E54D4D' : '#1DB954' }}>
+                        {secretStatus(cs, k) === 'Missing' ? '○' : '●'}
                       </span>
-                      {k}
+                      {k.replaceAll('_', ' ')}: {secretStatus(cs, k)}
                     </div>
                   ))}
                   {cs.last_error && <div style={{ fontSize: 11, color: '#E54D4D', marginTop: 4 }}>Last error: {String(cs.last_error).slice(0, 60)}</div>}
@@ -1145,7 +1170,7 @@ export function ProviderConnectorsPage() {
                 <Field label="Provider"><Select value={credentialForm.provider_id} options={providers.map(provider => ({ label: provider.name, value: provider.id }))} onChange={value => setCredentialForm({ ...credentialForm, provider_id: value })} /></Field>
                 <Field label="Environment"><Select value={credentialForm.environment} options={['sandbox', 'production']} onChange={value => setCredentialForm({ ...credentialForm, environment: value })} /></Field>
                 <Field label="Secret type"><Select value={credentialForm.secret_type} options={['api_key', 'api_secret', 'webhook_secret', 'signing_secret', 'client_id', 'client_secret']} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
-                <Field label="Secret value"><input type="password" value={credentialForm.value} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
+                <Field label="Secret value"><input type="password" autoComplete="new-password" name="provider-secret-value" value={str(credentialForm.value)} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
                 <Field label="Rotation due at"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
                 <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
               </div>
@@ -1241,7 +1266,27 @@ export function WhiteLabelCheckoutPage() {
         receipts.load(),
       ]);
       setProviders(providerData.items || []);
-      setForm({ ...DEFAULT_WHITE_LABEL, ...config, default_payment_methods: (config.default_payment_methods || ['upi', 'card', 'netbanking']).join(',') });
+      setForm({
+        ...DEFAULT_WHITE_LABEL,
+        ...config,
+        brand_name: str(config.brand_name || DEFAULT_WHITE_LABEL.brand_name),
+        checkout_logo_url: str(config.checkout_logo_url),
+        checkout_theme_color: str(config.checkout_theme_color || DEFAULT_WHITE_LABEL.checkout_theme_color),
+        payment_page_domain: str(config.payment_page_domain),
+        support_email: str(config.support_email),
+        support_phone: str(config.support_phone),
+        terms_url: str(config.terms_url),
+        privacy_url: str(config.privacy_url),
+        refund_policy_url: str(config.refund_policy_url),
+        statement_descriptor: str(config.statement_descriptor),
+        default_provider_id: str(config.default_provider_id),
+        fallback_provider_id: str(config.fallback_provider_id),
+        default_payment_methods: valueList(config.default_payment_methods, ['upi', 'card', 'netbanking']),
+        default_country: str(config.default_country || DEFAULT_WHITE_LABEL.default_country),
+        default_currency: str(config.default_currency || DEFAULT_WHITE_LABEL.default_currency),
+        invoice_prefix: str(config.invoice_prefix || DEFAULT_WHITE_LABEL.invoice_prefix),
+        receipt_prefix: str(config.receipt_prefix || DEFAULT_WHITE_LABEL.receipt_prefix),
+      });
       setState('ready');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'White-label config load failed');
@@ -1273,21 +1318,13 @@ export function WhiteLabelCheckoutPage() {
     if (action === 'create_session') helpers.setConfirm({ title: 'Create payment session', body: 'Session uses immutable checkout theme snapshot and provider routing.', action: () => helpers.run('Session created.', () => apiRequest('POST', `${API}/white-label/sessions`, { payment_link_id: id })).then(load) });
     if (action === 'copy_payment_link') helpers.setDrawer({ title: 'Payment link', body: { payment_link_id: id, note: 'Use signed public URL from checkout gateway service' } });
   };
-  const previewRows = [
-    { id: 'brand', field: 'brand_name', value: form.brand_name },
-    { id: 'theme', field: 'theme_color', value: form.checkout_theme_color },
-    { id: 'support', field: 'support_email', value: form.support_email },
-    { id: 'terms', field: 'terms_url', value: form.terms_url },
-    { id: 'privacy', field: 'privacy_url', value: form.privacy_url },
-    { id: 'refund', field: 'refund_policy_url', value: form.refund_policy_url },
-  ];
   return (
     <CrudPage title="White-label Checkout" subtitle="Company-managed checkout brand, defaults, and descriptors" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
         {['Config', 'Preview', 'Payment Links', 'Checkout Sessions', 'Receipts'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       {tab === 'Config' && <WhiteLabelPanel value={form} providers={providers} onChange={setForm} onSubmit={save} onReset={() => setForm(DEFAULT_WHITE_LABEL)} />}
-      {tab === 'Preview' && <DataTable rows={previewRows} columns={['field', 'value']} empty="No preview config" />}
+      {tab === 'Preview' && <CheckoutPreview value={form} />}
       {tab === 'Payment Links' && (
         <>
           <section className="card">
@@ -1348,7 +1385,13 @@ export function WebhookConfigPage() {
       <div className="button-row">
         {['Endpoint Configs', 'Events', 'Retry Queue', 'Dead Letter', 'Processing Attempts', 'Retry Policies'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
-      {tab === 'Endpoint Configs' && <TablePanel title="Webhook endpoint configs" rows={configs.rows} columns={['provider_name', 'environment', 'webhook_url', 'masked_signing_secret', 'signature_verification_enabled', 'last_event_received_at', 'failed_event_count', 'retry_queue_count', 'status']} />}
+      {tab === 'Endpoint Configs' && (
+        <DataTable
+          rows={configs.rows}
+          columns={['provider_name', 'environment', 'webhook_url', 'masked_signing_secret', 'signature_verification_enabled', 'last_event_received_at', 'failed_event_count', 'retry_queue_count', 'status']}
+          empty={{ title: 'No webhook endpoints configured yet.', body: 'Configure provider credentials first. Signing secrets remain masked and signature verification defaults to required.' }}
+        />
+      )}
       {tab === 'Events' && <DataTable rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'event_version', 'payload_hash', 'dedupe_key', 'idempotency_key', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} empty="No webhook events" renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run replay', 'View detail']} onClick={action => action === 'Replay event' ? replay(row, false) : action === 'Dry-run replay' ? replay(row, true) : helpers.setDrawer({ title: 'Webhook event', body: row })} />} />}
       {tab === 'Retry Queue' && <DataTable rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} empty="No retry queue events" renderActions={row => <ActionButtons actions={['Retry now', 'View detail']} onClick={action => action === 'Retry now' ? helpers.run('Retry queued.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Retry queue item', body: row })} />} />}
       {tab === 'Dead Letter' && <DataTable rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'retry_count', 'dead_letter_reason', 'error_message', 'received_at']} empty="No dead-letter events" renderActions={row => <ActionButtons actions={['Resolve dead letter', 'Ignore', 'View detail']} onClick={action => action === 'Resolve dead letter' ? helpers.run('Dead-letter resolved.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/resolve-dead-letter`, { note: 'Resolved by admin' })).then(load) : action === 'Ignore' ? helpers.run('Webhook ignored.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/ignore`)).then(load) : helpers.setDrawer({ title: 'Dead-letter event', body: row })} />} />}
@@ -2032,7 +2075,23 @@ export function PlatformSettingsPage() {
     setError('');
     try {
       const data = await apiRequest<Partial<PlatformSettingsForm>>('GET', '/admin/platform-settings');
-      setForm({ ...DEFAULT_PLATFORM_SETTINGS, ...data });
+      setForm({
+        ...DEFAULT_PLATFORM_SETTINGS,
+        ...data,
+        platform_name: str(data.platform_name || DEFAULT_PLATFORM_SETTINGS.platform_name),
+        support_email: str(data.support_email),
+        support_phone: str(data.support_phone),
+        default_country: str(data.default_country || DEFAULT_PLATFORM_SETTINGS.default_country),
+        default_currency: str(data.default_currency || DEFAULT_PLATFORM_SETTINGS.default_currency),
+        session_timeout: str(data.session_timeout || DEFAULT_PLATFORM_SETTINGS.session_timeout),
+        audit_retention_days: str(data.audit_retention_days || DEFAULT_PLATFORM_SETTINGS.audit_retention_days),
+        export_retention_days: str(data.export_retention_days || DEFAULT_PLATFORM_SETTINGS.export_retention_days),
+        notification_email_sender: str(data.notification_email_sender),
+        timezone: str(data.timezone || DEFAULT_PLATFORM_SETTINGS.timezone),
+        date_format: str(data.date_format || DEFAULT_PLATFORM_SETTINGS.date_format),
+        maintenance_mode: Boolean(data.maintenance_mode ?? DEFAULT_PLATFORM_SETTINGS.maintenance_mode),
+        mfa_required: Boolean(data.mfa_required ?? DEFAULT_PLATFORM_SETTINGS.mfa_required),
+      });
       setState('ready');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Platform settings load failed');
@@ -2055,19 +2114,19 @@ export function PlatformSettingsPage() {
         <h2><ShieldCheck size={18} /> Platform configuration</h2>
         <form onSubmit={save}>
           <div className="filter-grid">
-            <Field label="Platform name"><input value={form.platform_name} onChange={event => setForm({ ...form, platform_name: event.target.value })} /></Field>
-            <Field label="Support email"><input value={form.support_email} onChange={event => setForm({ ...form, support_email: event.target.value })} /></Field>
-            <Field label="Support phone"><input value={form.support_phone} onChange={event => setForm({ ...form, support_phone: event.target.value })} /></Field>
-            <Field label="Default country"><input value={form.default_country} onChange={event => setForm({ ...form, default_country: event.target.value })} /></Field>
-            <Field label="Default currency"><input value={form.default_currency} onChange={event => setForm({ ...form, default_currency: event.target.value })} /></Field>
-            <Field label="Session timeout"><input value={form.session_timeout} onChange={event => setForm({ ...form, session_timeout: event.target.value })} /></Field>
-            <Field label="Audit retention days"><input value={form.audit_retention_days} onChange={event => setForm({ ...form, audit_retention_days: event.target.value })} /></Field>
-            <Field label="Export retention days"><input value={form.export_retention_days} onChange={event => setForm({ ...form, export_retention_days: event.target.value })} /></Field>
-            <Field label="Notification email sender"><input value={form.notification_email_sender} onChange={event => setForm({ ...form, notification_email_sender: event.target.value })} /></Field>
-            <Field label="Timezone"><input value={form.timezone} onChange={event => setForm({ ...form, timezone: event.target.value })} /></Field>
-            <Field label="Date format"><input value={form.date_format} onChange={event => setForm({ ...form, date_format: event.target.value })} /></Field>
-            <label className="form-field"><span>Maintenance mode</span><input type="checkbox" checked={form.maintenance_mode} onChange={event => setForm({ ...form, maintenance_mode: event.target.checked })} /></label>
-            <label className="form-field"><span>MFA required</span><input type="checkbox" checked={form.mfa_required} onChange={event => setForm({ ...form, mfa_required: event.target.checked })} /></label>
+            <Field label="Platform name"><input value={str(form.platform_name)} onChange={event => setForm({ ...form, platform_name: event.target.value })} /></Field>
+            <Field label="Support email"><input value={str(form.support_email)} onChange={event => setForm({ ...form, support_email: event.target.value })} /></Field>
+            <Field label="Support phone"><input value={str(form.support_phone)} onChange={event => setForm({ ...form, support_phone: event.target.value })} /></Field>
+            <Field label="Default country"><input value={str(form.default_country)} onChange={event => setForm({ ...form, default_country: event.target.value })} /></Field>
+            <Field label="Default currency"><input value={str(form.default_currency)} onChange={event => setForm({ ...form, default_currency: event.target.value })} /></Field>
+            <Field label="Session timeout"><input value={str(form.session_timeout)} onChange={event => setForm({ ...form, session_timeout: event.target.value })} /></Field>
+            <Field label="Audit retention days"><input value={str(form.audit_retention_days)} onChange={event => setForm({ ...form, audit_retention_days: event.target.value })} /></Field>
+            <Field label="Export retention days"><input value={str(form.export_retention_days)} onChange={event => setForm({ ...form, export_retention_days: event.target.value })} /></Field>
+            <Field label="Notification email sender"><input value={str(form.notification_email_sender)} onChange={event => setForm({ ...form, notification_email_sender: event.target.value })} /></Field>
+            <Field label="Timezone"><input value={str(form.timezone)} onChange={event => setForm({ ...form, timezone: event.target.value })} /></Field>
+            <Field label="Date format"><input value={str(form.date_format)} onChange={event => setForm({ ...form, date_format: event.target.value })} /></Field>
+            <label className="form-field"><span>Maintenance mode</span><input type="checkbox" checked={Boolean(form.maintenance_mode)} onChange={event => setForm({ ...form, maintenance_mode: event.target.checked })} /></label>
+            <label className="form-field"><span>MFA required</span><input type="checkbox" checked={Boolean(form.mfa_required)} onChange={event => setForm({ ...form, mfa_required: event.target.checked })} /></label>
           </div>
           <div className="button-row">
             <button className="btn-primary" type="submit">Save settings</button>
@@ -2097,6 +2156,7 @@ function TableRoute({ title, subtitle, rows, state, error, notice, columns, acti
     'Audit Logs': { title: 'No sensitive admin actions recorded yet.', body: 'Sensitive admin actions will create audit logs here.' },
     Notifications: { title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' },
     Reports: { title: 'Reports are ready to export.', body: 'Choose a report type and export format when finance needs data.' },
+    'Bank Integrations': { title: 'No bank integrations configured yet.', body: 'Add one before live settlement. Full account numbers are never shown.' },
   };
   return (
     <CrudPage title={title} subtitle={subtitle} state={state} error={error} notice={notice} onRefresh={onRefresh}>
@@ -2220,7 +2280,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Select({ value, options, onChange }: { value: string; options: (string | { label: string; value: string })[]; onChange: (value: string) => void }) {
   return (
-    <select value={value} onChange={event => onChange(event.target.value)}>
+    <select value={str(value)} onChange={event => onChange(event.target.value)}>
       {options.map(option => {
         const item = typeof option === 'string' ? { label: option, value: option } : option;
         return <option key={item.value} value={item.value}>{item.label}</option>;
@@ -2253,7 +2313,7 @@ function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; 
           if (event.target.value) onClick(event.target.value);
           event.target.value = '';
         }}>
-          <option value="">More</option>
+          <option value="">More actions</option>
           {overflow.map(action => <option key={action} value={action}>{action}</option>)}
         </select>
       )}
@@ -2267,14 +2327,14 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
       <h2><Route size={18} /> Routing simulator</h2>
       <form onSubmit={onSubmit}>
         <div className="filter-grid">
-          <Field label="Payment method"><input value={form.payment_method} onChange={event => onChange({ ...form, payment_method: event.target.value })} /></Field>
-          <Field label="Currency"><input value={form.currency} onChange={event => onChange({ ...form, currency: event.target.value })} /></Field>
-          <Field label="Country"><input value={form.country} onChange={event => onChange({ ...form, country: event.target.value })} /></Field>
-          <Field label="Amount"><input type="number" value={form.amount} onChange={event => onChange({ ...form, amount: Number(event.target.value) })} /></Field>
-          <Field label="Business account"><input value={form.business_account} onChange={event => onChange({ ...form, business_account: event.target.value })} /></Field>
-          <Field label="Customer region"><input value={form.customer_region} onChange={event => onChange({ ...form, customer_region: event.target.value })} /></Field>
-          <Field label="Risk level"><input value={form.risk_level} onChange={event => onChange({ ...form, risk_level: event.target.value })} /></Field>
-          <Field label="Strategy"><Select value={form.strategy} options={['priority', 'weighted', 'lowest_cost', 'highest_success_rate', 'latency_aware', 'risk_aware', 'health_aware', 'round_robin', 'fallback_only']} onChange={strategy => onChange({ ...form, strategy })} /></Field>
+          <Field label="Payment method"><input value={str(form.payment_method)} onChange={event => onChange({ ...form, payment_method: event.target.value })} /></Field>
+          <Field label="Currency"><input value={str(form.currency)} onChange={event => onChange({ ...form, currency: event.target.value })} /></Field>
+          <Field label="Country"><input value={str(form.country)} onChange={event => onChange({ ...form, country: event.target.value })} /></Field>
+          <Field label="Amount"><input type="number" value={form.amount ?? 0} onChange={event => onChange({ ...form, amount: Number(event.target.value) })} /></Field>
+          <Field label="Business account"><input value={str(form.business_account)} onChange={event => onChange({ ...form, business_account: event.target.value })} /></Field>
+          <Field label="Customer region"><input value={str(form.customer_region)} onChange={event => onChange({ ...form, customer_region: event.target.value })} /></Field>
+          <Field label="Risk level"><input value={str(form.risk_level)} onChange={event => onChange({ ...form, risk_level: event.target.value })} /></Field>
+          <Field label="Strategy"><Select value={str(form.strategy)} options={['priority', 'weighted', 'lowest_cost', 'highest_success_rate', 'latency_aware', 'risk_aware', 'health_aware', 'round_robin', 'fallback_only']} onChange={strategy => onChange({ ...form, strategy })} /></Field>
         </div>
         <button className="btn-primary" type="submit">Simulate</button>
       </form>
@@ -2300,29 +2360,65 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
       <h2><SlidersHorizontal size={18} /> White-label config</h2>
       <form onSubmit={onSubmit}>
         <div className="filter-grid">
-          <Field label="Brand"><input value={value.brand_name} onChange={event => onChange({ ...value, brand_name: event.target.value })} /></Field>
-          <Field label="Logo URL"><input value={value.checkout_logo_url} onChange={event => onChange({ ...value, checkout_logo_url: event.target.value })} /></Field>
-          <Field label="Theme color"><input value={value.checkout_theme_color} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} /></Field>
-          <Field label="Domain"><input value={value.payment_page_domain} onChange={event => onChange({ ...value, payment_page_domain: event.target.value })} /></Field>
-          <Field label="Support email"><input value={value.support_email} onChange={event => onChange({ ...value, support_email: event.target.value })} /></Field>
-          <Field label="Support phone"><input value={value.support_phone} onChange={event => onChange({ ...value, support_phone: event.target.value })} /></Field>
-          <Field label="Terms URL"><input value={value.terms_url} onChange={event => onChange({ ...value, terms_url: event.target.value })} /></Field>
-          <Field label="Privacy URL"><input value={value.privacy_url} onChange={event => onChange({ ...value, privacy_url: event.target.value })} /></Field>
-          <Field label="Refund policy URL"><input value={value.refund_policy_url} onChange={event => onChange({ ...value, refund_policy_url: event.target.value })} /></Field>
-          <Field label="Statement descriptor"><input value={value.statement_descriptor} onChange={event => onChange({ ...value, statement_descriptor: event.target.value })} /></Field>
-          <Field label="Default provider"><Select value={value.default_provider_id} options={[{ label: 'None', value: '' }, ...providers.map(provider => ({ label: provider.name, value: provider.id }))]} onChange={next => onChange({ ...value, default_provider_id: next })} /></Field>
-          <Field label="Fallback provider"><Select value={value.fallback_provider_id} options={[{ label: 'None', value: '' }, ...providers.map(provider => ({ label: provider.name, value: provider.id }))]} onChange={next => onChange({ ...value, fallback_provider_id: next })} /></Field>
-          <Field label="Default methods"><input value={value.default_payment_methods} onChange={event => onChange({ ...value, default_payment_methods: event.target.value })} /></Field>
-          <Field label="Default country"><input value={value.default_country} onChange={event => onChange({ ...value, default_country: event.target.value })} /></Field>
-          <Field label="Default currency"><input value={value.default_currency} onChange={event => onChange({ ...value, default_currency: event.target.value })} /></Field>
-          <Field label="Invoice prefix"><input value={value.invoice_prefix} onChange={event => onChange({ ...value, invoice_prefix: event.target.value })} /></Field>
-          <Field label="Receipt prefix"><input value={value.receipt_prefix} onChange={event => onChange({ ...value, receipt_prefix: event.target.value })} /></Field>
+          <Field label="Brand"><input value={str(value.brand_name)} onChange={event => onChange({ ...value, brand_name: event.target.value })} /></Field>
+          <Field label="Logo URL"><input value={str(value.checkout_logo_url)} onChange={event => onChange({ ...value, checkout_logo_url: event.target.value })} /></Field>
+          <Field label="Theme color"><input value={str(value.checkout_theme_color)} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} /></Field>
+          <Field label="Domain"><input value={str(value.payment_page_domain)} onChange={event => onChange({ ...value, payment_page_domain: event.target.value })} /></Field>
+          <Field label="Support email"><input value={str(value.support_email)} onChange={event => onChange({ ...value, support_email: event.target.value })} /></Field>
+          <Field label="Support phone"><input value={str(value.support_phone)} onChange={event => onChange({ ...value, support_phone: event.target.value })} /></Field>
+          <Field label="Terms URL"><input value={str(value.terms_url)} onChange={event => onChange({ ...value, terms_url: event.target.value })} /></Field>
+          <Field label="Privacy URL"><input value={str(value.privacy_url)} onChange={event => onChange({ ...value, privacy_url: event.target.value })} /></Field>
+          <Field label="Refund policy URL"><input value={str(value.refund_policy_url)} onChange={event => onChange({ ...value, refund_policy_url: event.target.value })} /></Field>
+          <Field label="Statement descriptor"><input value={str(value.statement_descriptor)} onChange={event => onChange({ ...value, statement_descriptor: event.target.value })} /></Field>
+          <Field label="Default provider"><Select value={str(value.default_provider_id)} options={[{ label: 'None', value: '' }, ...providers.map(provider => ({ label: provider.name, value: provider.id }))]} onChange={next => onChange({ ...value, default_provider_id: next })} /></Field>
+          <Field label="Fallback provider"><Select value={str(value.fallback_provider_id)} options={[{ label: 'None', value: '' }, ...providers.map(provider => ({ label: provider.name, value: provider.id }))]} onChange={next => onChange({ ...value, fallback_provider_id: next })} /></Field>
+          <Field label="Default methods"><input value={str(value.default_payment_methods)} onChange={event => onChange({ ...value, default_payment_methods: event.target.value })} /></Field>
+          <Field label="Default country"><input value={str(value.default_country)} onChange={event => onChange({ ...value, default_country: event.target.value })} /></Field>
+          <Field label="Default currency"><input value={str(value.default_currency)} onChange={event => onChange({ ...value, default_currency: event.target.value })} /></Field>
+          <Field label="Invoice prefix"><input value={str(value.invoice_prefix)} onChange={event => onChange({ ...value, invoice_prefix: event.target.value })} /></Field>
+          <Field label="Receipt prefix"><input value={str(value.receipt_prefix)} onChange={event => onChange({ ...value, receipt_prefix: event.target.value })} /></Field>
         </div>
         <div className="button-row">
           <button className="btn-primary" type="submit">Save white-label config</button>
           <button type="button" onClick={onReset}>Reset to default</button>
         </div>
       </form>
+    </section>
+  );
+}
+
+function CheckoutPreview({ value }: { value: WhiteLabelForm }) {
+  const themeColor = str(value.checkout_theme_color) || '#1DB954';
+  const brandName = str(value.brand_name) || 'FeelPay';
+  const supportEmail = str(value.support_email) || 'support unavailable';
+  const sampleAmount = new Intl.NumberFormat('en-IN', { style: 'currency', currency: str(value.default_currency) || 'INR', minimumFractionDigits: 2 }).format(2499);
+  const details = [
+    { id: 'brand', label: 'Brand Name', value: brandName },
+    { id: 'theme', label: 'Theme Color', value: themeColor },
+    { id: 'support', label: 'Support Email', value: supportEmail },
+    { id: 'terms', label: 'Terms URL', value: str(value.terms_url) || 'Not configured' },
+    { id: 'privacy', label: 'Privacy URL', value: str(value.privacy_url) || 'Not configured' },
+    { id: 'refund', label: 'Refund Policy URL', value: str(value.refund_policy_url) || 'Not configured' },
+  ];
+  return (
+    <section className="card">
+      <h2><Wallet size={18} /> Checkout preview</h2>
+      <div className="grid grid-2">
+        <div style={{ border: '1px solid #E5E7EB', borderRadius: 14, padding: 18, background: '#fff', color: '#111827' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+            {value.checkout_logo_url ? <img src={value.checkout_logo_url} alt="" style={{ width: 42, height: 42, borderRadius: 21, objectFit: 'cover' }} /> : <span style={{ width: 42, height: 42, borderRadius: 21, background: themeColor, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>FP</span>}
+            <div><strong>{brandName}</strong><div style={{ color: '#6B7280', fontSize: 12 }}>Secure company checkout</div></div>
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>{sampleAmount}</div>
+          <div style={{ color: '#6B7280', marginBottom: 14 }}>Receipt {str(value.receipt_prefix) || 'RCPT'}-0001 · Invoice {str(value.invoice_prefix) || 'INV'}-0001</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+            {list(value.default_payment_methods).map(method => <span key={method} style={{ border: `1px solid ${themeColor}`, color: themeColor, borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>{method.toUpperCase()}</span>)}
+          </div>
+          <button type="button" className="btn-primary" style={{ background: themeColor, width: '100%' }}>Pay securely</button>
+          <div style={{ color: '#6B7280', fontSize: 12, marginTop: 14 }}>Need help? {supportEmail}</div>
+        </div>
+        <DataTable rows={details} columns={['label', 'value']} empty="No preview details" />
+      </div>
     </section>
   );
 }

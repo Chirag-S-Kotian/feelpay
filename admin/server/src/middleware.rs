@@ -1,7 +1,7 @@
 use actix_web::{
     body::{EitherBody, MessageBody},
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    http::header,
+    http::{header, StatusCode},
     web, Error, HttpMessage, HttpResponse, HttpResponseBuilder,
 };
 use futures_util::future::LocalBoxFuture;
@@ -69,8 +69,9 @@ fn apply_cors(builder: &mut HttpResponseBuilder, origin: Option<String>) {
     ));
     builder.insert_header((
         header::ACCESS_CONTROL_ALLOW_HEADERS,
-        "authorization, content-type, accept, x-api-key, x-feelpay-environment, idempotency-key, x-request-id",
+        "authorization, content-type, accept, x-api-key, x-feelpay-environment, idempotency-key, x-request-id, x-admin-role, x-csrf-token",
     ));
+    builder.insert_header((header::ACCESS_CONTROL_EXPOSE_HEADERS, "x-request-id"));
     builder.insert_header((header::ACCESS_CONTROL_MAX_AGE, "3600"));
 }
 
@@ -83,13 +84,40 @@ fn cors_no_content<B>(req: ServiceRequest) -> ServiceResponse<EitherBody<B>> {
 
 fn cors_error<B>(
     req: ServiceRequest,
-    status: actix_web::http::StatusCode,
+    status: StatusCode,
     message: &'static str,
 ) -> ServiceResponse<EitherBody<B>> {
     let origin = request_origin(&req);
+    let request_id = req
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let mut builder = HttpResponse::build(status);
     apply_cors(&mut builder, origin);
-    req.into_response(builder.body(message).map_into_right_body())
+    builder.insert_header(("x-request-id", request_id.clone()));
+    req.into_response(
+        builder
+            .json(serde_json::json!({ "message": message, "request_id": request_id }))
+            .map_into_right_body(),
+    )
+}
+
+fn cors_actix_error(
+    status: StatusCode,
+    message: &'static str,
+    origin: Option<String>,
+    request_id: String,
+) -> Error {
+    let mut builder = HttpResponse::build(status);
+    apply_cors(&mut builder, origin);
+    builder.insert_header(("x-request-id", request_id.clone()));
+    actix_web::error::InternalError::from_response(
+        message,
+        builder.json(serde_json::json!({ "message": message, "request_id": request_id })),
+    )
+    .into()
 }
 
 impl<S, B> Transform<S, ServiceRequest> for AdminAuthMiddleware
@@ -211,6 +239,13 @@ where
             }
         };
 
+        let origin = request_origin(&req);
+        let request_id = req
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let pool = req.app_data::<web::Data<PgPool>>().cloned();
 
         let req = req;
@@ -242,14 +277,22 @@ where
                     tracing::info!("Auth check for {}: is_admin={}", name, is_admin);
 
                     if !is_admin {
-                        return Err(actix_web::error::ErrorForbidden(
+                        return Err(cors_actix_error(
+                            StatusCode::FORBIDDEN,
                             "Forbidden: Admin access required",
+                            origin,
+                            request_id,
                         ));
                     }
                 }
                 None => {
                     tracing::warn!("Merchant ID {} not found in auth check", merchant_id);
-                    return Err(actix_web::error::ErrorUnauthorized("Merchant not found"));
+                    return Err(cors_actix_error(
+                        StatusCode::UNAUTHORIZED,
+                        "Merchant not found",
+                        origin,
+                        request_id,
+                    ));
                 }
             }
 
@@ -257,8 +300,11 @@ where
                 Some(permission) => permission,
                 None => {
                     tracing::warn!("Admin RBAC denied unmapped route: {} {}", method, path);
-                    return Err(actix_web::error::ErrorForbidden(
+                    return Err(cors_actix_error(
+                        StatusCode::FORBIDDEN,
                         "Forbidden: Admin route is not permission mapped",
+                        origin,
+                        request_id,
                     ));
                 }
             };
@@ -280,8 +326,11 @@ where
                     role,
                     required_permission
                 );
-                return Err(actix_web::error::ErrorForbidden(
+                return Err(cors_actix_error(
+                    StatusCode::FORBIDDEN,
                     "Forbidden: Admin permission required",
+                    origin,
+                    request_id,
                 ));
             }
 
@@ -408,17 +457,23 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.starts_with("/provider-credentials")
         || path.contains("/providers")
         || path.contains("/credentials")
+        || path.contains("/connectors")
     {
         return Some(if method == "GET" {
-            "providers.manage"
-        } else {
+            "providers.view"
+        } else if path.contains("/credentials") || path.starts_with("/provider-credentials") {
             "credentials.rotate"
+        } else {
+            "providers.manage"
         });
     }
     if path.contains("/bank-integrations") || path.starts_with("/bank-accounts") {
         return Some("bank_integrations.manage");
     }
-    if path.contains("/routing-rules") || path.contains("/routing/simulate") {
+    if path.contains("/routing-rules")
+        || path.contains("/routing/simulate")
+        || path.contains("/routing/provider-performance")
+    {
         return Some("routing.manage");
     }
     if path.contains("/money-movement") {
@@ -492,6 +547,7 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "transactions.view",
             "transactions.action",
             "refunds.request",
+            "providers.view",
             "providers.manage",
             "credentials.rotate",
             "routing.manage",
@@ -562,6 +618,7 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
         "Auditor" | "Auditor / Read Only" => &[
             "payment_ops.view",
             "transactions.view",
+            "providers.view",
             "audit_logs.view",
             "reports.export",
             "ledger.view",
@@ -605,6 +662,21 @@ mod tests {
             required_permission_for_path("/admin/payment-ops/system-health/slos/refresh", "POST"),
             Some("system_health.manage")
         );
+    }
+
+    #[test]
+    fn connector_and_routing_routes_map_permissions() {
+        assert_eq!(
+            required_permission_for_path("/admin/connectors", "GET"),
+            Some("providers.view")
+        );
+        assert_eq!(
+            required_permission_for_path("/admin/payment-ops/routing/provider-performance", "GET"),
+            Some("routing.manage")
+        );
+        assert!(role_has_permission("Payment Ops Admin", "providers.view"));
+        assert!(role_has_permission("Auditor", "providers.view"));
+        assert!(!role_has_permission("Auditor", "providers.manage"));
     }
 
     #[test]

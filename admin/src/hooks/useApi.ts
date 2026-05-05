@@ -56,23 +56,43 @@ export async function apiRequest<T = unknown>(
     headers['idempotency-key'] = opts.idempotencyKey;
   }
 
-  const res = await fetch(buildUrl(path), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    throw new Error(`Network/CORS failure: ${err instanceof Error ? err.message : 'request blocked'}`);
+  }
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = { message: text };
+  }
+  const errorData = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as { message?: string; request_id?: string }
+    : null;
 
   if (!res.ok) {
     if (res.status === 401) {
       clearToken();
     }
-    throw new Error(data?.message || `API request failed (${res.status})`);
+    const label =
+      res.status === 401 ? 'Unauthenticated' :
+      res.status === 403 ? 'Not authorized' :
+      res.status === 404 ? 'Route missing' :
+      res.status >= 500 ? 'Backend error' :
+      'API request failed';
+    const requestId = errorData?.request_id || res.headers.get('x-request-id');
+    throw new Error(`${label} (${res.status}): ${errorData?.message || res.statusText}${requestId ? ` [request_id: ${requestId}]` : ''}`);
   }
 
-  return data as T;
+  return parsed as T;
 }
 
 export async function apiDownload(path: string): Promise<{ blob: Blob; fileName: string }> {

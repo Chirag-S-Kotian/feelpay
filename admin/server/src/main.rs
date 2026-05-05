@@ -1064,7 +1064,10 @@ fn admin_cors() -> Cors {
             header::HeaderName::from_static("x-feelpay-environment"),
             header::HeaderName::from_static("idempotency-key"),
             header::HeaderName::from_static("x-request-id"),
+            header::HeaderName::from_static("x-admin-role"),
+            header::HeaderName::from_static("x-csrf-token"),
         ])
+        .expose_headers(vec![header::HeaderName::from_static("x-request-id")])
         .supports_credentials()
         .max_age(3600)
 }
