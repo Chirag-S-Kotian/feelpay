@@ -8,9 +8,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 use super::audit_support::{admin_id_from_claims, log_audit};
-use crate::engine::connectors::{
-    self, credential_loader, create_connector, ProviderCredentials,
-};
+use crate::engine::connectors::{self, create_connector, credential_loader, ProviderCredentials};
 use crate::error::FeelPayError;
 use crate::state::AppState;
 
@@ -121,13 +119,15 @@ pub async fn test_connector(
     });
 
     // Test 1: Auth / health check
-    let health = connector.health_check(&creds).await.unwrap_or_else(|e| {
-        connectors::ConnectorHealthCheck {
-            authenticated: false,
-            latency_ms: 0,
-            error: Some(format!("Health check failed: {}", e)),
-        }
-    });
+    let health =
+        connector
+            .health_check(&creds)
+            .await
+            .unwrap_or_else(|e| connectors::ConnectorHealthCheck {
+                authenticated: false,
+                latency_ms: 0,
+                error: Some(format!("Health check failed: {}", e)),
+            });
 
     // Test 2: Webhook verification (with a dummy payload)
     let webhook_ok = {
@@ -236,6 +236,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/admin/connectors")
             .route("", web::get().to(list_connector_status))
             .route("/test", web::post().to(test_connector))
-            .route("/{provider}/capabilities", web::get().to(get_connector_capabilities)),
+            .route(
+                "/{provider}/capabilities",
+                web::get().to(get_connector_capabilities),
+            ),
     );
 }

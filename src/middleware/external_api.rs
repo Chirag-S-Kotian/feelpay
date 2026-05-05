@@ -5,6 +5,7 @@ use actix_web::{web, Error, HttpMessage, HttpResponse};
 use chrono::{Duration, Utc};
 use futures_util::future::{ready, LocalBoxFuture, Ready};
 use futures_util::StreamExt;
+use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
@@ -13,7 +14,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration as StdDuration, Instant};
 use uuid::Uuid;
-use jsonwebtoken::{decode, DecodingKey, Validation};
 
 use crate::middleware::auth::{MerchantId, RequestEnvironment, TenantId, UserId, UserRole};
 use crate::models::user::Claims;
@@ -134,7 +134,13 @@ where
                     let res = service.call(req).await?;
                     return Ok(res.map_into_left_body());
                 }
-                return external_error(req, StatusCode::UNAUTHORIZED, &request_id, "invalid_api_key", "Missing x-api-key header");
+                return external_error(
+                    req,
+                    StatusCode::UNAUTHORIZED,
+                    &request_id,
+                    "invalid_api_key",
+                    "Missing x-api-key header",
+                );
             };
 
             let version = req
@@ -146,23 +152,56 @@ where
                 .to_string();
             let version_status = api_version_status(&req, &version).await;
             if version_status == "unsupported" {
-                return external_error(req, StatusCode::BAD_REQUEST, &request_id, "unsupported_api_version", "Unsupported API version");
+                return external_error(
+                    req,
+                    StatusCode::BAD_REQUEST,
+                    &request_id,
+                    "unsupported_api_version",
+                    "Unsupported API version",
+                );
             }
 
             let auth = match authenticate_api_key(&req, &api_key).await {
                 Ok(ctx) => ctx,
                 Err(status) => {
-                    return external_error(req, status, &request_id, "invalid_api_key", "Invalid API key");
+                    return external_error(
+                        req,
+                        status,
+                        &request_id,
+                        "invalid_api_key",
+                        "Invalid API key",
+                    );
                 }
             };
 
             if !scope_allowed(&auth.scopes, &method, &path) {
-                return external_error(req, StatusCode::FORBIDDEN, &request_id, "scope_denied", "API key scope does not allow this operation");
+                return external_error(
+                    req,
+                    StatusCode::FORBIDDEN,
+                    &request_id,
+                    "scope_denied",
+                    "API key scope does not allow this operation",
+                );
             }
 
             if !rate_limit_allowed(&req, &memory, auth.api_key_id, &api_key, max_requests).await {
-                log_external_request(req.request(), &auth, &request_id, started, 429, Some("rate_limit_exceeded"), None).await;
-                return external_error(req, StatusCode::TOO_MANY_REQUESTS, &request_id, "rate_limit_exceeded", "Request rate limit exceeded");
+                log_external_request(
+                    req.request(),
+                    &auth,
+                    &request_id,
+                    started,
+                    429,
+                    Some("rate_limit_exceeded"),
+                    None,
+                )
+                .await;
+                return external_error(
+                    req,
+                    StatusCode::TOO_MANY_REQUESTS,
+                    &request_id,
+                    "rate_limit_exceeded",
+                    "Request rate limit exceeded",
+                );
             }
 
             let body = read_payload(req.take_payload()).await?;
@@ -177,20 +216,68 @@ where
 
             if is_write(&method) {
                 let Some(key) = idempotency_key.clone() else {
-                    return external_error(req, StatusCode::BAD_REQUEST, &request_id, "idempotency_key_required", "Idempotency-Key header required");
+                    return external_error(
+                        req,
+                        StatusCode::BAD_REQUEST,
+                        &request_id,
+                        "idempotency_key_required",
+                        "Idempotency-Key header required",
+                    );
                 };
 
-                if let Some(replay) = find_idempotency(&req, &memory, auth.api_key_id, &api_key, &key, &request_hash).await {
-                    log_external_request(req.request(), &auth, &request_id, started, replay.status.as_u16() as i32, None, idempotency_key.as_deref()).await;
+                if let Some(replay) = find_idempotency(
+                    &req,
+                    &memory,
+                    auth.api_key_id,
+                    &api_key,
+                    &key,
+                    &request_hash,
+                )
+                .await
+                {
+                    log_external_request(
+                        req.request(),
+                        &auth,
+                        &request_id,
+                        started,
+                        replay.status.as_u16() as i32,
+                        None,
+                        idempotency_key.as_deref(),
+                    )
+                    .await;
                     let mut response = HttpResponse::build(replay.status);
                     response.insert_header(("x-request-id", request_id));
                     response.insert_header(("x-idempotent-replay", "true"));
                     return Ok(req.into_response(response.body(replay.body).map_into_right_body()));
                 }
 
-                if idempotency_conflict(&req, &memory, auth.api_key_id, &api_key, &key, &request_hash).await {
-                    log_external_request(req.request(), &auth, &request_id, started, 409, Some("idempotency_conflict"), idempotency_key.as_deref()).await;
-                    return external_error(req, StatusCode::CONFLICT, &request_id, "idempotency_conflict", "Idempotency key reused with different payload");
+                if idempotency_conflict(
+                    &req,
+                    &memory,
+                    auth.api_key_id,
+                    &api_key,
+                    &key,
+                    &request_hash,
+                )
+                .await
+                {
+                    log_external_request(
+                        req.request(),
+                        &auth,
+                        &request_id,
+                        started,
+                        409,
+                        Some("idempotency_conflict"),
+                        idempotency_key.as_deref(),
+                    )
+                    .await;
+                    return external_error(
+                        req,
+                        StatusCode::CONFLICT,
+                        &request_id,
+                        "idempotency_conflict",
+                        "Idempotency key reused with different payload",
+                    );
                 }
             }
 
@@ -198,41 +285,73 @@ where
             let mut res = service.call(req).await?;
             res.headers_mut().insert(
                 header::HeaderName::from_static("x-request-id"),
-                header::HeaderValue::from_str(&request_id).unwrap_or_else(|_| header::HeaderValue::from_static("invalid")),
+                header::HeaderValue::from_str(&request_id)
+                    .unwrap_or_else(|_| header::HeaderValue::from_static("invalid")),
             );
             res.headers_mut().insert(
                 header::HeaderName::from_static("x-api-version"),
-                header::HeaderValue::from_str(&version).unwrap_or_else(|_| header::HeaderValue::from_static(CURRENT_VERSION)),
+                header::HeaderValue::from_str(&version)
+                    .unwrap_or_else(|_| header::HeaderValue::from_static(CURRENT_VERSION)),
             );
             if version_status == "deprecated" {
                 res.headers_mut().insert(
                     header::HeaderName::from_static("x-api-version-warning"),
-                    header::HeaderValue::from_static("Deprecated API version; migrate before sunset"),
+                    header::HeaderValue::from_static(
+                        "Deprecated API version; migrate before sunset",
+                    ),
                 );
             }
 
             let status = res.status();
             let (req_head, res) = res.into_parts();
-            let response_body = to_bytes(res.into_body())
-                .await
-                .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to read response body"))?;
+            let response_body = to_bytes(res.into_body()).await.map_err(|_| {
+                actix_web::error::ErrorInternalServerError("Failed to read response body")
+            })?;
             if is_write(&method) {
                 if let Some(key) = idempotency_key.as_deref() {
-                    store_idempotency(&req_head, &memory, auth.api_key_id, &api_key, key, &request_hash, status, response_body.clone()).await;
+                    store_idempotency(
+                        &req_head,
+                        &memory,
+                        auth.api_key_id,
+                        &api_key,
+                        key,
+                        &request_hash,
+                        status,
+                        response_body.clone(),
+                    )
+                    .await;
                 }
             }
-            let error_code = if status.is_success() { None } else { Some("external_api_error") };
-            log_external_request(&req_head, &auth, &request_id, started, status.as_u16() as i32, error_code, idempotency_key.as_deref()).await;
+            let error_code = if status.is_success() {
+                None
+            } else {
+                Some("external_api_error")
+            };
+            log_external_request(
+                &req_head,
+                &auth,
+                &request_id,
+                started,
+                status.as_u16() as i32,
+                error_code,
+                idempotency_key.as_deref(),
+            )
+            .await;
             Ok(ServiceResponse::new(
                 req_head,
-                HttpResponse::build(status).body(response_body).map_into_right_body(),
+                HttpResponse::build(status)
+                    .body(response_body)
+                    .map_into_right_body(),
             ))
         })
     }
 }
 
 fn is_write(method: &Method) -> bool {
-    matches!(*method, Method::POST | Method::PUT | Method::PATCH | Method::DELETE)
+    matches!(
+        *method,
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    )
 }
 
 fn request_id(req: &ServiceRequest) -> String {
@@ -267,14 +386,18 @@ where
 {
     let mut response = HttpResponse::build(status);
     response.insert_header(("x-request-id", request_id.to_string()));
-    Ok(req.into_response(response.json(json!({
-        "request_id": request_id,
-        "error": {
-            "code": code,
-            "message": message,
-            "http_status": status.as_u16()
-        }
-    })).map_into_right_body()))
+    Ok(req.into_response(
+        response
+            .json(json!({
+                "request_id": request_id,
+                "error": {
+                    "code": code,
+                    "message": message,
+                    "http_status": status.as_u16()
+                }
+            }))
+            .map_into_right_body(),
+    ))
 }
 
 async fn read_payload(mut payload: Payload) -> Result<web::Bytes, Error> {
@@ -305,7 +428,10 @@ async fn api_version_status(req: &ServiceRequest, version: &str) -> String {
     }
 }
 
-async fn authenticate_api_key(req: &ServiceRequest, api_key: &str) -> Result<ExternalApiKeyContext, StatusCode> {
+async fn authenticate_api_key(
+    req: &ServiceRequest,
+    api_key: &str,
+) -> Result<ExternalApiKeyContext, StatusCode> {
     let environment = req
         .headers()
         .get("x-feelpay-environment")
@@ -343,7 +469,12 @@ async fn authenticate_api_key(req: &ServiceRequest, api_key: &str) -> Result<Ext
             let scopes_json: Value = row.get("scopes");
             let scopes = scopes_json
                 .as_array()
-                .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_else(Vec::new);
             let _ = sqlx::query("UPDATE developer_api_keys SET last_used_at = NOW() WHERE id = $1")
                 .bind(api_key_id)
@@ -354,14 +485,20 @@ async fn authenticate_api_key(req: &ServiceRequest, api_key: &str) -> Result<Ext
                 scopes: scopes.clone(),
                 environment: environment.clone(),
             });
-            return Ok(ExternalApiKeyContext { api_key_id: Some(api_key_id), scopes, environment });
+            return Ok(ExternalApiKeyContext {
+                api_key_id: Some(api_key_id),
+                scopes,
+                environment,
+            });
         }
 
-        let merchant = sqlx::query("SELECT id, tenant_id FROM merchants WHERE status = 'active' AND api_key = $1 LIMIT 1")
-            .bind(api_key)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let merchant = sqlx::query(
+            "SELECT id, tenant_id FROM merchants WHERE status = 'active' AND api_key = $1 LIMIT 1",
+        )
+        .bind(api_key)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if let Some(row) = merchant {
             let merchant_id: Uuid = row.get("id");
             let tenant_id: Option<Uuid> = row.get("tenant_id");
@@ -369,18 +506,23 @@ async fn authenticate_api_key(req: &ServiceRequest, api_key: &str) -> Result<Ext
             if let Some(tid) = tenant_id {
                 req.extensions_mut().insert(TenantId(tid));
             }
-            req.extensions_mut().insert(RequestEnvironment(if environment == "live" {
-                crate::middleware::auth::EnvironmentMode::Live
-            } else {
-                crate::middleware::auth::EnvironmentMode::Test
-            }));
+            req.extensions_mut()
+                .insert(RequestEnvironment(if environment == "live" {
+                    crate::middleware::auth::EnvironmentMode::Live
+                } else {
+                    crate::middleware::auth::EnvironmentMode::Test
+                }));
             let scopes = vec!["*".to_string()];
             req.extensions_mut().insert(ExternalApiKeyContext {
                 api_key_id: None,
                 scopes: scopes.clone(),
                 environment: environment.clone(),
             });
-            return Ok(ExternalApiKeyContext { api_key_id: None, scopes, environment });
+            return Ok(ExternalApiKeyContext {
+                api_key_id: None,
+                scopes,
+                environment,
+            });
         }
     }
 
@@ -404,7 +546,9 @@ async fn try_jwt_context(req: &ServiceRequest) -> bool {
         return false;
     };
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    let Ok(secret) = crate::middleware::auth::jwt_secret() else {
+        return false;
+    };
     let Ok(token_data) = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
@@ -444,8 +588,16 @@ fn scope_allowed(scopes: &[String], method: &Method, path: &str) -> bool {
     } else {
         "api"
     };
-    let action = if *method == Method::GET { "read" } else { "write" };
-    scopes.iter().any(|scope| scope == &format!("{resource}.{action}") || scope == &format!("{resource}.*") || scope == &format!("*.{action}"))
+    let action = if *method == Method::GET {
+        "read"
+    } else {
+        "write"
+    };
+    scopes.iter().any(|scope| {
+        scope == &format!("{resource}.{action}")
+            || scope == &format!("{resource}.*")
+            || scope == &format!("*.{action}")
+    })
 }
 
 async fn rate_limit_allowed(
@@ -455,7 +607,10 @@ async fn rate_limit_allowed(
     api_key: &str,
     default_max: usize,
 ) -> bool {
-    if let (Some(state), Some(id)) = (req.app_data::<web::Data<crate::state::AppState>>(), api_key_id) {
+    if let (Some(state), Some(id)) = (
+        req.app_data::<web::Data<crate::state::AppState>>(),
+        api_key_id,
+    ) {
         if let Ok(Some(row)) = sqlx::query(
             "SELECT id, max_requests, current_count, reset_at FROM api_rate_limits WHERE api_key_id = $1 ORDER BY reset_at DESC LIMIT 1",
         )
@@ -485,7 +640,9 @@ async fn rate_limit_allowed(
         }
     }
 
-    let key = api_key_id.map(|id| id.to_string()).unwrap_or_else(|| hash_secret(api_key));
+    let key = api_key_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| hash_secret(api_key));
     let mut map = match memory.rate_limits.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
@@ -509,7 +666,12 @@ async fn find_idempotency(
     key: &str,
     request_hash: &str,
 ) -> Option<IdempotencyValue> {
-    let memory_key = format!("{}:{key}", api_key_id.map(|id| id.to_string()).unwrap_or_else(|| hash_secret(api_key)));
+    let memory_key = format!(
+        "{}:{key}",
+        api_key_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| hash_secret(api_key))
+    );
     if let Ok(map) = memory.idempotency.lock() {
         if let Some(value) = map.get(&memory_key) {
             if value.request_hash == request_hash {
@@ -518,7 +680,10 @@ async fn find_idempotency(
         }
     }
 
-    if let (Some(state), Some(id)) = (req.app_data::<web::Data<crate::state::AppState>>(), api_key_id) {
+    if let (Some(state), Some(id)) = (
+        req.app_data::<web::Data<crate::state::AppState>>(),
+        api_key_id,
+    ) {
         if let Ok(Some(row)) = sqlx::query(
             "SELECT request_hash, response_status, response_body FROM api_idempotency_records WHERE idempotency_key = $1 AND api_key_id = $2 AND expires_at > NOW()",
         )
@@ -549,13 +714,21 @@ async fn idempotency_conflict(
     key: &str,
     request_hash: &str,
 ) -> bool {
-    let memory_key = format!("{}:{key}", api_key_id.map(|id| id.to_string()).unwrap_or_else(|| hash_secret(api_key)));
+    let memory_key = format!(
+        "{}:{key}",
+        api_key_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| hash_secret(api_key))
+    );
     if let Ok(map) = memory.idempotency.lock() {
         if let Some(value) = map.get(&memory_key) {
             return value.request_hash != request_hash;
         }
     }
-    if let (Some(state), Some(id)) = (req.app_data::<web::Data<crate::state::AppState>>(), api_key_id) {
+    if let (Some(state), Some(id)) = (
+        req.app_data::<web::Data<crate::state::AppState>>(),
+        api_key_id,
+    ) {
         if let Ok(Some(existing_hash)) = sqlx::query_scalar::<_, String>(
             "SELECT request_hash FROM api_idempotency_records WHERE idempotency_key = $1 AND api_key_id = $2 AND expires_at > NOW()",
         )
@@ -580,7 +753,12 @@ async fn store_idempotency(
     status: StatusCode,
     body: web::Bytes,
 ) {
-    let memory_key = format!("{}:{key}", api_key_id.map(|id| id.to_string()).unwrap_or_else(|| hash_secret(api_key)));
+    let memory_key = format!(
+        "{}:{key}",
+        api_key_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| hash_secret(api_key))
+    );
     if let Ok(mut map) = memory.idempotency.lock() {
         map.entry(memory_key).or_insert(IdempotencyValue {
             request_hash: request_hash.to_string(),
@@ -588,8 +766,12 @@ async fn store_idempotency(
             body: body.clone(),
         });
     }
-    if let (Some(state), Some(id)) = (req.app_data::<web::Data<crate::state::AppState>>(), api_key_id) {
-        let response_json = serde_json::from_slice::<Value>(&body).unwrap_or_else(|_| json!({ "body": String::from_utf8_lossy(&body) }));
+    if let (Some(state), Some(id)) = (
+        req.app_data::<web::Data<crate::state::AppState>>(),
+        api_key_id,
+    ) {
+        let response_json = serde_json::from_slice::<Value>(&body)
+            .unwrap_or_else(|_| json!({ "body": String::from_utf8_lossy(&body) }));
         let _ = sqlx::query(
             r#"
             INSERT INTO api_idempotency_records
@@ -614,7 +796,11 @@ fn redact_headers(req: &actix_web::HttpRequest) -> Value {
     let mut object = serde_json::Map::new();
     for (name, value) in req.headers() {
         let key = name.as_str().to_ascii_lowercase();
-        let value = if key.contains("authorization") || key.contains("api-key") || key.contains("secret") || key.contains("token") {
+        let value = if key.contains("authorization")
+            || key.contains("api-key")
+            || key.contains("secret")
+            || key.contains("token")
+        {
             "redacted".to_string()
         } else {
             value.to_str().unwrap_or_default().to_string()
@@ -677,9 +863,21 @@ mod tests {
 
     #[test]
     fn scopes_match_resource_action() {
-        assert!(scope_allowed(&["payments.write".to_string()], &Method::POST, "/v1/payments"));
-        assert!(!scope_allowed(&["payments.read".to_string()], &Method::POST, "/v1/payments"));
-        assert!(scope_allowed(&["*".to_string()], &Method::DELETE, "/v1/payment-links/1"));
+        assert!(scope_allowed(
+            &["payments.write".to_string()],
+            &Method::POST,
+            "/v1/payments"
+        ));
+        assert!(!scope_allowed(
+            &["payments.read".to_string()],
+            &Method::POST,
+            "/v1/payments"
+        ));
+        assert!(scope_allowed(
+            &["*".to_string()],
+            &Method::DELETE,
+            "/v1/payment-links/1"
+        ));
     }
 
     #[test]

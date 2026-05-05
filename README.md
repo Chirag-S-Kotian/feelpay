@@ -22,9 +22,9 @@ cd .. && cargo run
 
 ```bash
 # .env
-DATABASE_URL=postgresql://user:password@ep-xxx.ap-south-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@YOUR_DB_HOST/neondb?sslmode=require
 JWT_SECRET=your_secure_secret_256_bits_minimum
-WEBHOOK_SIGNING_SECRET=replace_with_real_secret
+WEBHOOK_SIGNING_SECRET=whsec_placeholder_example_only
 VAULT_ENCRYPTION_KEY=64_hex_chars_required_for_aes256
 UPI_PSP_ID=FEELPAY
 UPI_MERCHANT_VPA=merchant@feelpay

@@ -1,6 +1,6 @@
+use actix_web::body::EitherBody;
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::{web, Error, HttpResponse};
-use actix_web::body::EitherBody;
 use futures_util::future::{ready, LocalBoxFuture, Ready};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use redis::Commands;
@@ -64,7 +64,9 @@ fn is_admin_bypass(req: &ServiceRequest) -> bool {
         return false;
     };
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    let Ok(secret) = crate::middleware::auth::jwt_secret() else {
+        return false;
+    };
     let Ok(decoded) = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
@@ -134,20 +136,32 @@ where
         Box::pin(async move {
             let path = req.path().to_string();
             if is_allowlisted_path(&path) {
-                return service.call(req).await.map(ServiceResponse::map_into_left_body);
+                return service
+                    .call(req)
+                    .await
+                    .map(ServiceResponse::map_into_left_body);
             }
 
             let Some(state) = req.app_data::<web::Data<AppState>>() else {
-                return service.call(req).await.map(ServiceResponse::map_into_left_body);
+                return service
+                    .call(req)
+                    .await
+                    .map(ServiceResponse::map_into_left_body);
             };
 
             let cfg = load_maintenance_config(state.get_ref());
             if !cfg.enabled {
-                return service.call(req).await.map(ServiceResponse::map_into_left_body);
+                return service
+                    .call(req)
+                    .await
+                    .map(ServiceResponse::map_into_left_body);
             }
 
             if is_admin_bypass(&req) {
-                return service.call(req).await.map(ServiceResponse::map_into_left_body);
+                return service
+                    .call(req)
+                    .await
+                    .map(ServiceResponse::map_into_left_body);
             }
 
             // Feature gating: if features map present, only block those true.
@@ -155,7 +169,10 @@ where
                 if let Some(feature) = feature_from_path(&path) {
                     let is_blocked = features.get(&feature).copied().unwrap_or(false);
                     if !is_blocked {
-                        return service.call(req).await.map(ServiceResponse::map_into_left_body);
+                        return service
+                            .call(req)
+                            .await
+                            .map(ServiceResponse::map_into_left_body);
                     }
                 } else {
                     // Non /v1 path while global maintenance enabled -> block.
@@ -177,4 +194,3 @@ where
         })
     }
 }
-

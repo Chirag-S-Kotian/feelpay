@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{http::header, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -971,10 +971,11 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to connect to Postgres");
 
-    println!("Admin server starting on 127.0.0.1:8081");
+    let bind_addr = admin_bind_addr();
+    println!("Admin server starting on {}", bind_addr);
 
     HttpServer::new(move || {
-        let cors = Cors::permissive().max_age(3600);
+        let cors = admin_cors();
 
         App::new()
             .wrap(Logger::default())
@@ -1017,9 +1018,49 @@ async fn main() -> std::io::Result<()> {
                     .configure(configure_admin_routes),
             )
     })
-    .bind("127.0.0.1:8081")?
+    .bind(bind_addr)?
     .run()
     .await
+}
+
+fn admin_bind_addr() -> String {
+    let host = env::var("ADMIN_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = env::var("ADMIN_PORT").unwrap_or_else(|_| "8081".to_string());
+    format!("{host}:{port}")
+}
+
+fn admin_cors() -> Cors {
+    let origins = env::var("ADMIN_CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
+        [
+            "http://127.0.0.1:5174",
+            "http://localhost:5174",
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ]
+        .join(",")
+    });
+    let allowed_origins: Vec<String> = origins
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect();
+
+    Cors::default()
+        .allowed_origin_fn(move |origin, _| {
+            origin
+                .to_str()
+                .map(|origin| allowed_origins.iter().any(|allowed| allowed == origin))
+                .unwrap_or(false)
+        })
+        .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+        .allowed_headers(vec![
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+        ])
+        .supports_credentials()
+        .max_age(3600)
 }
 
 async fn impersonate_merchant(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
@@ -1065,7 +1106,9 @@ fn generate_jwt(merchant_id: &Uuid, _name: &str) -> Result<String, Box<dyn std::
         exp: now + 86400,
         iat: now,
     };
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    let secret = std::env::var("JWT_SECRET").map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::Other, "JWT_SECRET is not configured")
+    })?;
     encode(
         &Header::default(),
         &claims,

@@ -183,7 +183,13 @@ pub async fn approve_merchant(
     claims: Claims,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
-    update_merchant_status(state, claims, path.into_inner(), MerchantAdminAction::Approve).await
+    update_merchant_status(
+        state,
+        claims,
+        path.into_inner(),
+        MerchantAdminAction::Approve,
+    )
+    .await
 }
 
 pub async fn reject_merchant(
@@ -191,7 +197,13 @@ pub async fn reject_merchant(
     claims: Claims,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
-    update_merchant_status(state, claims, path.into_inner(), MerchantAdminAction::Reject).await
+    update_merchant_status(
+        state,
+        claims,
+        path.into_inner(),
+        MerchantAdminAction::Reject,
+    )
+    .await
 }
 
 pub async fn suspend_merchant(
@@ -199,7 +211,13 @@ pub async fn suspend_merchant(
     claims: Claims,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
-    update_merchant_status(state, claims, path.into_inner(), MerchantAdminAction::Suspend).await
+    update_merchant_status(
+        state,
+        claims,
+        path.into_inner(),
+        MerchantAdminAction::Suspend,
+    )
+    .await
 }
 
 async fn update_merchant_status(

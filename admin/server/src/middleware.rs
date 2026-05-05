@@ -11,6 +11,11 @@ use uuid::Uuid;
 
 pub struct AdminAuthMiddleware;
 
+fn jwt_secret() -> Result<String, Error> {
+    std::env::var("JWT_SECRET")
+        .map_err(|_| actix_web::error::ErrorInternalServerError("JWT_SECRET is not configured"))
+}
+
 impl<S, B> Transform<S, ServiceRequest> for AdminAuthMiddleware
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
@@ -87,7 +92,10 @@ where
             });
         };
 
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret = match jwt_secret() {
+            Ok(secret) => secret,
+            Err(err) => return Box::pin(async { Err(err) }),
+        };
         let decoded = decode::<Claims>(
             &token,
             &DecodingKey::from_secret(secret.as_bytes()),

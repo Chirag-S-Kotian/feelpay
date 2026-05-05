@@ -156,16 +156,20 @@ impl ProviderConnector for RazorpayConnector {
             .map_err(|e| FeelPayError::ConnectorError(format!("Razorpay request failed: {}", e)))?;
 
         let status = resp.status();
-        let resp_body: serde_json::Value = resp.json().await.map_err(|e| {
-            FeelPayError::ConnectorError(format!("Razorpay parse error: {}", e))
-        })?;
+        let resp_body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| FeelPayError::ConnectorError(format!("Razorpay parse error: {}", e)))?;
 
         if !status.is_success() {
             return Err(Self::map_razorpay_error(status, &resp_body));
         }
 
         let order_id = resp_body["id"].as_str().unwrap_or("").to_string();
-        let raw_status = resp_body["status"].as_str().unwrap_or("created").to_string();
+        let raw_status = resp_body["status"]
+            .as_str()
+            .unwrap_or("created")
+            .to_string();
 
         tracing::info!(
             provider = "razorpay",
@@ -217,7 +221,10 @@ impl ProviderConnector for RazorpayConnector {
             return Err(Self::map_razorpay_error(status, &resp_body));
         }
 
-        let raw_status = resp_body["status"].as_str().unwrap_or("unknown").to_string();
+        let raw_status = resp_body["status"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
 
         Ok(ProviderResponse {
             provider_reference: req.provider_reference.clone(),
@@ -274,7 +281,10 @@ impl ProviderConnector for RazorpayConnector {
         }
 
         let refund_id = resp_body["id"].as_str().unwrap_or("").to_string();
-        let raw_status = resp_body["status"].as_str().unwrap_or("unknown").to_string();
+        let raw_status = resp_body["status"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
 
         Ok(ProviderResponse {
             provider_reference: refund_id,
@@ -318,7 +328,10 @@ impl ProviderConnector for RazorpayConnector {
             return Err(Self::map_razorpay_error(status, &resp_body));
         }
 
-        let raw_status = resp_body["status"].as_str().unwrap_or("unknown").to_string();
+        let raw_status = resp_body["status"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
 
         Ok(ProviderResponse {
             provider_reference: provider_reference.to_string(),
@@ -442,11 +455,9 @@ impl ProviderConnector for RazorpayConnector {
         raw_body: &[u8],
     ) -> Result<ProviderWebhookEvent, FeelPayError> {
         let whsec = Self::webhook_secret(creds)?;
-        let sig = headers
-            .get("x-razorpay-signature")
-            .ok_or_else(|| {
-                FeelPayError::Unauthorized("Missing X-Razorpay-Signature header".into())
-            })?;
+        let sig = headers.get("x-razorpay-signature").ok_or_else(|| {
+            FeelPayError::Unauthorized("Missing X-Razorpay-Signature header".into())
+        })?;
 
         // Razorpay: HMAC-SHA256(webhook_secret, raw_body)
         let mut mac = HmacSha256::new_from_slice(whsec.as_bytes())
@@ -537,9 +548,18 @@ mod tests {
 
     #[test]
     fn test_normalize_razorpay_status() {
-        assert_eq!(normalize_razorpay_status("captured"), NormalizedStatus::Captured);
-        assert_eq!(normalize_razorpay_status("authorized"), NormalizedStatus::Authorized);
-        assert_eq!(normalize_razorpay_status("failed"), NormalizedStatus::Failed);
+        assert_eq!(
+            normalize_razorpay_status("captured"),
+            NormalizedStatus::Captured
+        );
+        assert_eq!(
+            normalize_razorpay_status("authorized"),
+            NormalizedStatus::Authorized
+        );
+        assert_eq!(
+            normalize_razorpay_status("failed"),
+            NormalizedStatus::Failed
+        );
     }
 
     #[test]

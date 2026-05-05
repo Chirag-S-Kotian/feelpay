@@ -17,4 +17,3 @@ async fn db_connectivity_and_basic_query() {
     let one: i32 = row.get("one");
     assert_eq!(one, 1);
 }
-

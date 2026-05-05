@@ -11,7 +11,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/webhooks")
             .route("/inbound", web::post().to(inbound_webhook))
-            .route("/verify", web::post().to(verify_webhook))
+            .route("/verify", web::post().to(verify_webhook)),
     );
 }
 
@@ -151,10 +151,10 @@ async fn handle_dispute_event(
 
     Ok(())
 }
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sha2::Sha512;
+use utoipa::ToSchema;
 
 /// Request for webhook verification endpoint
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -204,13 +204,15 @@ fn parse_signature(sig: &str) -> Result<ParsedSignature, FeelPayError> {
                 }
                 "v1" => {
                     algo = SignatureAlgorithm::HmacSha256;
-                    signature = hex::decode(value)
-                        .map_err(|_| FeelPayError::BadRequest("Invalid signature encoding".into()))?;
+                    signature = hex::decode(value).map_err(|_| {
+                        FeelPayError::BadRequest("Invalid signature encoding".into())
+                    })?;
                 }
                 "v2" => {
                     algo = SignatureAlgorithm::HmacSha512;
-                    signature = hex::decode(value)
-                        .map_err(|_| FeelPayError::BadRequest("Invalid signature encoding".into()))?;
+                    signature = hex::decode(value).map_err(|_| {
+                        FeelPayError::BadRequest("Invalid signature encoding".into())
+                    })?;
                 }
                 _ => {}
             }
@@ -265,7 +267,8 @@ pub async fn verify_webhook(
     payload: web::Json<WebhookVerifyRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     // Decode payload
-    let payload_bytes = BASE64.decode(&payload.payload)
+    let payload_bytes = BASE64
+        .decode(&payload.payload)
         .map_err(|_| FeelPayError::BadRequest("Invalid payload encoding".into()))?;
 
     // Parse signature
@@ -295,7 +298,10 @@ pub async fn verify_webhook(
             .and_then(|v| {
                 v.get("event")
                     .and_then(|x| x.as_str().map(|s| s.to_string()))
-                    .or_else(|| v.get("type").and_then(|x| x.as_str().map(|s| s.to_string())))
+                    .or_else(|| {
+                        v.get("type")
+                            .and_then(|x| x.as_str().map(|s| s.to_string()))
+                    })
             })
     } else {
         None
@@ -304,6 +310,10 @@ pub async fn verify_webhook(
     Ok(HttpResponse::Ok().json(WebhookVerifyResponse {
         valid,
         event_type,
-        error: if !valid { Some("Signature mismatch".into()) } else { None },
+        error: if !valid {
+            Some("Signature mismatch".into())
+        } else {
+            None
+        },
     }))
 }

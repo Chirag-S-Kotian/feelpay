@@ -17,7 +17,7 @@ use crate::state::AppState;
     "order_id": "ORD-12345",
     "customer_email": "customer@example.com",
     "customer_phone": "+919999999999",
-    "description": "Test payment",
+    "description": "Test card only - not real payment data",
     "return_url": "https://merchant.com/return",
     "method_data": {
         "method": "card",
@@ -376,7 +376,11 @@ pub async fn create_payment(
         req_data.processor_override.as_deref(),
         state.config.is_live(),
     );
-    let environment = if state.config.is_live() { "live" } else { "test" };
+    let environment = if state.config.is_live() {
+        "live"
+    } else {
+        "test"
+    };
 
     // 3. Process Payment via Engine
     let engine = state.payment_engine.read().await;
@@ -699,17 +703,17 @@ pub async fn capture_payment(
             WHERE id = $8
             "#,
         )
-            .bind(order.status.as_str())
-            .bind(chrono::Utc::now())
-            .bind(chrono::Utc::now())
-            .bind(&order.gateway_reference)
-            .bind(&order.gateway_response)
-            .bind(&order.error_code)
-            .bind(&order.error_message)
-            .bind(order.id)
-            .execute(&state.db)
-            .await
-            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+        .bind(order.status.as_str())
+        .bind(chrono::Utc::now())
+        .bind(chrono::Utc::now())
+        .bind(&order.gateway_reference)
+        .bind(&order.gateway_response)
+        .bind(&order.error_code)
+        .bind(&order.error_message)
+        .bind(order.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     } else {
         sqlx::query(
             r#"
@@ -720,16 +724,16 @@ pub async fn capture_payment(
             WHERE id = $7
             "#,
         )
-            .bind(order.status.as_str())
-            .bind(chrono::Utc::now())
-            .bind(&order.gateway_reference)
-            .bind(&order.gateway_response)
-            .bind(&order.error_code)
-            .bind(&order.error_message)
-            .bind(order.id)
-            .execute(&state.db)
-            .await
-            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+        .bind(order.status.as_str())
+        .bind(chrono::Utc::now())
+        .bind(&order.gateway_reference)
+        .bind(&order.gateway_response)
+        .bind(&order.error_code)
+        .bind(&order.error_message)
+        .bind(order.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     }
 
     Ok(HttpResponse::Ok().json(order))

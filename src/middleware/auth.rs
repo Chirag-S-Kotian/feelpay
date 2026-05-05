@@ -23,6 +23,16 @@ pub struct RequestEnvironment(pub EnvironmentMode);
 
 pub type JwtClaims = Claims;
 
+pub fn jwt_secret() -> Result<String, actix_web::Error> {
+    std::env::var("JWT_SECRET")
+        .map_err(|_| actix_web::error::ErrorInternalServerError("JWT_SECRET is not configured"))
+}
+
+pub fn jwt_secret_for_token() -> Result<String, crate::error::FeelPayError> {
+    std::env::var("JWT_SECRET")
+        .map_err(|_| crate::error::FeelPayError::Internal("JWT_SECRET is not configured".into()))
+}
+
 fn request_environment(req: &ServiceRequest) -> EnvironmentMode {
     let value = req
         .headers()
@@ -134,7 +144,10 @@ impl FromRequest for Claims {
             )));
         };
 
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret = match jwt_secret() {
+            Ok(secret) => secret,
+            Err(err) => return ready(Err(err)),
+        };
         let decoded = decode::<Claims>(
             &token,
             &DecodingKey::from_secret(secret.as_bytes()),
@@ -281,7 +294,9 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(JwtMiddlewareService { service: Rc::new(service) }))
+        ready(Ok(JwtMiddlewareService {
+            service: Rc::new(service),
+        }))
     }
 }
 
@@ -337,8 +352,7 @@ where
                 ));
             }
 
-            let secret =
-                std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+            let secret = jwt_secret()?;
             let decoded = decode::<Claims>(
                 &token,
                 &DecodingKey::from_secret(secret.as_bytes()),
@@ -349,8 +363,9 @@ where
                 .map(|v| v.claims)
                 .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid or expired token"))?;
 
-            let user_id = Uuid::parse_str(&claims.sub)
-                .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid user identity in token"))?;
+            let user_id = Uuid::parse_str(&claims.sub).map_err(|_| {
+                actix_web::error::ErrorUnauthorized("Invalid user identity in token")
+            })?;
 
             req.extensions_mut().insert(UserId(user_id));
             if let Some(tid) = claims.tenant_id {
@@ -483,8 +498,7 @@ where
                         "Session has been logged out",
                     ));
                 }
-                let secret =
-                    std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+                let secret = jwt_secret()?;
 
                 if let Ok(token_data) = decode::<Claims>(
                     token,
@@ -529,7 +543,7 @@ pub fn create_token(id: Uuid, _email: &str) -> Result<String, crate::error::Feel
         iat: Utc::now().timestamp() as usize,
     };
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    let secret = jwt_secret_for_token()?;
     encode(
         &Header::default(),
         &claims,

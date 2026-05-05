@@ -105,8 +105,8 @@ impl fmt::Display for NormalizedStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSessionRequest {
     pub idempotency_key: String,
-    pub amount: i64,       // smallest currency unit (paise/cents)
-    pub currency: String,  // ISO 4217
+    pub amount: i64,      // smallest currency unit (paise/cents)
+    pub currency: String, // ISO 4217
     pub order_id: String,
     pub description: Option<String>,
     pub customer_email: Option<String>,
@@ -357,10 +357,7 @@ mod tests {
 
     #[test]
     fn test_readiness_score_all_present() {
-        let available = vec![
-            "api_secret".to_string(),
-            "webhook_secret".to_string(),
-        ];
+        let available = vec!["api_secret".to_string(), "webhook_secret".to_string()];
         assert_eq!(readiness_score("stripe", &available), 100);
     }
 

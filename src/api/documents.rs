@@ -147,7 +147,9 @@ pub async fn generate_upload_url(
                 })
                 .send()
                 .await
-                .map_err(|e| FeelPayError::Internal(format!("Presign service call failed: {}", e)))?;
+                .map_err(|e| {
+                    FeelPayError::Internal(format!("Presign service call failed: {}", e))
+                })?;
 
             if !signer_resp.status().is_success() {
                 return Err(FeelPayError::Internal(format!(
@@ -156,10 +158,9 @@ pub async fn generate_upload_url(
                 )));
             }
 
-            let payload: PresignResponseBody = signer_resp
-                .json()
-                .await
-                .map_err(|e| FeelPayError::Internal(format!("Presign response parse failed: {}", e)))?;
+            let payload: PresignResponseBody = signer_resp.json().await.map_err(|e| {
+                FeelPayError::Internal(format!("Presign response parse failed: {}", e))
+            })?;
 
             upload_url = payload.upload_url;
             if let Some(ts) = payload.expires_at {

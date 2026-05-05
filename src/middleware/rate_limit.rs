@@ -64,7 +64,10 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         // Skip rate-limit on health endpoints and OPTIONS requests
         let path = req.path().to_string();
-        if path == "/health" || path == "/v1/health" || req.method() == actix_web::http::Method::OPTIONS {
+        if path == "/health"
+            || path == "/v1/health"
+            || req.method() == actix_web::http::Method::OPTIONS
+        {
             let fut = self.service.call(req);
             return Box::pin(async move { fut.await.map(|res| res.map_into_left_body()) });
         }

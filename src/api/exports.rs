@@ -244,7 +244,11 @@ pub async fn serve_export_file(
     let xlsx_path = dir.join(format!("{}.xlsx", job_id));
 
     let (file_path, content_type, filename) = if xlsx_path.exists() {
-        (xlsx_path, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "customers.xlsx")
+        (
+            xlsx_path,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "customers.xlsx",
+        )
     } else if csv_path.exists() {
         (csv_path, "text/csv; charset=utf-8", "customers.csv")
     } else {
@@ -256,7 +260,10 @@ pub async fn serve_export_file(
 
     Ok(HttpResponse::Ok()
         .insert_header(("Content-Type", content_type))
-        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+        .insert_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", filename),
+        ))
         .body(bytes))
 }
 

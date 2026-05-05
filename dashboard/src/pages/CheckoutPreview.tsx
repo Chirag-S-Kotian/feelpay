@@ -432,7 +432,7 @@ export default function CheckoutPreview() {
           <div className="checkout-method-panel card-panel">
             <CreditCard size={22} />
             <div className="card-fields-preview">
-              <strong>Card authorization</strong>
+              <strong>Test card authorization</strong>
               <span>4111 1111 1111 1111 • 12/30 • CVV protected</span>
             </div>
           </div>

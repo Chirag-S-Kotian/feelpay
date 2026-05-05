@@ -161,10 +161,12 @@ impl BankAccountService {
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         // Legacy DB may miss encrypted column.
-        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS account_number_encrypted TEXT NULL")
-            .execute(&self.db)
-            .await
-            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query(
+            "ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS account_number_encrypted TEXT NULL",
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         // Legacy DB may miss account_type.
         sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'savings'")
@@ -177,18 +179,24 @@ impl BankAccountService {
             .execute(&self.db)
             .await
             .map_err(|e| FeelPayError::Database(e.to_string()))?;
-        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS penny_drop_amount_paise INT NULL")
-            .execute(&self.db)
-            .await
-            .map_err(|e| FeelPayError::Database(e.to_string()))?;
-        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS penny_drop_reference TEXT NULL")
-            .execute(&self.db)
-            .await
-            .map_err(|e| FeelPayError::Database(e.to_string()))?;
-        sqlx::query("ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ NULL")
-            .execute(&self.db)
-            .await
-            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query(
+            "ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS penny_drop_amount_paise INT NULL",
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query(
+            "ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS penny_drop_reference TEXT NULL",
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+        sqlx::query(
+            "ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ NULL",
+        )
+        .execute(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         // Fill encrypted column from legacy plaintext when possible.
         let legacy_rows: Vec<(Uuid, String)> = sqlx::query_as(

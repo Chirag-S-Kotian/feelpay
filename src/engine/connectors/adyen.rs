@@ -153,9 +153,10 @@ impl ProviderConnector for AdyenConnector {
             .map_err(|e| FeelPayError::ConnectorError(format!("Adyen request failed: {}", e)))?;
 
         let status = resp.status();
-        let resp_body: serde_json::Value = resp.json().await.map_err(|e| {
-            FeelPayError::ConnectorError(format!("Adyen parse error: {}", e))
-        })?;
+        let resp_body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| FeelPayError::ConnectorError(format!("Adyen parse error: {}", e)))?;
 
         if !status.is_success() {
             return Err(Self::map_adyen_error(status, &resp_body));
@@ -224,7 +225,10 @@ impl ProviderConnector for AdyenConnector {
             return Err(Self::map_adyen_error(status, &resp_body));
         }
 
-        let raw_status = resp_body["status"].as_str().unwrap_or("received").to_string();
+        let raw_status = resp_body["status"]
+            .as_str()
+            .unwrap_or("received")
+            .to_string();
 
         Ok(ProviderResponse {
             provider_reference: req.provider_reference.clone(),
@@ -276,7 +280,10 @@ impl ProviderConnector for AdyenConnector {
             return Err(Self::map_adyen_error(status, &resp_body));
         }
 
-        let raw_status = resp_body["status"].as_str().unwrap_or("received").to_string();
+        let raw_status = resp_body["status"]
+            .as_str()
+            .unwrap_or("received")
+            .to_string();
 
         Ok(ProviderResponse {
             provider_reference: provider_reference.to_string(),
@@ -327,11 +334,11 @@ impl ProviderConnector for AdyenConnector {
             return Err(Self::map_adyen_error(status, &resp_body));
         }
 
-        let refund_psp = resp_body["pspReference"]
+        let refund_psp = resp_body["pspReference"].as_str().unwrap_or("").to_string();
+        let raw_status = resp_body["status"]
             .as_str()
-            .unwrap_or("")
+            .unwrap_or("received")
             .to_string();
-        let raw_status = resp_body["status"].as_str().unwrap_or("received").to_string();
 
         Ok(ProviderResponse {
             provider_reference: refund_psp,
@@ -365,9 +372,10 @@ impl ProviderConnector for AdyenConnector {
             .map_err(|e| FeelPayError::ConnectorError(format!("Adyen fetch failed: {}", e)))?;
 
         let status = resp.status();
-        let resp_body: serde_json::Value = resp.json().await.map_err(|e| {
-            FeelPayError::ConnectorError(format!("Adyen fetch parse error: {}", e))
-        })?;
+        let resp_body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| FeelPayError::ConnectorError(format!("Adyen fetch parse error: {}", e)))?;
 
         if !status.is_success() {
             return Err(Self::map_adyen_error(status, &resp_body));
@@ -403,25 +411,28 @@ impl ProviderConnector for AdyenConnector {
         // Adyen sends notifications in `notificationItems[].NotificationRequestItem`
         let item = payload["notificationItems"][0]["NotificationRequestItem"]
             .as_object()
-            .ok_or_else(|| {
-                FeelPayError::BadRequest("Missing NotificationRequestItem".into())
-            })?;
+            .ok_or_else(|| FeelPayError::BadRequest("Missing NotificationRequestItem".into()))?;
 
         // Verify HMAC signature in the notification item
-        let additional_data = item
-            .get("additionalData")
-            .and_then(|v| v.as_object());
+        let additional_data = item.get("additionalData").and_then(|v| v.as_object());
         let provided_hmac = additional_data
             .and_then(|ad| ad.get("hmacSignature"))
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                FeelPayError::Unauthorized("Missing Adyen HMAC signature".into())
-            })?;
+            .ok_or_else(|| FeelPayError::Unauthorized("Missing Adyen HMAC signature".into()))?;
 
         // Compute HMAC: concatenate specific fields in order
-        let psp_ref = item.get("pspReference").and_then(|v| v.as_str()).unwrap_or("");
-        let original_ref = item.get("originalReference").and_then(|v| v.as_str()).unwrap_or("");
-        let merchant_ref = item.get("merchantReference").and_then(|v| v.as_str()).unwrap_or("");
+        let psp_ref = item
+            .get("pspReference")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let original_ref = item
+            .get("originalReference")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let merchant_ref = item
+            .get("merchantReference")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let amount_value = item
             .get("amount")
             .and_then(|a| a.get("value"))
@@ -433,7 +444,10 @@ impl ProviderConnector for AdyenConnector {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let event_code = item.get("eventCode").and_then(|v| v.as_str()).unwrap_or("");
-        let success = item.get("success").and_then(|v| v.as_str()).unwrap_or("false");
+        let success = item
+            .get("success")
+            .and_then(|v| v.as_str())
+            .unwrap_or("false");
 
         let signing_string = format!(
             "{}:{}:{}:{}:{}:{}:{}",
@@ -445,7 +459,8 @@ impl ProviderConnector for AdyenConnector {
         let mut mac = HmacSha256::new_from_slice(&hmac_key_bytes)
             .map_err(|_| FeelPayError::Internal("Invalid HMAC key length".into()))?;
         mac.update(signing_string.as_bytes());
-        let expected = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
+        let expected =
+            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
 
         if expected != provided_hmac {
             return Err(FeelPayError::Unauthorized(
@@ -468,9 +483,7 @@ impl ProviderConnector for AdyenConnector {
             status: normalize_adyen_notification(&event_code_str),
             amount: amount_val,
             currency: Some(amount_currency.to_string()),
-            metadata: Some(redact_metadata(&serde_json::Value::Object(
-                item.clone(),
-            ))),
+            metadata: Some(redact_metadata(&serde_json::Value::Object(item.clone()))),
             raw_event_type: event_code_str,
             timestamp: Some(chrono::Utc::now()),
         })
@@ -539,10 +552,7 @@ mod tests {
             normalize_adyen_status("Captured"),
             NormalizedStatus::Captured
         );
-        assert_eq!(
-            normalize_adyen_status("Refused"),
-            NormalizedStatus::Failed
-        );
+        assert_eq!(normalize_adyen_status("Refused"), NormalizedStatus::Failed);
         assert_eq!(
             normalize_adyen_status("Cancelled"),
             NormalizedStatus::Cancelled

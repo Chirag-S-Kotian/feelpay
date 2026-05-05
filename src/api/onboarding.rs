@@ -17,7 +17,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/kyc", web::post().to(submit_kyc))
             .route("/status", web::get().to(onboarding_status))
             .route("/bank-account", web::post().to(submit_bank_account))
-            .route("/registration/step", web::post().to(update_registration_step))
+            .route(
+                "/registration/step",
+                web::post().to(update_registration_step),
+            )
             .route(
                 "/registration/progress",
                 web::get().to(get_registration_progress),
@@ -29,7 +32,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/aadhaar/initiate", web::post().to(initiate_aadhaar_ekyc))
             .route("/aadhaar/verify", web::post().to(verify_aadhaar_otp))
             .route("/digilocker/initiate", web::post().to(initiate_digilocker))
-            .route("/digilocker/callback", web::post().to(handle_digilocker_callback))
+            .route(
+                "/digilocker/callback",
+                web::post().to(handle_digilocker_callback),
+            )
             .route("/digilocker/status", web::get().to(get_digilocker_status))
             .route("/live-preflight", web::get().to(get_live_preflight)),
     );
@@ -1189,10 +1195,12 @@ pub async fn handle_digilocker_callback(
     let state_id: Uuid = state_row.get(0);
 
     // Mark state as consumed (single use).
-    sqlx::query("UPDATE otp_verifications SET status = 'verified', verified_at = NOW() WHERE id = $1")
-        .bind(state_id)
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "UPDATE otp_verifications SET status = 'verified', verified_at = NOW() WHERE id = $1",
+    )
+    .bind(state_id)
+    .execute(&state.db)
+    .await?;
 
     // Exchange code -> token; fetch docs; evaluate rules.
     let access_token = exchange_digilocker_code_with_retry(&state, &code).await?;
@@ -1372,10 +1380,14 @@ pub async fn get_live_preflight(
 
     let mut blockers = Vec::<String>::new();
     if onboarding_status != "approved" {
-        blockers.push(format!("Onboarding status is `{onboarding_status}`; require `approved`."));
+        blockers.push(format!(
+            "Onboarding status is `{onboarding_status}`; require `approved`."
+        ));
     }
     if merchant_status != "active" {
-        blockers.push(format!("Merchant status is `{merchant_status}`; require `active`."));
+        blockers.push(format!(
+            "Merchant status is `{merchant_status}`; require `active`."
+        ));
     }
     if webhook_url.as_deref().unwrap_or("").trim().is_empty() {
         blockers.push("Webhook URL missing.".to_string());

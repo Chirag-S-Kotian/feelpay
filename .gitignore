@@ -1,5 +1,16 @@
 /target
 .env
+.env.*
+!.env.example
+admin/.env
+admin/.env.*
+!admin/.env.example
+admin/server/.env
+admin/server/.env.*
+!admin/server/.env.example
+dashboard/.env
+dashboard/.env.*
+!dashboard/.env.example
 /dashboard/node_modules
 /dashboard/.next
 /graphify-out/cache

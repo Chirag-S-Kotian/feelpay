@@ -39,7 +39,7 @@ curl -X POST http://127.0.0.1:8080/v1/merchants/register \
   -d '{
     "name":"Demo Merchant",
     "email":"owner@demo.com",
-    "password":"StrongPass123!",
+    "password":"REPLACE_ME_STRONG_PASSWORD",
     "business_name":"Demo Retail Pvt Ltd",
     "business_type":"ecommerce"
   }'
@@ -62,7 +62,7 @@ Sample request:
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/merchants/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"owner@demo.com","password":"StrongPass123!"}'
+  -d '{"email":"owner@demo.com","password":"REPLACE_ME_STRONG_PASSWORD"}'
 ```
 
 Sample response:

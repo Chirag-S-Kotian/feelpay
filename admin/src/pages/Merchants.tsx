@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Search } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
+const DASHBOARD_BASE_URL = import.meta.env.VITE_DASHBOARD_BASE_URL || window.location.origin;
+
 interface Merchant {
   id: string;
   name: string;
@@ -48,8 +50,9 @@ export default function Merchants() {
     setImpersonating(merchantId);
     try {
       const res = await apiRequest<{ token: string }>('POST', `/admin/merchants/${merchantId}/impersonate`);
-      const dashboardUrl = `http://localhost:5173/login?token=${res.token}`;
-      window.open(dashboardUrl, '_blank');
+      const dashboardUrl = new URL('/login', DASHBOARD_BASE_URL);
+      dashboardUrl.searchParams.set('token', res.token);
+      window.open(dashboardUrl.toString(), '_blank');
     } catch (err) {
       console.error('Failed to impersonate merchant', err);
     } finally {

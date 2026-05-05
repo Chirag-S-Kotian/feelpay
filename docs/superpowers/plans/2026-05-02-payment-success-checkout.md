@@ -800,7 +800,7 @@ const runPreviewPayment = async () => {
 
     const methodData =
       selectedMethod?.method_type === 'card'
-        ? { Card: { number: '4111111111111111', token: null, expiry_month: 12, expiry_year: 2030, cvv: '123', holder_name: 'Test Buyer' } }
+        ? { Card: { number: '4111111111111111', token: null, expiry_month: 12, expiry_year: 2030, cvv: '123', holder_name: 'Test Buyer', note: 'test card only - not real payment data' } }
         : selectedMethod?.method_type === 'upi'
           ? { Upi: { vpa: 'buyer@upi', flow: 'collect' } }
           : { Simulator: { action: 'success' } };

@@ -104,7 +104,7 @@ Signature verification utility:
 {
   "payload": "<base64-encoded-raw-json>",
   "signature": "t=1714302000,v1=<hexsig>",
-  "secret": "whsec_..."
+  "secret": "whsec_placeholder_example_only"
 }
 ```
 

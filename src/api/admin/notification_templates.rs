@@ -203,7 +203,8 @@ pub async fn update_template(
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
-        if e.to_string().contains("notification_templates_event_type_channel_key")
+        if e.to_string()
+            .contains("notification_templates_event_type_channel_key")
             || e.to_string().contains("unique")
         {
             FeelPayError::Conflict("Template already exists for event_type + channel".into())
@@ -262,4 +263,3 @@ pub async fn delete_template(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "ok" })))
 }
-

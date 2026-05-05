@@ -30,8 +30,7 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let migration_result = sqlx::migrate!("./migrations").run(&pool).await;
     if let Err(err) = migration_result {
         let msg = err.to_string();
-        let is_checksum_mismatch =
-            msg.contains("was previously applied but has been modified");
+        let is_checksum_mismatch = msg.contains("was previously applied but has been modified");
         let is_production = std::env::var("APP_ENV")
             .map(|v| {
                 let lower = v.to_lowercase();

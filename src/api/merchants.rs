@@ -60,22 +60,28 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/mfa/verify", web::post().to(verify_mfa_merchant))
             .route("/profile", web::get().to(get_profile))
             .route("/profile", web::put().to(update_profile))
-            .route("/profile/avatar-upload", web::post().to(upload_profile_avatar))
+            .route(
+                "/profile/avatar-upload",
+                web::post().to(upload_profile_avatar),
+            )
             .route("/keys", web::get().to(get_keys))
             .route("/keys/roll", web::post().to(roll_keys))
             .route("/settings/security", web::get().to(get_security_settings))
             .route("/dashboard-signals", web::get().to(get_dashboard_signals))
-            .route("/account-settings-hub", web::get().to(get_account_settings_hub))
+            .route(
+                "/account-settings-hub",
+                web::get().to(get_account_settings_hub),
+            )
             .route("/checkout-settings", web::get().to(get_checkout_settings))
-            .route("/checkout-settings", web::put().to(update_checkout_settings))
+            .route(
+                "/checkout-settings",
+                web::put().to(update_checkout_settings),
+            )
             .route(
                 "/checkout-settings/audit",
                 web::get().to(get_checkout_settings_audit),
             )
-            .route(
-                "/webhook-secret/roll",
-                web::post().to(roll_webhook_secret),
-            )
+            .route("/webhook-secret/roll", web::post().to(roll_webhook_secret))
             .route("/{merchant_id}", web::get().to(get_merchant))
             // Team management
             .route("/team", web::get().to(list_team_members))
@@ -303,9 +309,18 @@ fn request_environment(req: &HttpRequest) -> &'static str {
 
 async fn ensure_team_roles_exist(pool: &sqlx::PgPool) -> Result<(), FeelPayError> {
     let role_specs = [
-        ("merchant_admin", "Administrative access to merchant features"),
-        ("merchant_staff", "Operational access for merchant team members"),
-        ("merchant_viewer", "Read-only access for merchant team members"),
+        (
+            "merchant_admin",
+            "Administrative access to merchant features",
+        ),
+        (
+            "merchant_staff",
+            "Operational access for merchant team members",
+        ),
+        (
+            "merchant_viewer",
+            "Read-only access for merchant team members",
+        ),
     ];
 
     for (name, description) in role_specs {
@@ -487,14 +502,12 @@ pub async fn update_profile(
             .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
             .to_string();
 
-        sqlx::query(
-            "UPDATE merchants SET password_hash = $2, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(merchant_id)
-        .bind(new_hash)
-        .execute(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+        sqlx::query("UPDATE merchants SET password_hash = $2, updated_at = NOW() WHERE id = $1")
+            .bind(merchant_id)
+            .bind(new_hash)
+            .execute(&state.db)
+            .await
+            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     }
 
     sqlx::query(
@@ -554,9 +567,7 @@ pub async fn upload_profile_avatar(
         ));
     }
     if raw.len() > 5 * 1024 * 1024 {
-        return Err(FeelPayError::BadRequest(
-            "Avatar must be <= 5MB".into(),
-        ));
+        return Err(FeelPayError::BadRequest("Avatar must be <= 5MB".into()));
     }
 
     let ext = match content_type.as_str() {
@@ -669,7 +680,11 @@ pub async fn get_account_settings_hub(
                 .unwrap_or_default()
                 .iter()
                 .map(|link| AccountSettingsHubLink {
-                    key: link.get("key").and_then(|v| v.as_str()).unwrap_or("link").to_string(),
+                    key: link
+                        .get("key")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("link")
+                        .to_string(),
                     label: link
                         .get("label")
                         .and_then(|v| v.as_str())
@@ -680,11 +695,18 @@ pub async fn get_account_settings_hub(
                         .and_then(|v| v.as_str())
                         .unwrap_or("/")
                         .to_string(),
-                    enabled: link.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
+                    enabled: link
+                        .get("enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
                 })
                 .collect();
             AccountSettingsHubSection {
-                key: raw.get("key").and_then(|v| v.as_str()).unwrap_or("section").to_string(),
+                key: raw
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("section")
+                    .to_string(),
                 title: raw
                     .get("title")
                     .and_then(|v| v.as_str())
@@ -1014,7 +1036,11 @@ pub async fn roll_webhook_secret(
 
     let allow_secret_reveal =
         std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
-    let hint = format!("{}...{}", &new_secret[..6], &new_secret[new_secret.len() - 4..]);
+    let hint = format!(
+        "{}...{}",
+        &new_secret[..6],
+        &new_secret[new_secret.len() - 4..]
+    );
 
     let mut response = serde_json::json!({
         "message": "Webhook secret rotated. Update receiver verification key.",
@@ -1074,7 +1100,11 @@ pub async fn get_keys(
         };
 
         // Self-heal legacy backfill mismatch: keep env-prefixed keys consistent.
-        let expected_prefix = if env == "live" { "fp_live_" } else { "fp_test_" };
+        let expected_prefix = if env == "live" {
+            "fp_live_"
+        } else {
+            "fp_test_"
+        };
         if !selected.starts_with(expected_prefix) {
             let regenerated = if env == "live" {
                 format!("fp_live_{}", Uuid::new_v4().simple())
@@ -1184,7 +1214,8 @@ pub async fn roll_keys(
 
     if allow_secret_reveal {
         resp["api_secret"] = serde_json::json!(api_secret);
-        resp["message"] = serde_json::json!("Store your new API secret safely. It may not be shown again.");
+        resp["message"] =
+            serde_json::json!("Store your new API secret safely. It may not be shown again.");
     }
 
     Ok(HttpResponse::Ok().json(resp))
@@ -1210,10 +1241,10 @@ pub async fn login_merchant(
         WHERE email = $1
         "#,
     )
-        .bind(&body.email)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    .bind(&body.email)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let m = merchant.ok_or(FeelPayError::Unauthorized("Invalid credentials".into()))?;
     let merchant_id: Uuid = m.get("id");
@@ -1231,11 +1262,13 @@ pub async fn login_merchant(
         .map_err(|_| FeelPayError::Unauthorized("Invalid credentials".into()))?;
 
     let mfa_enabled = if has_merchant_column(&state.db, "mfa_enabled").await? {
-        sqlx::query_scalar::<_, bool>("SELECT COALESCE(mfa_enabled, false) FROM merchants WHERE id = $1")
-            .bind(merchant_id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+        sqlx::query_scalar::<_, bool>(
+            "SELECT COALESCE(mfa_enabled, false) FROM merchants WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
     } else {
         false
     };
@@ -1297,7 +1330,7 @@ fn create_mfa_token(id: Uuid, _email: &str) -> Result<String, FeelPayError> {
         iat: now,
     };
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    let secret = crate::middleware::auth::jwt_secret_for_token()?;
     jsonwebtoken::encode(
         &jsonwebtoken::Header::default(),
         &claims,
@@ -1320,8 +1353,7 @@ pub async fn verify_mfa_merchant(
     body: web::Json<crate::api::auth::MfaVerifyRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     if let Some(mfa_token) = &body.mfa_token {
-        let secret_key =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret_key = crate::middleware::auth::jwt_secret_for_token()?;
         let token_data = jsonwebtoken::decode::<crate::models::user::Claims>(
             mfa_token,
             &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),

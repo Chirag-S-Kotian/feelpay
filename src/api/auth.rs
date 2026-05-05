@@ -15,6 +15,11 @@ use uuid::Uuid;
 const MAX_FAILED_ATTEMPTS: i32 = 5;
 const REFRESH_TOKEN_DAYS: i64 = 30;
 
+fn jwt_secret_or_500() -> Result<String, HttpResponse> {
+    std::env::var("JWT_SECRET")
+        .map_err(|_| HttpResponse::InternalServerError().body("JWT_SECRET is not configured"))
+}
+
 struct CaptchaStore {
     questions: Mutex<HashMap<String, (String, i32)>>,
 }
@@ -194,7 +199,10 @@ async fn refresh(pool: web::Data<PgPool>, req: web::Json<RefreshRequest>) -> imp
                 .await
                 .unwrap_or(("user".to_string(),));
 
-                let token = generate_jwt(&u, &role.0);
+                let token = match generate_jwt(&u, &role.0) {
+                    Ok(token) => token,
+                    Err(resp) => return resp,
+                };
                 let new_refresh = generate_refresh_token(&u.id, pool.get_ref()).await;
 
                 HttpResponse::Ok().json(AuthResponse {
@@ -337,7 +345,10 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
                 .unwrap_or(("user".to_string(),));
 
                 if u.mfa_enabled {
-                    let mfa_token = generate_jwt_with_exp(&u, "mfa_pending", 300);
+                    let mfa_token = match generate_jwt_with_exp(&u, "mfa_pending", 300) {
+                        Ok(token) => token,
+                        Err(resp) => return resp,
+                    };
                     return HttpResponse::Ok().json(AuthResponse {
                         token: None,
                         refresh_token: None,
@@ -350,7 +361,10 @@ async fn login(pool: web::Data<PgPool>, req: web::Json<LoginRequest>) -> impl Re
                     });
                 }
 
-                let token = generate_jwt(&u, &role.0);
+                let token = match generate_jwt(&u, &role.0) {
+                    Ok(token) => token,
+                    Err(resp) => return resp,
+                };
                 let refresh_token = generate_refresh_token(&u.id, pool.get_ref()).await;
 
                 HttpResponse::Ok().json(AuthResponse {
@@ -405,8 +419,10 @@ async fn mfa_confirm(
     // In a real app, we'd get user_id from the authenticated session
     // For now, we'll assume the request has it or we use a temp token
     if let (Some(secret), Some(mfa_token)) = (&req.secret, &req.mfa_token) {
-        let secret_key =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret_key = match jwt_secret_or_500() {
+            Ok(secret) => secret,
+            Err(resp) => return resp,
+        };
         let token_data = jsonwebtoken::decode::<Claims>(
             mfa_token,
             &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
@@ -445,8 +461,10 @@ async fn mfa_confirm(
 async fn mfa_verify(pool: web::Data<PgPool>, req: web::Json<MfaVerifyRequest>) -> impl Responder {
     if let Some(mfa_token) = &req.mfa_token {
         // Login step 2 verification
-        let secret_key =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+        let secret_key = match jwt_secret_or_500() {
+            Ok(secret) => secret,
+            Err(resp) => return resp,
+        };
         let token_data = jsonwebtoken::decode::<Claims>(
             mfa_token,
             &jsonwebtoken::DecodingKey::from_secret(secret_key.as_bytes()),
@@ -478,7 +496,10 @@ async fn mfa_verify(pool: web::Data<PgPool>, req: web::Json<MfaVerifyRequest>) -
                                     .await
                                     .unwrap_or(("user".to_string(),));
 
-                                    let token = generate_jwt(&u, &role.0);
+                                    let token = match generate_jwt(&u, &role.0) {
+                                        Ok(token) => token,
+                                        Err(resp) => return resp,
+                                    };
                                     let refresh_token =
                                         generate_refresh_token(&u.id, pool.get_ref())
                                             .await
@@ -626,11 +647,15 @@ async fn register(pool: web::Data<PgPool>, req: web::Json<RegisterRequest>) -> i
     }
 }
 
-fn generate_jwt(user: &User, role: &str) -> String {
+fn generate_jwt(user: &User, role: &str) -> Result<String, HttpResponse> {
     generate_jwt_with_exp(user, role, 86400) // 24 hours
 }
 
-fn generate_jwt_with_exp(user: &User, role: &str, exp_seconds: usize) -> String {
+fn generate_jwt_with_exp(
+    user: &User,
+    role: &str,
+    exp_seconds: usize,
+) -> Result<String, HttpResponse> {
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = Claims {
         sub: user.id.to_string(),
@@ -641,13 +666,13 @@ fn generate_jwt_with_exp(user: &User, role: &str, exp_seconds: usize) -> String 
         iat: now,
     };
 
-    let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "feelpay_jwt_secret".into());
+    let secret = jwt_secret_or_500()?;
     encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .unwrap()
+    .map_err(|_| HttpResponse::InternalServerError().body("JWT signing failed"))
 }
 
 #[derive(Deserialize)]

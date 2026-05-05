@@ -245,7 +245,11 @@ mod tests {
         });
         let headers = HashMap::new();
         let event = connector
-            .verify_and_parse_webhook(&creds, &headers, serde_json::to_vec(&body).unwrap().as_slice())
+            .verify_and_parse_webhook(
+                &creds,
+                &headers,
+                serde_json::to_vec(&body).unwrap().as_slice(),
+            )
             .unwrap();
         assert_eq!(event.event_type, "payment.captured");
         assert_eq!(event.provider_reference, Some("mock_ref_1".to_string()));

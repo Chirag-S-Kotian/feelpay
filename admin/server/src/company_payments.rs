@@ -5695,7 +5695,14 @@ async fn create_security_review_finding(
     .await;
     match saved {
         Ok(id) => {
-            audit(&pool, "security_review.finding_created", "security_review_finding", Some(id), json!({ "title": req.title })).await;
+            audit(
+                &pool,
+                "security_review.finding_created",
+                "security_review_finding",
+                Some(id),
+                json!({ "title": req.title }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": "open" }))
         }
         Err(e) => {
@@ -5731,7 +5738,14 @@ async fn patch_security_review_finding(
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "security_review.finding_updated", "security_review_finding", Some(id), json!({ "status": status })).await;
+            audit(
+                &pool,
+                "security_review.finding_updated",
+                "security_review_finding",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Finding not found" })),
@@ -5743,7 +5757,14 @@ async fn patch_security_review_finding(
 }
 
 async fn export_threat_model(pool: web::Data<PgPool>) -> impl Responder {
-    audit(&pool, "security_review.threat_model_exported", "security_review", None, json!({ "format": "json" })).await;
+    audit(
+        &pool,
+        "security_review.threat_model_exported",
+        "security_review",
+        None,
+        json!({ "format": "json" }),
+    )
+    .await;
     HttpResponse::Ok().json(json!({
         "threat_model": [
             "secrets leakage",
@@ -5788,12 +5809,13 @@ async fn create_step_up_challenge(
     request: web::Json<StepUpRequest>,
 ) -> impl Responder {
     let req = request.into_inner();
-    let enabled: bool = sqlx::query_scalar("SELECT COALESCE(enabled, true) FROM step_up_actions WHERE action = $1")
-        .bind(req.action.trim())
-        .fetch_optional(pool.get_ref())
-        .await
-        .unwrap_or(Some(true))
-        .unwrap_or(true);
+    let enabled: bool =
+        sqlx::query_scalar("SELECT COALESCE(enabled, true) FROM step_up_actions WHERE action = $1")
+            .bind(req.action.trim())
+            .fetch_optional(pool.get_ref())
+            .await
+            .unwrap_or(Some(true))
+            .unwrap_or(true);
     if !enabled {
         return HttpResponse::Ok().json(json!({ "required": false, "action": req.action }));
     }
@@ -5805,7 +5827,9 @@ async fn create_step_up_challenge(
     .fetch_one(pool.get_ref())
     .await;
     match saved {
-        Ok(id) => HttpResponse::Ok().json(json!({ "required": true, "id": id, "status": "pending" })),
+        Ok(id) => {
+            HttpResponse::Ok().json(json!({ "required": true, "id": id, "status": "pending" }))
+        }
         Err(e) => {
             tracing::error!("Create step-up failed: {}", e);
             server_error("Failed to create step-up challenge")
@@ -5813,7 +5837,10 @@ async fn create_step_up_challenge(
     }
 }
 
-async fn verify_step_up_challenge(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+async fn verify_step_up_challenge(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
     let id = path.into_inner();
     let updated = sqlx::query(
         "UPDATE step_up_challenges SET status = 'verified', verified_at = NOW() WHERE id = $1 AND status = 'pending' AND expires_at > NOW()",
@@ -5822,8 +5849,14 @@ async fn verify_step_up_challenge(pool: web::Data<PgPool>, path: web::Path<Uuid>
     .execute(pool.get_ref())
     .await;
     match updated {
-        Ok(result) if result.rows_affected() > 0 => HttpResponse::Ok().json(json!({ "id": id, "status": "verified" })),
-        Ok(_) => catalog_error("invalid_request", "Step-up challenge expired or not pending", 400),
+        Ok(result) if result.rows_affected() > 0 => {
+            HttpResponse::Ok().json(json!({ "id": id, "status": "verified" }))
+        }
+        Ok(_) => catalog_error(
+            "invalid_request",
+            "Step-up challenge expired or not pending",
+            400,
+        ),
         Err(e) => {
             tracing::error!("Verify step-up failed: {}", e);
             server_error("Failed to verify step-up challenge")
@@ -5906,7 +5939,14 @@ async fn patch_go_live_checklist_item(
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, "go_live.checklist_updated", "go_live_checklist", Some(id), json!({ "status": status })).await;
+            audit(
+                &pool,
+                "go_live.checklist_updated",
+                "go_live_checklist",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Checklist item not found" })),
@@ -5925,8 +5965,15 @@ async fn readiness_go_live_scorecard(pool: web::Data<PgPool>) -> impl Responder 
         Ok(rows) => {
             let items = rows.iter().map(row_to_json).collect::<Vec<_>>();
             let total = items.len().max(1) as i64;
-            let complete = items.iter().filter(|item| item["status"] == "complete").count() as i64;
-            let critical_missing = items.iter().filter(|item| item["critical"] == true && item["status"] != "complete").cloned().collect::<Vec<_>>();
+            let complete = items
+                .iter()
+                .filter(|item| item["status"] == "complete")
+                .count() as i64;
+            let critical_missing = items
+                .iter()
+                .filter(|item| item["critical"] == true && item["status"] != "complete")
+                .cloned()
+                .collect::<Vec<_>>();
             HttpResponse::Ok().json(json!({
                 "score": (complete * 100) / total,
                 "critical_missing": critical_missing,
@@ -5952,7 +5999,11 @@ async fn start_production_cutover(
     .await
     .unwrap_or(1);
     if critical_missing > 0 {
-        return catalog_error("invalid_request", "Critical go-live checklist items are incomplete", 400);
+        return catalog_error(
+            "invalid_request",
+            "Critical go-live checklist items are incomplete",
+            400,
+        );
     }
     if !req.super_admin_approved.unwrap_or(false) {
         return catalog_error("scope_denied", "Super Admin approval required", 403);
@@ -5975,7 +6026,14 @@ async fn start_production_cutover(
     .await;
     match saved {
         Ok(id) => {
-            audit(&pool, "production_cutover.started", "production_cutover", Some(id), json!({ "environment": req.environment })).await;
+            audit(
+                &pool,
+                "production_cutover.started",
+                "production_cutover",
+                Some(id),
+                json!({ "environment": req.environment }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": "started" }))
         }
         Err(e) => {
@@ -6005,7 +6063,14 @@ async fn update_production_cutover(
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            audit(&pool, &format!("production_cutover.{status}"), "production_cutover", Some(id), json!({ "status": status })).await;
+            audit(
+                &pool,
+                &format!("production_cutover.{status}"),
+                "production_cutover",
+                Some(id),
+                json!({ "status": status }),
+            )
+            .await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Cutover not found" })),
@@ -9084,7 +9149,7 @@ mod tests {
 
     #[test]
     fn secrets_and_bank_accounts_are_masked() {
-        assert_eq!(mask_secret("rzp_live_abcdef"), "****cdef");
+        assert_eq!(mask_secret("sk_test_placeholder"), "****lder");
         assert_eq!(mask_bank_account("123456789012"), "********9012");
     }
 

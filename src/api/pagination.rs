@@ -101,7 +101,6 @@ pub struct PaginationParams {
     pub limit: Option<i64>,
 }
 
-
 impl Default for PaginationParams {
     fn default() -> Self {
         Self {

@@ -5,9 +5,11 @@ use feelpay::api;
 
 #[actix_web::test]
 async fn webhook_verify_cycle_valid_signature() {
-    let app =
-        test::init_service(App::new().route("/v1/webhooks/verify", web::post().to(api::webhooks::verify_webhook)))
-            .await;
+    let app = test::init_service(App::new().route(
+        "/v1/webhooks/verify",
+        web::post().to(api::webhooks::verify_webhook),
+    ))
+    .await;
 
     let payload = br#"{"event":"payment.success","amount_paise":1000}"#;
     let payload_b64 = base64::engine::general_purpose::STANDARD.encode(payload);
@@ -38,9 +40,11 @@ async fn webhook_verify_cycle_valid_signature() {
 
 #[actix_web::test]
 async fn webhook_verify_cycle_bad_signature() {
-    let app =
-        test::init_service(App::new().route("/v1/webhooks/verify", web::post().to(api::webhooks::verify_webhook)))
-            .await;
+    let app = test::init_service(App::new().route(
+        "/v1/webhooks/verify",
+        web::post().to(api::webhooks::verify_webhook),
+    ))
+    .await;
 
     let payload = br#"{"event":"payment.failed","amount_paise":1000}"#;
     let payload_b64 = base64::engine::general_purpose::STANDARD.encode(payload);

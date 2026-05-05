@@ -19,15 +19,15 @@ pub mod pagination;
 pub mod payment_links;
 pub mod payments;
 pub mod payouts;
+pub mod provider_webhooks;
 pub mod providers;
 pub mod public_config;
 pub mod reports;
 pub mod settlements;
 pub mod subscriptions;
 pub mod virtual_accounts;
-pub mod webhooks;
 pub mod webhook_test;
-pub mod provider_webhooks;
+pub mod webhooks;
 
 use utoipa::OpenApi;
 

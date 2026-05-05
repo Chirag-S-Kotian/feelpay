@@ -163,7 +163,7 @@ export default function Developers() {
     "order_id": "ORD-2026-0001",
     "customer_email": "customer@example.com",
     "customer_phone": "+919999999999",
-    "description": "Premium plan payment",
+    "description": "Test card only - not real payment data",
     "return_url": "https://merchant.example/return",
     "method_data": {
       "method": "card",
@@ -181,7 +181,7 @@ export default function Developers() {
   order_id: 'ORD-2026-0001',
   customer_email: 'customer@example.com',
   customer_phone: '+919999999999',
-  description: 'Premium plan payment',
+  description: 'Test card only - not real payment data',
   return_url: 'https://merchant.example/return',
   method_data: {
     method: 'card',
@@ -221,7 +221,7 @@ payload = {
     "order_id": "ORD-2026-0001",
     "customer_email": "customer@example.com",
     "customer_phone": "+919999999999",
-    "description": "Premium plan payment",
+    "description": "Test card only - not real payment data",
     "return_url": "https://merchant.example/return",
     "method_data": {
         "method": "card",

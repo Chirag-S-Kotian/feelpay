@@ -144,16 +144,10 @@ impl ProviderConnector for StripeConnector {
             ),
             (
                 "line_items[0][price_data][product_data][name]".to_string(),
-                req.description
-                    .as_deref()
-                    .unwrap_or("Payment")
-                    .to_string(),
+                req.description.as_deref().unwrap_or("Payment").to_string(),
             ),
             ("line_items[0][quantity]".to_string(), "1".to_string()),
-            (
-                "client_reference_id".to_string(),
-                req.order_id.clone(),
-            ),
+            ("client_reference_id".to_string(), req.order_id.clone()),
         ];
 
         if let Some(url) = &req.return_url {
@@ -412,8 +406,8 @@ impl ProviderConnector for StripeConnector {
 
         let ts = timestamp
             .ok_or_else(|| FeelPayError::Unauthorized("Missing timestamp in signature".into()))?;
-        let sig = sig_hex
-            .ok_or_else(|| FeelPayError::Unauthorized("Missing v1 signature".into()))?;
+        let sig =
+            sig_hex.ok_or_else(|| FeelPayError::Unauthorized("Missing v1 signature".into()))?;
 
         // Check timestamp freshness (5 min tolerance)
         let now = chrono::Utc::now().timestamp();
@@ -456,7 +450,9 @@ impl ProviderConnector for StripeConnector {
             .as_str()
             .or_else(|| object["payment_intent"].as_str())
             .map(String::from);
-        let amount = object["amount"].as_i64().or_else(|| object["amount_total"].as_i64());
+        let amount = object["amount"]
+            .as_i64()
+            .or_else(|| object["amount_total"].as_i64());
         let currency = object["currency"].as_str().map(String::from);
 
         Ok(ProviderWebhookEvent {

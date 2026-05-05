@@ -117,12 +117,15 @@ impl AppConfig {
             digilocker_client_id: std::env::var("DIGILOCKER_CLIENT_ID").ok(),
             digilocker_client_secret: std::env::var("DIGILOCKER_CLIENT_SECRET").ok(),
             digilocker_redirect_uri: std::env::var("DIGILOCKER_REDIRECT_URI").ok(),
-            digilocker_auth_base_url: std::env::var("DIGILOCKER_AUTH_BASE_URL")
-                .unwrap_or_else(|_| "https://api.digitallocker.gov.in/public/oauth2/1/authorize".into()),
-            digilocker_token_url: std::env::var("DIGILOCKER_TOKEN_URL")
-                .unwrap_or_else(|_| "https://api.digitallocker.gov.in/public/oauth2/1/token".into()),
-            digilocker_docs_url: std::env::var("DIGILOCKER_DOCS_URL")
-                .unwrap_or_else(|_| "https://api.digitallocker.gov.in/public/oauth2/2/files".into()),
+            digilocker_auth_base_url: std::env::var("DIGILOCKER_AUTH_BASE_URL").unwrap_or_else(
+                |_| "https://api.digitallocker.gov.in/public/oauth2/1/authorize".into(),
+            ),
+            digilocker_token_url: std::env::var("DIGILOCKER_TOKEN_URL").unwrap_or_else(|_| {
+                "https://api.digitallocker.gov.in/public/oauth2/1/token".into()
+            }),
+            digilocker_docs_url: std::env::var("DIGILOCKER_DOCS_URL").unwrap_or_else(|_| {
+                "https://api.digitallocker.gov.in/public/oauth2/2/files".into()
+            }),
             digilocker_timeout_secs: std::env::var("DIGILOCKER_TIMEOUT_SECS")
                 .unwrap_or_else(|_| "12".into())
                 .parse()
