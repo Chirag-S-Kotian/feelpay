@@ -1038,6 +1038,33 @@ struct WebhookRetryPolicyRequest {
     status: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct ApiIdempotencyRecordRequest {
+    idempotency_key: String,
+    api_key_id: Option<Uuid>,
+    payload: Value,
+    resource_type: Option<String>,
+    resource_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+struct ApiRateLimitRequest {
+    api_key_id: Option<Uuid>,
+    window_seconds: i32,
+    max_requests: i32,
+}
+
+#[derive(Deserialize)]
+struct ReadinessOwnerRequest {
+    owner: String,
+}
+
+#[derive(Deserialize)]
+struct ReadinessManualCheckRequest {
+    status: String,
+    notes: Option<String>,
+}
+
 async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
     let summary = sqlx::query(
         r#"
@@ -4769,6 +4796,379 @@ async fn list_api_request_logs(pool: web::Data<PgPool>) -> impl Responder {
     .await
 }
 
+fn request_id() -> String {
+    format!("req_{}", Uuid::new_v4().simple())
+}
+
+fn response_hash(payload: &Value) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(payload.to_string().as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn catalog_error(code: &str, message: &str, status: i32) -> HttpResponse {
+    let request_id = request_id();
+    HttpResponse::build(
+        actix_web::http::StatusCode::from_u16(status as u16)
+            .unwrap_or(actix_web::http::StatusCode::BAD_REQUEST),
+    )
+    .json(json!({
+        "request_id": request_id,
+        "error": { "code": code, "message": message, "http_status": status }
+    }))
+}
+
+async fn list_api_versions(pool: web::Data<PgPool>) -> impl Responder {
+    let request_id = request_id();
+    match sqlx::query(
+        "SELECT id, version, status, sunset_at, changelog_url, created_at FROM api_versions ORDER BY created_at DESC",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => HttpResponse::Ok().json(json!({
+            "request_id": request_id,
+            "api_version_warning": "Deprecated versions should migrate before sunset.",
+            "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
+        })),
+        Err(e) => {
+            tracing::error!("Failed to load API versions: {}", e);
+            server_error("Failed to load API versions")
+        }
+    }
+}
+
+async fn list_api_idempotency_records(pool: web::Data<PgPool>) -> impl Responder {
+    let request_id = request_id();
+    match sqlx::query(
+        "SELECT id, idempotency_key, api_key_id, request_hash, response_hash, response_status, resource_type, resource_id, expires_at, created_at FROM api_idempotency_records ORDER BY created_at DESC LIMIT 200",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => HttpResponse::Ok().json(json!({
+            "request_id": request_id,
+            "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
+        })),
+        Err(e) => {
+            tracing::error!("Failed to load idempotency logs: {}", e);
+            server_error("Failed to load idempotency logs")
+        }
+    }
+}
+
+async fn create_api_idempotency_record(
+    pool: web::Data<PgPool>,
+    request: web::Json<ApiIdempotencyRecordRequest>,
+) -> impl Responder {
+    let request_id_value = request_id();
+    let request = request.into_inner();
+    if request.idempotency_key.trim().is_empty() {
+        return catalog_error("invalid_request", "idempotency_key required", 400);
+    }
+    let request_hash_value = response_hash(&request.payload);
+    let existing = sqlx::query(
+        "SELECT id, request_hash, response_status, response_hash, resource_type, resource_id FROM api_idempotency_records WHERE idempotency_key = $1 AND api_key_id IS NOT DISTINCT FROM $2",
+    )
+    .bind(request.idempotency_key.trim())
+    .bind(request.api_key_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match existing {
+        Ok(Some(row)) => {
+            let existing_hash: String = row.get("request_hash");
+            if existing_hash != request_hash_value {
+                return catalog_error(
+                    "idempotency_conflict",
+                    "Idempotency key reused with different payload",
+                    409,
+                );
+            }
+            return HttpResponse::Ok().json(json!({
+                "request_id": request_id_value,
+                "replayed": true,
+                "id": row.get::<Uuid, _>("id"),
+                "response_status": row.get::<i32, _>("response_status"),
+                "response_hash": row.get::<Option<String>, _>("response_hash"),
+                "resource_type": row.get::<Option<String>, _>("resource_type"),
+                "resource_id": row.get::<Option<Uuid>, _>("resource_id")
+            }));
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::error!("Failed checking idempotency record: {}", e);
+            return server_error("Failed checking idempotency record");
+        }
+    }
+
+    let response_payload = json!({
+        "status": "accepted",
+        "resource_type": request.resource_type.clone().unwrap_or_else(|| "generic".to_string()),
+        "resource_id": request.resource_id
+    });
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO api_idempotency_records
+            (idempotency_key, api_key_id, request_hash, response_hash, response_status, resource_type, resource_id, expires_at)
+        VALUES ($1, $2, $3, $4, 200, $5, $6, NOW() + INTERVAL '24 hours')
+        RETURNING id
+        "#,
+    )
+    .bind(request.idempotency_key.trim())
+    .bind(request.api_key_id)
+    .bind(request_hash_value)
+    .bind(response_hash(&response_payload))
+    .bind(request.resource_type.unwrap_or_else(|| "generic".to_string()))
+    .bind(request.resource_id)
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({
+            "request_id": request_id_value,
+            "replayed": false,
+            "id": id,
+            "response": response_payload
+        })),
+        Err(e) => {
+            tracing::error!("Failed creating idempotency record: {}", e);
+            server_error("Failed creating idempotency record")
+        }
+    }
+}
+
+async fn list_api_error_catalog(pool: web::Data<PgPool>) -> impl Responder {
+    let request_id = request_id();
+    match sqlx::query(
+        "SELECT code, message, http_status, retryable, docs_url FROM api_error_catalog ORDER BY code ASC",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => HttpResponse::Ok().json(json!({
+            "request_id": request_id,
+            "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
+        })),
+        Err(e) => {
+            tracing::error!("Failed to load error catalog: {}", e);
+            server_error("Failed to load error catalog")
+        }
+    }
+}
+
+async fn list_api_rate_limits(pool: web::Data<PgPool>) -> impl Responder {
+    let request_id = request_id();
+    match sqlx::query(
+        "SELECT id, api_key_id, window_seconds, max_requests, current_count, reset_at FROM api_rate_limits ORDER BY reset_at ASC",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => HttpResponse::Ok().json(json!({
+            "request_id": request_id,
+            "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
+        })),
+        Err(e) => {
+            tracing::error!("Failed to load rate limits: {}", e);
+            server_error("Failed to load rate limits")
+        }
+    }
+}
+
+async fn set_api_rate_limit(
+    pool: web::Data<PgPool>,
+    request: web::Json<ApiRateLimitRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    if request.max_requests <= 0 || request.window_seconds <= 0 {
+        return catalog_error(
+            "invalid_request",
+            "window_seconds and max_requests must be positive",
+            400,
+        );
+    }
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO api_rate_limits (api_key_id, window_seconds, max_requests, current_count, reset_at)
+        VALUES ($1, $2, $3, 0, NOW() + ($2 || ' seconds')::interval)
+        RETURNING id
+        "#,
+    )
+    .bind(request.api_key_id)
+    .bind(request.window_seconds)
+    .bind(request.max_requests)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({ "request_id": request_id(), "id": id })),
+        Err(e) => {
+            tracing::error!("Failed to save rate limit: {}", e);
+            server_error("Failed to save rate limit")
+        }
+    }
+}
+
+async fn run_rate_limit_check(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let api_key_id = path.into_inner();
+    let record = sqlx::query(
+        "SELECT id, window_seconds, max_requests, current_count, reset_at FROM api_rate_limits WHERE api_key_id = $1 ORDER BY reset_at DESC LIMIT 1",
+    )
+    .bind(api_key_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    match record {
+        Ok(None) => catalog_error("scope_denied", "Rate limit not configured for API key", 403),
+        Ok(Some(row)) => {
+            let id: Uuid = row.get("id");
+            let max_requests: i32 = row.get("max_requests");
+            let mut current_count: i32 = row.get("current_count");
+            let reset_at: DateTime<Utc> = row.get("reset_at");
+            if Utc::now() > reset_at {
+                current_count = 0;
+                let _ = sqlx::query(
+                    "UPDATE api_rate_limits SET current_count = 0, reset_at = NOW() + (window_seconds || ' seconds')::interval WHERE id = $1",
+                )
+                .bind(id)
+                .execute(pool.get_ref())
+                .await;
+            }
+            if current_count >= max_requests {
+                return catalog_error("rate_limit_exceeded", "Request rate limit exceeded", 429);
+            }
+            let _ = sqlx::query(
+                "UPDATE api_rate_limits SET current_count = current_count + 1 WHERE id = $1",
+            )
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+            HttpResponse::Ok().json(json!({
+                "request_id": request_id(),
+                "allowed": true,
+                "remaining": max_requests - (current_count + 1)
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Rate limit check failed: {}", e);
+            server_error("Rate limit check failed")
+        }
+    }
+}
+
+async fn readiness_scorecard(pool: web::Data<PgPool>) -> impl Responder {
+    let rows = sqlx::query(
+        "SELECT id, category, check_name, status, score, owner, action_link, notes, last_checked_at, updated_at FROM readiness_checks ORDER BY category, check_name",
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+    match rows {
+        Ok(rows) => {
+            let mut total = 0_i64;
+            let mut count = 0_i64;
+            let mut failed = Vec::new();
+            let mut warning = Vec::new();
+            let checks = rows.iter().map(row_to_json).collect::<Vec<_>>();
+            for check in &checks {
+                let score = check["score"].as_i64().unwrap_or_default();
+                total += score;
+                count += 1;
+                match check["status"].as_str().unwrap_or("warning") {
+                    "fail" => failed.push(check.clone()),
+                    "warning" => warning.push(check.clone()),
+                    _ => {}
+                }
+            }
+            let avg = if count == 0 {
+                0
+            } else {
+                (total / count) as i32
+            };
+            HttpResponse::Ok().json(json!({
+                "request_id": request_id(),
+                "total_score": avg,
+                "items": checks,
+                "failed_checks": failed,
+                "warning_checks": warning
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to load readiness scorecard: {}", e);
+            server_error("Failed to load readiness scorecard")
+        }
+    }
+}
+
+async fn readiness_export(pool: web::Data<PgPool>) -> impl Responder {
+    audit(
+        &pool,
+        "readiness.exported",
+        "readiness_scorecard",
+        None,
+        json!({ "format": "json" }),
+    )
+    .await;
+    readiness_scorecard(pool).await
+}
+
+async fn readiness_assign_owner(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<ReadinessOwnerRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let request = request.into_inner();
+    match sqlx::query("UPDATE readiness_checks SET owner = $2, updated_at = NOW() WHERE id = $1")
+        .bind(id)
+        .bind(request.owner.trim())
+        .execute(pool.get_ref())
+        .await
+    {
+        Ok(result) if result.rows_affected() > 0 => {
+            HttpResponse::Ok().json(json!({ "request_id": request_id(), "id": id }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Readiness check not found" })),
+        Err(e) => {
+            tracing::error!("Failed assigning readiness owner: {}", e);
+            server_error("Failed assigning readiness owner")
+        }
+    }
+}
+
+async fn readiness_mark_manual_check(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<ReadinessManualCheckRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let request = request.into_inner();
+    match sqlx::query(
+        "UPDATE readiness_checks SET status = $2, notes = COALESCE($3, notes), last_checked_at = NOW(), updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(request.status.trim())
+    .bind(request.notes)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "readiness.manual_check.completed",
+                "readiness_check",
+                Some(id),
+                json!({ "status": request.status }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "request_id": request_id(), "id": id }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Readiness check not found" })),
+        Err(e) => {
+            tracing::error!("Failed updating readiness check: {}", e);
+            server_error("Failed updating readiness check")
+        }
+    }
+}
+
 async fn send_webhook_test(
     pool: web::Data<PgPool>,
     request: web::Json<WebhookTestRequest>,
@@ -7266,6 +7666,34 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::get().to(list_api_request_logs),
         )
         .route(
+            &format!("{prefix}/developer/api-versions"),
+            web::get().to(list_api_versions),
+        )
+        .route(
+            &format!("{prefix}/developer/idempotency-records"),
+            web::get().to(list_api_idempotency_records),
+        )
+        .route(
+            &format!("{prefix}/developer/idempotency-records"),
+            web::post().to(create_api_idempotency_record),
+        )
+        .route(
+            &format!("{prefix}/developer/error-catalog"),
+            web::get().to(list_api_error_catalog),
+        )
+        .route(
+            &format!("{prefix}/developer/rate-limits"),
+            web::get().to(list_api_rate_limits),
+        )
+        .route(
+            &format!("{prefix}/developer/rate-limits"),
+            web::post().to(set_api_rate_limit),
+        )
+        .route(
+            &format!("{prefix}/developer/rate-limits/{{id}}/check"),
+            web::post().to(run_rate_limit_check),
+        )
+        .route(
             &format!("{prefix}/developer/webhook-test"),
             web::post().to(send_webhook_test),
         )
@@ -7328,6 +7756,22 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/compliance/tasks/{{task}}/complete"),
             web::post().to(mark_compliance_task_complete),
+        )
+        .route(
+            &format!("{prefix}/readiness-scorecard"),
+            web::get().to(readiness_scorecard),
+        )
+        .route(
+            &format!("{prefix}/readiness-scorecard/export"),
+            web::get().to(readiness_export),
+        )
+        .route(
+            &format!("{prefix}/readiness-scorecard/{{id}}/assign-owner"),
+            web::post().to(readiness_assign_owner),
+        )
+        .route(
+            &format!("{prefix}/readiness-scorecard/{{id}}/manual-check"),
+            web::post().to(readiness_mark_manual_check),
         );
 }
 

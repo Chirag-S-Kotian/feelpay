@@ -1,6 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
   BadgeCheck,
   RotateCcw,
@@ -19,6 +20,7 @@ import {
   Route,
   ShieldCheck,
   SlidersHorizontal,
+  Timer,
   Upload,
   UserPlus,
   Wallet,
@@ -1388,14 +1390,20 @@ export function DeveloperIntegrationPage() {
   const apiKeys = useRows(`${API}/developer/api-keys`);
   const requestLogs = useRows(`${API}/developer/request-logs`);
   const replays = useRows(`${API}/developer/webhook-replays`);
+  const apiVersions = useRows(`${API}/developer/api-versions`);
+  const idempotencyLogs = useRows(`${API}/developer/idempotency-records`);
+  const errorCatalog = useRows(`${API}/developer/error-catalog`);
+  const rateLimits = useRows(`${API}/developer/rate-limits`);
   const [logFilters, setLogFilters] = useState({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' });
   const [tab, setTab] = useState('API Keys');
   const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '' });
   const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: '' });
+  const [idempotencyForm, setIdempotencyForm] = useState({ idempotency_key: '', api_key_id: '', payload: '{"resource":"payment"}', resource_type: 'payment' });
+  const [rateLimitForm, setRateLimitForm] = useState({ api_key_id: '', window_seconds: 60, max_requests: 120 });
   const helpers = useDrawerConfirm();
-  const state = [apiKeys.state, requestLogs.state, replays.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state].includes('loading') ? 'loading' : 'ready';
-  const error = apiKeys.error || requestLogs.error || replays.error;
-  const load = () => void Promise.all([apiKeys.load(), requestLogs.load(), replays.load()]);
+  const state = [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state].includes('loading') ? 'loading' : 'ready';
+  const error = apiKeys.error || requestLogs.error || replays.error || apiVersions.error || idempotencyLogs.error || errorCatalog.error || rateLimits.error;
+  const load = () => void Promise.all([apiKeys.load(), requestLogs.load(), replays.load(), apiVersions.load(), idempotencyLogs.load(), errorCatalog.load(), rateLimits.load()]);
   const filteredLogs = requestLogs.rows.filter(row => {
     if (logFilters.request_id && !String(row.request_id || '').includes(logFilters.request_id)) return false;
     if (logFilters.idempotency_key && !String(row.idempotency_key || '').includes(logFilters.idempotency_key)) return false;
@@ -1451,11 +1459,75 @@ export function DeveloperIntegrationPage() {
     { id: 'dispute.opened', event: 'dispute.opened', sample: '{"id":"dp_test","payment_id":"pay_test","reason":"fraudulent"}' },
   ];
   const checklist = ['Create sandbox API key', 'Configure webhook endpoint', 'Send webhook test', 'Replay failed event', 'Review idempotency logs', 'Switch to live mode after approval'].map((item, index) => ({ id: String(index), item, status: index < 2 ? 'ready' : 'pending' }));
+  const createIdempotencyRecord = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Create idempotency record',
+      body: 'Write APIs require idempotency key. Replay returns same result, mismatch payload returns conflict.',
+      action: () => helpers.run('Idempotency record saved.', () => apiRequest('POST', `${API}/developer/idempotency-records`, {
+        idempotency_key: idempotencyForm.idempotency_key,
+        api_key_id: idempotencyForm.api_key_id || null,
+        payload: JSON.parse(idempotencyForm.payload || '{}'),
+        resource_type: idempotencyForm.resource_type || 'payment',
+      })).then(load),
+    });
+  };
+  const createRateLimit = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Save rate limit',
+      body: 'Rate limit policy enforces API key budget and returns error catalog code on exceed.',
+      action: () => helpers.run('Rate limit saved.', () => apiRequest('POST', `${API}/developer/rate-limits`, {
+        api_key_id: rateLimitForm.api_key_id || null,
+        window_seconds: Number(rateLimitForm.window_seconds),
+        max_requests: Number(rateLimitForm.max_requests),
+      })).then(load),
+    });
+  };
+  const checkRateLimit = (row: GenericRecord) => {
+    const id = String(row.api_key_id || '');
+    helpers.run('Rate limit check complete.', () => apiRequest('POST', `${API}/developer/rate-limits/${id}/check`));
+  };
   return (
     <CrudPage title="Developer Tools" subtitle="Internal API keys, sandbox/live mode, webhook testing, event replay, and logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['API Keys', 'Request Logs', 'Webhook Testing', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['API Versions', 'Idempotency Logs', 'Error Catalog', 'Rate Limits', 'API Keys', 'Request Logs', 'Webhook Testing', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
+      {tab === 'API Versions' && <DataTable rows={apiVersions.rows} columns={['version', 'status', 'sunset_at', 'changelog_url', 'created_at']} empty={{ title: 'No API versions', body: 'Define current, supported, and deprecated versions for external readiness.' }} />}
+      {tab === 'Idempotency Logs' && (
+        <>
+          <section className="card">
+            <h2><RefreshCw size={18} /> Idempotency key store</h2>
+            <form onSubmit={createIdempotencyRecord}>
+              <div className="filter-grid">
+                <Field label="Idempotency key"><input value={idempotencyForm.idempotency_key} onChange={event => setIdempotencyForm({ ...idempotencyForm, idempotency_key: event.target.value })} /></Field>
+                <Field label="API key ID"><input value={idempotencyForm.api_key_id} onChange={event => setIdempotencyForm({ ...idempotencyForm, api_key_id: event.target.value })} /></Field>
+                <Field label="Resource type"><input value={idempotencyForm.resource_type} onChange={event => setIdempotencyForm({ ...idempotencyForm, resource_type: event.target.value })} /></Field>
+                <Field label="Payload JSON"><textarea value={idempotencyForm.payload} onChange={event => setIdempotencyForm({ ...idempotencyForm, payload: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Store idempotency record</button>
+            </form>
+          </section>
+          <DataTable rows={idempotencyLogs.rows} columns={['created_at', 'idempotency_key', 'api_key_id', 'request_hash', 'response_hash', 'response_status', 'resource_type', 'resource_id', 'expires_at']} empty={{ title: 'No idempotency logs', body: 'Idempotency records appear here and link to request logs by key.' }} onView={row => helpers.setDrawer({ title: 'Idempotency record', body: row })} />
+        </>
+      )}
+      {tab === 'Error Catalog' && <DataTable rows={errorCatalog.rows} columns={['code', 'message', 'http_status', 'retryable', 'docs_url']} empty={{ title: 'No error catalog', body: 'All public API failures should map to catalog codes.' }} />}
+      {tab === 'Rate Limits' && (
+        <>
+          <section className="card">
+            <h2><Timer size={18} /> API rate limits</h2>
+            <form onSubmit={createRateLimit}>
+              <div className="filter-grid">
+                <Field label="API key ID"><input value={rateLimitForm.api_key_id} onChange={event => setRateLimitForm({ ...rateLimitForm, api_key_id: event.target.value })} /></Field>
+                <Field label="Window seconds"><input type="number" value={rateLimitForm.window_seconds} onChange={event => setRateLimitForm({ ...rateLimitForm, window_seconds: Number(event.target.value) })} /></Field>
+                <Field label="Max requests"><input type="number" value={rateLimitForm.max_requests} onChange={event => setRateLimitForm({ ...rateLimitForm, max_requests: Number(event.target.value) })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Save rate limit</button>
+            </form>
+          </section>
+          <DataTable rows={rateLimits.rows} columns={['api_key_id', 'window_seconds', 'max_requests', 'current_count', 'reset_at']} empty={{ title: 'No rate limits', body: 'Configure per-key request windows for public API readiness.' }} renderActions={row => <ActionButtons actions={['Check now', 'View detail']} onClick={action => action === 'Check now' ? checkRateLimit(row) : helpers.setDrawer({ title: 'Rate limit', body: row })} />} />
+        </>
+      )}
       {tab === 'API Keys' && (
         <>
           <section className="card">
@@ -1511,6 +1583,80 @@ export function DeveloperIntegrationPage() {
         { id: 'reconciliation', item: 'Reconciliation enabled', status: 'ready' },
         { id: 'settlement_export', item: 'Settlement export enabled', status: 'ready' },
       ]} columns={['item', 'status']} empty="No integration checklist" />}
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
+export function ReadinessScorecardPage() {
+  const { rows, state, error, load } = useRows('/admin/payment-ops/readiness-scorecard');
+  const [summary, setSummary] = useState<GenericRecord>({});
+  const helpers = useDrawerConfirm();
+  const [ownerMap, setOwnerMap] = useState<Record<string, string>>({});
+
+  const refresh = async () => {
+    await load();
+    try {
+      const payload = await apiRequest<GenericRecord>('GET', '/admin/payment-ops/readiness-scorecard');
+      setSummary(payload);
+    } catch {
+      setSummary({});
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const assignOwner = (row: GenericRecord) => {
+    const id = String(row.id || '');
+    const owner = ownerMap[id] || String(row.owner || '');
+    helpers.setConfirm({
+      title: 'Assign owner',
+      body: 'Owner assignment helps remediation tracking for failed and warning checks.',
+      action: () => helpers.run('Owner assigned.', () => apiRequest('POST', `/admin/payment-ops/readiness-scorecard/${id}/assign-owner`, { owner })).then(refresh),
+    });
+  };
+  const markManual = (row: GenericRecord) => {
+    const id = String(row.id || '');
+    helpers.setConfirm({
+      title: 'Mark manual check complete',
+      body: 'Manual check update creates audit record.',
+      action: () => helpers.run('Manual check updated.', () => apiRequest('POST', `/admin/payment-ops/readiness-scorecard/${id}/manual-check`, { status: 'pass', notes: 'Reviewed by admin team' })).then(refresh),
+    });
+  };
+  const exportScorecard = () => helpers.run('Scorecard export ready.', () => apiRequest('GET', '/admin/payment-ops/readiness-scorecard/export'));
+  const failedRows = Array.isArray(summary.failed_checks) ? summary.failed_checks as GenericRecord[] : [];
+  const warningRows = Array.isArray(summary.warning_checks) ? summary.warning_checks as GenericRecord[] : [];
+
+  return (
+    <CrudPage title="Readiness Scorecard" subtitle="Internal production-readiness scoring across payments, security, compliance, and operations" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={refresh}>
+      <div className="stats-grid">
+        <Metric label="Total readiness score" value={String(summary.total_score ?? 0)} icon={ShieldCheck} />
+        <Metric label="Failed checks" value={String(failedRows.length)} icon={AlertTriangle} />
+        <Metric label="Warning checks" value={String(warningRows.length)} icon={AlertCircle} />
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={refresh}>Run readiness check</button>
+        <button type="button" onClick={exportScorecard}>Export readiness report</button>
+      </div>
+      <DataTable rows={rows} columns={['category', 'check_name', 'status', 'score', 'owner', 'last_checked_at', 'action_link']} empty={{ title: 'No readiness checks', body: 'Readiness categories appear here with status, owner, and action links.' }} renderActions={row => <ActionButtons actions={['Assign owner', 'Mark manual check complete', 'Open action link', 'View detail']} onClick={label => {
+        if (label === 'Assign owner') assignOwner(row);
+        else if (label === 'Mark manual check complete') markManual(row);
+        else if (label === 'Open action link') {
+          const link = String(row.action_link || '');
+          if (link) window.location.assign(link);
+        } else helpers.setDrawer({ title: 'Readiness check', body: row });
+      }} />} />
+      <div className="card filter-grid">
+        {rows.map(row => (
+          <Field key={String(row.id)} label={`Owner for ${String(row.category || 'category')}`}>
+            <input value={ownerMap[String(row.id || '')] ?? String(row.owner || '')} onChange={event => setOwnerMap({ ...ownerMap, [String(row.id || '')]: event.target.value })} />
+          </Field>
+        ))}
+      </div>
+      <TablePanel title="Failed checks" rows={failedRows} columns={['category', 'check_name', 'status', 'score', 'owner']} />
+      <TablePanel title="Warning checks" rows={warningRows} columns={['category', 'check_name', 'status', 'score', 'owner']} />
       <Modals helpers={helpers} />
     </CrudPage>
   );

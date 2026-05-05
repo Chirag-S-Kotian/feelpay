@@ -277,6 +277,13 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
         }
         return Some("developer_tools.view");
     }
+    if path.contains("/readiness-scorecard") {
+        return Some(if method == "GET" {
+            "compliance.view"
+        } else {
+            "compliance.manage"
+        });
+    }
     if path.contains("/compliance") {
         return Some(if method == "GET" {
             "compliance.view"

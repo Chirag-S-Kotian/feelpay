@@ -35,8 +35,8 @@ export default function AdminBulkExport() {
     refunds: false,
     disputes: false,
   });
-  const [merchantFilter, setMerchantFilter] = useState('all');
-  const [merchants, setMerchants] = useState<Array<{ id: string; name: string }>>([]);
+  const [businessAccountFilter, setBusinessAccountFilter] = useState('all');
+  const [businessAccounts, setBusinessAccounts] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<ExportJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
@@ -44,21 +44,21 @@ export default function AdminBulkExport() {
   const [successJobId, setSuccessJobId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMerchants();
+    fetchBusinessAccounts();
     fetchExportJobs();
     const interval = setInterval(fetchExportJobs, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchMerchants = async () => {
+  const fetchBusinessAccounts = async () => {
     try {
       const data = await apiRequest<{ merchants: Array<{ id: string; name: string }> }>(
         'GET',
         '/admin/merchants'
       );
-      setMerchants(data.merchants || []);
+      setBusinessAccounts(data.merchants || []);
     } catch (err) {
-      console.error('Failed to fetch merchants:', err);
+      console.error('Failed to fetch business accounts:', err);
     }
   };
 
@@ -103,7 +103,8 @@ export default function AdminBulkExport() {
         {
           date_range: { start: startDate, end: endDate },
           entity_types: selectedTypes,
-          merchant_filter: merchantFilter === 'all' ? 'all' : merchantFilter,
+          merchant_filter: businessAccountFilter === 'all' ? 'all' : businessAccountFilter,
+          business_account_filter: businessAccountFilter === 'all' ? 'all' : businessAccountFilter,
           format,
         }
       );
@@ -189,9 +190,9 @@ export default function AdminBulkExport() {
 
           <div className="form-group">
             <label>Business Account Filter</label>
-            <select value={merchantFilter} onChange={e => setMerchantFilter(e.target.value)}>
+            <select value={businessAccountFilter} onChange={e => setBusinessAccountFilter(e.target.value)}>
               <option value="all">All Business Accounts</option>
-              {merchants.map(m => (
+              {businessAccounts.map(m => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>

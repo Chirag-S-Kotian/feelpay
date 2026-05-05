@@ -39,6 +39,7 @@ import {
   BankIntegrationsPage,
   BusinessAccountsPage,
   ComplianceCenterPage,
+  ReadinessScorecardPage,
   DeveloperIntegrationPage,
   DisputesPage,
   LedgerPage,
@@ -158,6 +159,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/system-health', label: 'System Health', icon: HeartPulse, permission: 'system_health.view' },
       { path: '/notifications', label: 'Notifications', icon: Bell, permission: 'notifications.view' },
       { path: '/compliance-center', label: 'Compliance Center', icon: ShieldCheck, permission: 'compliance.view' },
+      { path: '/readiness-scorecard', label: 'Readiness Scorecard', icon: ClipboardList, permission: 'compliance.view' },
       { path: '/settings', label: 'Platform Settings', icon: SettingsIcon, permission: 'platform_settings.view' },
     ],
   },
@@ -277,6 +279,7 @@ function Layout() {
           <Route path="/system-health" element={<RequirePermission permission="system_health.view"><SystemHealthPage /></RequirePermission>} />
           <Route path="/notifications" element={<RequirePermission permission="notifications.view"><NotificationsPage /></RequirePermission>} />
           <Route path="/compliance-center" element={<RequirePermission permission="compliance.view"><ComplianceCenterPage /></RequirePermission>} />
+          <Route path="/readiness-scorecard" element={<RequirePermission permission="compliance.view"><ReadinessScorecardPage /></RequirePermission>} />
           <Route path="/settings" element={<RequirePermission permission="platform_settings.view"><PlatformSettingsPage /></RequirePermission>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
