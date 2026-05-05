@@ -249,7 +249,13 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.starts_with("/disputes") || path.contains("/disputes") {
         return Some("disputes.manage");
     }
-    if path.contains("/risk-rules") || path.contains("/risk-reviews") {
+    if path.contains("/risk-rules")
+        || path.contains("/risk-reviews")
+        || path.contains("/risk-signals")
+        || path.contains("/risk-decisions")
+        || path.contains("/risk-lists")
+        || path.contains("/risk/simulate")
+    {
         return Some("risk_rules.manage");
     }
     if path.contains("/reconciliation") {
@@ -294,10 +300,16 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.contains("/routing-rules") || path.contains("/routing/simulate") {
         return Some("routing.manage");
     }
+    if path.contains("/money-movement") {
+        return Some("settlements.manage");
+    }
     if path.contains("/white-label-config")
+        || path.contains("/white-label/")
         || path.contains("/webhook-configs")
         || path.contains("/webhook-events")
         || path.contains("/webhooks")
+        || path.contains("/webhook-processing-attempts")
+        || path.contains("/webhook-retry-policies")
     {
         return Some("webhook_config.manage");
     }

@@ -26,6 +26,7 @@ import {
   HeartPulse,
   WalletCards,
   Code2,
+  Banknote,
 } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -41,6 +42,7 @@ import {
   DeveloperIntegrationPage,
   DisputesPage,
   LedgerPage,
+  MoneyMovementPage,
   PaymentOpsPage,
   PlatformSettingsPage,
   ProviderConnectorsPage,
@@ -117,6 +119,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/payment-ops', label: 'Payment Ops', icon: CreditCard, permission: 'payment_ops.view' },
       { path: '/transactions', label: 'Transactions', icon: Receipt, permission: 'transactions.view' },
       { path: '/ledger', label: 'Ledger', icon: WalletCards, permission: 'ledger.view' },
+      { path: '/money-movement', label: 'Money Movement', icon: Banknote, permission: 'settlements.manage' },
       { path: '/refunds', label: 'Refunds', icon: RotateCcw, permission: 'refunds.request' },
       { path: '/settlements', label: 'Settlements', icon: Landmark, permission: 'settlements.manage' },
       { path: '/disputes', label: 'Disputes', icon: Scale, permission: 'disputes.manage' },
@@ -253,6 +256,7 @@ function Layout() {
           <Route path="/merchants" element={<Navigate to="/business-accounts" replace />} />
           <Route path="/transactions" element={<RequirePermission permission="transactions.view"><TransactionsPage /></RequirePermission>} />
           <Route path="/ledger" element={<RequirePermission permission="ledger.view"><LedgerPage /></RequirePermission>} />
+          <Route path="/money-movement" element={<RequirePermission permission="settlements.manage"><MoneyMovementPage /></RequirePermission>} />
           <Route path="/refunds" element={<RequirePermission permission="refunds.request"><RefundsPage /></RequirePermission>} />
           <Route path="/settlements" element={<RequirePermission permission="settlements.manage"><SettlementsPage /></RequirePermission>} />
           <Route path="/disputes" element={<RequirePermission permission="disputes.manage"><DisputesPage /></RequirePermission>} />

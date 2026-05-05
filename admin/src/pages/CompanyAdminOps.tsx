@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   BadgeCheck,
+  RotateCcw,
   Banknote,
   Bell,
   Cable,
@@ -534,6 +535,106 @@ export function LedgerPage() {
   );
 }
 
+export function MoneyMovementPage() {
+  const dashboard = useRows(`${API}/money-movement/dashboard`);
+  const splitRules = useRows(`${API}/money-movement/split-rules`);
+  const transfers = useRows(`${API}/money-movement/transfers`);
+  const reversals = useRows(`${API}/money-movement/reversals`);
+  const payouts = useRows(`${API}/money-movement/payouts`);
+  const reserves = useRows(`${API}/money-movement/reserves`);
+  const [tab, setTab] = useState('Dashboard');
+  const helpers = useDrawerConfirm();
+  const [splitForm, setSplitForm] = useState({ name: '', business_account_id: '', rule_type: 'percent', company_fee_percent: '2', company_fee_fixed: '0', tax_percent: '18', reserve_percent: '5', settlement_delay_days: '2' });
+  const [simForm, setSimForm] = useState({ business_account_id: '', gross_amount: 10000, provider_fee_amount: 200, company_fee_percent: 2, company_fee_fixed: 0, tax_percent: 18, reserve_percent: 5 });
+  const [simResult, setSimResult] = useState<GenericRecord | null>(null);
+  const state = [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state].includes('error') ? 'error' : [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state].includes('loading') ? 'loading' : 'ready';
+  const error = dashboard.error || splitRules.error || transfers.error || reversals.error || payouts.error || reserves.error;
+  const load = () => void Promise.all([dashboard.load(), splitRules.load(), transfers.load(), reversals.load(), payouts.load(), reserves.load()]);
+  const createSplitRule = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Create split rule',
+      body: 'Split rules affect platform fees, reserves, and payout eligibility. Action is audited.',
+      action: () => helpers.run('Split rule created.', () => apiRequest('POST', `${API}/money-movement/split-rules`, {
+        ...splitForm,
+        business_account_id: splitForm.business_account_id || null,
+        company_fee_percent: Number(splitForm.company_fee_percent),
+        company_fee_fixed: Number(splitForm.company_fee_fixed),
+        tax_percent: Number(splitForm.tax_percent),
+        reserve_percent: Number(splitForm.reserve_percent),
+        settlement_delay_days: Number(splitForm.settlement_delay_days),
+        status: 'active',
+        priority: 100,
+      })).then(load),
+    });
+  };
+  const runSimulation = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.run('Split simulation complete.', async () => {
+      const response = await apiRequest<GenericRecord>('POST', `${API}/money-movement/simulate-split`, simForm);
+      setSimResult(response);
+    });
+  };
+  return (
+    <CrudPage title="Money Movement" subtitle="Split rules, transfers, reversals, payouts, and reserves" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="button-row">
+        {['Dashboard', 'Split Rules', 'Transfers', 'Reversals', 'Payouts', 'Reserves'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      {tab === 'Dashboard' && (
+        <div className="stats-grid">
+          <Metric label="Payable balance" value={money(Number(dashboard.rows[0]?.payable_balance || 0))} icon={Wallet} />
+          <Metric label="Pending transfers" value={Number(dashboard.rows[0]?.pending_transfers || 0)} icon={Route} />
+          <Metric label="Pending payouts" value={Number(dashboard.rows[0]?.pending_payouts || 0)} icon={Landmark} />
+          <Metric label="Reserve balance" value={money(Number(dashboard.rows[0]?.reserve_balance || 0))} icon={ShieldCheck} />
+          <Metric label="Failed payouts" value={Number(dashboard.rows[0]?.failed_payouts || 0)} icon={AlertTriangle} />
+          <Metric label="Reversal amount" value={money(Number(dashboard.rows[0]?.reversal_amount || 0))} icon={RotateCcw} />
+        </div>
+      )}
+      {tab === 'Split Rules' && (
+        <>
+          <section className="card">
+            <h2><SlidersHorizontal size={18} /> Create split rule</h2>
+            <form onSubmit={createSplitRule}>
+              <div className="filter-grid">
+                <Field label="Name"><input value={splitForm.name} onChange={event => setSplitForm({ ...splitForm, name: event.target.value })} /></Field>
+                <Field label="Business account ID"><input value={splitForm.business_account_id} onChange={event => setSplitForm({ ...splitForm, business_account_id: event.target.value })} /></Field>
+                <Field label="Rule type"><Select value={splitForm.rule_type} options={['percent', 'fixed', 'hybrid']} onChange={rule_type => setSplitForm({ ...splitForm, rule_type })} /></Field>
+                <Field label="Company fee %"><input value={splitForm.company_fee_percent} onChange={event => setSplitForm({ ...splitForm, company_fee_percent: event.target.value })} /></Field>
+                <Field label="Company fee fixed"><input value={splitForm.company_fee_fixed} onChange={event => setSplitForm({ ...splitForm, company_fee_fixed: event.target.value })} /></Field>
+                <Field label="Tax %"><input value={splitForm.tax_percent} onChange={event => setSplitForm({ ...splitForm, tax_percent: event.target.value })} /></Field>
+                <Field label="Reserve %"><input value={splitForm.reserve_percent} onChange={event => setSplitForm({ ...splitForm, reserve_percent: event.target.value })} /></Field>
+                <Field label="Settlement delay days"><input value={splitForm.settlement_delay_days} onChange={event => setSplitForm({ ...splitForm, settlement_delay_days: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Create split rule</button>
+            </form>
+          </section>
+          <section className="card">
+            <h2><Activity size={18} /> Simulate split</h2>
+            <form onSubmit={runSimulation}>
+              <div className="filter-grid">
+                <Field label="Gross amount"><input type="number" value={simForm.gross_amount} onChange={event => setSimForm({ ...simForm, gross_amount: Number(event.target.value) })} /></Field>
+                <Field label="Provider fee"><input type="number" value={simForm.provider_fee_amount} onChange={event => setSimForm({ ...simForm, provider_fee_amount: Number(event.target.value) })} /></Field>
+                <Field label="Company fee %"><input type="number" value={simForm.company_fee_percent} onChange={event => setSimForm({ ...simForm, company_fee_percent: Number(event.target.value) })} /></Field>
+                <Field label="Company fee fixed"><input type="number" value={simForm.company_fee_fixed} onChange={event => setSimForm({ ...simForm, company_fee_fixed: Number(event.target.value) })} /></Field>
+                <Field label="Tax %"><input type="number" value={simForm.tax_percent} onChange={event => setSimForm({ ...simForm, tax_percent: Number(event.target.value) })} /></Field>
+                <Field label="Reserve %"><input type="number" value={simForm.reserve_percent} onChange={event => setSimForm({ ...simForm, reserve_percent: Number(event.target.value) })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Simulate split</button>
+            </form>
+            {simResult && <DataTable rows={[simResult]} columns={['gross_amount', 'provider_fee_amount', 'company_fee_amount', 'tax_amount', 'reserve_amount', 'payable_amount', 'currency']} empty="No simulation result" />}
+          </section>
+          <DataTable rows={splitRules.rows} columns={['id', 'name', 'business_account_id', 'rule_type', 'company_fee_percent', 'company_fee_fixed', 'tax_percent', 'reserve_percent', 'settlement_delay_days', 'status', 'priority', 'created_at']} empty="No split rules yet" />
+        </>
+      )}
+      {tab === 'Transfers' && <DataTable rows={transfers.rows} columns={['id', 'payment_split_id', 'provider_id', 'provider_transfer_id', 'business_account_id', 'amount', 'currency', 'status', 'failure_reason', 'created_at']} empty="No transfers yet" onView={row => helpers.setDrawer({ title: 'Transfer', body: row })} />}
+      {tab === 'Reversals' && <DataTable rows={reversals.rows} columns={['id', 'transfer_id', 'provider_reversal_id', 'reason', 'amount', 'currency', 'status', 'created_at']} empty="No reversals yet" onView={row => helpers.setDrawer({ title: 'Transfer reversal', body: row })} />}
+      {tab === 'Payouts' && <DataTable rows={payouts.rows} columns={['id', 'business_account_id', 'provider_id', 'bank_account_id', 'amount', 'currency', 'status', 'scheduled_at', 'processed_at', 'provider_payout_id', 'failure_reason', 'created_at']} empty="No payouts yet" renderActions={row => <ActionButtons actions={['Retry failed payout', 'View detail']} onClick={action => action === 'Retry failed payout' ? helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Payout', body: row })} />} />}
+      {tab === 'Reserves' && <DataTable rows={reserves.rows} columns={['id', 'business_account_id', 'currency', 'reserve_type', 'amount', 'release_at', 'status', 'created_at']} empty="No reserves yet" onView={row => helpers.setDrawer({ title: 'Reserve', body: row })} />}
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
 export function RefundsPage() {
   const [filters, setFilters] = useState({ status: '', provider: '', currency: '', business_account: '', refund_source: '', amount_range: '' });
   const [path, setPath] = useState(`${API}/refunds?limit=100`);
@@ -616,13 +717,91 @@ export function DisputesPage() {
 }
 
 export function RiskRulesPage() {
-  const { rows, state, error, load } = useRows(`${API}/risk-rules`);
+  const rules = useRows(`${API}/risk-rules`);
+  const reviews = useRows(`${API}/risk-reviews`);
+  const signals = useRows(`${API}/risk-signals`);
+  const decisions = useRows(`${API}/risk-decisions`);
+  const lists = useRows(`${API}/risk-lists`);
+  const [tab, setTab] = useState('Rules');
+  const [simForm, setSimForm] = useState({ amount: 5000, currency: 'INR', country: 'IN', payment_method: 'upi', email: '', phone: '', ip: '', business_account_id: '' });
+  const [simResult, setSimResult] = useState<GenericRecord | null>(null);
+  const [listForm, setListForm] = useState({ list_type: 'blocklist', entity_type: 'email', value: '', reason: '' });
+  const state = [rules.state, reviews.state, signals.state, decisions.state, lists.state].includes('error') ? 'error' : [rules.state, reviews.state, signals.state, decisions.state, lists.state].includes('loading') ? 'loading' : 'ready';
+  const error = rules.error || reviews.error || signals.error || decisions.error || lists.error;
+  const load = () => void Promise.all([rules.load(), reviews.load(), signals.load(), decisions.load(), lists.load()]);
   const helpers = useDrawerConfirm();
+  const createListItem = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Add risk list entry',
+      body: 'Sensitive list value is hashed and masked. Action is audited.',
+      action: () => helpers.run('Risk list entry created.', () => apiRequest('POST', `${API}/risk-lists`, listForm)).then(load),
+    });
+  };
+  const runSimulator = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.run('Risk simulation complete.', async () => {
+      const response = await apiRequest<GenericRecord>('POST', `${API}/risk/simulate`, {
+        ...simForm,
+        business_account_id: simForm.business_account_id || null,
+      });
+      setSimResult(response);
+    });
+  };
   const act = (row: GenericRecord, action: string) => {
     if (action === 'disable') helpers.setConfirm({ title: 'Disable risk rule', body: 'Risk decisioning may change immediately.', action: () => helpers.run('Risk rule disabled.', () => apiRequest('POST', `${API}/risk-rules/${String(row.id || '')}/disable`)).then(load) });
-    else helpers.setDrawer({ title: 'Risk rule', body: row });
+    else if (action === 'approve_payment' || action === 'reject_payment' || action === 'escalate' || action === 'assign_review') helpers.run('Risk review updated.', () => apiRequest('PATCH', `${API}/risk-reviews/${String(row.id || '')}`, { status: action === 'approve_payment' ? 'approved' : action === 'reject_payment' ? 'rejected' : action === 'escalate' ? 'escalated' : 'pending', decision_note: `Updated from ${action}` })).then(load);
+    else helpers.setDrawer({ title: 'Risk detail', body: row });
   };
-  return <TableRoute title="Risk Rules" subtitle="Company risk controls and rule trigger history" rows={rows} state={state} error={error} notice={helpers.notice} columns={['name', 'rule_type', 'condition', 'action', 'priority', 'last_triggered_at', 'trigger_count', 'status']} actions={['View triggered transactions', 'Create rule', 'Edit rule', 'Disable']} onAction={act} onRefresh={load} helpers={helpers} />;
+  return (
+    <CrudPage title="Risk Rules" subtitle="Velocity rules, block/allow lists, review queue, decisions, signals, and simulator" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div className="button-row">
+        {['Rules', 'Review Queue', 'Blocklists', 'Allowlists', 'Decisions', 'Signals', 'Simulator'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      {tab === 'Rules' && <DataTable rows={rules.rows} columns={['name', 'rule_type', 'condition', 'action', 'priority', 'last_triggered_at', 'trigger_count', 'status']} empty={{ title: 'No risk rules configured.', body: 'Create amount, velocity, country, provider, and payment method rules.' }} renderActions={row => <ActionButtons actions={['Edit rule', 'Disable', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Risk rule', body: row }) : act(row, normalizeAction(action))} />} />}
+      {tab === 'Review Queue' && <DataTable rows={reviews.rows} columns={['id', 'payment_order_id', 'business_account_id', 'status', 'assigned_to_admin_id', 'decision_note', 'created_at', 'resolved_at']} empty={{ title: 'No manual reviews', body: 'Risk reviews appear when decisions route payments to manual review.' }} renderActions={row => <ActionButtons actions={['Approve payment', 'Reject payment', 'Escalate', 'Assign review', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Risk review', body: row }) : act(row, normalizeAction(action))} />} />}
+      {tab === 'Blocklists' && (
+        <>
+          <section className="card">
+            <h2><ShieldCheck size={18} /> Add blocklist entry</h2>
+            <form onSubmit={createListItem}>
+              <div className="filter-grid">
+                <Field label="List type"><Select value={listForm.list_type} options={['blocklist']} onChange={list_type => setListForm({ ...listForm, list_type })} /></Field>
+                <Field label="Entity type"><Select value={listForm.entity_type} options={['email', 'phone', 'ip', 'card_fingerprint', 'business_account', 'country', 'currency']} onChange={entity_type => setListForm({ ...listForm, entity_type })} /></Field>
+                <Field label="Value"><input value={listForm.value} onChange={event => setListForm({ ...listForm, value: event.target.value })} /></Field>
+                <Field label="Reason"><input value={listForm.reason} onChange={event => setListForm({ ...listForm, reason: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Add blocklist entry</button>
+            </form>
+          </section>
+          <DataTable rows={lists.rows.filter(row => row.list_type === 'blocklist')} columns={['id', 'entity_type', 'display_value_masked', 'reason', 'status', 'created_at']} empty="No blocklist entries" onView={row => helpers.setDrawer({ title: 'Blocklist entry', body: row })} />
+        </>
+      )}
+      {tab === 'Allowlists' && <DataTable rows={lists.rows.filter(row => row.list_type === 'allowlist')} columns={['id', 'entity_type', 'display_value_masked', 'reason', 'status', 'created_at']} empty="No allowlist entries" onView={row => helpers.setDrawer({ title: 'Allowlist entry', body: row })} />}
+      {tab === 'Decisions' && <DataTable rows={decisions.rows} columns={['id', 'payment_id', 'business_account_id', 'decision', 'score', 'matched_rules', 'reason', 'created_at']} empty="No risk decisions yet" onView={row => helpers.setDrawer({ title: 'Risk decision', body: row })} />}
+      {tab === 'Signals' && <DataTable rows={signals.rows} columns={['id', 'payment_id', 'business_account_id', 'signal_type', 'signal_value', 'severity', 'created_at']} empty="No risk signals yet" onView={row => helpers.setDrawer({ title: 'Risk signal', body: row })} />}
+      {tab === 'Simulator' && (
+        <section className="card">
+          <h2><Activity size={18} /> Risk simulator</h2>
+          <form onSubmit={runSimulator}>
+            <div className="filter-grid">
+              <Field label="Amount"><input type="number" value={simForm.amount} onChange={event => setSimForm({ ...simForm, amount: Number(event.target.value) })} /></Field>
+              <Field label="Currency"><input value={simForm.currency} onChange={event => setSimForm({ ...simForm, currency: event.target.value })} /></Field>
+              <Field label="Country"><input value={simForm.country} onChange={event => setSimForm({ ...simForm, country: event.target.value })} /></Field>
+              <Field label="Method"><input value={simForm.payment_method} onChange={event => setSimForm({ ...simForm, payment_method: event.target.value })} /></Field>
+              <Field label="Email"><input value={simForm.email} onChange={event => setSimForm({ ...simForm, email: event.target.value })} /></Field>
+              <Field label="Phone"><input value={simForm.phone} onChange={event => setSimForm({ ...simForm, phone: event.target.value })} /></Field>
+              <Field label="IP"><input value={simForm.ip} onChange={event => setSimForm({ ...simForm, ip: event.target.value })} /></Field>
+              <Field label="Business account ID"><input value={simForm.business_account_id} onChange={event => setSimForm({ ...simForm, business_account_id: event.target.value })} /></Field>
+            </div>
+            <button className="btn-primary" type="submit">Simulate risk decision</button>
+          </form>
+          {simResult && <DataTable rows={[simResult]} columns={['score', 'decision', 'matched_rules', 'reason']} empty="No simulation result" />}
+        </section>
+      )}
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function ReconciliationPage() {
@@ -870,9 +1049,14 @@ export function RoutingRulesPage() {
 export function WhiteLabelCheckoutPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [form, setForm] = useState<WhiteLabelForm>(DEFAULT_WHITE_LABEL);
+  const [tab, setTab] = useState('Config');
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
+  const paymentLinks = useRows(`${API}/white-label/payment-links`);
+  const sessions = useRows(`${API}/white-label/sessions`);
+  const receipts = useRows(`${API}/white-label/receipts`);
+  const [linkForm, setLinkForm] = useState({ business_account_id: '', amount: 1000, currency: 'INR', description: '', customer_email: '', customer_phone: '', expires_at: '' });
   const load = async () => {
     setState('loading');
     setError('');
@@ -880,6 +1064,9 @@ export function WhiteLabelCheckoutPage() {
       const [providerData, config] = await Promise.all([
         apiRequest<{ items: Provider[] }>('GET', `${API}/providers`),
         apiRequest<Partial<WhiteLabelForm> & { default_payment_methods?: string[] }>('GET', `${API}/white-label-config`),
+        paymentLinks.load(),
+        sessions.load(),
+        receipts.load(),
       ]);
       setProviders(providerData.items || []);
       setForm({ ...DEFAULT_WHITE_LABEL, ...config, default_payment_methods: (config.default_payment_methods || ['upi', 'card', 'netbanking']).join(',') });
@@ -896,9 +1083,61 @@ export function WhiteLabelCheckoutPage() {
     event.preventDefault();
     helpers.setConfirm({ title: 'Save checkout config', body: 'White-label checkout defaults will change for company-managed payment flows.', action: () => helpers.run('White-label checkout saved.', () => apiRequest('PATCH', `${API}/white-label-config`, { ...form, default_payment_methods: list(form.default_payment_methods), default_provider_id: form.default_provider_id || null, fallback_provider_id: form.fallback_provider_id || null })).then(load) });
   };
+  const createLink = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Create payment link',
+      body: 'Link uses signed token hash, no provider secret exposure, and audit logging.',
+      action: () => helpers.run('Payment link created.', () => apiRequest('POST', `${API}/white-label/payment-links`, {
+        ...linkForm,
+        business_account_id: linkForm.business_account_id || null,
+        expires_at: linkForm.expires_at || null,
+      })).then(load),
+    });
+  };
+  const linkAction = (row: GenericRecord, action: string) => {
+    const id = String(row.id || '');
+    if (action === 'expire_payment_link') helpers.setConfirm({ title: 'Expire payment link', body: 'Expired links cannot create sessions.', action: () => helpers.run('Payment link expired.', () => apiRequest('POST', `${API}/white-label/payment-links/${id}/expire`)).then(load) });
+    if (action === 'create_session') helpers.setConfirm({ title: 'Create payment session', body: 'Session uses immutable checkout theme snapshot and provider routing.', action: () => helpers.run('Session created.', () => apiRequest('POST', `${API}/white-label/sessions`, { payment_link_id: id })).then(load) });
+    if (action === 'copy_payment_link') helpers.setDrawer({ title: 'Payment link', body: { payment_link_id: id, note: 'Use signed public URL from checkout gateway service' } });
+  };
+  const previewRows = [
+    { id: 'brand', field: 'brand_name', value: form.brand_name },
+    { id: 'theme', field: 'theme_color', value: form.checkout_theme_color },
+    { id: 'support', field: 'support_email', value: form.support_email },
+    { id: 'terms', field: 'terms_url', value: form.terms_url },
+    { id: 'privacy', field: 'privacy_url', value: form.privacy_url },
+    { id: 'refund', field: 'refund_policy_url', value: form.refund_policy_url },
+  ];
   return (
     <CrudPage title="White-label Checkout" subtitle="Company-managed checkout brand, defaults, and descriptors" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
-      <WhiteLabelPanel value={form} providers={providers} onChange={setForm} onSubmit={save} onReset={() => setForm(DEFAULT_WHITE_LABEL)} />
+      <div className="button-row">
+        {['Config', 'Preview', 'Payment Links', 'Checkout Sessions', 'Receipts'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      {tab === 'Config' && <WhiteLabelPanel value={form} providers={providers} onChange={setForm} onSubmit={save} onReset={() => setForm(DEFAULT_WHITE_LABEL)} />}
+      {tab === 'Preview' && <DataTable rows={previewRows} columns={['field', 'value']} empty="No preview config" />}
+      {tab === 'Payment Links' && (
+        <>
+          <section className="card">
+            <h2><Wallet size={18} /> Payment links</h2>
+            <form onSubmit={createLink}>
+              <div className="filter-grid">
+                <Field label="Business account ID"><input value={linkForm.business_account_id} onChange={event => setLinkForm({ ...linkForm, business_account_id: event.target.value })} /></Field>
+                <Field label="Amount"><input type="number" value={linkForm.amount} onChange={event => setLinkForm({ ...linkForm, amount: Number(event.target.value) })} /></Field>
+                <Field label="Currency"><input value={linkForm.currency} onChange={event => setLinkForm({ ...linkForm, currency: event.target.value })} /></Field>
+                <Field label="Description"><input value={linkForm.description} onChange={event => setLinkForm({ ...linkForm, description: event.target.value })} /></Field>
+                <Field label="Customer email"><input value={linkForm.customer_email} onChange={event => setLinkForm({ ...linkForm, customer_email: event.target.value })} /></Field>
+                <Field label="Customer phone"><input value={linkForm.customer_phone} onChange={event => setLinkForm({ ...linkForm, customer_phone: event.target.value })} /></Field>
+                <Field label="Expires at"><input type="datetime-local" value={linkForm.expires_at} onChange={event => setLinkForm({ ...linkForm, expires_at: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Create payment link</button>
+            </form>
+          </section>
+          <DataTable rows={paymentLinks.rows} columns={['id', 'business_account_id', 'amount', 'currency', 'description', 'customer_email', 'customer_phone', 'status', 'expires_at', 'created_at']} empty={{ title: 'No payment links yet', body: 'Create white-label payment links for hosted checkout sessions.' }} renderActions={row => <ActionButtons actions={['Create session', 'Expire payment link', 'Copy payment link', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Payment link', body: row }) : linkAction(row, normalizeAction(action))} />} />
+        </>
+      )}
+      {tab === 'Checkout Sessions' && <DataTable rows={sessions.rows} columns={['id', 'payment_link_id', 'payment_order_id', 'provider_id', 'selected_payment_method', 'status', 'expires_at', 'created_at']} empty={{ title: 'No checkout sessions yet', body: 'Sessions are created from active payment links and provider routing.' }} onView={row => helpers.setDrawer({ title: 'Checkout session', body: row })} />}
+      {tab === 'Receipts' && <DataTable rows={receipts.rows} columns={['id', 'payment_session_id', 'payment_order_id', 'receipt_number', 'recipient_email', 'status', 'sent_at', 'created_at']} empty={{ title: 'No receipts yet', body: 'Receipts are generated after successful checkout completion.' }} renderActions={row => <ActionButtons actions={['Resend receipt', 'View detail']} onClick={action => action === 'Resend receipt' ? helpers.run('Receipt resent.', () => apiRequest('POST', `${API}/white-label/receipts/${String(row.id || '')}/resend`)).then(load) : helpers.setDrawer({ title: 'Receipt', body: row })} />} />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -907,14 +1146,61 @@ export function WhiteLabelCheckoutPage() {
 export function WebhookConfigPage() {
   const configs = useRows(`${API}/webhook-configs`);
   const events = useRows(`${API}/webhook-events?limit=100`);
+  const attempts = useRows(`${API}/webhook-processing-attempts`);
+  const policies = useRows(`${API}/webhook-retry-policies`);
+  const [tab, setTab] = useState('Endpoint Configs');
+  const [policyForm, setPolicyForm] = useState({ provider_id: '', max_attempts: 6, backoff_strategy: 'exponential', initial_delay_seconds: 60, max_delay_seconds: 3600, status: 'active' });
   const helpers = useDrawerConfirm();
+  const load = () => void Promise.all([configs.load(), events.load(), attempts.load(), policies.load()]);
+  const replay = (row: GenericRecord, dryRun: boolean) => {
+    helpers.setConfirm({
+      title: dryRun ? 'Dry-run replay' : 'Replay event',
+      body: dryRun ? 'Dry-run checks handler path without state mutation.' : 'Replay re-queues webhook idempotently with audit log.',
+      action: () => helpers.run('Replay submitted.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/replay`, { dry_run: dryRun })).then(load),
+    });
+  };
+  const savePolicy = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Save retry policy',
+      body: 'Policy controls max attempts and backoff before dead-letter.',
+      action: () => helpers.run('Retry policy saved.', () => apiRequest('POST', `${API}/webhook-retry-policies`, {
+        ...policyForm,
+        provider_id: policyForm.provider_id || null,
+      })).then(load),
+    });
+  };
   return (
-    <CrudPage title="Webhook Config" subtitle="Endpoint config, events, retry queue, and dead-letter events" state={configs.state} error={configs.error || events.error} notice={helpers.notice} onRefresh={() => void Promise.all([configs.load(), events.load()])}>
+    <CrudPage title="Webhook Config" subtitle="Endpoint config, events, retry queue, dead-letter, attempts, and retry policies" state={configs.state} error={configs.error || events.error || attempts.error || policies.error} notice={helpers.notice} onRefresh={load}>
       <div className="alert alert-success">Signatures required. Raw payload stored before processing. Processing idempotent. Failed events retried.</div>
-      <TablePanel title="Webhook endpoint configs" rows={configs.rows} columns={['provider_name', 'environment', 'webhook_url', 'masked_signing_secret', 'signature_verification_enabled', 'last_event_received_at', 'failed_event_count', 'retry_queue_count', 'status']} />
-      <TablePanel title="Webhook events" rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'related_payment_id', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} />
-      <TablePanel title="Retry queue" rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} />
-      <TablePanel title="Dead-letter events" rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'related_payment_id', 'retry_count', 'error_message', 'received_at']} />
+      <div className="button-row">
+        {['Endpoint Configs', 'Events', 'Retry Queue', 'Dead Letter', 'Processing Attempts', 'Retry Policies'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      {tab === 'Endpoint Configs' && <TablePanel title="Webhook endpoint configs" rows={configs.rows} columns={['provider_name', 'environment', 'webhook_url', 'masked_signing_secret', 'signature_verification_enabled', 'last_event_received_at', 'failed_event_count', 'retry_queue_count', 'status']} />}
+      {tab === 'Events' && <DataTable rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'event_version', 'payload_hash', 'dedupe_key', 'idempotency_key', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} empty="No webhook events" renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run replay', 'View detail']} onClick={action => action === 'Replay event' ? replay(row, false) : action === 'Dry-run replay' ? replay(row, true) : helpers.setDrawer({ title: 'Webhook event', body: row })} />} />}
+      {tab === 'Retry Queue' && <DataTable rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} empty="No retry queue events" renderActions={row => <ActionButtons actions={['Retry now', 'View detail']} onClick={action => action === 'Retry now' ? helpers.run('Retry queued.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Retry queue item', body: row })} />} />}
+      {tab === 'Dead Letter' && <DataTable rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'retry_count', 'dead_letter_reason', 'error_message', 'received_at']} empty="No dead-letter events" renderActions={row => <ActionButtons actions={['Resolve dead letter', 'Ignore', 'View detail']} onClick={action => action === 'Resolve dead letter' ? helpers.run('Dead-letter resolved.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/resolve-dead-letter`, { note: 'Resolved by admin' })).then(load) : action === 'Ignore' ? helpers.run('Webhook ignored.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/ignore`)).then(load) : helpers.setDrawer({ title: 'Dead-letter event', body: row })} />} />}
+      {tab === 'Processing Attempts' && <DataTable rows={attempts.rows} columns={['id', 'webhook_event_id', 'attempt_number', 'status', 'started_at', 'finished_at', 'error_message', 'worker_id']} empty="No processing attempts yet" onView={row => helpers.setDrawer({ title: 'Processing attempt', body: row })} />}
+      {tab === 'Retry Policies' && (
+        <>
+          <section className="card">
+            <h2><RefreshCw size={18} /> Retry policy</h2>
+            <form onSubmit={savePolicy}>
+              <div className="filter-grid">
+                <Field label="Provider ID"><input value={policyForm.provider_id} onChange={event => setPolicyForm({ ...policyForm, provider_id: event.target.value })} /></Field>
+                <Field label="Max attempts"><input type="number" value={policyForm.max_attempts} onChange={event => setPolicyForm({ ...policyForm, max_attempts: Number(event.target.value) })} /></Field>
+                <Field label="Backoff strategy"><Select value={policyForm.backoff_strategy} options={['fixed', 'exponential']} onChange={backoff_strategy => setPolicyForm({ ...policyForm, backoff_strategy })} /></Field>
+                <Field label="Initial delay sec"><input type="number" value={policyForm.initial_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, initial_delay_seconds: Number(event.target.value) })} /></Field>
+                <Field label="Max delay sec"><input type="number" value={policyForm.max_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, max_delay_seconds: Number(event.target.value) })} /></Field>
+                <Field label="Status"><Select value={policyForm.status} options={['active', 'disabled']} onChange={status => setPolicyForm({ ...policyForm, status })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Save retry policy</button>
+            </form>
+          </section>
+          <DataTable rows={policies.rows} columns={['id', 'provider_id', 'max_attempts', 'backoff_strategy', 'initial_delay_seconds', 'max_delay_seconds', 'status', 'updated_at']} empty="No retry policies yet" onView={row => helpers.setDrawer({ title: 'Retry policy', body: row })} />
+        </>
+      )}
+      <Modals helpers={helpers} />
     </CrudPage>
   );
 }
