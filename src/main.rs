@@ -213,7 +213,10 @@ async fn main() -> std::io::Result<()> {
                         "permissions-policy",
                         "camera=(), microphone=(), geolocation=(), payment=()",
                     ))
-                    .add(("content-security-policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")),
+                    .add((
+                        "content-security-policy",
+                        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+                    )),
             )
             .wrap(cors)
             .wrap(rate_limiter.clone())
@@ -227,6 +230,22 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/v1/checkout/embed.js",
                 web::get().to(api::checkout::get_embed_script),
+            )
+            .route(
+                "/pay/{token}",
+                web::get().to(api::checkout::get_public_checkout_link),
+            )
+            .route(
+                "/pay/{token}/session",
+                web::post().to(api::checkout::create_public_checkout_session),
+            )
+            .route(
+                "/pay/session/{id}/status",
+                web::get().to(api::checkout::get_public_checkout_session_status),
+            )
+            .route(
+                "/receipt/{receipt_token}",
+                web::get().to(api::checkout::get_public_receipt),
             )
             // Swagger UI (only in non-production)
             .service(
@@ -490,8 +509,14 @@ async fn main() -> std::io::Result<()> {
                                 web::post().to(api::merchants::roll_webhook_secret),
                             )
                             .route("/team", web::get().to(api::merchants::list_team_members))
-                            .route("/team/invite", web::post().to(api::merchants::invite_team_member))
-                            .route("/team/{user_id}", web::delete().to(api::merchants::remove_team_member))
+                            .route(
+                                "/team/invite",
+                                web::post().to(api::merchants::invite_team_member),
+                            )
+                            .route(
+                                "/team/{user_id}",
+                                web::delete().to(api::merchants::remove_team_member),
+                            )
                             .route(
                                 "/team/{user_id}/role",
                                 web::put().to(api::merchants::update_team_member_role),
@@ -572,8 +597,14 @@ async fn main() -> std::io::Result<()> {
                         "/preview-config",
                         web::get().to(api::checkout::get_checkout_preview_config),
                     )
-                    .route("/session", web::post().to(api::checkout::create_checkout_session))
-                    .route("/session/{id}", web::get().to(api::checkout::get_checkout_session))
+                    .route(
+                        "/session",
+                        web::post().to(api::checkout::create_checkout_session),
+                    )
+                    .route(
+                        "/session/{id}",
+                        web::get().to(api::checkout::get_checkout_session),
+                    )
                     .route(
                         "/session/{id}/pay",
                         web::post().to(api::checkout::pay_checkout_session),

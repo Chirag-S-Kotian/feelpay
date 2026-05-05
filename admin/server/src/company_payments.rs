@@ -1065,6 +1065,79 @@ struct ReadinessManualCheckRequest {
     notes: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct PayoutBatchRequest {
+    currency: String,
+}
+
+#[derive(Deserialize)]
+struct ProviderReportImportRequest {
+    provider_id: Option<Uuid>,
+    report_type: String,
+    file_name: String,
+    file_hash: String,
+    row_count: Option<i32>,
+}
+
+#[derive(Deserialize)]
+struct ProviderReportProcessRequest {
+    rows: Option<Vec<Value>>,
+}
+
+#[derive(Deserialize)]
+struct ParserConfigRequest {
+    provider_id: Option<Uuid>,
+    report_type: String,
+    column_mapping_json: Value,
+    date_format: Option<String>,
+    amount_format: Option<String>,
+    currency_column: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ComplianceControlPatchRequest {
+    status: Option<String>,
+    owner_admin_id: Option<Uuid>,
+    next_review_due_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct ComplianceEvidenceRequest {
+    file_reference: String,
+    file_name: String,
+    note: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CompliancePacketRequest {
+    period: String,
+}
+
+#[derive(Deserialize)]
+struct MetricSampleRequest {
+    metric_name: String,
+    labels_json: Option<Value>,
+    value: f64,
+}
+
+#[derive(Deserialize)]
+struct SloDefinitionRequest {
+    name: String,
+    target_percent: f64,
+    window_minutes: i32,
+    metric_query_key: String,
+}
+
+#[derive(Deserialize)]
+struct TraceLogRequest {
+    trace_id: String,
+    request_id: Option<String>,
+    span_name: String,
+    duration_ms: i32,
+    status: String,
+    error_message: Option<String>,
+}
+
 async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
     let summary = sqlx::query(
         r#"
@@ -6049,6 +6122,621 @@ async fn retry_payout_company(pool: web::Data<PgPool>, path: web::Path<Uuid>) ->
     }
 }
 
+async fn list_payout_batches_company(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM payout_batches_company ORDER BY created_at DESC LIMIT 200",
+        "Failed to load payout batches",
+    )
+    .await
+}
+
+async fn create_payout_batch_company(
+    pool: web::Data<PgPool>,
+    request: web::Json<PayoutBatchRequest>,
+) -> impl Responder {
+    let currency = request.currency.trim().to_uppercase();
+    let batch_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO payout_batches_company (currency, total_amount, item_count, status)
+        SELECT $1, COALESCE(SUM(amount), 0)::bigint, COUNT(*), 'queued'
+        FROM payouts_company
+        WHERE status IN ('scheduled','queued')
+          AND UPPER(currency) = $1
+        RETURNING id
+        "#,
+    )
+    .bind(&currency)
+    .fetch_optional(pool.get_ref())
+    .await;
+    match batch_id {
+        Ok(Some(id)) => {
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO payout_batch_items_company (batch_id, payout_id, business_account_id, amount, status)
+                SELECT $1, id, business_account_id, amount, 'queued'
+                FROM payouts_company
+                WHERE status IN ('scheduled','queued') AND UPPER(currency) = $2
+                "#,
+            )
+            .bind(id)
+            .bind(&currency)
+            .execute(pool.get_ref())
+            .await;
+            audit(
+                &pool,
+                "payout_batch.created",
+                "payout_batch",
+                Some(id),
+                json!({ "currency": currency }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "queued" }))
+        }
+        Ok(None) => {
+            HttpResponse::BadRequest().json(json!({ "message": "No eligible payouts for batch" }))
+        }
+        Err(e) => {
+            tracing::error!("Create payout batch failed: {}", e);
+            server_error("Failed to create payout batch")
+        }
+    }
+}
+
+async fn process_payout_batch_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let batch_id = path.into_inner();
+    let rows = sqlx::query(
+        "SELECT id, payout_id FROM payout_batch_items_company WHERE batch_id = $1 ORDER BY id",
+    )
+    .bind(batch_id)
+    .fetch_all(pool.get_ref())
+    .await;
+    match rows {
+        Ok(rows) => {
+            let mut processed = 0_i64;
+            let mut failed = 0_i64;
+            for row in rows {
+                let item_id: Uuid = row.get("id");
+                let payout_id: Option<Uuid> = row.try_get("payout_id").unwrap_or(None);
+                let result = if let Some(payout_id) = payout_id {
+                    sqlx::query(
+                        "UPDATE payouts_company SET status = 'processing', processed_at = NOW() WHERE id = $1 AND status IN ('scheduled','queued','retried')",
+                    )
+                    .bind(payout_id)
+                    .execute(pool.get_ref())
+                    .await
+                } else {
+                    Err(sqlx::Error::RowNotFound)
+                };
+                if result.is_ok() {
+                    processed += 1;
+                    let _ = sqlx::query(
+                        "UPDATE payout_batch_items_company SET status = 'processing' WHERE id = $1",
+                    )
+                    .bind(item_id)
+                    .execute(pool.get_ref())
+                    .await;
+                } else {
+                    failed += 1;
+                    let _ = sqlx::query("UPDATE payout_batch_items_company SET status = 'failed', error_message = 'payout not found' WHERE id = $1")
+                        .bind(item_id)
+                        .execute(pool.get_ref())
+                        .await;
+                }
+            }
+            let status = if failed == 0 {
+                "processing"
+            } else {
+                "partial_failed"
+            };
+            let _ = sqlx::query(
+                "UPDATE payout_batches_company SET status = $2, processed_at = NOW() WHERE id = $1",
+            )
+            .bind(batch_id)
+            .bind(status)
+            .execute(pool.get_ref())
+            .await;
+            audit(
+                &pool,
+                "payout_batch.processed",
+                "payout_batch",
+                Some(batch_id),
+                json!({ "processed": processed, "failed": failed }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": batch_id, "processed": processed, "failed": failed, "status": status }))
+        }
+        Err(e) => {
+            tracing::error!("Process payout batch failed: {}", e);
+            server_error("Failed to process payout batch")
+        }
+    }
+}
+
+async fn list_provider_report_imports(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM provider_report_imports ORDER BY created_at DESC LIMIT 200",
+        "Failed to load provider report imports",
+    )
+    .await
+}
+
+async fn upload_provider_report_import(
+    pool: web::Data<PgPool>,
+    request: web::Json<ProviderReportImportRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO provider_report_imports (provider_id, report_type, file_name, file_hash, status, row_count)
+        VALUES ($1, $2, $3, $4, 'uploaded', $5)
+        ON CONFLICT (file_hash) DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(request.provider_id)
+    .bind(request.report_type.trim())
+    .bind(request.file_name.trim())
+    .bind(request.file_hash.trim())
+    .bind(request.row_count.unwrap_or(0))
+    .fetch_optional(pool.get_ref())
+    .await;
+    match saved {
+        Ok(Some(id)) => {
+            audit(
+                &pool,
+                "provider_report.uploaded",
+                "provider_report_import",
+                Some(id),
+                json!({ "file_name": request.file_name, "report_type": request.report_type }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "uploaded" }))
+        }
+        Ok(None) => HttpResponse::Conflict()
+            .json(json!({ "message": "Duplicate file hash upload blocked" })),
+        Err(e) => {
+            tracing::error!("Upload provider report import failed: {}", e);
+            server_error("Failed to upload provider report import")
+        }
+    }
+}
+
+async fn list_provider_report_rows(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let import_id = path.into_inner();
+    let rows = sqlx::query(
+        "SELECT * FROM provider_report_rows WHERE import_id = $1 ORDER BY row_number ASC LIMIT 500",
+    )
+    .bind(import_id)
+    .fetch_all(pool.get_ref())
+    .await;
+    match rows {
+        Ok(rows) => HttpResponse::Ok()
+            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Err(e) => {
+            tracing::error!("Failed to load provider report rows: {}", e);
+            server_error("Failed to load provider report rows")
+        }
+    }
+}
+
+async fn process_provider_report_import(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<ProviderReportProcessRequest>,
+) -> impl Responder {
+    let import_id = path.into_inner();
+    let rows = body.rows.clone().unwrap_or_default();
+    let mut imported = 0_i32;
+    let mut errors = 0_i32;
+    for (index, row) in rows.iter().enumerate() {
+        let amount = row.get("amount").and_then(|v| v.as_i64());
+        let currency = row
+            .get("currency")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        if amount.is_none() || currency.is_none() {
+            errors += 1;
+            continue;
+        }
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO provider_report_rows (
+                import_id, row_number, external_id, external_type, amount, currency, fee_amount, net_amount,
+                settlement_reference, payout_reference, raw_row_redacted, match_status
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'unmatched')
+            "#,
+        )
+        .bind(import_id)
+        .bind((index + 1) as i32)
+        .bind(row.get("external_id").and_then(|v| v.as_str()))
+        .bind(row.get("external_type").and_then(|v| v.as_str()))
+        .bind(amount.unwrap_or_default())
+        .bind(currency.unwrap_or_else(|| "INR".to_string()))
+        .bind(row.get("fee_amount").and_then(|v| v.as_i64()))
+        .bind(row.get("net_amount").and_then(|v| v.as_i64()))
+        .bind(row.get("settlement_reference").and_then(|v| v.as_str()))
+        .bind(row.get("payout_reference").and_then(|v| v.as_str()))
+        .bind(redact_sensitive_value(row))
+        .execute(pool.get_ref())
+        .await;
+        imported += 1;
+    }
+    let _ = sqlx::query(
+        "UPDATE provider_report_imports SET status = 'processed', imported_count = $2, error_count = $3, processed_at = NOW() WHERE id = $1",
+    )
+    .bind(import_id)
+    .bind(imported)
+    .bind(errors)
+    .execute(pool.get_ref())
+    .await;
+    audit(
+        &pool,
+        "provider_report.processed",
+        "provider_report_import",
+        Some(import_id),
+        json!({ "imported_count": imported, "error_count": errors }),
+    )
+    .await;
+    HttpResponse::Ok()
+        .json(json!({ "id": import_id, "imported_count": imported, "error_count": errors }))
+}
+
+async fn list_report_parser_configs(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM report_parser_configs ORDER BY created_at DESC LIMIT 200",
+        "Failed to load parser configs",
+    )
+    .await
+}
+
+async fn upsert_report_parser_config(
+    pool: web::Data<PgPool>,
+    request: web::Json<ParserConfigRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO report_parser_configs (
+            provider_id, report_type, column_mapping_json, date_format, amount_format, currency_column, status
+        )
+        VALUES ($1,$2,$3::jsonb,$4,$5,$6,'active')
+        RETURNING id
+        "#,
+    )
+    .bind(request.provider_id)
+    .bind(request.report_type.trim())
+    .bind(request.column_mapping_json)
+    .bind(request.date_format)
+    .bind(request.amount_format)
+    .bind(request.currency_column)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({ "id": id })),
+        Err(e) => {
+            tracing::error!("Save parser config failed: {}", e);
+            server_error("Failed to save parser config")
+        }
+    }
+}
+
+async fn list_compliance_controls(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM compliance_controls ORDER BY category, code",
+        "Failed to load compliance controls",
+    )
+    .await
+}
+
+async fn patch_compliance_control(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<ComplianceControlPatchRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let request = request.into_inner();
+    let current = sqlx::query("SELECT * FROM compliance_controls WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    let Ok(Some(current)) = current else {
+        return HttpResponse::NotFound().json(json!({ "message": "Compliance control not found" }));
+    };
+    let status = request.status.unwrap_or_else(|| {
+        current
+            .try_get("status")
+            .unwrap_or_else(|_| "pending".to_string())
+    });
+    let owner = request
+        .owner_admin_id
+        .or_else(|| current.try_get("owner_admin_id").ok().flatten());
+    let due = request
+        .next_review_due_at
+        .or_else(|| current.try_get("next_review_due_at").ok().flatten());
+    match sqlx::query(
+        "UPDATE compliance_controls SET status = $2, owner_admin_id = $3, next_review_due_at = $4, last_reviewed_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(status)
+    .bind(owner)
+    .bind(due)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(_) => HttpResponse::Ok().json(json!({ "id": id })),
+        Err(e) => {
+            tracing::error!("Patch compliance control failed: {}", e);
+            server_error("Failed to update compliance control")
+        }
+    }
+}
+
+async fn list_compliance_evidence(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM compliance_evidence ORDER BY created_at DESC LIMIT 200",
+        "Failed to load compliance evidence",
+    )
+    .await
+}
+
+async fn upload_compliance_evidence(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<ComplianceEvidenceRequest>,
+) -> impl Responder {
+    let control_id = path.into_inner();
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO compliance_evidence (control_id, file_reference, file_name, note) VALUES ($1,$2,$3,$4) RETURNING id",
+    )
+    .bind(control_id)
+    .bind(request.file_reference.trim())
+    .bind(request.file_name.trim())
+    .bind(request.note)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "compliance_evidence.uploaded",
+                "compliance_control",
+                Some(control_id),
+                json!({ "evidence_id": id }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Err(e) => {
+            tracing::error!("Upload compliance evidence failed: {}", e);
+            server_error("Failed to upload compliance evidence")
+        }
+    }
+}
+
+async fn list_compliance_packet_exports(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM compliance_packet_exports ORDER BY created_at DESC LIMIT 100",
+        "Failed to load compliance packet exports",
+    )
+    .await
+}
+
+async fn create_compliance_packet_export(
+    pool: web::Data<PgPool>,
+    request: web::Json<CompliancePacketRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO compliance_packet_exports (period, status, file_reference, expires_at)
+        VALUES ($1, 'ready', $2, NOW() + INTERVAL '7 days')
+        RETURNING id
+        "#,
+    )
+    .bind(request.period.trim())
+    .bind(format!(
+        "compliance-packet-{}.zip",
+        request.period.replace(' ', "-")
+    ))
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "compliance_packet.exported",
+                "compliance_packet_export",
+                Some(id),
+                json!({ "period": request.period }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "ready" }))
+        }
+        Err(e) => {
+            tracing::error!("Create compliance packet failed: {}", e);
+            server_error("Failed to create compliance packet")
+        }
+    }
+}
+
+async fn list_metric_samples(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM metric_samples ORDER BY captured_at DESC LIMIT 500",
+        "Failed to load metric samples",
+    )
+    .await
+}
+
+async fn create_metric_sample(
+    pool: web::Data<PgPool>,
+    request: web::Json<MetricSampleRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO metric_samples (metric_name, labels_json, value) VALUES ($1, $2::jsonb, $3) RETURNING id",
+    )
+    .bind(request.metric_name.trim())
+    .bind(request.labels_json.unwrap_or_else(|| json!({})))
+    .bind(request.value)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({ "id": id })),
+        Err(e) => {
+            tracing::error!("Create metric sample failed: {}", e);
+            server_error("Failed to create metric sample")
+        }
+    }
+}
+
+async fn list_slo_definitions(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM slo_definitions ORDER BY created_at DESC",
+        "Failed to load SLO definitions",
+    )
+    .await
+}
+
+async fn upsert_slo_definition(
+    pool: web::Data<PgPool>,
+    request: web::Json<SloDefinitionRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO slo_definitions (name, target_percent, window_minutes, metric_query_key, status)
+        VALUES ($1, $2, $3, $4, 'active')
+        ON CONFLICT (name)
+        DO UPDATE SET target_percent = EXCLUDED.target_percent,
+                      window_minutes = EXCLUDED.window_minutes,
+                      metric_query_key = EXCLUDED.metric_query_key
+        RETURNING id
+        "#,
+    )
+    .bind(request.name.trim())
+    .bind(request.target_percent)
+    .bind(request.window_minutes)
+    .bind(request.metric_query_key.trim())
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({ "id": id })),
+        Err(e) => {
+            tracing::error!("Upsert SLO definition failed: {}", e);
+            server_error("Failed to save SLO definition")
+        }
+    }
+}
+
+async fn calculate_slo_snapshots(pool: web::Data<PgPool>) -> impl Responder {
+    let rows = sqlx::query(
+        "SELECT id, target_percent, metric_query_key FROM slo_definitions WHERE status = 'active'",
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+    match rows {
+        Ok(rows) => {
+            for row in rows {
+                let slo_id: Uuid = row.get("id");
+                let target: f64 = row.get("target_percent");
+                let key: String = row.get("metric_query_key");
+                let value = sqlx::query_scalar::<_, f64>(
+                    "SELECT COALESCE(AVG(value), 0) FROM metric_samples WHERE metric_name = $1 AND captured_at > NOW() - INTERVAL '1 day'",
+                )
+                .bind(&key)
+                .fetch_one(pool.get_ref())
+                .await
+                .unwrap_or(0.0);
+                let status = if value >= target { "pass" } else { "warning" };
+                let budget = (target - value).max(0.0);
+                let _ = sqlx::query(
+                    "INSERT INTO slo_snapshots (slo_id, current_percent, error_budget_remaining, status) VALUES ($1,$2,$3,$4)",
+                )
+                .bind(slo_id)
+                .bind(value)
+                .bind(budget)
+                .bind(status)
+                .execute(pool.get_ref())
+                .await;
+                if status == "warning" {
+                    let _ = create_admin_notification(
+                        &pool,
+                        "warning",
+                        "slo_breach",
+                        &format!("SLO breach: {}", key),
+                        "slo_definition",
+                        Some(slo_id),
+                    )
+                    .await;
+                }
+            }
+            HttpResponse::Ok().json(json!({ "status": "snapshots_refreshed" }))
+        }
+        Err(e) => {
+            tracing::error!("Calculate SLO snapshots failed: {}", e);
+            server_error("Failed to calculate SLO snapshots")
+        }
+    }
+}
+
+async fn list_slo_snapshots(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT ss.*, sd.name AS slo_name FROM slo_snapshots ss JOIN slo_definitions sd ON sd.id = ss.slo_id ORDER BY ss.captured_at DESC LIMIT 300",
+        "Failed to load SLO snapshots",
+    )
+    .await
+}
+
+async fn list_trace_logs(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM trace_logs ORDER BY created_at DESC LIMIT 500",
+        "Failed to load trace logs",
+    )
+    .await
+}
+
+async fn create_trace_log(
+    pool: web::Data<PgPool>,
+    request: web::Json<TraceLogRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO trace_logs (trace_id, request_id, span_name, duration_ms, status, error_message) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
+    )
+    .bind(request.trace_id.trim())
+    .bind(request.request_id)
+    .bind(request.span_name.trim())
+    .bind(request.duration_ms)
+    .bind(request.status.trim())
+    .bind(request.error_message)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => HttpResponse::Ok().json(json!({ "id": id })),
+        Err(e) => {
+            tracing::error!("Create trace log failed: {}", e);
+            server_error("Failed to create trace log")
+        }
+    }
+}
+
 async fn list_reserves_company(pool: web::Data<PgPool>) -> impl Responder {
     query_items(
         pool,
@@ -7341,6 +8029,18 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(retry_payout_company),
         )
         .route(
+            &format!("{prefix}/money-movement/payout-batches"),
+            web::get().to(list_payout_batches_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payout-batches"),
+            web::post().to(create_payout_batch_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payout-batches/{{id}}/process"),
+            web::post().to(process_payout_batch_company),
+        )
+        .route(
             &format!("{prefix}/money-movement/reserves"),
             web::get().to(list_reserves_company),
         )
@@ -7546,6 +8246,30 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/reconciliation/export-finance-summary"),
             web::get().to(export_reconciliation_finance_summary),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/provider-imports"),
+            web::get().to(list_provider_report_imports),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/provider-imports"),
+            web::post().to(upload_provider_report_import),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/provider-imports/{{id}}/rows"),
+            web::get().to(list_provider_report_rows),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/provider-imports/{{id}}/process"),
+            web::post().to(process_provider_report_import),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/parser-configs"),
+            web::get().to(list_report_parser_configs),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/parser-configs"),
+            web::post().to(upsert_report_parser_config),
         )
         .route(&format!("{prefix}/disputes"), web::get().to(list_disputes))
         .route(
@@ -7758,6 +8482,30 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(mark_compliance_task_complete),
         )
         .route(
+            &format!("{prefix}/compliance/controls"),
+            web::get().to(list_compliance_controls),
+        )
+        .route(
+            &format!("{prefix}/compliance/controls/{{id}}"),
+            web::patch().to(patch_compliance_control),
+        )
+        .route(
+            &format!("{prefix}/compliance/evidence"),
+            web::get().to(list_compliance_evidence),
+        )
+        .route(
+            &format!("{prefix}/compliance/controls/{{id}}/evidence"),
+            web::post().to(upload_compliance_evidence),
+        )
+        .route(
+            &format!("{prefix}/compliance/packet-exports"),
+            web::get().to(list_compliance_packet_exports),
+        )
+        .route(
+            &format!("{prefix}/compliance/packet-exports"),
+            web::post().to(create_compliance_packet_export),
+        )
+        .route(
             &format!("{prefix}/readiness-scorecard"),
             web::get().to(readiness_scorecard),
         )
@@ -7772,6 +8520,38 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/readiness-scorecard/{{id}}/manual-check"),
             web::post().to(readiness_mark_manual_check),
+        )
+        .route(
+            &format!("{prefix}/system-health/metrics"),
+            web::get().to(list_metric_samples),
+        )
+        .route(
+            &format!("{prefix}/system-health/metrics"),
+            web::post().to(create_metric_sample),
+        )
+        .route(
+            &format!("{prefix}/system-health/slos"),
+            web::get().to(list_slo_definitions),
+        )
+        .route(
+            &format!("{prefix}/system-health/slos"),
+            web::post().to(upsert_slo_definition),
+        )
+        .route(
+            &format!("{prefix}/system-health/slos/refresh"),
+            web::post().to(calculate_slo_snapshots),
+        )
+        .route(
+            &format!("{prefix}/system-health/slo-snapshots"),
+            web::get().to(list_slo_snapshots),
+        )
+        .route(
+            &format!("{prefix}/system-health/traces"),
+            web::get().to(list_trace_logs),
+        )
+        .route(
+            &format!("{prefix}/system-health/traces"),
+            web::post().to(create_trace_log),
         );
 }
 

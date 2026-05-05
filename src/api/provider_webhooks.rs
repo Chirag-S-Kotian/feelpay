@@ -6,6 +6,7 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 use std::collections::HashMap;
 
+use crate::api::checkout::update_checkout_from_provider_event;
 use crate::engine::connectors::{create_connector, credential_loader, redaction::redact_metadata};
 use crate::error::FeelPayError;
 use crate::state::AppState;
@@ -83,6 +84,13 @@ async fn handle_provider_webhook(
         &serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default(),
     ))
     .execute(&state.db)
+    .await;
+
+    let _ = update_checkout_from_provider_event(
+        state.get_ref(),
+        event.provider_reference.as_deref(),
+        &event.status.to_string(),
+    )
     .await;
 
     // Return acknowledgment

@@ -544,14 +544,15 @@ export function MoneyMovementPage() {
   const reversals = useRows(`${API}/money-movement/reversals`);
   const payouts = useRows(`${API}/money-movement/payouts`);
   const reserves = useRows(`${API}/money-movement/reserves`);
+  const payoutBatches = useRows(`${API}/money-movement/payout-batches`);
   const [tab, setTab] = useState('Dashboard');
   const helpers = useDrawerConfirm();
   const [splitForm, setSplitForm] = useState({ name: '', business_account_id: '', rule_type: 'percent', company_fee_percent: '2', company_fee_fixed: '0', tax_percent: '18', reserve_percent: '5', settlement_delay_days: '2' });
   const [simForm, setSimForm] = useState({ business_account_id: '', gross_amount: 10000, provider_fee_amount: 200, company_fee_percent: 2, company_fee_fixed: 0, tax_percent: 18, reserve_percent: 5 });
   const [simResult, setSimResult] = useState<GenericRecord | null>(null);
-  const state = [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state].includes('error') ? 'error' : [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state].includes('loading') ? 'loading' : 'ready';
-  const error = dashboard.error || splitRules.error || transfers.error || reversals.error || payouts.error || reserves.error;
-  const load = () => void Promise.all([dashboard.load(), splitRules.load(), transfers.load(), reversals.load(), payouts.load(), reserves.load()]);
+  const state = [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state, payoutBatches.state].includes('error') ? 'error' : [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state, payoutBatches.state].includes('loading') ? 'loading' : 'ready';
+  const error = dashboard.error || splitRules.error || transfers.error || reversals.error || payouts.error || reserves.error || payoutBatches.error;
+  const load = () => void Promise.all([dashboard.load(), splitRules.load(), transfers.load(), reversals.load(), payouts.load(), reserves.load(), payoutBatches.load()]);
   const createSplitRule = (event: FormEvent) => {
     event.preventDefault();
     helpers.setConfirm({
@@ -580,7 +581,7 @@ export function MoneyMovementPage() {
   return (
     <CrudPage title="Money Movement" subtitle="Split rules, transfers, reversals, payouts, and reserves" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['Dashboard', 'Split Rules', 'Transfers', 'Reversals', 'Payouts', 'Reserves'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Dashboard', 'Payout Queue', 'Transfer Queue', 'Reversals', 'Reserve Releases', 'Payout Batches', 'Failed Payouts', 'Split Rules'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       {tab === 'Dashboard' && (
         <div className="stats-grid">
@@ -628,10 +629,12 @@ export function MoneyMovementPage() {
           <DataTable rows={splitRules.rows} columns={['id', 'name', 'business_account_id', 'rule_type', 'company_fee_percent', 'company_fee_fixed', 'tax_percent', 'reserve_percent', 'settlement_delay_days', 'status', 'priority', 'created_at']} empty="No split rules yet" />
         </>
       )}
-      {tab === 'Transfers' && <DataTable rows={transfers.rows} columns={['id', 'payment_split_id', 'provider_id', 'provider_transfer_id', 'business_account_id', 'amount', 'currency', 'status', 'failure_reason', 'created_at']} empty="No transfers yet" onView={row => helpers.setDrawer({ title: 'Transfer', body: row })} />}
+      {tab === 'Transfer Queue' && <DataTable rows={transfers.rows} columns={['id', 'payment_split_id', 'provider_id', 'provider_transfer_id', 'business_account_id', 'amount', 'currency', 'status', 'failure_reason', 'created_at']} empty="No transfers yet" onView={row => helpers.setDrawer({ title: 'Transfer', body: row })} />}
       {tab === 'Reversals' && <DataTable rows={reversals.rows} columns={['id', 'transfer_id', 'provider_reversal_id', 'reason', 'amount', 'currency', 'status', 'created_at']} empty="No reversals yet" onView={row => helpers.setDrawer({ title: 'Transfer reversal', body: row })} />}
-      {tab === 'Payouts' && <DataTable rows={payouts.rows} columns={['id', 'business_account_id', 'provider_id', 'bank_account_id', 'amount', 'currency', 'status', 'scheduled_at', 'processed_at', 'provider_payout_id', 'failure_reason', 'created_at']} empty="No payouts yet" renderActions={row => <ActionButtons actions={['Retry failed payout', 'View detail']} onClick={action => action === 'Retry failed payout' ? helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Payout', body: row })} />} />}
-      {tab === 'Reserves' && <DataTable rows={reserves.rows} columns={['id', 'business_account_id', 'currency', 'reserve_type', 'amount', 'release_at', 'status', 'created_at']} empty="No reserves yet" onView={row => helpers.setDrawer({ title: 'Reserve', body: row })} />}
+      {tab === 'Payout Queue' && <DataTable rows={payouts.rows} columns={['id', 'business_account_id', 'provider_id', 'bank_account_id', 'amount', 'currency', 'status', 'scheduled_at', 'processed_at', 'provider_payout_id', 'failure_reason', 'created_at']} empty="No payouts yet" renderActions={row => <ActionButtons actions={['Retry failed payout', 'View ledger impact', 'View detail']} onClick={action => action === 'Retry failed payout' ? helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Payout', body: row })} />} />}
+      {tab === 'Reserve Releases' && <DataTable rows={reserves.rows} columns={['id', 'business_account_id', 'currency', 'reserve_type', 'amount', 'release_at', 'status', 'created_at']} empty="No reserves yet" onView={row => helpers.setDrawer({ title: 'Reserve', body: row })} />}
+      {tab === 'Payout Batches' && <DataTable rows={payoutBatches.rows} columns={['id', 'currency', 'total_amount', 'item_count', 'status', 'created_at', 'processed_at']} empty="No payout batches yet" renderActions={row => <ActionButtons actions={['Process batch', 'View detail']} onClick={action => action === 'Process batch' ? helpers.run('Batch processing started.', () => apiRequest('POST', `${API}/money-movement/payout-batches/${String(row.id || '')}/process`)).then(load) : helpers.setDrawer({ title: 'Payout batch', body: row })} />} />}
+      {tab === 'Failed Payouts' && <DataTable rows={payouts.rows.filter(row => String(row.status) === 'failed')} columns={['id', 'business_account_id', 'amount', 'currency', 'failure_reason', 'scheduled_at', 'processed_at']} empty="No failed payouts" renderActions={row => <ActionButtons actions={['Retry failed payout', 'View detail']} onClick={action => action === 'Retry failed payout' ? helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Failed payout', body: row })} />} />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -810,6 +813,8 @@ export function ReconciliationPage() {
   const [tab, setTab] = useState('Overview');
   const [rows, setRows] = useState<GenericRecord[]>([]);
   const [queue, setQueue] = useState<GenericRecord[]>([]);
+  const providerImports = useRows(`${API}/reconciliation/provider-imports`);
+  const parserConfigs = useRows(`${API}/reconciliation/parser-configs`);
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
@@ -874,7 +879,7 @@ export function ReconciliationPage() {
         <Metric label="Tax variance" value={money(taxVariance)} icon={Landmark} />
       </div>
       <div className="button-row">
-        {['Overview', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Overview', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports', 'Provider Imports', 'Parser Configs'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="button-row">
         {['Upload provider report', 'Upload bank statement', 'Upload payout report', 'Upload fee report', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
@@ -885,6 +890,8 @@ export function ReconciliationPage() {
       {tab === 'Mismatches' && <DataTable rows={queue.filter(row => String(row.match_status).includes('mismatch') || row.mismatch_reason)} columns={['id', 'external_reference', 'amount', 'currency', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty="No mismatches" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
       {tab === 'Resolved' && <DataTable rows={queue.filter(row => row.resolution_status === 'resolved')} columns={['id', 'external_reference', 'matched_entity_type', 'matched_entity_id', 'resolution_status', 'resolution_note', 'resolved_at']} empty="No resolved records" />}
       {tab === 'Reports' && <DataTable rows={rows} columns={['file_name', 'source', 'amount_variance', 'matched_count', 'mismatch_count', 'duplicate_count', 'created_at']} empty="No reconciliation reports" />}
+      {tab === 'Provider Imports' && <DataTable rows={providerImports.rows} columns={['id', 'provider_id', 'report_type', 'file_name', 'file_hash', 'status', 'row_count', 'imported_count', 'skipped_count', 'error_count', 'created_at', 'processed_at']} empty="No provider imports yet" renderActions={row => <ActionButtons actions={['View detail']} onClick={() => helpers.setDrawer({ title: 'Provider import', body: row })} />} />}
+      {tab === 'Parser Configs' && <DataTable rows={parserConfigs.rows} columns={['id', 'provider_id', 'report_type', 'column_mapping_json', 'date_format', 'amount_format', 'currency_column', 'status', 'created_at']} empty="No parser configs yet" onView={row => helpers.setDrawer({ title: 'Parser config', body: row })} />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -1429,23 +1436,37 @@ export function SystemHealthPage() {
   const health = useRows('/admin/system-health');
   const jobs = useRows('/admin/system-health/jobs');
   const providers = useRows('/admin/system-health/providers');
+  const metrics = useRows(`${API}/system-health/metrics`);
+  const slos = useRows(`${API}/system-health/slos`);
+  const snapshots = useRows(`${API}/system-health/slo-snapshots`);
+  const traces = useRows(`${API}/system-health/traces`);
+  const incidents = useRows('/admin/notifications');
+  const [tab, setTab] = useState('Overview');
   const helpers = useDrawerConfirm();
-  const state = health.state === 'error' || jobs.state === 'error' || providers.state === 'error' ? 'error' : health.state === 'loading' || jobs.state === 'loading' || providers.state === 'loading' ? 'loading' : 'ready';
-  const error = health.error || jobs.error || providers.error;
-  const load = () => void Promise.all([health.load(), jobs.load(), providers.load()]);
+  const state = [health.state, jobs.state, providers.state, metrics.state, slos.state, snapshots.state, traces.state, incidents.state].includes('error') ? 'error' : [health.state, jobs.state, providers.state, metrics.state, slos.state, snapshots.state, traces.state, incidents.state].includes('loading') ? 'loading' : 'ready';
+  const error = health.error || jobs.error || providers.error || metrics.error || slos.error || snapshots.error || traces.error || incidents.error;
+  const load = () => void Promise.all([health.load(), jobs.load(), providers.load(), metrics.load(), slos.load(), snapshots.load(), traces.load(), incidents.load()]);
   const retryJob = (row: GenericRecord) => {
     helpers.setConfirm({ title: 'Retry failed job', body: 'Background job retry will be audit logged.', action: () => helpers.run('Job retry queued.', () => apiRequest('POST', `/admin/system-health/jobs/${String(row.id || '')}/retry`)).then(load) });
   };
   return (
     <CrudPage title="System Health" subtitle="Internal health for company payment operations" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="button-row">
+        {['Overview', 'Providers', 'Jobs', 'Queues', 'SLOs', 'Incidents', 'Traces'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
       <div className="stats-grid">
         {['API status', 'Database status', 'Queue status', 'Webhook worker status', 'Settlement sync status', 'Reconciliation job status', 'Provider health', 'Failed background jobs'].map(component => {
           const row = health.rows.find(item => String(item.component) === component);
           return <Metric key={component} label={component} value={String(row?.status || 'unknown')} icon={Activity} />;
         })}
       </div>
-      <TablePanel title="Provider Health" rows={providers.rows} columns={['provider', 'environment', 'health', 'success_rate', 'attempt_count', 'last_check', 'latency_ms', 'error_message']} />
-      <DataTable rows={jobs.rows} columns={['job_name', 'status', 'last_run_at', 'next_run_at', 'failure_count', 'last_error']} empty="No background jobs found" renderActions={row => <ActionButtons actions={['Retry failed job', 'View logs', 'Mark incident resolved']} onClick={action => action === 'Retry failed job' ? retryJob(row) : helpers.setDrawer({ title: action, body: row })} />} />
+      {tab === 'Overview' && <DataTable rows={snapshots.rows} columns={['slo_name', 'current_percent', 'error_budget_remaining', 'status', 'captured_at']} empty="No SLO snapshots" />}
+      {tab === 'Providers' && <TablePanel title="Provider Health" rows={providers.rows} columns={['provider', 'environment', 'health', 'success_rate', 'attempt_count', 'last_check', 'latency_ms', 'error_message']} />}
+      {tab === 'Jobs' && <DataTable rows={jobs.rows} columns={['job_name', 'status', 'last_run_at', 'next_run_at', 'failure_count', 'last_error']} empty="No background jobs found" renderActions={row => <ActionButtons actions={['Retry failed job', 'View logs', 'Mark incident resolved']} onClick={action => action === 'Retry failed job' ? retryJob(row) : helpers.setDrawer({ title: action, body: row })} />} />}
+      {tab === 'Queues' && <DataTable rows={metrics.rows.filter(row => String(row.metric_name).includes('queue'))} columns={['metric_name', 'labels_json', 'value', 'captured_at']} empty="No queue metrics" />}
+      {tab === 'SLOs' && <DataTable rows={slos.rows} columns={['name', 'target_percent', 'window_minutes', 'metric_query_key', 'status', 'created_at']} empty="No SLO definitions" renderActions={row => <ActionButtons actions={['Acknowledge SLO breach', 'View detail']} onClick={action => action === 'Acknowledge SLO breach' ? helpers.run('SLO breach acknowledged.', () => apiRequest('POST', `${API}/system-health/slos/refresh`)).then(load) : helpers.setDrawer({ title: 'SLO', body: row })} />} />}
+      {tab === 'Incidents' && <DataTable rows={incidents.rows.filter(row => row.incident_id || row.severity === 'critical')} columns={['id', 'title', 'severity', 'status', 'incident_id', 'sla_due_at', 'created_at']} empty="No incidents" onView={row => helpers.setDrawer({ title: 'Incident/alert', body: row })} />}
+      {tab === 'Traces' && <DataTable rows={traces.rows} columns={['trace_id', 'request_id', 'span_name', 'duration_ms', 'status', 'error_message', 'created_at']} empty="No traces" onView={row => helpers.setDrawer({ title: 'Trace', body: row })} />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -1768,6 +1789,9 @@ export function ComplianceCenterPage() {
   const securityEvents = useRows(`${API}/compliance/security-events`);
   const reviews = useRows(`${API}/compliance/access-reviews`);
   const tasks = useRows(`${API}/compliance/tasks`);
+  const controls = useRows(`${API}/compliance/controls`);
+  const evidence = useRows(`${API}/compliance/evidence`);
+  const packets = useRows(`${API}/compliance/packet-exports`);
   const helpers = useDrawerConfirm();
   const relatedError = securityEvents.error || reviews.error || tasks.error;
   const load = async () => {
@@ -1775,7 +1799,7 @@ export function ComplianceCenterPage() {
     setError('');
     try {
       const data = await apiRequest<GenericRecord>('GET', `${API}/compliance/overview`);
-      await Promise.all([securityEvents.load(), reviews.load(), tasks.load()]);
+      await Promise.all([securityEvents.load(), reviews.load(), tasks.load(), controls.load(), evidence.load(), packets.load()]);
       setOverview(data);
       setState('ready');
     } catch (err) {
@@ -1825,7 +1849,7 @@ export function ComplianceCenterPage() {
         <Metric label="Credential rotation due" value={String(overview.credential_rotation_due || 0)} icon={RefreshCw} />
       </div>
       <div className="button-row">
-        {['Overview', 'Access Review', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation', 'Compliance Tasks'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Overview', 'Controls', 'Evidence', 'Access Reviews', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation', 'Compliance Packet', 'Compliance Tasks'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="button-row">
         <button type="button" onClick={startReview}>Start access review</button>
@@ -1836,11 +1860,14 @@ export function ComplianceCenterPage() {
         <button type="button" onClick={() => action('Create compliance task', `${API}/compliance/tasks`)}>Create compliance task</button>
       </div>
       {tab === 'Overview' && <DataTable rows={readinessRows} columns={['check', 'status']} empty="No compliance readiness checks" />}
-      {tab === 'Access Review' && <DataTable rows={reviews.rows} columns={['id', 'review_period', 'status', 'started_by_admin_id', 'completed_by_admin_id', 'started_at', 'completed_at']} empty={{ title: 'No access reviews', body: 'Start an access review to verify least-privilege company admin access.' }} renderActions={row => <ActionButtons actions={['Complete access review', 'View detail']} onClick={label => label === 'Complete access review' ? completeReview(row) : helpers.setDrawer({ title: 'Access review', body: row })} />} />}
+      {tab === 'Controls' && <DataTable rows={controls.rows} columns={['code', 'title', 'category', 'status', 'owner_admin_id', 'evidence_required', 'last_reviewed_at', 'next_review_due_at']} empty="No compliance controls" renderActions={row => <ActionButtons actions={['Mark control reviewed', 'Assign control owner', 'View detail']} onClick={label => label === 'Mark control reviewed' ? helpers.run('Control reviewed.', () => apiRequest('PATCH', `${API}/compliance/controls/${String(row.id || '')}`, { status: 'pass' })).then(load) : label === 'Assign control owner' ? helpers.run('Owner assigned.', () => apiRequest('PATCH', `${API}/compliance/controls/${String(row.id || '')}`, { owner_admin_id: null })).then(load) : helpers.setDrawer({ title: 'Compliance control', body: row })} />} />}
+      {tab === 'Evidence' && <DataTable rows={evidence.rows} columns={['id', 'control_id', 'file_name', 'file_reference', 'uploaded_by_admin_id', 'note', 'created_at']} empty="No compliance evidence yet" onView={row => helpers.setDrawer({ title: 'Evidence', body: row })} />}
+      {tab === 'Access Reviews' && <DataTable rows={reviews.rows} columns={['id', 'review_period', 'status', 'scope', 'due_at', 'reviewer_admin_id', 'started_by_admin_id', 'completed_by_admin_id', 'started_at', 'completed_at']} empty={{ title: 'No access reviews', body: 'Start an access review to verify least-privilege company admin access.' }} renderActions={row => <ActionButtons actions={['Complete access review', 'View detail']} onClick={label => label === 'Complete access review' ? completeReview(row) : helpers.setDrawer({ title: 'Access review', body: row })} />} />}
       {tab === 'Security Events' && <DataTable rows={securityEvents.rows} columns={['id', 'event_type', 'severity', 'actor_admin_id', 'entity_type', 'entity_id', 'ip_address', 'summary', 'created_at']} empty={{ title: 'No security events', body: 'Security events appear here when sensitive access, export, or credential actions occur.' }} onView={row => helpers.setDrawer({ title: 'Security event', body: row })} />}
       {tab === 'Data Retention' && <DataTable rows={retentionRows} columns={['policy', 'status']} empty="No data retention policies" />}
       {tab === 'Audit Export' && <DataTable rows={[{ id: 'audit', export_type: 'Audit logs', masking: 'masked', status: 'available' }, { id: 'security', export_type: 'Security events', masking: 'masked', status: 'available' }]} columns={['export_type', 'masking', 'status']} empty="No exports" />}
       {tab === 'Credential Rotation' && <DataTable rows={rotationRows} columns={['item', 'count', 'status']} empty="No credential rotation tasks" />}
+      {tab === 'Compliance Packet' && <DataTable rows={packets.rows} columns={['id', 'period', 'status', 'file_reference', 'created_at', 'expires_at']} empty="No compliance packet exports yet" renderActions={row => <ActionButtons actions={['Export compliance packet', 'View detail']} onClick={label => label === 'Export compliance packet' ? helpers.run('Compliance packet queued.', () => apiRequest('POST', `${API}/compliance/packet-exports`, { period: 'Q2-2026' })).then(load) : helpers.setDrawer({ title: 'Compliance packet', body: row })} />} />}
       {tab === 'Compliance Tasks' && <DataTable rows={tasks.rows} columns={['id', 'title', 'category', 'status', 'owner_admin_id', 'due_at', 'completed_at', 'created_at']} empty={{ title: 'No compliance tasks yet', body: 'Create tasks for access review, retention, exports, and credential rotation follow-up.' }} renderActions={row => <ActionButtons actions={['Mark task complete', 'View detail']} onClick={label => label === 'Mark task complete' ? action('Mark compliance task complete', `${API}/compliance/tasks/${String(row.id || '')}/complete`) : helpers.setDrawer({ title: 'Compliance task', body: row })} />} />}
       <Modals helpers={helpers} />
     </CrudPage>

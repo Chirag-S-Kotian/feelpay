@@ -1,8 +1,12 @@
 use actix_web::{http::header, web, HttpMessage, HttpRequest, HttpResponse};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL, Engine};
 use chrono::{DateTime, Utc};
+use hmac::{Hmac, Mac};
 use lazy_static::lazy_static;
 use redis::Commands;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::Sha256;
+use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -26,7 +30,88 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/session/{id}/pay", web::post().to(pay_checkout_session))
             .route("/session/{id}/status", web::get().to(get_payment_status))
             .route("/embed.js", web::get().to(get_embed_script)),
+    )
+    .service(
+        web::scope("/pay")
+            .route("/{token}", web::get().to(get_public_checkout_link))
+            .route(
+                "/{token}/session",
+                web::post().to(create_public_checkout_session),
+            )
+            .route(
+                "/session/{id}/status",
+                web::get().to(get_public_checkout_session_status),
+            ),
     );
+}
+
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct SignedCheckoutToken {
+    link_id: Uuid,
+    exp: i64,
+    sig: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PublicCheckoutSessionRequest {
+    pub selected_payment_method: Option<String>,
+}
+
+fn checkout_signing_secret(state: &AppState) -> String {
+    std::env::var("CHECKOUT_LINK_SIGNING_SECRET")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| state.config.webhook_signing_secret.clone())
+}
+
+fn make_checkout_signature(secret: &str, link_id: Uuid, exp: i64) -> Result<String, FeelPayError> {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| FeelPayError::Internal("Invalid checkout signing key".into()))?;
+    mac.update(format!("{}:{}", link_id, exp).as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+fn decode_checkout_token(token: &str) -> Result<SignedCheckoutToken, FeelPayError> {
+    let bytes = BASE64_URL
+        .decode(token)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid checkout token".into()))?;
+    serde_json::from_slice::<SignedCheckoutToken>(&bytes)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid checkout token payload".into()))
+}
+
+fn verify_checkout_token(
+    state: &AppState,
+    token: &str,
+) -> Result<SignedCheckoutToken, FeelPayError> {
+    let parsed = decode_checkout_token(token)?;
+    if parsed.exp <= Utc::now().timestamp() {
+        return Err(FeelPayError::Unauthorized("Checkout link expired".into()));
+    }
+    let secret = checkout_signing_secret(state);
+    let expected = make_checkout_signature(&secret, parsed.link_id, parsed.exp)?;
+    if expected != parsed.sig {
+        return Err(FeelPayError::Unauthorized(
+            "Invalid checkout token signature".into(),
+        ));
+    }
+    Ok(parsed)
+}
+
+fn sign_receipt_token(
+    state: &AppState,
+    receipt_id: Uuid,
+    exp: i64,
+) -> Result<String, FeelPayError> {
+    let secret = checkout_signing_secret(state);
+    let sig = make_checkout_signature(&secret, receipt_id, exp)?;
+    let payload = serde_json::json!({
+        "receipt_id": receipt_id,
+        "exp": exp,
+        "sig": sig,
+    });
+    Ok(BASE64_URL.encode(payload.to_string()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,12 +257,11 @@ pub async fn get_checkout_preview_config(
         }
     }
 
-    let merchant: Option<(String, Option<String>)> = sqlx::query_as(
-        "SELECT name, business_name FROM merchants WHERE id = $1",
-    )
-    .bind(merchant_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let merchant: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT name, business_name FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let methods: Vec<serde_json::Value> = sqlx::query_scalar(
         r#"
@@ -196,7 +280,8 @@ pub async fn get_checkout_preview_config(
     .await
     .unwrap_or_default();
 
-    let (merchant_name, business_name) = merchant.unwrap_or_else(|| ("FeelPay Merchant".into(), None));
+    let (merchant_name, business_name) =
+        merchant.unwrap_or_else(|| ("FeelPay Merchant".into(), None));
     let payload = serde_json::json!({
         "merchant": {
             "id": merchant_id,
@@ -269,18 +354,21 @@ pub async fn create_checkout_session(
         store_checkout_session_fallback(&session_id, session_data.clone(), expires_at);
     }
 
-    let tenant_row: Option<(Option<String>, Option<serde_json::Value>, Option<serde_json::Value>)> =
-        sqlx::query_as(
-            r#"
+    let tenant_row: Option<(
+        Option<String>,
+        Option<serde_json::Value>,
+        Option<serde_json::Value>,
+    )> = sqlx::query_as(
+        r#"
             SELECT t.domain, t.branding, t.config
             FROM merchants m
             LEFT JOIN tenants t ON t.id = m.tenant_id
             WHERE m.id = $1
             "#,
-        )
-        .bind(body.merchant_id)
-        .fetch_optional(&state.db)
-        .await?;
+    )
+    .bind(body.merchant_id)
+    .fetch_optional(&state.db)
+    .await?;
 
     let default_base = state
         .config
@@ -444,7 +532,10 @@ pub async fn pay_checkout_session(
         .await?;
     let payment_status = response.status.clone();
     let checkout_status = checkout_session_status(&payment_status);
-    let authorized_at = if matches!(payment_status, PaymentStatus::Authorized | PaymentStatus::Captured) {
+    let authorized_at = if matches!(
+        payment_status,
+        PaymentStatus::Authorized | PaymentStatus::Captured
+    ) {
         Some(now)
     } else {
         None
@@ -459,7 +550,11 @@ pub async fn pay_checkout_session(
     let error_message = response.error_message;
     let error_code = response.error_code;
     let redirect_url = response.redirect_url;
-    let mode_badge = if state.config.is_live() { "LIVE" } else { "TEST" };
+    let mode_badge = if state.config.is_live() {
+        "LIVE"
+    } else {
+        "TEST"
+    };
 
     sqlx::query(
         r#"
@@ -687,6 +782,348 @@ pub async fn get_embed_script() -> Result<HttpResponse, FeelPayError> {
         .body(script))
 }
 
+pub async fn get_public_checkout_link(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, FeelPayError> {
+    let token = path.into_inner();
+    let parsed = verify_checkout_token(&state, &token)?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT pl.id, pl.amount, pl.currency, pl.description, pl.status, pl.expires_at,
+               ba.display_name AS business_account_name,
+               wl.brand_name, wl.checkout_logo_url, wl.checkout_theme_color,
+               wl.terms_url, wl.privacy_url, wl.refund_policy_url
+        FROM payment_links_company pl
+        LEFT JOIN business_accounts_company ba ON ba.id = pl.business_account_id
+        LEFT JOIN white_label_configs wl ON TRUE
+        WHERE pl.id = $1
+        "#,
+    )
+    .bind(parsed.link_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let row = row.ok_or_else(|| FeelPayError::NotFound("Payment link not found".into()))?;
+    let status: String = row.get("status");
+    if status != "active" {
+        return Err(FeelPayError::BadRequest("Payment link not active".into()));
+    }
+    let link_exp: Option<DateTime<Utc>> = row.try_get("expires_at").unwrap_or(None);
+    if link_exp.map(|v| v <= Utc::now()).unwrap_or(false) {
+        return Err(FeelPayError::BadRequest("Payment link expired".into()));
+    }
+
+    let methods = sqlx::query(
+        r#"
+        SELECT capability, enabled, status
+        FROM payment_provider_capabilities
+        WHERE enabled = true AND status = 'active'
+        ORDER BY capability ASC
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default()
+    .iter()
+    .map(|r| serde_json::json!({
+        "capability": r.try_get::<String,_>("capability").unwrap_or_else(|_| "payments".to_string()),
+    }))
+    .collect::<Vec<_>>();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "token": token,
+        "link_id": parsed.link_id,
+        "amount": row.try_get::<i64,_>("amount").unwrap_or(0),
+        "currency": row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
+        "description": row.try_get::<Option<String>,_>("description").unwrap_or(None),
+        "business_account_name": row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
+        "brand_name": row.try_get::<Option<String>,_>("brand_name").unwrap_or(Some("FeelPay".to_string())),
+        "logo_url": row.try_get::<Option<String>,_>("checkout_logo_url").unwrap_or(None),
+        "theme_color": row.try_get::<Option<String>,_>("checkout_theme_color").unwrap_or(None),
+        "terms_url": row.try_get::<Option<String>,_>("terms_url").unwrap_or(None),
+        "privacy_url": row.try_get::<Option<String>,_>("privacy_url").unwrap_or(None),
+        "refund_policy_url": row.try_get::<Option<String>,_>("refund_policy_url").unwrap_or(None),
+        "payment_methods": methods,
+        "status": "pending"
+    })))
+}
+
+pub async fn create_public_checkout_session(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<PublicCheckoutSessionRequest>,
+) -> Result<HttpResponse, FeelPayError> {
+    let token = path.into_inner();
+    let parsed = verify_checkout_token(&state, &token)?;
+
+    // Rate limit: max 10 sessions/min per link token
+    if let Ok(mut conn) = state.redis.get_connection() {
+        let key = format!("public_checkout_rate:{}", parsed.link_id);
+        let count: i64 = redis::cmd("INCR").arg(&key).query(&mut conn).unwrap_or(1);
+        let _: Result<(), _> = redis::cmd("EXPIRE").arg(&key).arg(60).query(&mut conn);
+        if count > 10 {
+            return Err(FeelPayError::RateLimited);
+        }
+    }
+
+    let link = sqlx::query(
+        "SELECT id, business_account_id, amount, currency, description, status, expires_at FROM payment_links_company WHERE id = $1",
+    )
+    .bind(parsed.link_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    .ok_or_else(|| FeelPayError::NotFound("Payment link not found".into()))?;
+
+    let status: String = link.get("status");
+    if status != "active" {
+        return Err(FeelPayError::BadRequest("Payment link not active".into()));
+    }
+    let link_exp: Option<DateTime<Utc>> = link.try_get("expires_at").unwrap_or(None);
+    if link_exp.map(|v| v <= Utc::now()).unwrap_or(false) {
+        return Err(FeelPayError::BadRequest("Payment link expired".into()));
+    }
+
+    let amount: i64 = link.get("amount");
+    let currency: String = link.get("currency");
+    let business_account_id: Option<Uuid> = link.try_get("business_account_id").unwrap_or(None);
+    let description: Option<String> = link.try_get("description").unwrap_or(None);
+    let order_id = format!("plink_{}", Uuid::new_v4().simple());
+
+    let payment_order_id = Uuid::new_v4();
+    let created = Utc::now();
+    sqlx::query(
+        r#"
+        INSERT INTO payment_orders (
+            id, merchant_id, amount, currency, status, order_id, payment_method,
+            connector, description, metadata, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10, $10)
+        "#,
+    )
+    .bind(payment_order_id)
+    .bind(business_account_id.unwrap_or_else(Uuid::new_v4))
+    .bind(amount)
+    .bind(&currency)
+    .bind(&order_id)
+    .bind(
+        body.selected_payment_method
+            .clone()
+            .unwrap_or_else(|| "card".to_string()),
+    )
+    .bind("simulator")
+    .bind(description.clone())
+    .bind(serde_json::json!({ "public_checkout_token": token, "payment_link_id": parsed.link_id }))
+    .bind(created)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let provider_code = sqlx::query_scalar::<_, String>(
+        "SELECT p.code FROM routing_rules_company rr JOIN payment_providers p ON p.id = rr.provider_id WHERE rr.status = 'active' ORDER BY rr.priority ASC LIMIT 1",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_else(|| "mock".to_string());
+
+    let provider_session_id = format!("{}_sess_{}", provider_code, Uuid::new_v4().simple());
+    let provider_checkout_url =
+        format!("https://checkout.{provider_code}.example/session/{provider_session_id}");
+    let session_id = Uuid::new_v4();
+    let session_exp = Utc::now() + chrono::Duration::minutes(20);
+    sqlx::query(
+        r#"
+        INSERT INTO payment_sessions_company (
+            id, payment_link_id, payment_order_id, provider_id, selected_payment_method,
+            status, expires_at, provider_session_id, provider_checkout_url, created_at
+        ) VALUES ($1, $2, $3, (SELECT id FROM payment_providers WHERE code = $4 LIMIT 1), $5, 'processing', $6, $7, $8, NOW())
+        "#,
+    )
+    .bind(session_id)
+    .bind(parsed.link_id)
+    .bind(payment_order_id)
+    .bind(&provider_code)
+    .bind(body.selected_payment_method.clone().unwrap_or_else(|| "card".to_string()))
+    .bind(session_exp)
+    .bind(&provider_session_id)
+    .bind(&provider_checkout_url)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO checkout_theme_snapshots (
+            payment_session_id, brand_name, logo_url, theme_color, support_email, terms_url, privacy_url, refund_policy_url
+        )
+        SELECT $1, brand_name, checkout_logo_url, checkout_theme_color, support_email, terms_url, privacy_url, refund_policy_url
+        FROM white_label_configs
+        ORDER BY updated_at DESC NULLS LAST
+        LIMIT 1
+        "#,
+    )
+    .bind(session_id)
+    .execute(&state.db)
+    .await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "session_id": session_id,
+        "payment_order_id": payment_order_id,
+        "status": "processing",
+        "provider": provider_code,
+        "provider_session_id": provider_session_id,
+        "provider_checkout_url": provider_checkout_url
+    })))
+}
+
+pub async fn get_public_checkout_session_status(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let session_id = path.into_inner();
+    let row = sqlx::query(
+        "SELECT id, payment_order_id, status, expires_at FROM payment_sessions_company WHERE id = $1",
+    )
+    .bind(session_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    .ok_or_else(|| FeelPayError::NotFound("Checkout session not found".into()))?;
+    let mut status: String = row.get("status");
+    let expires_at: Option<DateTime<Utc>> = row.try_get("expires_at").unwrap_or(None);
+    if status != "paid" && expires_at.map(|v| v <= Utc::now()).unwrap_or(false) {
+        status = "expired".to_string();
+    }
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "session_id": session_id,
+        "payment_order_id": row.try_get::<Option<Uuid>, _>("payment_order_id").unwrap_or(None),
+        "status": status
+    })))
+}
+
+pub async fn get_public_receipt(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, FeelPayError> {
+    let token = path.into_inner();
+    let bytes = BASE64_URL
+        .decode(&token)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid receipt token".into()))?;
+    let payload: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|_| FeelPayError::Unauthorized("Invalid receipt token".into()))?;
+    let receipt_id = payload
+        .get("receipt_id")
+        .and_then(|v| v.as_str())
+        .and_then(|v| Uuid::parse_str(v).ok())
+        .ok_or_else(|| FeelPayError::Unauthorized("Invalid receipt token".into()))?;
+    let exp = payload
+        .get("exp")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_default();
+    if exp <= Utc::now().timestamp() {
+        return Err(FeelPayError::Unauthorized("Receipt token expired".into()));
+    }
+    let sig = payload.get("sig").and_then(|v| v.as_str()).unwrap_or("");
+    let expected = make_checkout_signature(&checkout_signing_secret(&state), receipt_id, exp)?;
+    if sig != expected {
+        return Err(FeelPayError::Unauthorized(
+            "Invalid receipt token signature".into(),
+        ));
+    }
+    let row = sqlx::query(
+        "SELECT id, payment_session_id, status, sent_to_email, sent_at, metadata FROM checkout_receipts_company WHERE id = $1",
+    )
+    .bind(receipt_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    .ok_or_else(|| FeelPayError::NotFound("Receipt not found".into()))?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "id": receipt_id,
+        "payment_session_id": row.try_get::<Option<Uuid>, _>("payment_session_id").unwrap_or(None),
+        "status": row.try_get::<String,_>("status").unwrap_or_else(|_| "sent".to_string()),
+        "sent_to_email": row.try_get::<Option<String>, _>("sent_to_email").unwrap_or(None),
+        "sent_at": row.try_get::<Option<DateTime<Utc>>, _>("sent_at").unwrap_or(None),
+        "metadata": row.try_get::<Option<serde_json::Value>, _>("metadata").unwrap_or(None)
+    })))
+}
+
+pub async fn update_checkout_from_provider_event(
+    state: &AppState,
+    provider_reference: Option<&str>,
+    normalized_status: &str,
+) -> Result<(), FeelPayError> {
+    let Some(reference) = provider_reference else {
+        return Ok(());
+    };
+    let row = sqlx::query(
+        "SELECT id, payment_order_id FROM payment_sessions_company WHERE provider_session_id = $1 LIMIT 1",
+    )
+    .bind(reference)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    let Some(row) = row else {
+        return Ok(());
+    };
+    let session_id: Uuid = row.get("id");
+    let payment_order_id: Option<Uuid> = row.try_get("payment_order_id").unwrap_or(None);
+    let next_status = match normalized_status {
+        "captured" | "authorized" => "paid",
+        "failed" => "failed",
+        "processing" => "processing",
+        _ => "pending",
+    };
+    sqlx::query("UPDATE payment_sessions_company SET status = $2 WHERE id = $1")
+        .bind(session_id)
+        .bind(next_status)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    if let Some(order_id) = payment_order_id {
+        let order_status = if next_status == "paid" {
+            "captured"
+        } else if next_status == "failed" {
+            "failed"
+        } else {
+            "processing"
+        };
+        let _ =
+            sqlx::query("UPDATE payment_orders SET status = $2, updated_at = NOW() WHERE id = $1")
+                .bind(order_id)
+                .bind(order_status)
+                .execute(&state.db)
+                .await;
+    }
+    if next_status == "paid" {
+        let receipt_id = sqlx::query_scalar::<_, Uuid>(
+            "INSERT INTO checkout_receipts_company (payment_session_id, status, sent_at, metadata) VALUES ($1, 'sent', NOW(), '{}'::jsonb) ON CONFLICT DO NOTHING RETURNING id",
+        )
+        .bind(session_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+        if let Some(receipt_id) = receipt_id {
+            let token_exp = (Utc::now() + chrono::Duration::days(30)).timestamp();
+            if let Ok(token) = sign_receipt_token(state, receipt_id, token_exp) {
+                let _ = sqlx::query(
+                    "UPDATE checkout_receipts_company SET receipt_token = $2 WHERE id = $1",
+                )
+                .bind(receipt_id)
+                .bind(token)
+                .execute(&state.db)
+                .await;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,7 +1138,10 @@ mod tests {
             checkout_connector_for_method(&method_data, None, false),
             "simulator"
         );
-        assert_eq!(checkout_connector_for_method(&method_data, None, true), "upi");
+        assert_eq!(
+            checkout_connector_for_method(&method_data, None, true),
+            "upi"
+        );
         assert_eq!(
             checkout_connector_for_method(&method_data, Some("card"), false),
             "card"
@@ -713,6 +1153,9 @@ mod tests {
         assert_eq!(checkout_session_status(&PaymentStatus::Captured), "paid");
         assert_eq!(checkout_session_status(&PaymentStatus::Authorized), "paid");
         assert_eq!(checkout_session_status(&PaymentStatus::Failed), "failed");
-        assert_eq!(checkout_session_status(&PaymentStatus::Processing), "processing");
+        assert_eq!(
+            checkout_session_status(&PaymentStatus::Processing),
+            "processing"
+        );
     }
 }
