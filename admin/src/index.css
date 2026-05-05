@@ -449,7 +449,15 @@ h2, .card h2 {
 }
 
 .stat-value.warning {
-  color: var(--spotify-tertiary);
+  color: var(--fp-warning);
+}
+
+.stat-value.failed {
+  color: var(--fp-danger);
+}
+
+.stat-value.pending {
+  color: var(--spotify-subtext);
 }
 
 .stat-change {
@@ -1394,6 +1402,34 @@ pre {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.security-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--fp-bg-elevated);
+  border: 1px solid var(--fp-border);
+  border-radius: var(--fp-radius-sm);
+  transition: var(--fp-transition);
+}
+
+.security-row:hover {
+  background: var(--fp-bg-hover);
+  border-color: var(--spotify-tertiary);
+}
+
+.security-row span {
+  font-weight: 500;
+  color: var(--fp-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

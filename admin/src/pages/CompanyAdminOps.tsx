@@ -258,11 +258,16 @@ function copyText(value: string) {
   void navigator.clipboard?.writeText(value);
 }
 
-function statusClass(value: string) {
+function statusClass(value: string, column?: string) {
   const normalized = value.toLowerCase().replaceAll(' ', '_');
-  if (['active', 'captured', 'successful', 'success', 'settled', 'verified', 'enabled', 'won', 'healthy', 'matched', 'resolved', 'approved'].includes(normalized)) return 'success';
-  if (['failed', 'rejected', 'disabled', 'blocked', 'lost', 'critical', 'down', 'mismatch', 'overdue'].includes(normalized)) return 'failed';
-  if (['pending', 'processing', 'requested', 'review', 'warning', 'unknown', 'unmatched', 'investigating', 'open'].includes(normalized)) return 'pending';
+  const isSafetyCheck = column === 'cvv_storage' || column === 'raw_card_storage' || column === 'no_cvv' || column === 'no_raw_card';
+  
+  if (isSafetyCheck && normalized === 'disabled') return 'success';
+  if (isSafetyCheck && normalized === 'enabled') return 'failed';
+  
+  if (['active', 'captured', 'successful', 'success', 'settled', 'verified', 'enabled', 'won', 'healthy', 'matched', 'resolved', 'approved', 'ready', 'pass'].includes(normalized)) return 'success';
+  if (['failed', 'rejected', 'disabled', 'blocked', 'lost', 'critical', 'down', 'mismatch', 'overdue', 'fail'].includes(normalized)) return 'failed';
+  if (['pending', 'processing', 'requested', 'review', 'warning', 'unknown', 'unmatched', 'investigating', 'open', 'partial_data'].includes(normalized)) return 'pending';
   return normalized;
 }
 
@@ -312,7 +317,7 @@ function renderCell(row: GenericRecord, column: string) {
   }
   if (isBadgeColumn(column) && value !== null && value !== undefined && value !== '') {
     const text = renderValue(value);
-    return <span className={`badge ${statusClass(text)}`}>{text}</span>;
+    return <span className={`badge ${statusClass(text, column)}`}>{text}</span>;
   }
   return renderValue(value);
 }
@@ -1351,7 +1356,7 @@ export function ReportsPage() {
     helpers.setConfirm({
       title: 'Download latest',
       body: 'Download links expire and report download is audit logged.',
-      action: () => helpers.run('Download link prepared.', () => apiRequest('GET', `${API}/reports/export-history/${id}/download`)),
+      action: () => helpers.run('Report export starting. Check download link when ready.', () => apiRequest('GET', `${API}/reports/export-history/${id}/download`)).then(load),
     });
   };
   return (
@@ -1443,9 +1448,20 @@ export function SystemHealthPage() {
   const incidents = useRows('/admin/notifications');
   const [tab, setTab] = useState('Overview');
   const helpers = useDrawerConfirm();
-  const state = [health.state, jobs.state, providers.state, metrics.state, slos.state, snapshots.state, traces.state, incidents.state].includes('error') ? 'error' : [health.state, jobs.state, providers.state, metrics.state, slos.state, snapshots.state, traces.state, incidents.state].includes('loading') ? 'loading' : 'ready';
-  const error = health.error || jobs.error || providers.error || metrics.error || slos.error || snapshots.error || traces.error || incidents.error;
-  const load = () => void Promise.all([health.load(), jobs.load(), providers.load(), metrics.load(), slos.load(), snapshots.load(), traces.load(), incidents.load()]);
+  const endpoints = {
+    'Health API': health,
+    'Jobs API': jobs,
+    'Providers API': providers,
+    'Metrics API': metrics,
+    'SLOs API': slos,
+    'Snapshots API': snapshots,
+    'Traces API': traces,
+    'Notifications API': incidents,
+  };
+  const failedEndpoints = Object.entries(endpoints).filter(([_, state]) => state.state === 'error').map(([name]) => name);
+  const state: LoadState = failedEndpoints.length === Object.keys(endpoints).length ? 'error' : Object.values(endpoints).some(e => e.state === 'loading') ? 'loading' : 'ready';
+  const error = failedEndpoints.length > 0 ? `Failed to fetch: ${failedEndpoints.join(', ')}` : '';
+  const load = () => void Promise.all(Object.values(endpoints).map(e => e.load()));
   const retryJob = (row: GenericRecord) => {
     helpers.setConfirm({ title: 'Retry failed job', body: 'Background job retry will be audit logged.', action: () => helpers.run('Job retry queued.', () => apiRequest('POST', `/admin/system-health/jobs/${String(row.id || '')}/retry`)).then(load) });
   };
@@ -1457,7 +1473,13 @@ export function SystemHealthPage() {
       <div className="stats-grid">
         {['API status', 'Database status', 'Queue status', 'Webhook worker status', 'Settlement sync status', 'Reconciliation job status', 'Provider health', 'Failed background jobs'].map(component => {
           const row = health.rows.find(item => String(item.component) === component);
-          return <Metric key={component} label={component} value={String(row?.status || 'unknown')} icon={Activity} />;
+          let value = String(row?.status || 'unknown');
+          let status = statusClass(value);
+          if (health.state === 'error') {
+            value = 'Unknown';
+            status = 'pending';
+          }
+          return <Metric key={component} label={component} value={value} status={status} icon={Activity} />;
         })}
       </div>
       {tab === 'Overview' && <DataTable rows={snapshots.rows} columns={['slo_name', 'current_percent', 'error_budget_remaining', 'status', 'captured_at']} empty="No SLO snapshots" />}
@@ -1759,7 +1781,7 @@ export function ReadinessScorecardPage() {
         <button type="button" onClick={refresh}>Run readiness check</button>
         <button type="button" onClick={exportScorecard}>Export readiness report</button>
       </div>
-      <DataTable rows={rows} columns={['category', 'check_name', 'status', 'score', 'owner', 'last_checked_at', 'action_link']} empty={{ title: 'No readiness checks', body: 'Readiness categories appear here with status, owner, and action links.' }} renderActions={row => <ActionButtons actions={['Assign owner', 'Mark manual check complete', 'Open action link', 'View detail']} onClick={label => {
+      <DataTable rows={rows} columns={['category', 'check_name', 'status', 'score', 'owner', 'last_checked_at', 'action_link']} empty={{ title: 'No readiness checks', body: 'Readiness categories appear here with status, owner, and action links.' }} renderActions={row => <ActionButtons dropdownOnly actions={['Assign owner', 'Mark manual check complete', 'Open action link', 'View detail']} onClick={label => {
         if (label === 'Assign owner') assignOwner(row);
         else if (label === 'Mark manual check complete') markManual(row);
         else if (label === 'Open action link') {
@@ -1839,14 +1861,14 @@ export function ComplianceCenterPage() {
   return (
     <CrudPage title="Compliance Center" subtitle="PCI readiness, access review, security events, retention, exports, and credential rotation" state={state} error={error || relatedError || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="stats-grid">
-        <Metric label="Raw card storage" value={String(overview.raw_card_storage || 'disabled')} icon={ShieldCheck} />
-        <Metric label="CVV storage" value={String(overview.cvv_storage || 'disabled')} icon={ShieldCheck} />
-        <Metric label="Tokenization" value={String(overview.tokenization || 'enabled')} icon={BadgeCheck} />
-        <Metric label="Webhook signatures" value={String(overview.webhook_signatures || 'required')} icon={Cable} />
-        <Metric label="Secrets encrypted" value={String(overview.secrets_encrypted || 'enabled')} icon={KeyRound} />
-        <Metric label="Bank accounts encrypted" value={String(overview.bank_accounts_encrypted || 'enabled')} icon={Landmark} />
-        <Metric label="MFA coverage" value={String(overview.mfa_coverage || 0)} icon={UserPlus} />
-        <Metric label="Credential rotation due" value={String(overview.credential_rotation_due || 0)} icon={RefreshCw} />
+        <Metric label="Raw card storage" value={String(overview.raw_card_storage || 'disabled')} status={statusClass(String(overview.raw_card_storage || 'disabled'), 'raw_card_storage')} icon={ShieldCheck} />
+        <Metric label="CVV storage" value={String(overview.cvv_storage || 'disabled')} status={statusClass(String(overview.cvv_storage || 'disabled'), 'cvv_storage')} icon={ShieldCheck} />
+        <Metric label="Tokenization" value={String(overview.tokenization || 'enabled')} status={statusClass(String(overview.tokenization || 'enabled'))} icon={BadgeCheck} />
+        <Metric label="Webhook signatures" value={String(overview.webhook_signatures || 'required')} status={statusClass(String(overview.webhook_signatures || 'required'))} icon={Cable} />
+        <Metric label="Secrets encrypted" value={String(overview.secrets_encrypted || 'enabled')} status={statusClass(String(overview.secrets_encrypted || 'enabled'))} icon={KeyRound} />
+        <Metric label="Bank accounts encrypted" value={String(overview.bank_accounts_encrypted || 'enabled')} status={statusClass(String(overview.bank_accounts_encrypted || 'enabled'))} icon={Landmark} />
+        <Metric label="MFA coverage" value={String(overview.mfa_coverage || 0)} status={Number(overview.mfa_coverage || 0) > 0 ? 'success' : 'pending'} icon={UserPlus} />
+        <Metric label="Credential rotation due" value={String(overview.credential_rotation_due || 0)} status={Number(overview.credential_rotation_due || 0) > 0 ? 'failed' : 'success'} icon={RefreshCw} />
       </div>
       <div className="button-row">
         {['Overview', 'Controls', 'Evidence', 'Access Reviews', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation', 'Compliance Packet', 'Compliance Tasks'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
@@ -1932,7 +1954,7 @@ export function PlatformSettingsPage() {
       <div className="card">
         <h2><Mail size={18} /> Security posture</h2>
         <div className="security-list">
-          {['Deny-by-default RBAC', 'Least privilege route guards', 'Confirmation for sensitive settings', 'Audit logs for setting changes'].map(item => <div className="security-row" key={item}><span>{item}</span><strong>Enabled</strong></div>)}
+          {['Deny-by-default RBAC', 'Least privilege route guards', 'Confirmation for sensitive settings', 'Audit logs for setting changes'].map(item => <div className="security-row" key={item}><span>{item}:</span> <span className="badge success">Enabled</span></div>)}
         </div>
       </div>
       <Modals helpers={helpers} />
@@ -1961,8 +1983,8 @@ function TableRoute({ title, subtitle, rows, state, error, notice, columns, acti
 function CrudPage({ title, subtitle, state, error, notice, onRefresh, children }: { title: string; subtitle: string; state: LoadState; error: string; notice?: string; onRefresh: () => void; children: ReactNode }) {
   return (
     <Page title={title} subtitle={subtitle} onRefresh={onRefresh}>
-      <Status state={state} error={error} loading={`Loading ${title.toLowerCase()}...`} />
-      {notice && <div className="alert alert-success">{notice}</div>}
+      <Status state={state} error={error} loading={`Loading ${title.toLowerCase()}...`} onRetry={onRefresh} />
+      {notice && <div className={`alert ${notice.includes('Failed') || notice.includes('error') ? 'alert-error' : 'alert-success'}`}>{notice}</div>}
       {children}
     </Page>
   );
@@ -1983,9 +2005,9 @@ function Page({ title, subtitle, onRefresh, children }: { title: string; subtitl
   );
 }
 
-function Status({ state, error, loading }: { state: LoadState; error: string; loading: string }) {
+function Status({ state, error, loading, onRetry }: { state: LoadState; error: string; loading: string; onRetry?: () => void }) {
   if (state === 'loading') return <Skeleton message={loading} />;
-  if (state === 'error') return <ErrorPanel message={error} />;
+  if (state === 'error' || (error && state === 'ready')) return <ErrorPanel message={error || 'An unexpected error occurred'} onRetry={onRetry} />;
   return null;
 }
 
@@ -2052,11 +2074,11 @@ function DataTable({ rows, columns, empty, renderActions, onView }: { rows: Gene
   );
 }
 
-function Metric({ label, value, icon: Icon }: { label: string; value: string | number; icon: typeof Activity }) {
+function Metric({ label, value, status, icon: Icon }: { label: string; value: string | number; status?: string; icon: typeof Activity }) {
   return (
     <article className="stat-card">
       <div className="stat-label"><Icon size={14} /> {label}</div>
-      <div className="stat-value">{value}</div>
+      <div className={`stat-value ${status ? status : ''}`}>{value}</div>
     </article>
   );
 }
@@ -2081,7 +2103,20 @@ function Select({ value, options, onChange }: { value: string; options: (string 
   );
 }
 
-function ActionButtons({ actions, onClick }: { actions: string[]; onClick: (action: string) => void }) {
+function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; onClick: (action: string) => void; dropdownOnly?: boolean }) {
+  if (dropdownOnly) {
+    return (
+      <div className="button-row compact-actions">
+        <select aria-label="Actions" onChange={event => {
+          if (event.target.value) onClick(event.target.value);
+          event.target.value = '';
+        }} style={{ minHeight: '32px', fontSize: '13px' }}>
+          <option value="">Actions</option>
+          {actions.map(action => <option key={action} value={action}>{action}</option>)}
+        </select>
+      </div>
+    );
+  }
   const primary = actions.slice(0, 3);
   const overflow = actions.slice(3);
   return (
