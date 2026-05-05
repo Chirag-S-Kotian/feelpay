@@ -1032,6 +1032,8 @@ fn admin_bind_addr() -> String {
 fn admin_cors() -> Cors {
     let origins = env::var("ADMIN_CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
         [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
             "http://127.0.0.1:5174",
             "http://localhost:5174",
             "http://127.0.0.1:5173",
@@ -1058,6 +1060,10 @@ fn admin_cors() -> Cors {
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
             header::ACCEPT,
+            header::HeaderName::from_static("x-api-key"),
+            header::HeaderName::from_static("x-feelpay-environment"),
+            header::HeaderName::from_static("idempotency-key"),
+            header::HeaderName::from_static("x-request-id"),
         ])
         .supports_credentials()
         .max_age(3600)

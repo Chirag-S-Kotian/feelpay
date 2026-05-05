@@ -1,6 +1,8 @@
 use actix_web::{
+    body::{EitherBody, MessageBody},
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    web, Error,
+    http::header,
+    web, Error, HttpResponse, HttpResponseBuilder,
 };
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, DecodingKey, Validation};
@@ -16,13 +18,87 @@ fn jwt_secret() -> Result<String, Error> {
         .map_err(|_| actix_web::error::ErrorInternalServerError("JWT_SECRET is not configured"))
 }
 
+fn allowed_origins() -> Vec<String> {
+    std::env::var("ADMIN_CORS_ALLOWED_ORIGINS")
+        .ok()
+        .map(|origins| {
+            origins
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:5174",
+                "http://127.0.0.1:5174",
+            ]
+            .iter()
+            .map(|origin| origin.to_string())
+            .collect()
+        })
+}
+
+fn request_origin(req: &ServiceRequest) -> Option<String> {
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())?;
+    allowed_origins()
+        .into_iter()
+        .find(|allowed| allowed == origin)
+}
+
+fn apply_cors(builder: &mut HttpResponseBuilder, origin: Option<String>) {
+    if let Some(origin) = origin {
+        builder.insert_header((header::ACCESS_CONTROL_ALLOW_ORIGIN, origin));
+        builder.insert_header((header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+        builder.insert_header((
+            header::VARY,
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+        ));
+    }
+    builder.insert_header((
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    ));
+    builder.insert_header((
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        "authorization, content-type, accept, x-api-key, x-feelpay-environment, idempotency-key, x-request-id",
+    ));
+    builder.insert_header((header::ACCESS_CONTROL_MAX_AGE, "3600"));
+}
+
+fn cors_no_content<B>(req: ServiceRequest) -> ServiceResponse<EitherBody<B>> {
+    let origin = request_origin(&req);
+    let mut builder = HttpResponse::NoContent();
+    apply_cors(&mut builder, origin);
+    req.into_response(builder.finish().map_into_right_body())
+}
+
+fn cors_error<B>(
+    req: ServiceRequest,
+    status: actix_web::http::StatusCode,
+    message: &'static str,
+) -> ServiceResponse<EitherBody<B>> {
+    let origin = request_origin(&req);
+    let mut builder = HttpResponse::build(status);
+    apply_cors(&mut builder, origin);
+    req.into_response(builder.body(message).map_into_right_body())
+}
+
 impl<S, B> Transform<S, ServiceRequest> for AdminAuthMiddleware
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
-    B: 'static,
+    B: MessageBody + 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type InitError = ();
     type Transform = AdminAuthMiddlewareService<S>;
@@ -48,9 +124,9 @@ impl<S, B> Service<ServiceRequest> for AdminAuthMiddlewareService<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
-    B: 'static,
+    B: MessageBody + 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -61,12 +137,11 @@ where
         let method = req.method().as_str().to_string();
         if path.ends_with("/bootstrap-token") || path.ends_with("/login") {
             let fut = self.service.call(req);
-            return Box::pin(async move { fut.await });
+            return Box::pin(async move { fut.await.map(ServiceResponse::map_into_left_body) });
         }
 
         if req.method() == actix_web::http::Method::OPTIONS {
-            let fut = self.service.call(req);
-            return Box::pin(async move { fut.await });
+            return Box::pin(async move { Ok(cors_no_content(req)) });
         }
 
         let auth_header = req
@@ -85,8 +160,10 @@ where
             .map(str::to_string);
 
         let Some(token) = token else {
-            return Box::pin(async {
-                Err(actix_web::error::ErrorUnauthorized(
+            return Box::pin(async move {
+                Ok(cors_error(
+                    req,
+                    actix_web::http::StatusCode::UNAUTHORIZED,
                     "Missing Authorization bearer token",
                 ))
             });
@@ -105,8 +182,10 @@ where
         let claims = match decoded {
             Ok(v) => v.claims,
             Err(_) => {
-                return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized(
+                return Box::pin(async move {
+                    Ok(cors_error(
+                        req,
+                        actix_web::http::StatusCode::UNAUTHORIZED,
                         "Invalid or expired token",
                     ))
                 });
@@ -116,8 +195,10 @@ where
         let merchant_id = match Uuid::parse_str(&claims.sub) {
             Ok(id) => id,
             Err(_) => {
-                return Box::pin(async {
-                    Err(actix_web::error::ErrorUnauthorized(
+                return Box::pin(async move {
+                    Ok(cors_error(
+                        req,
+                        actix_web::http::StatusCode::UNAUTHORIZED,
                         "Invalid identity in token",
                     ))
                 });
@@ -193,7 +274,7 @@ where
                 ));
             }
 
-            fut.await
+            fut.await.map(ServiceResponse::map_into_left_body)
         })
     }
 }
