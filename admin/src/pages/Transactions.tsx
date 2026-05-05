@@ -72,7 +72,7 @@ export default function Transactions() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by transaction or merchant id"
+          placeholder="Search by transaction or business account id"
           aria-label="Search transactions"
         />
         <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Transaction status">
@@ -92,7 +92,7 @@ export default function Transactions() {
             <thead>
               <tr>
                 <th>Transaction ID</th>
-                <th>Merchant ID</th>
+                <th>Business Account ID</th>
                 <th>Amount</th>
                 <th>Method</th>
                 <th>Status</th>

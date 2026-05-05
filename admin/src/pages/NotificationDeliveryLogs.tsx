@@ -114,9 +114,9 @@ export default function NotificationDeliveryLogs() {
         <h2>Filters</h2>
         <div className="filters-grid">
           <div className="filter-group">
-            <label>Merchant</label>
+            <label>Business Account</label>
             <select value={merchantId} onChange={e => setMerchantId(e.target.value)}>
-              <option value="">All Merchants</option>
+              <option value="">All Business Accounts</option>
               {merchants.map(m => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -201,7 +201,7 @@ export default function NotificationDeliveryLogs() {
               <thead>
                 <tr>
                   <th>Notification ID</th>
-                  <th>Merchant</th>
+                  <th>Business Account</th>
                   <th>Event Type</th>
                   <th>Channel</th>
                   <th>Recipient</th>

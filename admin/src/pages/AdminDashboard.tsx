@@ -24,6 +24,20 @@ interface BusinessAccountsResponse {
   data?: Merchant[];
 }
 
+function formatDateTime(value?: string) {
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date).replace(',', '');
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [businessAccounts, setBusinessAccounts] = useState<Merchant[]>([]);
@@ -129,7 +143,7 @@ export default function AdminDashboard() {
                 <td>{m.email || 'N/A'}</td>
                 <td>{m.business_type || 'N/A'}</td>
                 <td>{m.onboarding_status || 'N/A'}</td>
-                <td>{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'N/A'}</td>
+                <td title={m.created_at || undefined}>{formatDateTime(m.created_at)}</td>
                 <td>
                   <button
                     className="btn-primary"

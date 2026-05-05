@@ -38,7 +38,7 @@ export default function KycAuditLog() {
             <tr>
               <th>Time</th>
               <th>Action</th>
-              <th>Merchant</th>
+              <th>Business Account</th>
               <th>Actor</th>
               <th>Reason</th>
             </tr>

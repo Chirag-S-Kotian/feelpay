@@ -87,8 +87,10 @@ type AdminPermission =
   | 'platform_settings.manage'
   | 'ledger.view'
   | 'ledger.export'
-  | 'developer.view'
-  | 'developer.manage'
+  | 'developer_tools.view'
+  | 'api_keys.manage'
+  | 'api_logs.view'
+  | 'webhook_replay.manage'
   | 'compliance.view'
   | 'compliance.manage';
 
@@ -134,7 +136,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/routing-rules', label: 'Routing Rules', icon: RouteIcon, permission: 'routing.manage' },
       { path: '/white-label-checkout', label: 'White-label Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
       { path: '/webhook-config', label: 'Webhook Config', icon: Webhook, permission: 'webhook_config.manage' },
-      { path: '/developer', label: 'Developer / Integration', icon: Code2, permission: 'developer.view' },
+      { path: '/developer-tools', label: 'Developer Tools', icon: Code2, permission: 'developer_tools.view' },
     ],
   },
   {
@@ -261,9 +263,10 @@ function Layout() {
           <Route path="/routing-rules" element={<RequirePermission permission="routing.manage"><RoutingRulesPage /></RequirePermission>} />
           <Route path="/white-label-checkout" element={<RequirePermission permission="webhook_config.manage"><WhiteLabelCheckoutPage /></RequirePermission>} />
           <Route path="/webhook-config" element={<RequirePermission permission="webhook_config.manage"><WebhookConfigPage /></RequirePermission>} />
-          <Route path="/developer" element={<RequirePermission permission="developer.view"><DeveloperIntegrationPage /></RequirePermission>} />
-          <Route path="/revenue" element={<Revenue />} />
-          <Route path="/bulk-export" element={<AdminBulkExport />} />
+          <Route path="/developer-tools" element={<RequirePermission permission="developer_tools.view"><DeveloperIntegrationPage /></RequirePermission>} />
+          <Route path="/developer" element={<Navigate to="/developer-tools" replace />} />
+          <Route path="/revenue" element={<RequirePermission permission="reports.export"><Revenue /></RequirePermission>} />
+          <Route path="/bulk-export" element={<RequirePermission permission="reports.export"><AdminBulkExport /></RequirePermission>} />
           <Route path="/reports" element={<RequirePermission permission="reports.export"><ReportsPage /></RequirePermission>} />
           <Route path="/audit-logs" element={<RequirePermission permission="audit_logs.view"><AuditLogsPage /></RequirePermission>} />
           <Route path="/admin-users-roles" element={<RequirePermission permission="admin_users.view"><AdminUsersRolesPage /></RequirePermission>} />

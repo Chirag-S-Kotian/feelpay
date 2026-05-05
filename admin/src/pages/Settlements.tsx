@@ -61,7 +61,7 @@ export default function Settlements() {
             <thead>
               <tr>
                 <th>Settlement ID</th>
-                <th>Merchant ID</th>
+                <th>Business Account ID</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Created</th>

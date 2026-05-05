@@ -12,6 +12,19 @@ interface ExportJob {
   error_message?: string;
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date).replace(',', '');
+}
+
 export default function AdminBulkExport() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -227,7 +240,7 @@ export default function AdminBulkExport() {
                 <tbody>
                   {jobs.map(job => (
                     <tr key={job.job_id}>
-                      <td className="mono">{job.job_id.slice(0, 8)}...</td>
+                      <td className="mono" title={job.job_id}>{job.job_id.slice(0, 8)}…{job.job_id.slice(-5)}</td>
                       <td>
                         <span className={`badge badge-${job.status}`}>
                           {job.status === 'processing' && <Clock size={12} />}
@@ -235,7 +248,7 @@ export default function AdminBulkExport() {
                         </span>
                       </td>
                       <td>{job.record_count || '-'}</td>
-                      <td>{new Date(job.created_at).toLocaleDateString()}</td>
+                      <td title={job.created_at}>{formatDateTime(job.created_at)}</td>
                       <td>
                         {job.status === 'completed' && (
                           <button

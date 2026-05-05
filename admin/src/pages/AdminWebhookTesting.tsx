@@ -103,7 +103,7 @@ export default function AdminWebhookTesting() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="loading">Loading merchants...</div>
+        <div className="loading">Loading business accounts...</div>
       </div>
     );
   }
@@ -113,12 +113,12 @@ export default function AdminWebhookTesting() {
       <div className="page-container">
         <div className="page-header">
           <h1>Webhook Testing</h1>
-          <p>Test merchant webhook configurations</p>
+          <p>Test business account webhook configurations</p>
         </div>
         <div className="card">
           <div className="empty-state">
             <AlertCircle size={32} />
-            <p>No merchants found</p>
+            <p>No business accounts found</p>
           </div>
         </div>
       </div>
@@ -129,7 +129,7 @@ export default function AdminWebhookTesting() {
     <div className="page-container">
       <div className="page-header">
         <h1>Webhook Testing</h1>
-        <p>Send test events to merchant webhooks</p>
+        <p>Send test events to business account webhooks</p>
       </div>
 
       <div className="grid grid-2">
@@ -137,7 +137,7 @@ export default function AdminWebhookTesting() {
           <h2>Test Configuration</h2>
 
           <div className="form-group">
-            <label>Merchant</label>
+            <label>Business Account</label>
             <select
               value={selectedMerchantId || ''}
               onChange={e => setSelectedMerchantId(e.target.value)}

@@ -118,7 +118,7 @@ export default function KYCQueue() {
       <div className="page-header">
         <div>
           <h1>KYC Queue</h1>
-          <p>Review and process merchant KYC submissions</p>
+          <p>Review and process business account KYC submissions</p>
         </div>
         <div className="stat-card" style={{ padding: '12px 16px' }}>
           <Clock size={18} style={{ marginRight: 8 }} />
@@ -141,7 +141,7 @@ export default function KYCQueue() {
           <table>
             <thead>
               <tr>
-                <th>Merchant</th>
+                <th>Business Account</th>
                 <th>Type</th>
                 <th>Document</th>
                 <th>Status</th>
@@ -228,7 +228,7 @@ export default function KYCQueue() {
 
             <div style={{ marginBottom: 20 }}>
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>Merchant</label>
+                <label style={{ fontSize: 12, color: 'var(--fp-text-muted)' }}>Business Account</label>
                 <div style={{ fontWeight: 500 }}>{selectedSubmission.merchant_name}</div>
               </div>
               <div style={{ marginBottom: 12 }}>

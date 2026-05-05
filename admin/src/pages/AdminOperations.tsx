@@ -191,7 +191,7 @@ export default function AdminOperations() {
             <thead>
               <tr>
                 <th>Settlement</th>
-                <th>Merchant</th>
+                <th>Business Account</th>
                 <th>Amount</th>
                 <th>Created</th>
               </tr>

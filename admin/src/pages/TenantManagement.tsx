@@ -171,7 +171,7 @@ export default function TenantManagement() {
                 <td>{r.status}</td>
                 <td>
                   <button onClick={() => { setEditingId(r.id); setFormFromTenant(r); }}>Edit</button>
-                  <button onClick={() => setSelectedTenantId(r.id)}>Merchants</button>
+                  <button onClick={() => setSelectedTenantId(r.id)}>Business Accounts</button>
                   <button onClick={() => deactivate(r.id)}>Deactivate</button>
                 </td>
               </tr>
@@ -184,7 +184,7 @@ export default function TenantManagement() {
           <table>
             <thead>
               <tr>
-                <th>Tenant Merchant</th>
+                <th>Tenant Business Account</th>
                 <th>Email</th>
                 <th>Business</th>
                 <th>Status</th>

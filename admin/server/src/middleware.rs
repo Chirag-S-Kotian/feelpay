@@ -256,11 +256,20 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
         return Some("reconciliation.manage");
     }
     if path.contains("/developer") {
-        return Some(if method == "GET" {
-            "developer.view"
-        } else {
-            "developer.manage"
-        });
+        if path.contains("/request-logs") {
+            return Some("api_logs.view");
+        }
+        if path.contains("/api-keys") && method != "GET" {
+            return Some("api_keys.manage");
+        }
+        if path.contains("/webhook-events") || path.contains("/webhook-test") {
+            return Some(if method == "GET" {
+                "developer_tools.view"
+            } else {
+                "webhook_replay.manage"
+            });
+        }
+        return Some("developer_tools.view");
     }
     if path.contains("/compliance") {
         return Some(if method == "GET" {
@@ -292,7 +301,7 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     {
         return Some("webhook_config.manage");
     }
-    if path.starts_with("/exports") || path.starts_with("/revenue") {
+    if path.starts_with("/exports") || path.starts_with("/revenue") || path.contains("/reports") {
         return Some("reports.export");
     }
     if path.contains("/audit-logs") {
@@ -357,8 +366,10 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "system_health.view",
             "notifications.view",
             "ledger.view",
-            "developer.view",
-            "developer.manage",
+            "developer_tools.view",
+            "api_keys.manage",
+            "api_logs.view",
+            "webhook_replay.manage",
         ],
         "Finance Admin" => &[
             "payment_ops.view",
@@ -419,5 +430,37 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "ledger.view",
         ],
         _ => &[],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admin_routes_deny_unmapped_by_default() {
+        assert_eq!(required_permission_for_path("/admin/unknown", "GET"), None);
+    }
+
+    #[test]
+    fn reports_and_developer_routes_map_permissions() {
+        assert_eq!(
+            required_permission_for_path("/admin/payment-ops/reports/generate", "POST"),
+            Some("reports.export")
+        );
+        assert_eq!(
+            required_permission_for_path("/admin/payment-ops/developer/api-keys", "POST"),
+            Some("api_keys.manage")
+        );
+        assert_eq!(
+            required_permission_for_path("/admin/payment-ops/developer/request-logs", "GET"),
+            Some("api_logs.view")
+        );
+    }
+
+    #[test]
+    fn finance_admin_can_export_reports() {
+        assert!(role_has_permission("Finance Admin", "reports.export"));
+        assert!(!role_has_permission("Support Agent", "reports.export"));
     }
 }

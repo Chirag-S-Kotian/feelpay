@@ -98,9 +98,9 @@ export function AnalyticsCharts({
 
   return (
     <div className="space-y-6">
-      {/* Merchant Signups Chart */}
+      {/* Business Account Signups Chart */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Merchant Signups</h3>
+        <h3 className="text-lg font-semibold mb-4">Business Account Signups</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={analytics.merchant_signups}>

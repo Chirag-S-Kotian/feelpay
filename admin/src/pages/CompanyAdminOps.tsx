@@ -162,8 +162,10 @@ const ADMIN_PERMISSIONS = [
   'business_accounts.kyc_review',
   'business_accounts.risk_review',
   'business_accounts.payouts_manage',
-  'developer.view',
-  'developer.manage',
+  'developer_tools.view',
+  'api_keys.manage',
+  'api_logs.view',
+  'webhook_replay.manage',
   'compliance.view',
   'compliance.manage',
   'security_events.view',
@@ -223,15 +225,14 @@ function formatDateTime(value: GenericRecord[string] | undefined) {
   if (typeof value !== 'string' || !value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  const formatted = new Intl.DateTimeFormat('en-CA', {
+  return new Intl.DateTimeFormat('en-GB', {
     year: 'numeric',
-    month: '2-digit',
+    month: 'short',
     day: '2-digit',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   }).format(date).replace(',', '');
-  return formatted.replace(/\//g, '-');
 }
 
 function isDateColumn(column: string) {
@@ -264,11 +265,11 @@ function isBadgeColumn(column: string) {
 }
 
 function providerSuccessLabel(row: GenericRecord) {
-  const status = String(row.status || '');
-  const health = String(row.health_status || row.health || '');
+  const status = String(row.status || '').toLowerCase();
+  const health = String(row.health_status || row.health || '').toLowerCase();
   const attempts = Number(row.attempt_count || row.attempts || 0);
   if (status === 'disabled') return '—';
-  if (!health || health === 'unknown') return 'Unknown';
+  if (attempts === 0 && (!health || health === 'unknown')) return 'Unknown';
   if (attempts === 0) return 'No traffic';
   const rate = Number(row.success_rate || 0);
   return `${rate.toFixed(1)}%`;
@@ -289,6 +290,7 @@ function renderValue(value: GenericRecord[string] | undefined) {
 function renderCell(row: GenericRecord, column: string) {
   const value = row[column];
   if (column === 'success_rate') return providerSuccessLabel(row);
+  if (column === 'actor' || column === 'assigned_to' || column === 'started_by' || column === 'completed_by' || column === 'resolved_by' || column === 'uploaded_by' || column === 'replayed_by') return renderAdminIdentity(row, column);
   if (column === 'amount' || column.endsWith('_amount') || column === 'debit' || column === 'credit' || column === 'balance_after' || column === 'chargeback_fee') return money(Number(value || 0));
   if (isDateColumn(column)) {
     const formatted = formatDateTime(value);
@@ -307,6 +309,20 @@ function renderCell(row: GenericRecord, column: string) {
     return <span className={`badge ${statusClass(text)}`}>{text}</span>;
   }
   return renderValue(value);
+}
+
+function renderAdminIdentity(row: GenericRecord, prefix: string) {
+  const name = row[`${prefix}_name`];
+  const email = row[`${prefix}_email`];
+  const role = row[`${prefix}_role`];
+  if (name || email) {
+    return (
+      <span title={[name, email, role].filter(Boolean).map(renderValue).join(' · ')}>
+        {renderValue(name || email)}{role ? ` (${renderValue(role)})` : ''}
+      </span>
+    );
+  }
+  return renderValue(row[`${prefix}_admin_id`] || row[`${prefix}_id`]);
 }
 
 function rowsFrom(value: { items?: GenericRecord[] }) {
@@ -570,7 +586,7 @@ export function SettlementsPage() {
     if (action === 'view_items' || action === 'export_csv') helpers.setDrawer({ title: 'Settlement details', body: row });
     else helpers.setConfirm({ title: `${action.replaceAll('_', ' ')} settlement`, body: 'Settlement action affects finance ledgers and must be audit logged.', action: () => helpers.run('Settlement action submitted.', () => apiRequest('POST', `${API}/settlements/${id}/${actionPath}`)).then(load) });
   };
-  return <TableRoute title="Settlements" subtitle="Settlement ledger and reconciliation status" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'status']} actions={['Hold', 'Release', 'Mark settled', 'Mark failed', 'View items', 'Export CSV']} onAction={act} onRefresh={load} helpers={helpers} />;
+  return <TableRoute title="Settlements" subtitle="Settlement ledger and reconciliation status" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'status']} actions={['View items', 'Hold', 'Release', 'Mark settled', 'Mark failed', 'Export CSV']} onAction={act} onRefresh={load} helpers={helpers} />;
 }
 
 export function DisputesPage() {
@@ -588,7 +604,7 @@ export function DisputesPage() {
       <DataTable
         rows={rows}
         columns={['id', 'payment_id', 'business_account_id', 'provider_dispute_id', 'amount', 'currency', 'reason', 'status', 'evidence_status', 'outcome', 'chargeback_fee', 'ledger_transaction_id', 'evidence_due_date', 'created_at']}
-        empty={{ title: 'No disputes yet', body: 'Disputes and chargebacks will appear here when providers report a dispute event.' }}
+        empty={{ title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' }}
         renderActions={row => <ActionButtons actions={['View detail', 'Submit evidence', 'Mark won', 'Mark lost', 'View ledger', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />}
       />
       <Modals helpers={helpers} />
@@ -603,7 +619,7 @@ export function RiskRulesPage() {
     if (action === 'disable') helpers.setConfirm({ title: 'Disable risk rule', body: 'Risk decisioning may change immediately.', action: () => helpers.run('Risk rule disabled.', () => apiRequest('POST', `${API}/risk-rules/${String(row.id || '')}/disable`)).then(load) });
     else helpers.setDrawer({ title: 'Risk rule', body: row });
   };
-  return <TableRoute title="Risk Rules" subtitle="Company risk controls and rule trigger history" rows={rows} state={state} error={error} notice={helpers.notice} columns={['name', 'rule_type', 'condition', 'action', 'priority', 'last_triggered_at', 'trigger_count', 'status']} actions={['Create rule', 'Edit rule', 'Disable', 'View triggered transactions']} onAction={act} onRefresh={load} helpers={helpers} />;
+  return <TableRoute title="Risk Rules" subtitle="Company risk controls and rule trigger history" rows={rows} state={state} error={error} notice={helpers.notice} columns={['name', 'rule_type', 'condition', 'action', 'priority', 'last_triggered_at', 'trigger_count', 'status']} actions={['View triggered transactions', 'Create rule', 'Edit rule', 'Disable']} onAction={act} onRefresh={load} helpers={helpers} />;
 }
 
 export function ReconciliationPage() {
@@ -634,6 +650,8 @@ export function ReconciliationPage() {
   const unresolved = rows.reduce((sum, row) => sum + Number(row.unresolved_count || row.mismatch_count || 0), 0);
   const duplicates = rows.reduce((sum, row) => sum + Number(row.duplicate_count || 0), 0);
   const variance = rows.reduce((sum, row) => sum + Number(row.amount_variance || 0), 0);
+  const feeVariance = rows.reduce((sum, row) => sum + Number(row.fee_variance || 0), 0);
+  const taxVariance = rows.reduce((sum, row) => sum + Number(row.tax_variance || 0), 0);
   const upload = (source: string) => {
     helpers.setConfirm({
       title: `Upload ${source.replaceAll('_', ' ')}`,
@@ -650,6 +668,8 @@ export function ReconciliationPage() {
     const id = String(row?.id || rows[0]?.id || '');
     if (action === 'upload_provider_report') upload('provider_report');
     else if (action === 'upload_bank_statement') upload('bank_statement');
+    else if (action === 'upload_payout_report') upload('payout_report');
+    else if (action === 'upload_fee_report') upload('fee_report');
     else if (action === 'auto_match') helpers.setConfirm({ title: 'Auto match', body: 'Auto-match uses references, UTR, amount/date fuzzy checks, and confidence scoring.', action: () => helpers.run('Auto-match queued.', () => apiRequest('POST', `${API}/reconciliation/${id}/auto-match`)).then(load) });
     else if (action === 'manually_resolve') helpers.setConfirm({ title: 'Manually resolve', body: 'Manual resolution creates audit log.', action: () => helpers.run('Record resolved.', () => apiRequest('POST', `${API}/reconciliation/${id}/resolve`, { status: 'matched', resolution_notes: 'Manually resolved' })).then(load) });
     else if (action === 'ignore') helpers.setConfirm({ title: 'Ignore mismatch', body: 'Ignored reconciliation record remains audited.', action: () => helpers.run('Record ignored.', () => apiRequest('POST', `${API}/reconciliation/records/${id}/ignore`)).then(load) });
@@ -666,15 +686,17 @@ export function ReconciliationPage() {
         <Metric label="Unresolved items" value={unresolved} icon={FileSearch} />
         <Metric label="Duplicate records" value={duplicates} icon={Copy} />
         <Metric label="Amount variance" value={money(variance)} icon={Banknote} />
+        <Metric label="Fee variance" value={money(feeVariance)} icon={Receipt} />
+        <Metric label="Tax variance" value={money(taxVariance)} icon={Landmark} />
       </div>
       <div className="button-row">
         {['Overview', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="button-row">
-        {['Upload provider report', 'Upload bank statement', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
+        {['Upload provider report', 'Upload bank statement', 'Upload payout report', 'Upload fee report', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
       </div>
-      {tab === 'Overview' && <DataTable rows={queue.slice(0, 12)} columns={['row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty={{ title: 'No matching queue records', body: 'Provider reports, bank statements, ledger exports, and settlement reports create queue records here.' }} renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
-      {tab === 'Uploads' && <DataTable rows={rows} columns={['id', 'source', 'provider_id', 'file_name', 'file_hash', 'row_count', 'matched_count', 'mismatch_count', 'duplicate_count', 'status', 'created_at']} empty={{ title: 'No reconciliation files uploaded', body: 'Upload provider reports or bank statements to start matching.' }} onView={row => helpers.setDrawer({ title: 'Reconciliation details', body: row })} />}
+      {tab === 'Overview' && <DataTable rows={queue.slice(0, 12)} columns={['row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty={{ title: 'Upload provider or bank files to start matching.', body: 'Provider reports, bank statements, payout reports, fee reports, and ledger exports create queue records here.' }} renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
+      {tab === 'Uploads' && <DataTable rows={rows} columns={['id', 'source', 'provider_id', 'file_name', 'file_hash', 'row_count', 'matched_count', 'mismatch_count', 'duplicate_count', 'status', 'created_at', 'processed_at']} empty={{ title: 'Upload provider or bank files to start matching.', body: 'Upload provider reports, bank statements, payout reports, or fee reports to start reconciliation.' }} onView={row => helpers.setDrawer({ title: 'Reconciliation details', body: row })} />}
       {tab === 'Matching Queue' && <DataTable rows={queue} columns={['id', 'file_id', 'row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'confidence_score', 'suggested_match']} empty="No matching queue records" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
       {tab === 'Mismatches' && <DataTable rows={queue.filter(row => String(row.match_status).includes('mismatch') || row.mismatch_reason)} columns={['id', 'external_reference', 'amount', 'currency', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty="No mismatches" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
       {tab === 'Resolved' && <DataTable rows={queue.filter(row => row.resolution_status === 'resolved')} columns={['id', 'external_reference', 'matched_entity_type', 'matched_entity_id', 'resolution_status', 'resolution_note', 'resolved_at']} empty="No resolved records" />}
@@ -881,31 +903,80 @@ export function WebhookConfigPage() {
 }
 
 export function ReportsPage() {
-  const reports = [
-    'Payment report',
-    'Settlement report',
-    'Refund report',
-    'Dispute report',
-    'Reconciliation report',
-    'Provider performance report',
-    'Revenue report',
-  ].map((name, index) => ({ id: String(index), name, format: 'CSV', status: 'ready' }));
+  const helpers = useDrawerConfirm();
+  const reports = useRows(`${API}/reports`);
+  const history = useRows(`${API}/reports/export-history`);
+  const scheduled = useRows(`${API}/reports/scheduled`);
+  const [tab, setTab] = useState('Reports');
+  const [filters, setFilters] = useState({ start_date: '', end_date: '', provider: '', business_account: '', currency: '', payment_method: '', status: '', format: 'CSV' });
+  const state = reports.state === 'error' || history.state === 'error' || scheduled.state === 'error' ? 'error' : reports.state === 'loading' || history.state === 'loading' || scheduled.state === 'loading' ? 'loading' : 'ready';
+  const error = reports.error || history.error || scheduled.error;
+  const load = () => void Promise.all([reports.load(), history.load(), scheduled.load()]);
+  const generate = (row: GenericRecord, format: string) => {
+    helpers.setConfirm({
+      title: `Generate ${format}`,
+      body: 'Report export is permission-gated, masked, expiring, and audit logged.',
+      action: () => helpers.run('Report export queued.', () => apiRequest('POST', `${API}/reports/generate`, {
+        report_type: row.report_name || row.name,
+        format,
+        filters,
+      })).then(load),
+    });
+  };
+  const schedule = (row: GenericRecord) => {
+    helpers.setConfirm({
+      title: 'Schedule report',
+      body: 'Scheduled finance reports use saved filters, masked data, and audited delivery setup.',
+      action: () => helpers.run('Report scheduled.', () => apiRequest('POST', `${API}/reports/schedule`, {
+        report_type: row.report_name || row.name,
+        format: filters.format,
+        frequency: 'weekly',
+        recipients: ['finance@feelpay.local'],
+        filters,
+      })).then(load),
+    });
+  };
+  const download = (row: GenericRecord) => {
+    const id = String(row.id || '');
+    helpers.setConfirm({
+      title: 'Download latest',
+      body: 'Download links expire and report download is audit logged.',
+      action: () => helpers.run('Download link prepared.', () => apiRequest('GET', `${API}/reports/export-history/${id}/download`)),
+    });
+  };
   return (
-    <Page title="Reports" subtitle="Company finance and operations exports">
-      <div className="filter-bar">
-        <input placeholder="Filter reports" aria-label="Filter reports" />
-        <button className="btn-primary"><Download size={14} /> Export CSV</button>
-        <button className="btn-secondary"><Download size={14} /> Export PDF</button>
+    <CrudPage title="Reports" subtitle="Company finance and operations exports" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="card filter-grid">
+        {Object.entries(filters).map(([key, value]) => (
+          <Field key={key} label={key.replaceAll('_', ' ')}>
+            {key === 'format'
+              ? <Select value={value} options={['CSV', 'PDF', 'XLSX']} onChange={next => setFilters({ ...filters, format: next })} />
+              : <input type={key.endsWith('date') ? 'date' : 'text'} value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />}
+          </Field>
+        ))}
       </div>
-      <DataTable rows={reports} columns={['name', 'format', 'status']} empty="No reports configured" />
-    </Page>
+      <div className="button-row">
+        {['Reports', 'Export History', 'Scheduled Reports'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      {tab === 'Reports' && <DataTable rows={reports.rows} columns={['report_name', 'category', 'format', 'last_generated_at', 'generated_by', 'status']} empty={{ title: 'Reports are ready to export.', body: 'Choose filters, then generate CSV, PDF, or XLSX exports.' }} renderActions={row => <ActionButtons actions={['Generate CSV', 'Generate PDF', 'Generate XLSX', 'Schedule report', 'View history', 'Download latest']} onClick={action => {
+        if (action === 'Generate CSV') generate(row, 'CSV');
+        else if (action === 'Generate PDF') generate(row, 'PDF');
+        else if (action === 'Generate XLSX') generate(row, 'XLSX');
+        else if (action === 'Schedule report') schedule(row);
+        else if (action === 'View history') setTab('Export History');
+        else helpers.setDrawer({ title: 'Latest report', body: row });
+      }} />} />}
+      {tab === 'Export History' && <DataTable rows={history.rows} columns={['id', 'report_type', 'file_name', 'format', 'status', 'row_count', 'generated_by', 'generated_at', 'expires_at']} empty={{ title: 'No report exports yet', body: 'Generated reports appear here with expiring download links.' }} renderActions={row => <ActionButtons actions={['Download latest', 'View detail']} onClick={action => action === 'Download latest' ? download(row) : helpers.setDrawer({ title: 'Export history', body: row })} />} />}
+      {tab === 'Scheduled Reports' && <DataTable rows={scheduled.rows} columns={['id', 'report_type', 'frequency', 'recipients', 'format', 'status', 'created_by', 'next_run_at', 'last_run_at', 'created_at']} empty={{ title: 'No scheduled reports yet', body: 'Schedule recurring daily, weekly, or monthly reports for finance recipients.' }} onView={row => helpers.setDrawer({ title: 'Scheduled report', body: row })} />}
+      <Modals helpers={helpers} />
+    </CrudPage>
   );
 }
 
 export function AuditLogsPage() {
   const { rows, state, error, load } = useRows(`${API}/audit-logs`);
   const helpers = useDrawerConfirm();
-  return <TableRoute title="Audit Logs" subtitle="Sensitive company admin action history" rows={rows} state={state} error={error} columns={['action', 'entity_type', 'entity_id', 'actor_admin_id', 'actor_role', 'ip_address', 'new_value_summary', 'created_at']} actions={['View detail']} onAction={(row) => helpers.setDrawer({ title: 'Audit details', body: row })} onRefresh={load} helpers={helpers} />;
+  return <TableRoute title="Audit Logs" subtitle="Sensitive company admin action history" rows={rows} state={state} error={error} columns={['action', 'entity_type', 'entity_id', 'actor', 'ip_address', 'new_value_summary', 'created_at']} actions={['View detail']} onAction={(row) => helpers.setDrawer({ title: 'Audit details', body: row })} onRefresh={load} helpers={helpers} />;
 }
 
 export function AdminUsersRolesPage() {
@@ -970,7 +1041,7 @@ export function SystemHealthPage() {
           return <Metric key={component} label={component} value={String(row?.status || 'unknown')} icon={Activity} />;
         })}
       </div>
-      <TablePanel title="Provider Health" rows={providers.rows} columns={['provider', 'environment', 'health', 'last_check', 'latency_ms', 'error_message']} />
+      <TablePanel title="Provider Health" rows={providers.rows} columns={['provider', 'environment', 'health', 'success_rate', 'attempt_count', 'last_check', 'latency_ms', 'error_message']} />
       <DataTable rows={jobs.rows} columns={['job_name', 'status', 'last_run_at', 'next_run_at', 'failure_count', 'last_error']} empty="No background jobs found" renderActions={row => <ActionButtons actions={['Retry failed job', 'View logs', 'Mark incident resolved']} onClick={action => action === 'Retry failed job' ? retryJob(row) : helpers.setDrawer({ title: action, body: row })} />} />
       <Modals helpers={helpers} />
     </CrudPage>
@@ -979,19 +1050,32 @@ export function SystemHealthPage() {
 
 export function NotificationsPage() {
   const { rows, state, error, load } = useRows('/admin/notifications');
+  const [tab, setTab] = useState('Inbox');
   const helpers = useDrawerConfirm();
   const act = (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
-    if (action === 'view_related_record') helpers.setDrawer({ title: 'Related record', body: row });
+    if (action === 'create_incident') helpers.setConfirm({ title: 'Create incident', body: 'Critical alert creates incident, timeline event, and audit log.', action: () => helpers.run('Incident created.', () => apiRequest('POST', `/admin/notifications/${id}/incident`)).then(load) });
+    else if (action === 'snooze_alert') helpers.setConfirm({ title: 'Snooze alert', body: 'Snooze updates alert SLA visibility and creates audit log.', action: () => helpers.run('Alert snoozed.', () => apiRequest('POST', `/admin/notifications/${id}/snooze`)).then(load) });
+    else if (action === 'view_related_record') helpers.setDrawer({ title: 'Related record', body: row });
     else helpers.setConfirm({ title: action.replaceAll('_', ' '), body: 'Notification action updates alert status and creates audit log.', action: () => helpers.run('Notification updated.', () => apiRequest('POST', `/admin/notifications/${id}/${action}`, { assigned_to_admin_id: row.assigned_to_admin_id || null })).then(load) });
   };
+  const scopedRows = rows.filter(row => {
+    if (tab === 'Critical') return row.severity === 'critical';
+    if (tab === 'Resolved') return row.status === 'resolved';
+    if (tab === 'Ignored') return row.status === 'ignored';
+    if (tab === 'Assigned to me') return Boolean(row.assigned_to_admin_id);
+    return row.status !== 'resolved' && row.status !== 'ignored';
+  });
   return (
     <CrudPage title="Notifications" subtitle="Company admin alerts center" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="button-row">
+        {['Inbox', 'Assigned to me', 'Critical', 'Resolved', 'Ignored'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
       <div className="card">
         <h2><Bell size={18} /> Alert types</h2>
         <div className="button-row">{ALERT_TYPES.map(type => <span className="badge pending" key={type}>{type}</span>)}</div>
       </div>
-      <DataTable rows={rows} columns={['id', 'severity', 'type', 'title', 'related_entity_type', 'status', 'created_at', 'assigned_to_admin_id']} empty="No admin notifications found" renderActions={row => <ActionButtons actions={['Acknowledge', 'Assign', 'Resolve', 'Ignore', 'View related record']} onClick={action => act(row, normalizeAction(action))} />} />
+      <DataTable rows={scopedRows} columns={['id', 'severity', 'type', 'title', 'related_entity_type', 'status', 'occurrence_count', 'sla_due_at', 'assigned_to', 'incident_id', 'created_at']} empty={{ title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' }} renderActions={row => <ActionButtons actions={['Acknowledge', 'Assign', 'Create incident', 'Resolve', 'Snooze alert', 'Ignore', 'View related record']} onClick={action => act(row, normalizeAction(action))} />} />
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -1001,6 +1085,7 @@ export function DeveloperIntegrationPage() {
   const apiKeys = useRows(`${API}/developer/api-keys`);
   const requestLogs = useRows(`${API}/developer/request-logs`);
   const replays = useRows(`${API}/developer/webhook-replays`);
+  const [logFilters, setLogFilters] = useState({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' });
   const [tab, setTab] = useState('API Keys');
   const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '' });
   const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: '' });
@@ -1008,6 +1093,14 @@ export function DeveloperIntegrationPage() {
   const state = [apiKeys.state, requestLogs.state, replays.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state].includes('loading') ? 'loading' : 'ready';
   const error = apiKeys.error || requestLogs.error || replays.error;
   const load = () => void Promise.all([apiKeys.load(), requestLogs.load(), replays.load()]);
+  const filteredLogs = requestLogs.rows.filter(row => {
+    if (logFilters.request_id && !String(row.request_id || '').includes(logFilters.request_id)) return false;
+    if (logFilters.idempotency_key && !String(row.idempotency_key || '').includes(logFilters.idempotency_key)) return false;
+    if (logFilters.status_code && String(row.status_code || '') !== logFilters.status_code) return false;
+    if (logFilters.api_key_id && String(row.api_key_id || '') !== logFilters.api_key_id) return false;
+    if (logFilters.endpoint && !String(row.path || '').includes(logFilters.endpoint)) return false;
+    return true;
+  });
 
   const createKey = (event: FormEvent) => {
     event.preventDefault();
@@ -1056,7 +1149,7 @@ export function DeveloperIntegrationPage() {
   ];
   const checklist = ['Create sandbox API key', 'Configure webhook endpoint', 'Send webhook test', 'Replay failed event', 'Review idempotency logs', 'Switch to live mode after approval'].map((item, index) => ({ id: String(index), item, status: index < 2 ? 'ready' : 'pending' }));
   return (
-    <CrudPage title="Developer / Integration" subtitle="Internal API keys, sandbox/live mode, webhook testing, event replay, and logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Developer Tools" subtitle="Internal API keys, sandbox/live mode, webhook testing, event replay, and logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
         {['API Keys', 'Request Logs', 'Webhook Testing', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
@@ -1067,7 +1160,7 @@ export function DeveloperIntegrationPage() {
             <form onSubmit={createKey}>
               <div className="filter-grid">
                 <Field label="Name"><input value={keyForm.name} onChange={event => setKeyForm({ ...keyForm, name: event.target.value })} /></Field>
-                <Field label="Environment"><Select value={keyForm.environment} options={['sandbox', 'live']} onChange={environment => setKeyForm({ ...keyForm, environment })} /></Field>
+                <Field label="Environment"><Select value={keyForm.environment} options={['sandbox', 'production']} onChange={environment => setKeyForm({ ...keyForm, environment })} /></Field>
                 <Field label="Scopes"><input value={keyForm.scopes} onChange={event => setKeyForm({ ...keyForm, scopes: event.target.value })} /></Field>
                 <Field label="Expires at"><input type="datetime-local" value={keyForm.expires_at} onChange={event => setKeyForm({ ...keyForm, expires_at: event.target.value })} /></Field>
               </div>
@@ -1077,7 +1170,14 @@ export function DeveloperIntegrationPage() {
           <DataTable rows={apiKeys.rows} columns={['id', 'name', 'environment', 'key_prefix', 'masked_key', 'scopes', 'status', 'last_used_at', 'expires_at', 'created_at']} empty={{ title: 'No API keys yet', body: 'Create sandbox keys for internal integration testing. Full secrets are shown once outside this admin table.' }} renderActions={row => <ActionButtons actions={['Rotate key', 'Revoke key', 'View detail']} onClick={action => keyAction(row, normalizeAction(action))} />} />
         </>
       )}
-      {tab === 'Request Logs' && <DataTable rows={requestLogs.rows} columns={['created_at', 'environment', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code']} empty={{ title: 'No API request logs', body: 'Internal API logs appear here with Authorization, card, secret, and bank data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request metadata', body: row })} />}
+      {tab === 'Request Logs' && (
+        <>
+          <div className="card filter-grid">
+            {Object.entries(logFilters).map(([key, value]) => <Field key={key} label={key.replaceAll('_', ' ')}><input value={value} onChange={event => setLogFilters({ ...logFilters, [key]: event.target.value })} /></Field>)}
+          </div>
+          <DataTable rows={filteredLogs} columns={['created_at', 'environment', 'api_key_id', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code', 'error_message']} empty={{ title: 'No API request logs', body: 'Internal API logs appear here with Authorization, card, secret, and bank data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request metadata', body: row })} />
+        </>
+      )}
       {tab === 'Webhook Testing' && (
         <section className="card">
           <h2><Cable size={18} /> Webhook endpoint testing</h2>
@@ -1095,7 +1195,19 @@ export function DeveloperIntegrationPage() {
       )}
       {tab === 'Event Replay' && <DataTable rows={replays.rows} columns={['id', 'webhook_event_id', 'replay_status', 'replayed_by_admin_id', 'replayed_at', 'error_message', 'created_at']} empty={{ title: 'No webhook replays', body: 'Replay records appear here after failed or selected webhook events are queued again.' }} renderActions={row => <ActionButtons actions={['Replay selected event', 'View detail']} onClick={action => action === 'Replay selected event' ? replayEvent(row) : helpers.setDrawer({ title: 'Webhook replay', body: row })} />} />}
       {tab === 'Sample Payloads' && <DataTable rows={payloads} columns={['event', 'sample']} empty="No sample payloads" />}
-      {tab === 'Integration Checklist' && <DataTable rows={checklist} columns={['item', 'status']} empty="No integration checklist" />}
+      {tab === 'Integration Checklist' && <DataTable rows={[
+        ...checklist,
+        { id: 'sandbox_provider', item: 'Sandbox provider configured', status: 'ready' },
+        { id: 'production_provider', item: 'Production provider configured', status: 'pending' },
+        { id: 'webhook_secret', item: 'Webhook secret configured', status: 'ready' },
+        { id: 'signature_verification', item: 'Webhook signature verification enabled', status: 'ready' },
+        { id: 'api_key_active', item: 'API key active', status: apiKeys.rows.some(row => row.status === 'active') ? 'ready' : 'pending' },
+        { id: 'idempotency', item: 'Idempotency enabled', status: 'ready' },
+        { id: 'no_raw_card', item: 'No raw card data', status: 'ready' },
+        { id: 'no_cvv', item: 'No CVV storage', status: 'ready' },
+        { id: 'reconciliation', item: 'Reconciliation enabled', status: 'ready' },
+        { id: 'settlement_export', item: 'Settlement export enabled', status: 'ready' },
+      ]} columns={['item', 'status']} empty="No integration checklist" />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -1108,13 +1220,15 @@ export function ComplianceCenterPage() {
   const [error, setError] = useState('');
   const securityEvents = useRows(`${API}/compliance/security-events`);
   const reviews = useRows(`${API}/compliance/access-reviews`);
+  const tasks = useRows(`${API}/compliance/tasks`);
   const helpers = useDrawerConfirm();
+  const relatedError = securityEvents.error || reviews.error || tasks.error;
   const load = async () => {
     setState('loading');
     setError('');
     try {
       const data = await apiRequest<GenericRecord>('GET', `${API}/compliance/overview`);
-      await Promise.all([securityEvents.load(), reviews.load()]);
+      await Promise.all([securityEvents.load(), reviews.load(), tasks.load()]);
       setOverview(data);
       setState('ready');
     } catch (err) {
@@ -1152,7 +1266,7 @@ export function ComplianceCenterPage() {
     { id: 'bank_data_masking', item: 'Bank data masking coverage', count: 100, status: overview.bank_accounts_encrypted || 'enabled' },
   ];
   return (
-    <CrudPage title="Compliance Center" subtitle="PCI readiness, access review, security events, retention, exports, and credential rotation" state={state} error={error || securityEvents.error || reviews.error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Compliance Center" subtitle="PCI readiness, access review, security events, retention, exports, and credential rotation" state={state} error={error || relatedError || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="stats-grid">
         <Metric label="Raw card storage" value={String(overview.raw_card_storage || 'disabled')} icon={ShieldCheck} />
         <Metric label="CVV storage" value={String(overview.cvv_storage || 'disabled')} icon={ShieldCheck} />
@@ -1164,7 +1278,7 @@ export function ComplianceCenterPage() {
         <Metric label="Credential rotation due" value={String(overview.credential_rotation_due || 0)} icon={RefreshCw} />
       </div>
       <div className="button-row">
-        {['Overview', 'Access Review', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Overview', 'Access Review', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation', 'Compliance Tasks'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="button-row">
         <button type="button" onClick={startReview}>Start access review</button>
@@ -1172,6 +1286,7 @@ export function ComplianceCenterPage() {
         <button type="button" onClick={() => action('Export security events', `${API}/compliance/security-events-export`, 'GET')}>Export security events</button>
         <button type="button" onClick={() => action('Rotate due credentials', `${API}/compliance/rotate-due-credentials`)}>Rotate due credentials</button>
         <button type="button" onClick={() => action('Mark compliance task complete', `${API}/compliance/tasks/pci-readiness/complete`)}>Mark task complete</button>
+        <button type="button" onClick={() => action('Create compliance task', `${API}/compliance/tasks`)}>Create compliance task</button>
       </div>
       {tab === 'Overview' && <DataTable rows={readinessRows} columns={['check', 'status']} empty="No compliance readiness checks" />}
       {tab === 'Access Review' && <DataTable rows={reviews.rows} columns={['id', 'review_period', 'status', 'started_by_admin_id', 'completed_by_admin_id', 'started_at', 'completed_at']} empty={{ title: 'No access reviews', body: 'Start an access review to verify least-privilege company admin access.' }} renderActions={row => <ActionButtons actions={['Complete access review', 'View detail']} onClick={label => label === 'Complete access review' ? completeReview(row) : helpers.setDrawer({ title: 'Access review', body: row })} />} />}
@@ -1179,6 +1294,7 @@ export function ComplianceCenterPage() {
       {tab === 'Data Retention' && <DataTable rows={retentionRows} columns={['policy', 'status']} empty="No data retention policies" />}
       {tab === 'Audit Export' && <DataTable rows={[{ id: 'audit', export_type: 'Audit logs', masking: 'masked', status: 'available' }, { id: 'security', export_type: 'Security events', masking: 'masked', status: 'available' }]} columns={['export_type', 'masking', 'status']} empty="No exports" />}
       {tab === 'Credential Rotation' && <DataTable rows={rotationRows} columns={['item', 'count', 'status']} empty="No credential rotation tasks" />}
+      {tab === 'Compliance Tasks' && <DataTable rows={tasks.rows} columns={['id', 'title', 'category', 'status', 'owner_admin_id', 'due_at', 'completed_at', 'created_at']} empty={{ title: 'No compliance tasks yet', body: 'Create tasks for access review, retention, exports, and credential rotation follow-up.' }} renderActions={row => <ActionButtons actions={['Mark task complete', 'View detail']} onClick={label => label === 'Mark task complete' ? action('Mark compliance task complete', `${API}/compliance/tasks/${String(row.id || '')}/complete`) : helpers.setDrawer({ title: 'Compliance task', body: row })} />} />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -1251,9 +1367,18 @@ export function PlatformSettingsPage() {
 }
 
 function TableRoute({ title, subtitle, rows, state, error, notice, columns, actions, onAction, onRefresh, helpers }: { title: string; subtitle: string; rows: GenericRecord[]; state: LoadState; error: string; notice?: string; columns: string[]; actions: string[]; onAction: (row: GenericRecord, action: string) => void; onRefresh: () => void; helpers?: ReturnType<typeof useDrawerConfirm> }) {
+  const emptyStates: Record<string, EmptyStateConfig> = {
+    Refunds: { title: 'No refunds yet', body: 'Refund requests will appear here.' },
+    Settlements: { title: 'No settlement batches yet.', body: 'Settlement batches appear when providers or bank files are ready for finance review.' },
+    Disputes: { title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' },
+    'Risk Rules': { title: 'No risk rules configured.', body: 'Create rules to review risky payments, refunds, or payout activity.' },
+    'Audit Logs': { title: 'No sensitive admin actions recorded yet.', body: 'Sensitive admin actions will create audit logs here.' },
+    Notifications: { title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' },
+    Reports: { title: 'Reports are ready to export.', body: 'Choose a report type and export format when finance needs data.' },
+  };
   return (
     <CrudPage title={title} subtitle={subtitle} state={state} error={error} notice={notice} onRefresh={onRefresh}>
-      <DataTable rows={rows} columns={columns} empty={`No ${title.toLowerCase()} records`} renderActions={row => <ActionButtons actions={actions} onClick={action => onAction(row, normalizeAction(action))} />} />
+      <DataTable rows={rows} columns={columns} empty={emptyStates[title] || `No ${title.toLowerCase()} records`} renderActions={row => <ActionButtons actions={actions} onClick={action => onAction(row, normalizeAction(action))} />} />
       {helpers && <Modals helpers={helpers} />}
     </CrudPage>
   );

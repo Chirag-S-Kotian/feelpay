@@ -557,6 +557,29 @@ struct AssignNotificationRequest {
     assigned_to_admin_id: Option<Uuid>,
 }
 
+#[derive(Deserialize)]
+struct ComplianceTaskRequest {
+    title: Option<String>,
+    category: Option<String>,
+    due_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct ReportGenerateRequest {
+    report_type: String,
+    format: String,
+    filters: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct ReportScheduleRequest {
+    report_type: String,
+    filters: Option<Value>,
+    frequency: String,
+    recipients: Vec<String>,
+    format: String,
+}
+
 async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
     let summary = sqlx::query(
         r#"
@@ -2470,7 +2493,9 @@ async fn list_reconciliation(pool: web::Data<PgPool>) -> impl Responder {
                GREATEST(rf.mismatch_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) IN ('unmatched','mismatch')), 0))::bigint AS mismatch_count,
                GREATEST(rf.duplicate_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) = 'duplicate'), 0))::bigint AS duplicate_count,
                COALESCE((SELECT SUM(ABS(COALESCE(rr.amount, rr.observed_amount, 0) - COALESCE(rr.expected_amount, rr.amount, rr.observed_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS amount_variance,
-               rf.created_at
+               COALESCE((SELECT SUM(ABS(COALESCE(rr.fee_amount, 0) - COALESCE(rr.expected_fee_amount, rr.fee_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS fee_variance,
+               COALESCE((SELECT SUM(ABS(COALESCE(rr.tax_amount, 0) - COALESCE(rr.expected_tax_amount, rr.tax_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS tax_variance,
+               rf.created_at, rf.processed_at
         FROM reconciliation_files rf
         ORDER BY rf.created_at DESC
         LIMIT 50
@@ -2484,7 +2509,7 @@ async fn list_reconciliation(pool: web::Data<PgPool>) -> impl Responder {
                external_reference, internal_reference, amount, currency, record_type,
                COALESCE(match_status, status) AS match_status, mismatch_reason,
                matched_entity_type, matched_entity_id, resolution_status, confidence_score,
-               suggested_match, created_at
+               suggested_match, payout_id, ledger_transaction_group_id, created_at
         FROM reconciliation_records
         WHERE COALESCE(match_status, status) IN ('unmatched','mismatch','duplicate')
            OR resolution_status = 'open'
@@ -2514,7 +2539,12 @@ async fn upload_reconciliation_file(
     let request = request.into_inner();
     if !matches!(
         request.source.as_str(),
-        "provider_report" | "bank_statement" | "ledger_export" | "settlement_report"
+        "provider_report"
+            | "bank_statement"
+            | "ledger_export"
+            | "settlement_report"
+            | "payout_report"
+            | "fee_report"
     ) {
         return HttpResponse::BadRequest()
             .json(json!({ "message": "Invalid reconciliation source" }));
@@ -2640,19 +2670,29 @@ async fn auto_match_reconciliation(
                     EXISTS (SELECT 1 FROM payment_orders po WHERE po.gateway_reference = rr.external_reference OR po.id::text = rr.external_reference)
                     OR EXISTS (SELECT 1 FROM payment_refunds pr WHERE pr.provider_refund_id = rr.external_reference OR pr.id::text = rr.external_reference)
                     OR EXISTS (SELECT 1 FROM disputes_company dc WHERE dc.provider_dispute_id = rr.external_reference OR dc.id::text = rr.external_reference)
-                    OR EXISTS (SELECT 1 FROM ledger_entries le WHERE le.transaction_group_id::text = rr.external_reference)
+                    OR EXISTS (SELECT 1 FROM ledger_entries le WHERE le.transaction_group_id::text = rr.external_reference OR le.transaction_group_id = rr.ledger_transaction_group_id)
                 ) THEN 'matched'
+                WHEN rr.record_type = 'payout' AND rr.payout_id IS NULL THEN 'mismatch'
+                WHEN rr.ledger_transaction_group_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ledger_entries le WHERE le.transaction_group_id = rr.ledger_transaction_group_id) THEN 'mismatch'
+                WHEN rr.fee_amount IS NOT NULL AND rr.expected_fee_amount IS NOT NULL AND rr.fee_amount <> rr.expected_fee_amount THEN 'mismatch'
+                WHEN rr.tax_amount IS NOT NULL AND rr.expected_tax_amount IS NOT NULL AND rr.tax_amount <> rr.expected_tax_amount THEN 'mismatch'
                 WHEN rr.amount IS NOT NULL AND rr.expected_amount IS NOT NULL AND rr.amount <> rr.expected_amount THEN 'mismatch'
                 ELSE COALESCE(rr.match_status, rr.status)
             END,
             confidence_score = CASE
                 WHEN rr.external_reference IS NOT NULL AND rr.internal_reference IS NOT NULL AND rr.amount = rr.expected_amount THEN 100
+                WHEN rr.ledger_transaction_group_id IS NOT NULL THEN 96
                 WHEN rr.external_reference IS NOT NULL THEN 92
+                WHEN rr.provider_refund_id IS NOT NULL OR rr.provider_dispute_id IS NOT NULL THEN 90
                 WHEN rr.bank_utr IS NOT NULL OR rr.settlement_reference IS NOT NULL THEN 85
                 WHEN rr.amount IS NOT NULL THEN 65
                 ELSE confidence_score
             END,
             mismatch_reason = CASE
+                WHEN rr.fee_amount IS NOT NULL AND rr.expected_fee_amount IS NOT NULL AND rr.fee_amount <> rr.expected_fee_amount THEN 'fee_mismatch'
+                WHEN rr.tax_amount IS NOT NULL AND rr.expected_tax_amount IS NOT NULL AND rr.tax_amount <> rr.expected_tax_amount THEN 'tax_mismatch'
+                WHEN rr.record_type = 'payout' AND rr.payout_id IS NULL THEN 'payout_mismatch'
+                WHEN rr.ledger_transaction_group_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ledger_entries le WHERE le.transaction_group_id = rr.ledger_transaction_group_id) THEN 'ledger_mismatch'
                 WHEN rr.amount IS NOT NULL AND rr.expected_amount IS NOT NULL AND rr.amount <> rr.expected_amount THEN 'amount_mismatch'
                 ELSE rr.mismatch_reason
             END,
@@ -3138,10 +3178,233 @@ async fn list_risk_reviews(pool: web::Data<PgPool>) -> impl Responder {
 async fn list_audit_logs(pool: web::Data<PgPool>) -> impl Responder {
     query_items(
         pool,
-        "SELECT * FROM audit_logs_company ORDER BY created_at DESC LIMIT 100",
+        r#"
+        SELECT al.*,
+               au.name AS actor_name,
+               au.email AS actor_email,
+               COALESCE(ar.name, al.actor_role) AS actor_role
+        FROM audit_logs_company al
+        LEFT JOIN admin_users au ON au.id = al.actor_admin_id
+        LEFT JOIN admin_roles ar ON ar.id = au.role_id
+        ORDER BY al.created_at DESC
+        LIMIT 100
+        "#,
         "Failed to load audit logs",
     )
     .await
+}
+
+async fn list_reports_catalog(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        WITH catalog(report_name, category) AS (
+            VALUES
+                ('Payment report', 'payments'),
+                ('Settlement report', 'finance'),
+                ('Refund report', 'payments'),
+                ('Dispute report', 'risk'),
+                ('Reconciliation report', 'finance'),
+                ('Provider performance report', 'operations'),
+                ('Revenue report', 'finance'),
+                ('Ledger report', 'finance'),
+                ('Payout report', 'finance'),
+                ('Fee report', 'finance'),
+                ('Audit report', 'compliance')
+        )
+        SELECT gen_random_uuid() AS id,
+               c.report_name,
+               c.category,
+               COALESCE(h.format, 'CSV/PDF/XLSX') AS format,
+               h.generated_at AS last_generated_at,
+               au.name AS generated_by_name,
+               au.email AS generated_by_email,
+               COALESCE(ar.name, au.role) AS generated_by_role,
+               COALESCE(h.status, 'ready') AS status
+        FROM catalog c
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM admin_report_exports h
+            WHERE h.report_type = c.report_name
+            ORDER BY h.generated_at DESC
+            LIMIT 1
+        ) h ON true
+        LEFT JOIN admin_users au ON au.id = h.generated_by_admin_id
+        LEFT JOIN admin_roles ar ON ar.id = au.role_id
+        ORDER BY c.category, c.report_name
+        "#,
+        "Failed to load reports catalog",
+    )
+    .await
+}
+
+async fn list_report_exports(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT e.*,
+               au.name AS generated_by_name,
+               au.email AS generated_by_email,
+               COALESCE(ar.name, au.role) AS generated_by_role
+        FROM admin_report_exports e
+        LEFT JOIN admin_users au ON au.id = e.generated_by_admin_id
+        LEFT JOIN admin_roles ar ON ar.id = au.role_id
+        ORDER BY e.generated_at DESC
+        LIMIT 100
+        "#,
+        "Failed to load report export history",
+    )
+    .await
+}
+
+async fn list_scheduled_admin_reports(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT sr.*,
+               au.name AS created_by_name,
+               au.email AS created_by_email,
+               COALESCE(ar.name, au.role) AS created_by_role
+        FROM admin_scheduled_reports sr
+        LEFT JOIN admin_users au ON au.id = sr.created_by_admin_id
+        LEFT JOIN admin_roles ar ON ar.id = au.role_id
+        ORDER BY sr.created_at DESC
+        LIMIT 100
+        "#,
+        "Failed to load scheduled reports",
+    )
+    .await
+}
+
+async fn generate_admin_report(
+    pool: web::Data<PgPool>,
+    request: web::Json<ReportGenerateRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let format = request.format.to_ascii_uppercase();
+    if !matches!(format.as_str(), "CSV" | "PDF" | "XLSX") {
+        return HttpResponse::BadRequest().json(json!({ "message": "Unsupported report format" }));
+    }
+    let file_name = format!(
+        "{}-{}.{}",
+        request.report_type.to_ascii_lowercase().replace(' ', "-"),
+        Utc::now().format("%Y%m%d%H%M%S"),
+        format.to_ascii_lowercase()
+    );
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO admin_report_exports (
+            report_type, file_name, format, status, row_count, filters_json,
+            generated_at, expires_at
+        )
+        VALUES ($1, $2, $3, 'queued', 0, $4::jsonb, NOW(), NOW() + INTERVAL '7 days')
+        RETURNING id
+        "#,
+    )
+    .bind(request.report_type.trim())
+    .bind(&file_name)
+    .bind(&format)
+    .bind(redact_sensitive_value(
+        &request.filters.unwrap_or_else(|| json!({})),
+    ))
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "report.exported",
+                "admin_report_export",
+                Some(id),
+                json!({ "report_type": request.report_type, "format": format, "masked": true }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "queued", "file_name": file_name }))
+        }
+        Err(e) => {
+            tracing::error!("Generate report failed: {}", e);
+            server_error("Failed to generate report")
+        }
+    }
+}
+
+async fn schedule_admin_report(
+    pool: web::Data<PgPool>,
+    request: web::Json<ReportScheduleRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    if !matches!(request.frequency.as_str(), "daily" | "weekly" | "monthly") {
+        return HttpResponse::BadRequest().json(json!({ "message": "Unsupported frequency" }));
+    }
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO admin_scheduled_reports (
+            report_type, filters_json, frequency, recipients, format, status, next_run_at
+        )
+        VALUES ($1, $2::jsonb, $3, $4::jsonb, $5, 'active', NOW() + INTERVAL '1 day')
+        RETURNING id
+        "#,
+    )
+    .bind(request.report_type.trim())
+    .bind(redact_sensitive_value(
+        &request.filters.unwrap_or_else(|| json!({})),
+    ))
+    .bind(request.frequency.trim())
+    .bind(json!(request.recipients))
+    .bind(request.format.to_ascii_uppercase())
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "report.scheduled",
+                "admin_scheduled_report",
+                Some(id),
+                json!({ "report_type": request.report_type, "frequency": request.frequency }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "active" }))
+        }
+        Err(e) => {
+            tracing::error!("Schedule report failed: {}", e);
+            server_error("Failed to schedule report")
+        }
+    }
+}
+
+async fn download_report_export(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let export =
+        sqlx::query("SELECT id, file_name, expires_at FROM admin_report_exports WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool.get_ref())
+            .await;
+    match export {
+        Ok(Some(row)) => {
+            let expires_at: Option<DateTime<Utc>> = row.get("expires_at");
+            if expires_at.is_some_and(|value| value < Utc::now()) {
+                return HttpResponse::Gone().json(json!({ "message": "Export link expired" }));
+            }
+            audit(
+                &pool,
+                "report.downloaded",
+                "admin_report_export",
+                Some(id),
+                json!({ "masked": true }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({
+                "download_url": format!("pending-report-export/{}", row.get::<String, _>("file_name")),
+                "expires_at": expires_at
+            }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Report export not found" })),
+        Err(e) => {
+            tracing::error!("Download report failed: {}", e);
+            server_error("Failed to download report")
+        }
+    }
 }
 
 async fn list_roles(pool: web::Data<PgPool>) -> impl Responder {
@@ -3511,6 +3774,8 @@ async fn system_health_providers(pool: web::Data<PgPool>) -> impl Responder {
         SELECT display_name AS provider,
                environment,
                health_status AS health,
+               COALESCE(success_rate, 0)::float8 AS success_rate,
+               COALESCE((SELECT COUNT(*) FROM payment_attempts pa WHERE pa.provider_id = payment_providers.id), 0)::bigint AS attempt_count,
                last_health_check_at AS last_check,
                NULL::INTEGER AS latency_ms,
                CASE WHEN health_status IN ('down', 'failed') THEN 'Provider health check failed' ELSE NULL END AS error_message
@@ -3525,7 +3790,18 @@ async fn system_health_providers(pool: web::Data<PgPool>) -> impl Responder {
 async fn list_notifications(pool: web::Data<PgPool>) -> impl Responder {
     query_items(
         pool,
-        "SELECT * FROM admin_notifications ORDER BY created_at DESC LIMIT 200",
+        r#"
+        SELECT n.*,
+               au.name AS assigned_to_name,
+               au.email AS assigned_to_email,
+               COALESCE(ar.name, au.role) AS assigned_to_role,
+               CASE WHEN n.sla_due_at IS NOT NULL AND n.sla_due_at < NOW() AND n.status NOT IN ('resolved','ignored') THEN 'overdue' ELSE 'on_track' END AS sla_status
+        FROM admin_notifications n
+        LEFT JOIN admin_users au ON au.id = n.assigned_to_admin_id
+        LEFT JOIN admin_roles ar ON ar.id = au.role_id
+        ORDER BY n.created_at DESC
+        LIMIT 200
+        "#,
         "Failed to load notifications",
     )
     .await
@@ -3623,6 +3899,90 @@ async fn ignore_notification(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> 
         None,
     )
     .await
+}
+
+async fn create_incident_from_notification(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let notification_id = path.into_inner();
+    let notification =
+        sqlx::query("SELECT title, severity, type, message FROM admin_notifications WHERE id = $1")
+            .bind(notification_id)
+            .fetch_optional(pool.get_ref())
+            .await;
+    let Ok(Some(row)) = notification else {
+        return HttpResponse::NotFound().json(json!({ "message": "Notification not found" }));
+    };
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO incidents (title, severity, status, source, started_at, summary)
+        VALUES ($1, $2, 'open', $3, NOW(), $4)
+        RETURNING id
+        "#,
+    )
+    .bind(row.get::<String, _>("title"))
+    .bind(row.get::<String, _>("severity"))
+    .bind(row.get::<String, _>("type"))
+    .bind(row.get::<Option<String>, _>("message"))
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            let _ = sqlx::query(
+                "UPDATE admin_notifications SET incident_id = $2, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(notification_id)
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+            let _ = sqlx::query(
+                "INSERT INTO incident_events (incident_id, event_type, message) VALUES ($1, 'created', 'Created from alert')",
+            )
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+            audit(
+                &pool,
+                "incident.created",
+                "incident",
+                Some(id),
+                json!({ "notification_id": notification_id }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "open" }))
+        }
+        Err(e) => {
+            tracing::error!("Create incident failed: {}", e);
+            server_error("Failed to create incident")
+        }
+    }
+}
+
+async fn snooze_notification(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query("UPDATE admin_notifications SET sla_due_at = NOW() + INTERVAL '1 hour', updated_at = NOW() WHERE id = $1")
+        .bind(id)
+        .execute(pool.get_ref())
+        .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "notification.snoozed",
+                "admin_notification",
+                Some(id),
+                json!({ "sla_due_at": "plus_1_hour" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "snoozed" }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Notification not found" })),
+        Err(e) => {
+            tracing::error!("Snooze notification failed: {}", e);
+            server_error("Failed to snooze notification")
+        }
+    }
 }
 
 async fn get_platform_settings(pool: web::Data<PgPool>) -> impl Responder {
@@ -3870,7 +4230,7 @@ async fn list_api_request_logs(pool: web::Data<PgPool>) -> impl Responder {
         pool,
         r#"
         SELECT id, environment, api_key_id, method, path, status_code, latency_ms,
-               idempotency_key, request_id, error_code,
+               idempotency_key, request_id, error_code, error_message,
                request_metadata - 'authorization' - 'card' - 'cvv' - 'secret' AS request_metadata,
                response_summary - 'secret' - 'card' - 'bank_account' AS response_summary,
                created_at
@@ -3967,7 +4327,8 @@ async fn compliance_overview(pool: web::Data<PgPool>) -> impl Responder {
         "mfa_coverage": mfa_coverage,
         "stale_admin_users": stale_admin_users,
         "credential_rotation_due": rotation_due,
-        "audit_retention_status": "enabled"
+        "audit_retention_status": "enabled",
+        "export_retention_status": "enabled"
     }))
 }
 
@@ -4158,6 +4519,15 @@ async fn mark_compliance_task_complete(
     path: web::Path<String>,
 ) -> impl Responder {
     let task = path.into_inner();
+    let parsed_id = Uuid::parse_str(&task).ok();
+    if let Some(id) = parsed_id {
+        let _ = sqlx::query(
+            "UPDATE compliance_tasks SET status = 'completed', completed_at = NOW() WHERE id = $1",
+        )
+        .bind(id)
+        .execute(pool.get_ref())
+        .await;
+    }
     audit(
         &pool,
         "compliance_task.completed",
@@ -4167,6 +4537,58 @@ async fn mark_compliance_task_complete(
     )
     .await;
     HttpResponse::Ok().json(json!({ "task": task, "status": "completed" }))
+}
+
+async fn list_compliance_tasks(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM compliance_tasks ORDER BY created_at DESC LIMIT 100",
+        "Failed to load compliance tasks",
+    )
+    .await
+}
+
+async fn create_compliance_task(
+    pool: web::Data<PgPool>,
+    request: Option<web::Json<ComplianceTaskRequest>>,
+) -> impl Responder {
+    let body = request.map(|value| value.into_inner());
+    let title = body
+        .as_ref()
+        .and_then(|value| value.title.as_deref())
+        .unwrap_or("Compliance follow-up")
+        .to_string();
+    let category = body
+        .as_ref()
+        .and_then(|value| value.category.as_deref())
+        .unwrap_or("general")
+        .to_string();
+    let due_at = body.as_ref().and_then(|value| value.due_at);
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO compliance_tasks (title, category, status, due_at) VALUES ($1, $2, 'open', $3) RETURNING id",
+    )
+    .bind(&title)
+    .bind(&category)
+    .bind(due_at)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "compliance_task.created",
+                "compliance_task",
+                Some(id),
+                json!({ "title": title, "category": category }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "open" }))
+        }
+        Err(e) => {
+            tracing::error!("Create compliance task failed: {}", e);
+            server_error("Failed to create compliance task")
+        }
+    }
 }
 
 fn setting_value(value: &Value) -> (String, &'static str) {
@@ -4753,6 +5175,14 @@ pub fn configure_company_admin_routes(cfg: &mut web::ServiceConfig) {
             "/notifications/{id}/ignore",
             web::post().to(ignore_notification),
         )
+        .route(
+            "/notifications/{id}/incident",
+            web::post().to(create_incident_from_notification),
+        )
+        .route(
+            "/notifications/{id}/snooze",
+            web::post().to(snooze_notification),
+        )
         .route("/platform-settings", web::get().to(get_platform_settings))
         .route(
             "/platform-settings",
@@ -5095,6 +5525,30 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::get().to(list_risk_reviews),
         )
         .route(
+            &format!("{prefix}/reports"),
+            web::get().to(list_reports_catalog),
+        )
+        .route(
+            &format!("{prefix}/reports/generate"),
+            web::post().to(generate_admin_report),
+        )
+        .route(
+            &format!("{prefix}/reports/schedule"),
+            web::post().to(schedule_admin_report),
+        )
+        .route(
+            &format!("{prefix}/reports/scheduled"),
+            web::get().to(list_scheduled_admin_reports),
+        )
+        .route(
+            &format!("{prefix}/reports/export-history"),
+            web::get().to(list_report_exports),
+        )
+        .route(
+            &format!("{prefix}/reports/export-history/{{id}}/download"),
+            web::get().to(download_report_export),
+        )
+        .route(
             &format!("{prefix}/audit-logs"),
             web::get().to(list_audit_logs),
         )
@@ -5146,6 +5600,14 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/compliance/access-reviews"),
             web::post().to(start_access_review),
+        )
+        .route(
+            &format!("{prefix}/compliance/tasks"),
+            web::get().to(list_compliance_tasks),
+        )
+        .route(
+            &format!("{prefix}/compliance/tasks"),
+            web::post().to(create_compliance_task),
         )
         .route(
             &format!("{prefix}/compliance/access-reviews/{{id}}/items"),
@@ -5258,5 +5720,20 @@ mod tests {
         assert_eq!(redacted["nested"]["cvv"], "redacted");
         assert_eq!(redacted["nested"]["bank_account_number"], "redacted");
         assert_eq!(redacted["nested"]["safe"], "kept");
+    }
+
+    #[test]
+    fn report_export_filters_are_masked() {
+        let redacted = redact_sensitive_value(&json!({
+            "business_account": "acct_123",
+            "card": "4111111111111111",
+            "cvv": "123",
+            "bank_account_number": "999900001111",
+            "provider": "razorpay"
+        }));
+        assert_eq!(redacted["card"], "redacted");
+        assert_eq!(redacted["cvv"], "redacted");
+        assert_eq!(redacted["bank_account_number"], "redacted");
+        assert_eq!(redacted["provider"], "razorpay");
     }
 }

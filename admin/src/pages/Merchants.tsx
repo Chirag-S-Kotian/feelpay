@@ -61,8 +61,8 @@ export default function Merchants() {
     <div className="page fade-in">
       <div className="page-header">
         <div>
-          <h1>Merchants</h1>
-          <p>Platform merchant directory from live DB</p>
+          <h1>Business Accounts</h1>
+          <p>Business account directory from live DB</p>
         </div>
       </div>
 
@@ -74,19 +74,19 @@ export default function Merchants() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by id, name, email"
-            aria-label="Search merchants"
+            aria-label="Search business accounts"
           />
         </div>
       </div>
 
       {loading ? (
-        <div className="card">Loading merchants...</div>
+        <div className="card">Loading business accounts...</div>
       ) : (
         <div className="table-card">
           <table>
             <thead>
               <tr>
-                <th>Merchant</th>
+                <th>Business Account</th>
                 <th>Email</th>
                 <th>Business</th>
                 <th>Status</th>
@@ -120,14 +120,14 @@ export default function Merchants() {
                       disabled={impersonating === m.id}
                     >
                       <ExternalLink size={14} />
-                      {impersonating === m.id ? 'Opening...' : 'Open Merchant'}
+                      {impersonating === m.id ? 'Opening...' : 'Open Business Account'}
                     </button>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: 28 }}>No merchants found</td>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 28 }}>No business accounts found</td>
                 </tr>
               )}
             </tbody>

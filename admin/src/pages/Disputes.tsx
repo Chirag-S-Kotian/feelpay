@@ -63,7 +63,7 @@ export default function Disputes() {
               <tr>
                 <th>Dispute ID</th>
                 <th>Payment ID</th>
-                <th>Merchant ID</th>
+                <th>Business Account ID</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Reason</th>
