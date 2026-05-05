@@ -31,6 +31,8 @@ describe("Admin App", () => {
     expect(screen.getAllByText(/Admin Users & Roles/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/System Health/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Notifications/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Developer \/ Integration/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Compliance Center/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Platform Settings/i).length).toBeGreaterThan(0);
   });
 });

@@ -25,6 +25,7 @@ import {
   UserCog,
   HeartPulse,
   WalletCards,
+  Code2,
 } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -36,6 +37,8 @@ import {
   AuditLogsPage,
   BankIntegrationsPage,
   BusinessAccountsPage,
+  ComplianceCenterPage,
+  DeveloperIntegrationPage,
   DisputesPage,
   LedgerPage,
   PaymentOpsPage,
@@ -83,7 +86,11 @@ type AdminPermission =
   | 'platform_settings.view'
   | 'platform_settings.manage'
   | 'ledger.view'
-  | 'ledger.export';
+  | 'ledger.export'
+  | 'developer.view'
+  | 'developer.manage'
+  | 'compliance.view'
+  | 'compliance.manage';
 
 type NavItem = {
   path: string;
@@ -127,6 +134,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/routing-rules', label: 'Routing Rules', icon: RouteIcon, permission: 'routing.manage' },
       { path: '/white-label-checkout', label: 'White-label Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
       { path: '/webhook-config', label: 'Webhook Config', icon: Webhook, permission: 'webhook_config.manage' },
+      { path: '/developer', label: 'Developer / Integration', icon: Code2, permission: 'developer.view' },
     ],
   },
   {
@@ -144,6 +152,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/admin-users-roles', label: 'Admin Users & Roles', icon: UserCog, permission: 'admin_users.view' },
       { path: '/system-health', label: 'System Health', icon: HeartPulse, permission: 'system_health.view' },
       { path: '/notifications', label: 'Notifications', icon: Bell, permission: 'notifications.view' },
+      { path: '/compliance-center', label: 'Compliance Center', icon: ShieldCheck, permission: 'compliance.view' },
       { path: '/settings', label: 'Platform Settings', icon: SettingsIcon, permission: 'platform_settings.view' },
     ],
   },
@@ -252,6 +261,7 @@ function Layout() {
           <Route path="/routing-rules" element={<RequirePermission permission="routing.manage"><RoutingRulesPage /></RequirePermission>} />
           <Route path="/white-label-checkout" element={<RequirePermission permission="webhook_config.manage"><WhiteLabelCheckoutPage /></RequirePermission>} />
           <Route path="/webhook-config" element={<RequirePermission permission="webhook_config.manage"><WebhookConfigPage /></RequirePermission>} />
+          <Route path="/developer" element={<RequirePermission permission="developer.view"><DeveloperIntegrationPage /></RequirePermission>} />
           <Route path="/revenue" element={<Revenue />} />
           <Route path="/bulk-export" element={<AdminBulkExport />} />
           <Route path="/reports" element={<RequirePermission permission="reports.export"><ReportsPage /></RequirePermission>} />
@@ -259,6 +269,7 @@ function Layout() {
           <Route path="/admin-users-roles" element={<RequirePermission permission="admin_users.view"><AdminUsersRolesPage /></RequirePermission>} />
           <Route path="/system-health" element={<RequirePermission permission="system_health.view"><SystemHealthPage /></RequirePermission>} />
           <Route path="/notifications" element={<RequirePermission permission="notifications.view"><NotificationsPage /></RequirePermission>} />
+          <Route path="/compliance-center" element={<RequirePermission permission="compliance.view"><ComplianceCenterPage /></RequirePermission>} />
           <Route path="/settings" element={<RequirePermission permission="platform_settings.view"><PlatformSettingsPage /></RequirePermission>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

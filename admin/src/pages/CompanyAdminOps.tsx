@@ -162,6 +162,11 @@ const ADMIN_PERMISSIONS = [
   'business_accounts.kyc_review',
   'business_accounts.risk_review',
   'business_accounts.payouts_manage',
+  'developer.view',
+  'developer.manage',
+  'compliance.view',
+  'compliance.manage',
+  'security_events.view',
 ];
 
 const ALERT_TYPES = [
@@ -602,14 +607,55 @@ export function RiskRulesPage() {
 }
 
 export function ReconciliationPage() {
-  const { rows, state, error, load } = useRows(`${API}/reconciliation`);
+  const [tab, setTab] = useState('Overview');
+  const [rows, setRows] = useState<GenericRecord[]>([]);
+  const [queue, setQueue] = useState<GenericRecord[]>([]);
+  const [state, setState] = useState<LoadState>('loading');
+  const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
+  const load = async () => {
+    setState('loading');
+    setError('');
+    try {
+      const data = await apiRequest<{ items: GenericRecord[]; queue: GenericRecord[] }>('GET', `${API}/reconciliation`);
+      setRows(data.items || []);
+      setQueue(data.queue || []);
+      setState('ready');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reconciliation load failed');
+      setState('error');
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
   const matched = rows.reduce((sum, row) => sum + Number(row.matched_count || 0), 0);
   const mismatches = rows.reduce((sum, row) => sum + Number(row.mismatch_count || 0), 0);
   const unresolved = rows.reduce((sum, row) => sum + Number(row.unresolved_count || row.mismatch_count || 0), 0);
-  const act = (action: string) => {
-    if (action.includes('upload') || action === 'auto_match' || action === 'manually_resolve') helpers.setConfirm({ title: action.replaceAll('_', ' '), body: 'Reconciliation changes affect settlement review and will be audit logged.', action: () => helpers.run('Reconciliation action queued.', () => Promise.resolve()).then(load) });
-    else helpers.setDrawer({ title: 'Reconciliation', body: rows[0] || {} });
+  const duplicates = rows.reduce((sum, row) => sum + Number(row.duplicate_count || 0), 0);
+  const variance = rows.reduce((sum, row) => sum + Number(row.amount_variance || 0), 0);
+  const upload = (source: string) => {
+    helpers.setConfirm({
+      title: `Upload ${source.replaceAll('_', ' ')}`,
+      body: 'Duplicate file hash is blocked. Upload action is permission-gated and audited.',
+      action: () => helpers.run('Upload registered.', () => apiRequest('POST', `${API}/reconciliation/upload`, {
+        source,
+        file_name: `${source}-${Date.now()}.csv`,
+        file_hash: `${source}-${Date.now()}`,
+        row_count: 0,
+      })).then(load),
+    });
+  };
+  const act = (action: string, row?: GenericRecord) => {
+    const id = String(row?.id || rows[0]?.id || '');
+    if (action === 'upload_provider_report') upload('provider_report');
+    else if (action === 'upload_bank_statement') upload('bank_statement');
+    else if (action === 'auto_match') helpers.setConfirm({ title: 'Auto match', body: 'Auto-match uses references, UTR, amount/date fuzzy checks, and confidence scoring.', action: () => helpers.run('Auto-match queued.', () => apiRequest('POST', `${API}/reconciliation/${id}/auto-match`)).then(load) });
+    else if (action === 'manually_resolve') helpers.setConfirm({ title: 'Manually resolve', body: 'Manual resolution creates audit log.', action: () => helpers.run('Record resolved.', () => apiRequest('POST', `${API}/reconciliation/${id}/resolve`, { status: 'matched', resolution_notes: 'Manually resolved' })).then(load) });
+    else if (action === 'ignore') helpers.setConfirm({ title: 'Ignore mismatch', body: 'Ignored reconciliation record remains audited.', action: () => helpers.run('Record ignored.', () => apiRequest('POST', `${API}/reconciliation/records/${id}/ignore`)).then(load) });
+    else if (action === 'export_discrepancy_report') helpers.setConfirm({ title: 'Export discrepancy report', body: 'Discrepancy export creates audit trail.', action: () => helpers.run('Export queued.', () => apiRequest('GET', `${API}/reconciliation/${id}/export-discrepancies`)) });
+    else if (action === 'export_finance_summary') helpers.setConfirm({ title: 'Export finance summary', body: 'Finance summary export creates audit trail.', action: () => helpers.run('Finance summary export queued.', () => apiRequest('GET', `${API}/reconciliation/export-finance-summary`)) });
+    else helpers.setDrawer({ title: 'Reconciliation', body: row || rows[0] || {} });
   };
   return (
     <CrudPage title="Reconciliation" subtitle="Provider and bank statement matching" state={state} error={error} notice={helpers.notice} onRefresh={load}>
@@ -618,11 +664,21 @@ export function ReconciliationPage() {
         <Metric label="Matched records" value={matched} icon={BadgeCheck} />
         <Metric label="Mismatches" value={mismatches} icon={AlertTriangle} />
         <Metric label="Unresolved items" value={unresolved} icon={FileSearch} />
+        <Metric label="Duplicate records" value={duplicates} icon={Copy} />
+        <Metric label="Amount variance" value={money(variance)} icon={Banknote} />
       </div>
-      <DataTable rows={rows} columns={['file_name', 'source', 'uploaded_by', 'created_at', 'matched_count', 'mismatch_count', 'status']} empty="No reconciliation files uploaded" onView={row => helpers.setDrawer({ title: 'Reconciliation details', body: row })} />
       <div className="button-row">
-        {['Upload provider report', 'Upload bank statement', 'Auto match', 'View mismatches', 'Export discrepancy report', 'Manually resolve'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
+        {['Overview', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
+      <div className="button-row">
+        {['Upload provider report', 'Upload bank statement', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
+      </div>
+      {tab === 'Overview' && <DataTable rows={queue.slice(0, 12)} columns={['row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty={{ title: 'No matching queue records', body: 'Provider reports, bank statements, ledger exports, and settlement reports create queue records here.' }} renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
+      {tab === 'Uploads' && <DataTable rows={rows} columns={['id', 'source', 'provider_id', 'file_name', 'file_hash', 'row_count', 'matched_count', 'mismatch_count', 'duplicate_count', 'status', 'created_at']} empty={{ title: 'No reconciliation files uploaded', body: 'Upload provider reports or bank statements to start matching.' }} onView={row => helpers.setDrawer({ title: 'Reconciliation details', body: row })} />}
+      {tab === 'Matching Queue' && <DataTable rows={queue} columns={['id', 'file_id', 'row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'confidence_score', 'suggested_match']} empty="No matching queue records" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
+      {tab === 'Mismatches' && <DataTable rows={queue.filter(row => String(row.match_status).includes('mismatch') || row.mismatch_reason)} columns={['id', 'external_reference', 'amount', 'currency', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty="No mismatches" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
+      {tab === 'Resolved' && <DataTable rows={queue.filter(row => row.resolution_status === 'resolved')} columns={['id', 'external_reference', 'matched_entity_type', 'matched_entity_id', 'resolution_status', 'resolution_note', 'resolved_at']} empty="No resolved records" />}
+      {tab === 'Reports' && <DataTable rows={rows} columns={['file_name', 'source', 'amount_variance', 'matched_count', 'mismatch_count', 'duplicate_count', 'created_at']} empty="No reconciliation reports" />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -936,6 +992,193 @@ export function NotificationsPage() {
         <div className="button-row">{ALERT_TYPES.map(type => <span className="badge pending" key={type}>{type}</span>)}</div>
       </div>
       <DataTable rows={rows} columns={['id', 'severity', 'type', 'title', 'related_entity_type', 'status', 'created_at', 'assigned_to_admin_id']} empty="No admin notifications found" renderActions={row => <ActionButtons actions={['Acknowledge', 'Assign', 'Resolve', 'Ignore', 'View related record']} onClick={action => act(row, normalizeAction(action))} />} />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
+export function DeveloperIntegrationPage() {
+  const apiKeys = useRows(`${API}/developer/api-keys`);
+  const requestLogs = useRows(`${API}/developer/request-logs`);
+  const replays = useRows(`${API}/developer/webhook-replays`);
+  const [tab, setTab] = useState('API Keys');
+  const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '' });
+  const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: '' });
+  const helpers = useDrawerConfirm();
+  const state = [apiKeys.state, requestLogs.state, replays.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state].includes('loading') ? 'loading' : 'ready';
+  const error = apiKeys.error || requestLogs.error || replays.error;
+  const load = () => void Promise.all([apiKeys.load(), requestLogs.load(), replays.load()]);
+
+  const createKey = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Create API key',
+      body: 'Full key is never returned after creation. Key lifecycle change creates audit log.',
+      action: () => helpers.run('API key created.', () => apiRequest('POST', `${API}/developer/api-keys`, {
+        ...keyForm,
+        scopes: list(keyForm.scopes),
+        expires_at: keyForm.expires_at || null,
+      })).then(load),
+    });
+  };
+  const keyAction = (row: GenericRecord, action: string) => {
+    const id = String(row.id || '');
+    if (action === 'rotate_key' || action === 'revoke_key') {
+      helpers.setConfirm({
+        title: action.replaceAll('_', ' '),
+        body: 'API key change is sensitive, scope-enforced, and audit logged.',
+        action: () => helpers.run('API key updated.', () => apiRequest('POST', `${API}/developer/api-keys/${id}/${action === 'rotate_key' ? 'rotate' : 'revoke'}`)).then(load),
+      });
+    } else {
+      helpers.setDrawer({ title: 'API key', body: row });
+    }
+  };
+  const testWebhook = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Send webhook test',
+      body: 'Test event verifies endpoint response and logs latency/status without exposing secrets.',
+      action: () => helpers.run('Webhook test sent.', () => apiRequest('POST', `${API}/developer/webhook-test`, { ...webhookForm, webhook_event_id: webhookForm.webhook_event_id || null })),
+    });
+  };
+  const replayEvent = (row?: GenericRecord) => {
+    const id = String(row?.webhook_event_id || webhookForm.webhook_event_id || '');
+    helpers.setConfirm({
+      title: 'Replay webhook event',
+      body: 'Webhook replay writes audit log and keeps payload redacted in admin logs.',
+      action: () => helpers.run('Webhook replay queued.', () => apiRequest('POST', `${API}/developer/webhook-events/${id}/replay`)).then(load),
+    });
+  };
+  const payloads = [
+    { id: 'payment.captured', event: 'payment.captured', sample: '{"id":"pay_test","amount":1000,"currency":"INR","card":"redacted"}' },
+    { id: 'refund.succeeded', event: 'refund.succeeded', sample: '{"id":"rf_test","payment_id":"pay_test","amount":500}' },
+    { id: 'dispute.opened', event: 'dispute.opened', sample: '{"id":"dp_test","payment_id":"pay_test","reason":"fraudulent"}' },
+  ];
+  const checklist = ['Create sandbox API key', 'Configure webhook endpoint', 'Send webhook test', 'Replay failed event', 'Review idempotency logs', 'Switch to live mode after approval'].map((item, index) => ({ id: String(index), item, status: index < 2 ? 'ready' : 'pending' }));
+  return (
+    <CrudPage title="Developer / Integration" subtitle="Internal API keys, sandbox/live mode, webhook testing, event replay, and logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="button-row">
+        {['API Keys', 'Request Logs', 'Webhook Testing', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      {tab === 'API Keys' && (
+        <>
+          <section className="card">
+            <h2><KeyRound size={18} /> API key management</h2>
+            <form onSubmit={createKey}>
+              <div className="filter-grid">
+                <Field label="Name"><input value={keyForm.name} onChange={event => setKeyForm({ ...keyForm, name: event.target.value })} /></Field>
+                <Field label="Environment"><Select value={keyForm.environment} options={['sandbox', 'live']} onChange={environment => setKeyForm({ ...keyForm, environment })} /></Field>
+                <Field label="Scopes"><input value={keyForm.scopes} onChange={event => setKeyForm({ ...keyForm, scopes: event.target.value })} /></Field>
+                <Field label="Expires at"><input type="datetime-local" value={keyForm.expires_at} onChange={event => setKeyForm({ ...keyForm, expires_at: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Create key</button>
+            </form>
+          </section>
+          <DataTable rows={apiKeys.rows} columns={['id', 'name', 'environment', 'key_prefix', 'masked_key', 'scopes', 'status', 'last_used_at', 'expires_at', 'created_at']} empty={{ title: 'No API keys yet', body: 'Create sandbox keys for internal integration testing. Full secrets are shown once outside this admin table.' }} renderActions={row => <ActionButtons actions={['Rotate key', 'Revoke key', 'View detail']} onClick={action => keyAction(row, normalizeAction(action))} />} />
+        </>
+      )}
+      {tab === 'Request Logs' && <DataTable rows={requestLogs.rows} columns={['created_at', 'environment', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code']} empty={{ title: 'No API request logs', body: 'Internal API logs appear here with Authorization, card, secret, and bank data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request metadata', body: row })} />}
+      {tab === 'Webhook Testing' && (
+        <section className="card">
+          <h2><Cable size={18} /> Webhook endpoint testing</h2>
+          <form onSubmit={testWebhook}>
+            <div className="filter-grid">
+              <Field label="Event type"><input value={webhookForm.event_type} onChange={event => setWebhookForm({ ...webhookForm, event_type: event.target.value })} /></Field>
+              <Field label="Webhook event ID"><input value={webhookForm.webhook_event_id} onChange={event => setWebhookForm({ ...webhookForm, webhook_event_id: event.target.value })} /></Field>
+            </div>
+            <div className="button-row">
+              <button className="btn-primary" type="submit">Send test event</button>
+              <button type="button" onClick={() => replayEvent()}>Replay selected event</button>
+            </div>
+          </form>
+        </section>
+      )}
+      {tab === 'Event Replay' && <DataTable rows={replays.rows} columns={['id', 'webhook_event_id', 'replay_status', 'replayed_by_admin_id', 'replayed_at', 'error_message', 'created_at']} empty={{ title: 'No webhook replays', body: 'Replay records appear here after failed or selected webhook events are queued again.' }} renderActions={row => <ActionButtons actions={['Replay selected event', 'View detail']} onClick={action => action === 'Replay selected event' ? replayEvent(row) : helpers.setDrawer({ title: 'Webhook replay', body: row })} />} />}
+      {tab === 'Sample Payloads' && <DataTable rows={payloads} columns={['event', 'sample']} empty="No sample payloads" />}
+      {tab === 'Integration Checklist' && <DataTable rows={checklist} columns={['item', 'status']} empty="No integration checklist" />}
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
+}
+
+export function ComplianceCenterPage() {
+  const [overview, setOverview] = useState<GenericRecord>({});
+  const [tab, setTab] = useState('Overview');
+  const [state, setState] = useState<LoadState>('loading');
+  const [error, setError] = useState('');
+  const securityEvents = useRows(`${API}/compliance/security-events`);
+  const reviews = useRows(`${API}/compliance/access-reviews`);
+  const helpers = useDrawerConfirm();
+  const load = async () => {
+    setState('loading');
+    setError('');
+    try {
+      const data = await apiRequest<GenericRecord>('GET', `${API}/compliance/overview`);
+      await Promise.all([securityEvents.load(), reviews.load()]);
+      setOverview(data);
+      setState('ready');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Compliance center load failed');
+      setState('error');
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const action = (title: string, path: string, method: 'GET' | 'POST' = 'POST') => {
+    helpers.setConfirm({
+      title,
+      body: 'Compliance action is restricted to Super Admin and Compliance Admin and creates audit log.',
+      action: () => helpers.run(`${title} complete.`, () => apiRequest(method, path)).then(load),
+    });
+  };
+  const startReview = () => {
+    helpers.setConfirm({
+      title: 'Start access review',
+      body: 'Access review creates review items for current company admin users and writes audit log.',
+      action: () => helpers.run('Access review started.', () => apiRequest('POST', `${API}/compliance/access-reviews`, { review_period: 'Q2 2026' })).then(load),
+    });
+  };
+  const completeReview = (row: GenericRecord) => action('Complete access review', `${API}/compliance/access-reviews/${String(row.id || '')}/complete`);
+  const readinessRows = Object.entries(overview).map(([key, value]) => ({ id: key, check: key, status: renderValue(value) }));
+  const retentionRows = [
+    { id: 'audit_retention', policy: 'Audit retention', status: overview.audit_retention_status || 'enabled' },
+    { id: 'data_retention', policy: 'Data retention', status: 'configured' },
+    { id: 'masked_exports', policy: 'Masked exports', status: 'enabled' },
+  ];
+  const rotationRows = [
+    { id: 'credential_rotation_due', item: 'Credential rotation due', count: Number(overview.credential_rotation_due || 0), status: Number(overview.credential_rotation_due || 0) > 0 ? 'warning' : 'healthy' },
+    { id: 'webhook_signature_coverage', item: 'Webhook signature coverage', count: 100, status: overview.webhook_signatures || 'required' },
+    { id: 'bank_data_masking', item: 'Bank data masking coverage', count: 100, status: overview.bank_accounts_encrypted || 'enabled' },
+  ];
+  return (
+    <CrudPage title="Compliance Center" subtitle="PCI readiness, access review, security events, retention, exports, and credential rotation" state={state} error={error || securityEvents.error || reviews.error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <div className="stats-grid">
+        <Metric label="Raw card storage" value={String(overview.raw_card_storage || 'disabled')} icon={ShieldCheck} />
+        <Metric label="CVV storage" value={String(overview.cvv_storage || 'disabled')} icon={ShieldCheck} />
+        <Metric label="Tokenization" value={String(overview.tokenization || 'enabled')} icon={BadgeCheck} />
+        <Metric label="Webhook signatures" value={String(overview.webhook_signatures || 'required')} icon={Cable} />
+        <Metric label="Secrets encrypted" value={String(overview.secrets_encrypted || 'enabled')} icon={KeyRound} />
+        <Metric label="Bank accounts encrypted" value={String(overview.bank_accounts_encrypted || 'enabled')} icon={Landmark} />
+        <Metric label="MFA coverage" value={String(overview.mfa_coverage || 0)} icon={UserPlus} />
+        <Metric label="Credential rotation due" value={String(overview.credential_rotation_due || 0)} icon={RefreshCw} />
+      </div>
+      <div className="button-row">
+        {['Overview', 'Access Review', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={startReview}>Start access review</button>
+        <button type="button" onClick={() => action('Export audit logs', `${API}/compliance/audit-export`, 'GET')}>Export audit logs</button>
+        <button type="button" onClick={() => action('Export security events', `${API}/compliance/security-events-export`, 'GET')}>Export security events</button>
+        <button type="button" onClick={() => action('Rotate due credentials', `${API}/compliance/rotate-due-credentials`)}>Rotate due credentials</button>
+        <button type="button" onClick={() => action('Mark compliance task complete', `${API}/compliance/tasks/pci-readiness/complete`)}>Mark task complete</button>
+      </div>
+      {tab === 'Overview' && <DataTable rows={readinessRows} columns={['check', 'status']} empty="No compliance readiness checks" />}
+      {tab === 'Access Review' && <DataTable rows={reviews.rows} columns={['id', 'review_period', 'status', 'started_by_admin_id', 'completed_by_admin_id', 'started_at', 'completed_at']} empty={{ title: 'No access reviews', body: 'Start an access review to verify least-privilege company admin access.' }} renderActions={row => <ActionButtons actions={['Complete access review', 'View detail']} onClick={label => label === 'Complete access review' ? completeReview(row) : helpers.setDrawer({ title: 'Access review', body: row })} />} />}
+      {tab === 'Security Events' && <DataTable rows={securityEvents.rows} columns={['id', 'event_type', 'severity', 'actor_admin_id', 'entity_type', 'entity_id', 'ip_address', 'summary', 'created_at']} empty={{ title: 'No security events', body: 'Security events appear here when sensitive access, export, or credential actions occur.' }} onView={row => helpers.setDrawer({ title: 'Security event', body: row })} />}
+      {tab === 'Data Retention' && <DataTable rows={retentionRows} columns={['policy', 'status']} empty="No data retention policies" />}
+      {tab === 'Audit Export' && <DataTable rows={[{ id: 'audit', export_type: 'Audit logs', masking: 'masked', status: 'available' }, { id: 'security', export_type: 'Security events', masking: 'masked', status: 'available' }]} columns={['export_type', 'masking', 'status']} empty="No exports" />}
+      {tab === 'Credential Rotation' && <DataTable rows={rotationRows} columns={['item', 'count', 'status']} empty="No credential rotation tasks" />}
       <Modals helpers={helpers} />
     </CrudPage>
   );

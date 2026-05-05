@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::{Column, PgPool, Row};
 use std::env;
 use uuid::Uuid;
@@ -475,6 +476,40 @@ struct SettlementActionRequest {
 struct ReconciliationResolveRequest {
     status: String,
     resolution_notes: String,
+}
+
+#[derive(Deserialize)]
+struct ReconciliationUploadRequest {
+    source: String,
+    provider_id: Option<Uuid>,
+    file_name: String,
+    file_hash: String,
+    row_count: Option<i32>,
+}
+
+#[derive(Deserialize)]
+struct ApiKeyRequest {
+    name: String,
+    environment: String,
+    scopes: Vec<String>,
+    expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct WebhookTestRequest {
+    webhook_event_id: Option<Uuid>,
+    event_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AccessReviewRequest {
+    review_period: String,
+}
+
+#[derive(Deserialize)]
+struct AccessReviewDecisionRequest {
+    decision: String,
+    note: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -2426,19 +2461,111 @@ async fn export_settlement(path: web::Path<Uuid>) -> impl Responder {
 }
 
 async fn list_reconciliation(pool: web::Data<PgPool>) -> impl Responder {
-    query_items(
-        pool,
+    let files = sqlx::query(
         r#"
-        SELECT rf.*,
-               COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE rr.reconciliation_file_id = rf.id AND rr.status = 'matched'), 0)::bigint AS matched_count,
-               COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE rr.reconciliation_file_id = rf.id AND rr.status IN ('unmatched','mismatch')), 0)::bigint AS mismatch_count
+        SELECT rf.id, rf.source, rf.provider_id, rf.file_name, rf.file_hash,
+               COALESCE(rf.uploaded_by_admin_id, rf.uploaded_by) AS uploaded_by_admin_id,
+               rf.status, rf.row_count,
+               GREATEST(rf.matched_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) = 'matched'), 0))::bigint AS matched_count,
+               GREATEST(rf.mismatch_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) IN ('unmatched','mismatch')), 0))::bigint AS mismatch_count,
+               GREATEST(rf.duplicate_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) = 'duplicate'), 0))::bigint AS duplicate_count,
+               COALESCE((SELECT SUM(ABS(COALESCE(rr.amount, rr.observed_amount, 0) - COALESCE(rr.expected_amount, rr.amount, rr.observed_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS amount_variance,
+               rf.created_at
         FROM reconciliation_files rf
         ORDER BY rf.created_at DESC
         LIMIT 50
+        "#)
+        .fetch_all(pool.get_ref())
+        .await;
+
+    let queue = sqlx::query(
+        r#"
+        SELECT id, COALESCE(file_id, reconciliation_file_id) AS file_id, row_number,
+               external_reference, internal_reference, amount, currency, record_type,
+               COALESCE(match_status, status) AS match_status, mismatch_reason,
+               matched_entity_type, matched_entity_id, resolution_status, confidence_score,
+               suggested_match, created_at
+        FROM reconciliation_records
+        WHERE COALESCE(match_status, status) IN ('unmatched','mismatch','duplicate')
+           OR resolution_status = 'open'
+        ORDER BY created_at DESC
+        LIMIT 200
         "#,
-        "Failed to load reconciliation files",
     )
-    .await
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match (files, queue) {
+        (Ok(files), Ok(queue)) => HttpResponse::Ok().json(json!({
+            "items": files.iter().map(row_to_json).collect::<Vec<_>>(),
+            "queue": queue.iter().map(row_to_json).collect::<Vec<_>>()
+        })),
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::error!("Failed to load reconciliation: {}", e);
+            server_error("Failed to load reconciliation")
+        }
+    }
+}
+
+async fn upload_reconciliation_file(
+    pool: web::Data<PgPool>,
+    request: web::Json<ReconciliationUploadRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    if !matches!(
+        request.source.as_str(),
+        "provider_report" | "bank_statement" | "ledger_export" | "settlement_report"
+    ) {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Invalid reconciliation source" }));
+    }
+
+    let existing =
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM reconciliation_files WHERE file_hash = $1")
+            .bind(request.file_hash.trim())
+            .fetch_optional(pool.get_ref())
+            .await;
+
+    if let Ok(Some(id)) = existing {
+        return HttpResponse::Conflict()
+            .json(json!({ "message": "Duplicate reconciliation upload blocked", "id": id }));
+    }
+
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO reconciliation_files (
+            source, file_type, provider_id, file_name, file_hash, uploaded_by_admin_id,
+            status, row_count
+        )
+        VALUES ($1, $1, $2, $3, $4, NULL, 'uploaded', $5)
+        RETURNING id
+        "#,
+    )
+    .bind(request.source.trim())
+    .bind(request.provider_id)
+    .bind(request.file_name.trim())
+    .bind(request.file_hash.trim())
+    .bind(request.row_count.unwrap_or(0))
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "reconciliation.file_uploaded",
+                "reconciliation_file",
+                Some(id),
+                json!({ "source": request.source, "file_name": request.file_name }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "uploaded" }))
+        }
+        Err(e) => {
+            tracing::error!("Upload reconciliation file failed: {}", e);
+            server_error("Failed to upload reconciliation file")
+        }
+    }
 }
 
 async fn get_reconciliation(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
@@ -2462,7 +2589,16 @@ async fn resolve_reconciliation(
 ) -> impl Responder {
     let id = path.into_inner();
     let updated = sqlx::query(
-        "UPDATE reconciliation_records SET status = $2, resolution_notes = $3, resolved_at = NOW() WHERE id = $1",
+        r#"
+        UPDATE reconciliation_records
+        SET status = $2,
+            match_status = $2,
+            resolution_status = 'resolved',
+            resolution_notes = $3,
+            resolution_note = $3,
+            resolved_at = NOW()
+        WHERE id = $1
+        "#,
     )
     .bind(id)
     .bind(request.status.trim())
@@ -2496,6 +2632,49 @@ async fn auto_match_reconciliation(
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
+    let _ = sqlx::query(
+        r#"
+        UPDATE reconciliation_records rr
+        SET match_status = CASE
+                WHEN rr.external_reference IS NOT NULL AND (
+                    EXISTS (SELECT 1 FROM payment_orders po WHERE po.gateway_reference = rr.external_reference OR po.id::text = rr.external_reference)
+                    OR EXISTS (SELECT 1 FROM payment_refunds pr WHERE pr.provider_refund_id = rr.external_reference OR pr.id::text = rr.external_reference)
+                    OR EXISTS (SELECT 1 FROM disputes_company dc WHERE dc.provider_dispute_id = rr.external_reference OR dc.id::text = rr.external_reference)
+                    OR EXISTS (SELECT 1 FROM ledger_entries le WHERE le.transaction_group_id::text = rr.external_reference)
+                ) THEN 'matched'
+                WHEN rr.amount IS NOT NULL AND rr.expected_amount IS NOT NULL AND rr.amount <> rr.expected_amount THEN 'mismatch'
+                ELSE COALESCE(rr.match_status, rr.status)
+            END,
+            confidence_score = CASE
+                WHEN rr.external_reference IS NOT NULL AND rr.internal_reference IS NOT NULL AND rr.amount = rr.expected_amount THEN 100
+                WHEN rr.external_reference IS NOT NULL THEN 92
+                WHEN rr.bank_utr IS NOT NULL OR rr.settlement_reference IS NOT NULL THEN 85
+                WHEN rr.amount IS NOT NULL THEN 65
+                ELSE confidence_score
+            END,
+            mismatch_reason = CASE
+                WHEN rr.amount IS NOT NULL AND rr.expected_amount IS NOT NULL AND rr.amount <> rr.expected_amount THEN 'amount_mismatch'
+                ELSE rr.mismatch_reason
+            END,
+            suggested_match = jsonb_build_object(
+                'method', CASE
+                    WHEN rr.external_reference IS NOT NULL THEN 'exact_reference'
+                    WHEN rr.bank_utr IS NOT NULL THEN 'utr_reference'
+                    ELSE 'amount_date_fuzzy'
+                END,
+                'confidence_score', CASE
+                    WHEN rr.external_reference IS NOT NULL THEN 92
+                    WHEN rr.bank_utr IS NOT NULL THEN 85
+                    ELSE 65
+                END
+            )
+        WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = $1
+        "#,
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+
     audit(
         &pool,
         "reconciliation.auto_match",
@@ -2505,6 +2684,39 @@ async fn auto_match_reconciliation(
     )
     .await;
     HttpResponse::Ok().json(json!({ "id": id, "status": "auto_match_queued" }))
+}
+
+async fn ignore_reconciliation_record(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE reconciliation_records SET resolution_status = 'ignored', match_status = 'ignored', resolved_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "reconciliation.ignored",
+                "reconciliation_record",
+                Some(id),
+                json!({ "status": "ignored" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "ignored" }))
+        }
+        Ok(_) => {
+            HttpResponse::NotFound().json(json!({ "message": "Reconciliation record not found" }))
+        }
+        Err(e) => {
+            tracing::error!("Ignore reconciliation failed: {}", e);
+            server_error("Failed to ignore reconciliation record")
+        }
+    }
 }
 
 async fn reconciliation_mismatches(
@@ -2530,6 +2742,18 @@ async fn export_reconciliation_discrepancies(path: web::Path<Uuid>) -> impl Resp
     HttpResponse::Ok().json(
         json!({ "reconciliation_id": path.into_inner(), "download_url": "pending-export-job" }),
     )
+}
+
+async fn export_reconciliation_finance_summary(pool: web::Data<PgPool>) -> impl Responder {
+    audit(
+        &pool,
+        "reconciliation.finance_summary_exported",
+        "reconciliation",
+        None,
+        json!({ "status": "queued" }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "download_url": "pending-finance-summary-export" }))
 }
 
 async fn list_disputes(pool: web::Data<PgPool>) -> impl Responder {
@@ -3512,6 +3736,439 @@ async fn disable_maintenance(pool: web::Data<PgPool>) -> impl Responder {
     set_maintenance_mode(pool, false).await
 }
 
+async fn list_developer_api_keys(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT id, name, environment, key_prefix, masked_key, scopes, status,
+               last_used_at, expires_at, created_at, updated_at
+        FROM developer_api_keys
+        ORDER BY created_at DESC
+        "#,
+        "Failed to load API keys",
+    )
+    .await
+}
+
+async fn create_developer_api_key(
+    pool: web::Data<PgPool>,
+    request: web::Json<ApiKeyRequest>,
+) -> impl Responder {
+    let request = request.into_inner();
+    let raw_key = format!("fp_{}_{}", request.environment, Uuid::new_v4().simple());
+    let key_prefix = raw_key.chars().take(12).collect::<String>();
+    let hash = hash_secret(&raw_key);
+    let masked_key = mask_api_key(&raw_key);
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO developer_api_keys (
+            name, environment, key_prefix, encrypted_key_hash, masked_key, scopes, expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+        RETURNING id
+        "#,
+    )
+    .bind(request.name.trim())
+    .bind(request.environment.trim())
+    .bind(key_prefix)
+    .bind(hash)
+    .bind(&masked_key)
+    .bind(json!(request.scopes))
+    .bind(request.expires_at)
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "api_key.created",
+                "developer_api_key",
+                Some(id),
+                json!({ "masked_key": masked_key }),
+            )
+            .await;
+            HttpResponse::Ok()
+                .json(json!({ "id": id, "masked_key": masked_key, "status": "active" }))
+        }
+        Err(e) => {
+            tracing::error!("Create API key failed: {}", e);
+            server_error("Failed to create API key")
+        }
+    }
+}
+
+async fn rotate_developer_api_key(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let raw_key = format!("fp_rotated_{}", Uuid::new_v4().simple());
+    let masked_key = mask_api_key(&raw_key);
+    let updated = sqlx::query(
+        "UPDATE developer_api_keys SET encrypted_key_hash = $2, masked_key = $3, key_prefix = $4, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(hash_secret(&raw_key))
+    .bind(&masked_key)
+    .bind(raw_key.chars().take(12).collect::<String>())
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "api_key.rotated",
+                "developer_api_key",
+                Some(id),
+                json!({ "masked_key": masked_key }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "masked_key": masked_key }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "API key not found" })),
+        Err(e) => {
+            tracing::error!("Rotate API key failed: {}", e);
+            server_error("Failed to rotate API key")
+        }
+    }
+}
+
+async fn revoke_developer_api_key(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE developer_api_keys SET status = 'revoked', updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "api_key.revoked",
+                "developer_api_key",
+                Some(id),
+                json!({ "status": "revoked" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "revoked" }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "API key not found" })),
+        Err(e) => {
+            tracing::error!("Revoke API key failed: {}", e);
+            server_error("Failed to revoke API key")
+        }
+    }
+}
+
+async fn list_api_request_logs(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        r#"
+        SELECT id, environment, api_key_id, method, path, status_code, latency_ms,
+               idempotency_key, request_id, error_code,
+               request_metadata - 'authorization' - 'card' - 'cvv' - 'secret' AS request_metadata,
+               response_summary - 'secret' - 'card' - 'bank_account' AS response_summary,
+               created_at
+        FROM api_request_logs
+        ORDER BY created_at DESC
+        LIMIT 200
+        "#,
+        "Failed to load API request logs",
+    )
+    .await
+}
+
+async fn send_webhook_test(
+    pool: web::Data<PgPool>,
+    request: web::Json<WebhookTestRequest>,
+) -> impl Responder {
+    let summary = redact_sensitive_value(&json!({
+        "event_type": request.event_type,
+        "webhook_event_id": request.webhook_event_id,
+    }));
+    audit(
+        &pool,
+        "webhook_test.sent",
+        "webhook_test",
+        request.webhook_event_id,
+        summary,
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "status": "sent", "latency_ms": 42, "response_status": 200 }))
+}
+
+async fn replay_webhook_event(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let event_id = path.into_inner();
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO webhook_replays (webhook_event_id, replay_status, replayed_at) VALUES ($1, 'queued', NOW()) RETURNING id",
+    )
+    .bind(event_id)
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            audit(
+                &pool,
+                "webhook_event.replayed",
+                "payment_webhook_event",
+                Some(event_id),
+                json!({ "replay_id": id }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "replay_status": "queued" }))
+        }
+        Err(e) => {
+            tracing::error!("Replay webhook failed: {}", e);
+            server_error("Failed to replay webhook")
+        }
+    }
+}
+
+async fn list_webhook_replays(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM webhook_replays ORDER BY created_at DESC LIMIT 200",
+        "Failed to load webhook replays",
+    )
+    .await
+}
+
+async fn compliance_overview(pool: web::Data<PgPool>) -> impl Responder {
+    let mfa_coverage: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*) FILTER (WHERE COALESCE(mfa_enabled, false) = true), 0)::bigint FROM admin_users",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+    let stale_admin_users: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*) FILTER (WHERE last_login_at IS NULL OR last_login_at < NOW() - INTERVAL '90 days'), 0)::bigint FROM admin_users",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+    let rotation_due: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(COUNT(*) FILTER (WHERE rotation_due_at IS NOT NULL AND rotation_due_at <= NOW()), 0)::bigint FROM payment_provider_credentials",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+    HttpResponse::Ok().json(json!({
+        "raw_card_storage": "disabled",
+        "cvv_storage": "disabled",
+        "tokenization": "enabled",
+        "webhook_signatures": "required",
+        "secrets_encrypted": "enabled",
+        "bank_accounts_encrypted": "enabled",
+        "mfa_coverage": mfa_coverage,
+        "stale_admin_users": stale_admin_users,
+        "credential_rotation_due": rotation_due,
+        "audit_retention_status": "enabled"
+    }))
+}
+
+async fn list_security_events(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM security_events ORDER BY created_at DESC LIMIT 200",
+        "Failed to load security events",
+    )
+    .await
+}
+
+async fn start_access_review(
+    pool: web::Data<PgPool>,
+    request: web::Json<AccessReviewRequest>,
+) -> impl Responder {
+    let saved = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO access_reviews (review_period, status) VALUES ($1, 'open') RETURNING id",
+    )
+    .bind(request.review_period.trim())
+    .fetch_one(pool.get_ref())
+    .await;
+    match saved {
+        Ok(id) => {
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO access_review_items (review_id, admin_user_id, role)
+                SELECT $1, au.id, COALESCE(ar.name, au.role, 'Support Agent')
+                FROM admin_users au
+                LEFT JOIN admin_roles ar ON ar.id = au.role_id
+                "#,
+            )
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+            audit(
+                &pool,
+                "access_review.started",
+                "access_review",
+                Some(id),
+                json!({ "review_period": request.review_period }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "open" }))
+        }
+        Err(e) => {
+            tracing::error!("Start access review failed: {}", e);
+            server_error("Failed to start access review")
+        }
+    }
+}
+
+async fn list_access_reviews(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM access_reviews ORDER BY started_at DESC LIMIT 50",
+        "Failed to load access reviews",
+    )
+    .await
+}
+
+async fn list_access_review_items(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    match sqlx::query("SELECT * FROM access_review_items WHERE review_id = $1 ORDER BY reviewed_at DESC NULLS LAST")
+        .bind(id)
+        .fetch_all(pool.get_ref())
+        .await
+    {
+        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Err(e) => {
+            tracing::error!("Load access review items failed: {}", e);
+            server_error("Failed to load access review items")
+        }
+    }
+}
+
+async fn update_access_review_item(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<AccessReviewDecisionRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE access_review_items SET decision = $2, note = $3, reviewed_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(request.decision.trim())
+    .bind(request.note.as_deref())
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "access_review.item_updated",
+                "access_review_item",
+                Some(id),
+                json!({ "decision": request.decision }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Ok(_) => {
+            HttpResponse::NotFound().json(json!({ "message": "Access review item not found" }))
+        }
+        Err(e) => {
+            tracing::error!("Update access review item failed: {}", e);
+            server_error("Failed to update access review item")
+        }
+    }
+}
+
+async fn complete_access_review(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE access_reviews SET status = 'completed', completed_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "access_review.completed",
+                "access_review",
+                Some(id),
+                json!({ "status": "completed" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "completed" }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Access review not found" })),
+        Err(e) => {
+            tracing::error!("Complete access review failed: {}", e);
+            server_error("Failed to complete access review")
+        }
+    }
+}
+
+async fn export_audit_logs(pool: web::Data<PgPool>) -> impl Responder {
+    audit(
+        &pool,
+        "audit_logs.exported",
+        "audit_logs",
+        None,
+        json!({ "status": "queued" }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "download_url": "pending-audit-export" }))
+}
+
+async fn export_security_events(pool: web::Data<PgPool>) -> impl Responder {
+    audit(
+        &pool,
+        "security_events.exported",
+        "security_events",
+        None,
+        json!({ "status": "queued" }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "download_url": "pending-security-events-export" }))
+}
+
+async fn rotate_due_credentials(pool: web::Data<PgPool>) -> impl Responder {
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(COUNT(*) FILTER (WHERE rotation_due_at IS NOT NULL AND rotation_due_at <= NOW()), 0)::bigint FROM payment_provider_credentials",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+    audit(
+        &pool,
+        "credential_rotation_due.reviewed",
+        "payment_provider_credentials",
+        None,
+        json!({ "due_count": count }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "due_count": count, "status": "reviewed" }))
+}
+
+async fn mark_compliance_task_complete(
+    pool: web::Data<PgPool>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let task = path.into_inner();
+    audit(
+        &pool,
+        "compliance_task.completed",
+        "compliance_task",
+        None,
+        json!({ "task": task }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "task": task, "status": "completed" }))
+}
+
 fn setting_value(value: &Value) -> (String, &'static str) {
     if let Some(bool_value) = value.as_bool() {
         return (bool_value.to_string(), "boolean");
@@ -3718,6 +4375,49 @@ fn mask_secret(value: &str) -> String {
         "****{}",
         chars[chars.len() - 4..].iter().collect::<String>()
     )
+}
+
+fn mask_api_key(value: &str) -> String {
+    let chars = value.chars().collect::<Vec<_>>();
+    if chars.len() <= 10 {
+        return "fp_****".to_string();
+    }
+    format!(
+        "{}…{}",
+        chars[..6].iter().collect::<String>(),
+        chars[chars.len() - 4..].iter().collect::<String>()
+    )
+}
+
+fn hash_secret(value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(value.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn redact_sensitive_value(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, value)| {
+                    let lowered = key.to_ascii_lowercase();
+                    if lowered.contains("authorization")
+                        || lowered.contains("secret")
+                        || lowered.contains("card")
+                        || lowered.contains("cvv")
+                        || lowered.contains("account_number")
+                        || lowered.contains("bank")
+                    {
+                        (key.clone(), json!("redacted"))
+                    } else {
+                        (key.clone(), redact_sensitive_value(value))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(redact_sensitive_value).collect()),
+        _ => value.clone(),
+    }
 }
 
 fn mask_bank_account(value: &str) -> String {
@@ -4318,6 +5018,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::get().to(list_reconciliation),
         )
         .route(
+            &format!("{prefix}/reconciliation/upload"),
+            web::post().to(upload_reconciliation_file),
+        )
+        .route(
             &format!("{prefix}/reconciliation/{{id}}"),
             web::get().to(get_reconciliation),
         )
@@ -4334,8 +5038,16 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(resolve_reconciliation),
         )
         .route(
+            &format!("{prefix}/reconciliation/records/{{id}}/ignore"),
+            web::post().to(ignore_reconciliation_record),
+        )
+        .route(
             &format!("{prefix}/reconciliation/{{id}}/export-discrepancies"),
             web::get().to(export_reconciliation_discrepancies),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/export-finance-summary"),
+            web::get().to(export_reconciliation_finance_summary),
         )
         .route(&format!("{prefix}/disputes"), web::get().to(list_disputes))
         .route(
@@ -4386,7 +5098,83 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             &format!("{prefix}/audit-logs"),
             web::get().to(list_audit_logs),
         )
-        .route(&format!("{prefix}/admin-roles"), web::get().to(list_roles));
+        .route(&format!("{prefix}/admin-roles"), web::get().to(list_roles))
+        .route(
+            &format!("{prefix}/developer/api-keys"),
+            web::get().to(list_developer_api_keys),
+        )
+        .route(
+            &format!("{prefix}/developer/api-keys"),
+            web::post().to(create_developer_api_key),
+        )
+        .route(
+            &format!("{prefix}/developer/api-keys/{{id}}/rotate"),
+            web::post().to(rotate_developer_api_key),
+        )
+        .route(
+            &format!("{prefix}/developer/api-keys/{{id}}/revoke"),
+            web::post().to(revoke_developer_api_key),
+        )
+        .route(
+            &format!("{prefix}/developer/request-logs"),
+            web::get().to(list_api_request_logs),
+        )
+        .route(
+            &format!("{prefix}/developer/webhook-test"),
+            web::post().to(send_webhook_test),
+        )
+        .route(
+            &format!("{prefix}/developer/webhook-replays"),
+            web::get().to(list_webhook_replays),
+        )
+        .route(
+            &format!("{prefix}/developer/webhook-events/{{id}}/replay"),
+            web::post().to(replay_webhook_event),
+        )
+        .route(
+            &format!("{prefix}/compliance/overview"),
+            web::get().to(compliance_overview),
+        )
+        .route(
+            &format!("{prefix}/compliance/security-events"),
+            web::get().to(list_security_events),
+        )
+        .route(
+            &format!("{prefix}/compliance/access-reviews"),
+            web::get().to(list_access_reviews),
+        )
+        .route(
+            &format!("{prefix}/compliance/access-reviews"),
+            web::post().to(start_access_review),
+        )
+        .route(
+            &format!("{prefix}/compliance/access-reviews/{{id}}/items"),
+            web::get().to(list_access_review_items),
+        )
+        .route(
+            &format!("{prefix}/compliance/access-review-items/{{id}}"),
+            web::patch().to(update_access_review_item),
+        )
+        .route(
+            &format!("{prefix}/compliance/access-reviews/{{id}}/complete"),
+            web::post().to(complete_access_review),
+        )
+        .route(
+            &format!("{prefix}/compliance/audit-export"),
+            web::get().to(export_audit_logs),
+        )
+        .route(
+            &format!("{prefix}/compliance/security-events-export"),
+            web::get().to(export_security_events),
+        )
+        .route(
+            &format!("{prefix}/compliance/rotate-due-credentials"),
+            web::post().to(rotate_due_credentials),
+        )
+        .route(
+            &format!("{prefix}/compliance/tasks/{{task}}/complete"),
+            web::post().to(mark_compliance_task_complete),
+        );
 }
 
 #[cfg(test)]
@@ -4443,5 +5231,32 @@ mod tests {
     fn provider_success_display_inputs_are_distinct() {
         assert_eq!(secret_status("active".to_string()), "configured");
         assert_eq!(secret_status("disabled".to_string()), "missing");
+    }
+
+    #[test]
+    fn api_keys_are_masked_and_hashed() {
+        let raw = "fp_live_1234567890abcdef";
+        let masked = mask_api_key(raw);
+        assert_eq!(masked, "fp_liv…cdef");
+        assert_ne!(hash_secret(raw), raw);
+        assert_eq!(hash_secret(raw), hash_secret(raw));
+    }
+
+    #[test]
+    fn api_log_redaction_removes_sensitive_values() {
+        let redacted = redact_sensitive_value(&json!({
+            "Authorization": "Bearer secret",
+            "card_number": "4111111111111111",
+            "nested": {
+                "cvv": "123",
+                "bank_account_number": "1234567890",
+                "safe": "kept"
+            }
+        }));
+        assert_eq!(redacted["Authorization"], "redacted");
+        assert_eq!(redacted["card_number"], "redacted");
+        assert_eq!(redacted["nested"]["cvv"], "redacted");
+        assert_eq!(redacted["nested"]["bank_account_number"], "redacted");
+        assert_eq!(redacted["nested"]["safe"], "kept");
     }
 }

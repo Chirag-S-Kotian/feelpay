@@ -255,6 +255,20 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     if path.contains("/reconciliation") {
         return Some("reconciliation.manage");
     }
+    if path.contains("/developer") {
+        return Some(if method == "GET" {
+            "developer.view"
+        } else {
+            "developer.manage"
+        });
+    }
+    if path.contains("/compliance") {
+        return Some(if method == "GET" {
+            "compliance.view"
+        } else {
+            "compliance.manage"
+        });
+    }
     if path.starts_with("/provider-credentials")
         || path.contains("/providers")
         || path.contains("/credentials")
@@ -343,6 +357,8 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "system_health.view",
             "notifications.view",
             "ledger.view",
+            "developer.view",
+            "developer.manage",
         ],
         "Finance Admin" => &[
             "payment_ops.view",
@@ -391,6 +407,9 @@ fn permissions_for_role(role: &str) -> &'static [&'static str] {
             "notifications.view",
             "business_accounts.kyc_review",
             "business_accounts.risk_review",
+            "compliance.view",
+            "compliance.manage",
+            "security_events.view",
         ],
         "Auditor" | "Auditor / Read Only" => &[
             "payment_ops.view",
