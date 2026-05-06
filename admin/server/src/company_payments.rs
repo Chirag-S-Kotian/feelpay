@@ -3106,22 +3106,43 @@ async fn list_webhooks(pool: web::Data<PgPool>, query: web::Query<ListQuery>) ->
     }
 }
 
-async fn get_webhook(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    get_by_id(
-        pool,
-        "payment_webhook_events",
-        path.into_inner(),
-        "Webhook not found",
-    )
-    .await
+async fn find_webhook_event_id(pool: &PgPool, id_str: &str) -> Option<Uuid> {
+    if let Ok(uuid) = Uuid::parse_str(id_str) {
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM payment_webhook_events WHERE id = $1)",
+        )
+        .bind(uuid)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+        if exists {
+            return Some(uuid);
+        }
+    }
+    sqlx::query_scalar::<_, Uuid>("SELECT id FROM payment_webhook_events WHERE event_id = $1")
+        .bind(id_str)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None)
+}
+
+async fn get_webhook(pool: web::Data<PgPool>, path: web::Path<String>) -> impl Responder {
+    let id_str = path.into_inner();
+    let Some(id) = find_webhook_event_id(pool.get_ref(), &id_str).await else {
+        return HttpResponse::NotFound().json(json!({ "message": "Webhook event not found" }));
+    };
+    get_by_id(pool, "payment_webhook_events", id, "Webhook not found").await
 }
 
 async fn retry_webhook(
     pool: web::Data<PgPool>,
-    path: web::Path<Uuid>,
+    path: web::Path<String>,
     request: web::Json<WebhookRetryRequest>,
 ) -> impl Responder {
-    let id = path.into_inner();
+    let id_str = path.into_inner();
+    let Some(id) = find_webhook_event_id(pool.get_ref(), &id_str).await else {
+        return HttpResponse::NotFound().json(json!({ "message": "Webhook event not found" }));
+    };
     let updated = sqlx::query(
         "UPDATE payment_webhook_events SET processing_status = 'queued', retry_count = retry_count + 1, error_message = NULL WHERE id = $1",
     )
@@ -6430,14 +6451,19 @@ async fn send_webhook_test(
     HttpResponse::Ok().json(json!({ "status": "sent", "latency_ms": 42, "response_status": 200 }))
 }
 
-async fn replay_webhook_event(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
-    let event_id = path.into_inner();
+async fn replay_webhook_event(pool: web::Data<PgPool>, path: web::Path<String>) -> impl Responder {
+    let id_str = path.into_inner();
+    let Some(event_id) = find_webhook_event_id(pool.get_ref(), &id_str).await else {
+        return HttpResponse::NotFound().json(json!({ "message": "Webhook event not found" }));
+    };
+
     let saved = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO webhook_replays (webhook_event_id, replay_status, replayed_at) VALUES ($1, 'queued', NOW()) RETURNING id",
     )
     .bind(event_id)
     .fetch_one(pool.get_ref())
     .await;
+
     match saved {
         Ok(id) => {
             audit(
@@ -8861,10 +8887,13 @@ async fn save_webhook_retry_policy(
 
 async fn replay_webhook_event_v2(
     pool: web::Data<PgPool>,
-    path: web::Path<Uuid>,
+    path: web::Path<String>,
     request: web::Json<WebhookReplayRequest>,
 ) -> impl Responder {
-    let id = path.into_inner();
+    let id_str = path.into_inner();
+    let Some(id) = find_webhook_event_id(pool.get_ref(), &id_str).await else {
+        return HttpResponse::NotFound().json(json!({ "message": "Webhook event not found" }));
+    };
     let req = request.into_inner();
     let row = sqlx::query(
         "SELECT processing_status, retry_count FROM payment_webhook_events WHERE id = $1",
