@@ -1,12 +1,12 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-05-06)
 
 ## Corpus Check
-- 229 files · ~444,271 words
+- 229 files · ~444,836 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
 - 2433 nodes · 5321 edges · 127 communities detected
-- Extraction: 63% EXTRACTED · 37% INFERRED · 0% AMBIGUOUS · INFERRED: 1950 edges (avg confidence: 0.8)
+- Extraction: 63% EXTRACTED · 37% INFERRED · 0% AMBIGUOUS · INFERRED: 1951 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -778,11 +778,11 @@ Nodes (1): HTTP Strict Transport Security
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 14`, `Community 16`, `Community 22`, `Community 25`, `Community 26`, `Community 27`, `Community 34`, `Community 36`, `Community 38`, `Community 40`, `Community 41`, `Community 49`, `Community 70`?**
-  _High betweenness centrality (0.201) - this node is a cross-community bridge._
+  _High betweenness centrality (0.237) - this node is a cross-community bridge._
 - **Why does `apiRequest()` connect `Community 4` to `Community 8`, `Community 12`, `Community 13`, `Community 31`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
-- **Why does `send_via_sendgrid()` connect `Community 1` to `Community 0`, `Community 3`, `Community 13`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+  _High betweenness centrality (0.105) - this node is a cross-community bridge._
+- **Why does `generate()` connect `Community 2` to `Community 1`, `Community 12`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Are the 399 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 399 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 52 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**

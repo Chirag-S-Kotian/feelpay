@@ -992,7 +992,7 @@ async fn main() -> std::io::Result<()> {
                         web::scope("")
                             .wrap(AdminAuthMiddleware)
                             .configure(configure_admin_routes),
-                    )
+                    ),
             )
             .service(actix_files::Files::new("/uploads", "uploads").show_files_listing())
             .service(

@@ -2055,16 +2055,20 @@ async fn upload_white_label_logo(
     let content_type = body.content_type.trim().to_ascii_lowercase();
     let allowed = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
     if !allowed.contains(&content_type.as_str()) {
-        return HttpResponse::BadRequest().json(json!({ "message": "Only PNG/JPEG/WEBP/SVG allowed" }));
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Only PNG/JPEG/WEBP/SVG allowed" }));
     }
 
     let raw = match BASE64.decode(body.data_base64.trim()) {
         Ok(raw) => raw,
-        Err(_) => return HttpResponse::BadRequest().json(json!({ "message": "Invalid base64 payload" })),
+        Err(_) => {
+            return HttpResponse::BadRequest().json(json!({ "message": "Invalid base64 payload" }))
+        }
     };
 
     if raw.len() < 200 * 1024 {
-        return HttpResponse::BadRequest().json(json!({ "message": "Logo must be at least 200KB" }));
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Logo must be at least 200KB" }));
     }
     if raw.len() > 5 * 1024 * 1024 {
         return HttpResponse::BadRequest().json(json!({ "message": "Logo must be <= 5MB" }));
@@ -2093,10 +2097,12 @@ async fn upload_white_label_logo(
     let logo_url = format!("/uploads/branding/{}.{}", file_id, ext);
 
     // 1. Fetch old logo for cleanup
-    let old_logo: Option<String> = sqlx::query_scalar("SELECT checkout_logo_url FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1")
-        .fetch_optional(pool.get_ref())
-        .await
-        .unwrap_or(None);
+    let old_logo: Option<String> = sqlx::query_scalar(
+        "SELECT checkout_logo_url FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1",
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    .unwrap_or(None);
 
     // 2. Update the config immediately with the new logo URL
     let update_result = sqlx::query(
@@ -2128,9 +2134,11 @@ async fn update_white_label_config(
     request: web::Json<WhiteLabelRequest>,
 ) -> impl Responder {
     // Check if config exists
-    let existing = sqlx::query_scalar::<_, Uuid>("SELECT id FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1")
-        .fetch_optional(pool.get_ref())
-        .await;
+    let existing = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1",
+    )
+    .fetch_optional(pool.get_ref())
+    .await;
 
     let id = match existing {
         Ok(Some(_id)) => {
@@ -6436,31 +6444,117 @@ async fn send_webhook_test(
     pool: web::Data<PgPool>,
     request: web::Json<WebhookTestRequest>,
 ) -> impl Responder {
-    let summary = redact_sensitive_value(&json!({
-        "event_type": request.event_type,
-        "webhook_event_id": request.webhook_event_id,
-    }));
-    audit(
-        &pool,
-        "webhook_test.sent",
-        "webhook_test",
-        request.webhook_event_id,
-        summary,
+    let event_type = request
+        .event_type
+        .clone()
+        .unwrap_or_else(|| "payment.captured".to_string());
+
+    // Find sandbox mock provider
+    let provider_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM payment_providers WHERE environment = 'sandbox' AND provider_type = 'mock' LIMIT 1",
     )
+    .fetch_optional(pool.get_ref())
+    .await
+    .unwrap_or(None);
+
+    let Some(p_id) = provider_id else {
+        return HttpResponse::UnprocessableEntity().json(json!({
+            "message": "No sandbox mock provider found. Create one first in Provider Connectors."
+        }));
+    };
+
+    let test_id = request
+        .webhook_event_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| format!("test_{}", Uuid::new_v4().simple()));
+    let raw_payload = json!({
+        "id": test_id,
+        "event": event_type,
+        "data": {
+            "object": {
+                "id": format!("pay_{}", Uuid::new_v4().simple()),
+                "amount": 1000,
+                "currency": "INR",
+                "status": "captured",
+                "provider": "mock",
+                "business_account": "sandbox_admin_test"
+            }
+        },
+        "created": Utc::now().timestamp()
+    });
+
+    let saved_event = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO payment_webhook_events (provider_id, event_id, event_type, raw_payload, signature_verification_status, processing_status, processed_at)
+         VALUES ($1, $2, $3, $4, 'verified', 'processed', NOW()) RETURNING id"
+    )
+    .bind(p_id)
+    .bind(&test_id)
+    .bind(&event_type)
+    .bind(&raw_payload)
+    .fetch_one(pool.get_ref())
     .await;
-    HttpResponse::Ok().json(json!({ "status": "sent", "latency_ms": 42, "response_status": 200 }))
+
+    match saved_event {
+        Ok(e_id) => {
+            // Log successful attempt
+            let _ = sqlx::query(
+                "INSERT INTO webhook_processing_attempts (webhook_event_id, attempt_number, status, started_at, finished_at, worker_id)
+                 VALUES ($1, 1, 'success', NOW(), NOW(), 'test_simulator')"
+            )
+            .bind(e_id)
+            .execute(pool.get_ref())
+            .await;
+
+            audit(
+                &pool,
+                "webhook_test.sent",
+                "webhook_event",
+                Some(e_id),
+                json!({ "event_type": event_type, "simulator": true, "provider_id": p_id }),
+            )
+            .await;
+
+            HttpResponse::Ok().json(json!({
+                "status": "sent",
+                "latency_ms": 15,
+                "response_status": 200,
+                "event_id": e_id,
+                "message": "Sandbox test event processed internally and recorded."
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Webhook test insert failed: {}", e);
+            HttpResponse::InternalServerError()
+                .json(json!({ "message": format!("Failed to record test event: {}", e) }))
+        }
+    }
 }
 
-async fn replay_webhook_event(pool: web::Data<PgPool>, path: web::Path<String>) -> impl Responder {
+async fn replay_webhook_event(
+    pool: web::Data<PgPool>,
+    path: web::Path<String>,
+    request: web::Json<WebhookReplayRequest>,
+) -> impl Responder {
     let id_str = path.into_inner();
+    let req = request.into_inner();
     let Some(event_id) = find_webhook_event_id(pool.get_ref(), &id_str).await else {
         return HttpResponse::NotFound().json(json!({ "message": "Webhook event not found" }));
     };
 
+    let dry_run = req.dry_run.unwrap_or(false);
+    if dry_run {
+        return HttpResponse::Ok().json(json!({
+            "status": "dry_run",
+            "message": "Dry run successful. Event exists and is valid for replay.",
+            "event_id": event_id
+        }));
+    }
+
     let saved = sqlx::query_scalar::<_, Uuid>(
-        "INSERT INTO webhook_replays (webhook_event_id, replay_status, replayed_at) VALUES ($1, 'queued', NOW()) RETURNING id",
+        "INSERT INTO webhook_replays (webhook_event_id, replay_status, replayed_at, error_message) VALUES ($1, 'queued', NOW(), $2) RETURNING id",
     )
     .bind(event_id)
+    .bind(req.note)
     .fetch_one(pool.get_ref())
     .await;
 

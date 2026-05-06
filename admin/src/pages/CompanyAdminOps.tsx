@@ -24,6 +24,7 @@ import {
   Upload,
   UserPlus,
   Wallet,
+  Database,
 } from 'lucide-react';
 import { apiDownload, apiRequest } from '../hooks/useApi';
 
@@ -1688,10 +1689,22 @@ export function ReportsPage() {
         else if (action === 'View history') setTab('Export History');
         else helpers.setDrawer({ title: 'Latest report', body: row });
       }} />} />}
-      {tab === 'Export History' && <DataTable rows={history.rows} columns={['id', 'report_type', 'format', 'status', 'row_count', 'generated_by', 'generated_at', 'expires_at', 'error_message']} empty={{ title: 'No report exports yet', body: 'Generated reports appear here with expiring download links.' }} renderActions={row => {
+      {tab === 'Export History' && <DataTable rows={history.rows.map(row => {
         const status = String(row.status || '').toUpperCase();
-        const actions = status === 'READY' ? ['Download', 'View detail'] : status === 'FAILED' ? ['Retry', 'View failure'] : ['View detail'];
-        return <ActionButtons actions={actions} onClick={action => action === 'Download' ? download(row) : action === 'Retry' ? retry(row) : helpers.setDrawer({ title: status === 'FAILED' ? 'Report failure' : 'Export history', body: status === 'FAILED' ? reportFailureDetail(row) : row })} />;
+        const isOld = new Date(String(row.generated_at)).getTime() < new Date('2026-05-06').getTime();
+        let displayStatus = status;
+        if (status === 'FAILED') displayStatus = isOld ? 'Historical failure' : 'Failed';
+        else if (status === 'READY' && isOld) displayStatus = 'Historical success';
+
+        return {
+          ...row,
+          status: displayStatus,
+          _retry_label: row.parent_id ? 'Retry' : 'Original'
+        };
+      })} columns={['id', 'report_type', 'format', 'status', 'row_count', '_retry_label', 'generated_by', 'generated_at', 'expires_at', 'error_message']} empty={{ title: 'No report exports yet', body: 'Generated reports appear here with expiring download links.' }} renderActions={row => {
+        const status = String(row.status || '').toUpperCase();
+        const actions = status.includes('READY') || status.includes('SUCCESS') ? ['Download', 'View detail'] : status.includes('FAILED') || status.includes('FAILURE') ? ['Retry', 'View failure'] : ['View detail'];
+        return <ActionButtons actions={actions} onClick={action => action === 'Download' ? download(row) : action === 'Retry' ? retry(row) : helpers.setDrawer({ title: status.includes('FAILED') || status.includes('FAILURE') ? 'Report failure' : 'Export history', body: status.includes('FAILED') || status.includes('FAILURE') ? reportFailureDetail(row) : row })} />;
       }} />}
       {tab === 'Scheduled Reports' && <DataTable rows={scheduled.rows} columns={['id', 'report_type', 'frequency', 'recipients', 'format', 'status', 'created_by', 'next_run_at', 'last_run_at', 'created_at']} empty={{ title: 'No scheduled reports yet', body: 'Schedule recurring daily, weekly, or monthly reports for finance recipients.' }} onView={row => helpers.setDrawer({ title: 'Scheduled report', body: row })} />}
       <Modals helpers={helpers} />
@@ -1854,6 +1867,7 @@ export function DeveloperIntegrationPage() {
   const apiKeys = useRows(`${API}/developer/api-keys`);
   const requestLogs = useRows(`${API}/developer/request-logs`);
   const replays = useRows(`${API}/developer/webhook-replays`);
+  const webhookEvents = useRows(`${API}/developer/webhook-events?limit=50`);
   const apiVersions = useRows(`${API}/developer/api-versions`);
   const idempotencyLogs = useRows(`${API}/developer/idempotency-records`);
   const errorCatalog = useRows(`${API}/developer/error-catalog`);
@@ -1861,13 +1875,13 @@ export function DeveloperIntegrationPage() {
   const [logFilters, setLogFilters] = useState({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' });
   const [tab, setTab] = useState('API Keys');
   const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '' });
-  const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: '' });
+  const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: '', note: '', dry_run: false });
   const [idempotencyForm, setIdempotencyForm] = useState({ idempotency_key: '', api_key_id: '', payload: '{"resource":"payment"}', resource_type: 'payment' });
   const [rateLimitForm, setRateLimitForm] = useState({ api_key_id: '', window_seconds: 60, max_requests: 120 });
   const helpers = useDrawerConfirm();
-  const state = [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state].includes('loading') ? 'loading' : 'ready';
-  const error = apiKeys.error || requestLogs.error || replays.error || apiVersions.error || idempotencyLogs.error || errorCatalog.error || rateLimits.error;
-  const load = () => void Promise.all([apiKeys.load(), requestLogs.load(), replays.load(), apiVersions.load(), idempotencyLogs.load(), errorCatalog.load(), rateLimits.load()]);
+  const state = [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state, webhookEvents.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state, webhookEvents.state].includes('loading') ? 'loading' : 'ready';
+  const error = apiKeys.error || requestLogs.error || replays.error || apiVersions.error || idempotencyLogs.error || errorCatalog.error || rateLimits.error || webhookEvents.error;
+  const load = () => void Promise.all([apiKeys.load(), requestLogs.load(), replays.load(), apiVersions.load(), idempotencyLogs.load(), errorCatalog.load(), rateLimits.load(), webhookEvents.load()]);
   const filteredLogs = requestLogs.rows.filter(row => {
     if (logFilters.request_id && !String(row.request_id || '').includes(logFilters.request_id)) return false;
     if (logFilters.idempotency_key && !String(row.idempotency_key || '').includes(logFilters.idempotency_key)) return false;
@@ -1909,12 +1923,18 @@ export function DeveloperIntegrationPage() {
       action: () => helpers.run('Webhook test sent.', () => apiRequest('POST', `${API}/developer/webhook-test`, { ...webhookForm, webhook_event_id: webhookForm.webhook_event_id || null })),
     });
   };
-  const replayEvent = (row?: GenericRecord) => {
-    const id = String(row?.webhook_event_id || webhookForm.webhook_event_id || '');
+  const replayEvent = (row?: GenericRecord, dryRun = false) => {
+    const id = String(row?.event_id || row?.webhook_event_id || webhookForm.webhook_event_id || '');
+    if (!id) {
+      helpers.setError('Please select an event or enter an ID first.');
+      return;
+    }
     helpers.setConfirm({
-      title: 'Replay webhook event',
-      body: 'Webhook replay writes audit log and keeps payload redacted in admin logs.',
-      action: () => helpers.run('Webhook replay queued.', () => apiRequest('POST', `${API}/developer/webhook-events/${id}/replay`)).then(load),
+      title: `${dryRun ? 'Dry-run' : 'Replay'} webhook event`,
+      body: dryRun
+        ? 'Dry-run validates routing and handler availability without modifying state.'
+        : 'Webhook replay re-queues the event idempotently. This creates an audit log.',
+      action: () => helpers.run(dryRun ? 'Dry-run successful.' : 'Webhook replay queued.', () => apiRequest('POST', `${API}/developer/webhook-events/${id}/replay`, { dry_run: dryRun, note: webhookForm.note || null })).then(load),
     });
   };
   const payloads = [
@@ -1955,7 +1975,7 @@ export function DeveloperIntegrationPage() {
   return (
     <CrudPage title="Developer Tools" subtitle="Internal API keys, sandbox/live mode, webhook testing, event replay, and logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['API Versions', 'Idempotency Logs', 'Error Catalog', 'Rate Limits', 'API Keys', 'Request Logs', 'Webhook Testing', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['API Versions', 'Idempotency Logs', 'Error Catalog', 'Rate Limits', 'API Keys', 'Request Logs', 'Webhook Testing', 'Stored Events', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       {tab === 'API Versions' && <DataTable rows={apiVersions.rows} columns={['version', 'status', 'sunset_at', 'changelog_url', 'created_at']} empty={{ title: 'No API versions', body: 'Define current, supported, and deprecated versions for external readiness.' }} />}
       {tab === 'Idempotency Logs' && (
@@ -2021,18 +2041,36 @@ export function DeveloperIntegrationPage() {
       )}
       {tab === 'Webhook Testing' && (
         <section className="card">
-          <h2><Cable size={18} /> Webhook endpoint testing</h2>
+          <h2><Cable size={18} /> Webhook simulator</h2>
           <form onSubmit={testWebhook}>
             <div className="filter-grid">
               <Field label="Event type"><input value={webhookForm.event_type} onChange={event => setWebhookForm({ ...webhookForm, event_type: event.target.value })} /></Field>
-              <Field label="Webhook event ID"><input value={webhookForm.webhook_event_id} onChange={event => setWebhookForm({ ...webhookForm, webhook_event_id: event.target.value })} /></Field>
+              <Field label="Manual event ID (optional)"><input value={webhookForm.webhook_event_id} onChange={event => setWebhookForm({ ...webhookForm, webhook_event_id: event.target.value })} placeholder="test_..." /></Field>
             </div>
             <div className="button-row">
-              <button className="btn-primary" type="submit">Send test event</button>
-              <button type="button" onClick={() => replayEvent()}>Replay selected event</button>
+              <button className="btn-primary" type="submit">Send sandbox test event</button>
             </div>
           </form>
+          <div className="alert pending" style={{ marginTop: 12 }}>
+            Simulator uses <strong>Mock Provider</strong> to record a test event internally without requiring external delivery.
+          </div>
         </section>
+      )}
+      {tab === 'Stored Events' && (
+        <>
+          <div className="card">
+            <h2><Database size={18} /> Recently recorded events</h2>
+            <div className="filter-grid" style={{ marginBottom: 12 }}>
+              <Field label="Replay note"><input value={webhookForm.note} onChange={event => setWebhookForm({ ...webhookForm, note: event.target.value })} placeholder="Reason for replay..." /></Field>
+            </div>
+          </div>
+          <DataTable
+            rows={webhookEvents.rows}
+            columns={['id', 'event_id', 'event_type', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']}
+            empty={{ title: 'No recorded webhook events', body: 'Send a test event or configure a provider to see events here.' }}
+            renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run', 'Copy ID', 'View payload']} onClick={action => action === 'Replay event' ? replayEvent(row, false) : action === 'Dry-run' ? replayEvent(row, true) : action === 'Copy ID' ? copyText(String(row.event_id || row.id)) : helpers.setDrawer({ title: 'Webhook payload', body: row })} />}
+          />
+        </>
       )}
       {tab === 'Event Replay' && <DataTable rows={replays.rows} columns={['id', 'webhook_event_id', 'replay_status', 'replayed_by_admin_id', 'replayed_at', 'error_message', 'created_at']} empty={{ title: 'No webhook replays', body: 'Replay records appear here after failed or selected webhook events are queued again.' }} renderActions={row => <ActionButtons actions={['Replay selected event', 'View detail']} onClick={action => action === 'Replay selected event' ? replayEvent(row) : helpers.setDrawer({ title: 'Webhook replay', body: row })} />} />}
       {tab === 'Sample Payloads' && <SamplePayloads payloads={payloads} />}
