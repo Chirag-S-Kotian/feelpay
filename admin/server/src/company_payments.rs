@@ -674,6 +674,7 @@ struct BankConfigRequest {
     settlement_account_reference: Option<String>,
     bank_account_holder_name: Option<String>,
     account_number: Option<String>,
+    masked_account_number: Option<String>,
     routing_code: Option<String>,
     account_scope: Option<String>,
     currency: Option<String>,
@@ -1438,7 +1439,7 @@ async fn test_provider(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl R
     let provider_id = path.into_inner();
     let provider = sqlx::query(
         r#"
-        SELECT provider_type, COALESCE(code, name, display_name) AS provider_code, environment,
+        SELECT provider_type, COALESCE(code, name, display_name) AS provider_code, environment, status,
                EXISTS(SELECT 1 FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_key' AND pc.status = 'active') AS has_api_key,
                EXISTS(SELECT 1 FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_secret' AND pc.status = 'active') AS has_api_secret
         FROM payment_providers
@@ -1460,8 +1461,12 @@ async fn test_provider(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl R
     let provider_type: String = provider.get("provider_type");
     let provider_code: String = provider.get("provider_code");
     let environment: String = provider.get("environment");
+    let provider_status: String = provider.get("status");
     let has_api_key: bool = provider.get("has_api_key");
     let has_api_secret: bool = provider.get("has_api_secret");
+    if provider_status != "active" {
+        return HttpResponse::Ok().json(connector_failure(&provider_code, "provider_disabled"));
+    }
     let credentials_ready =
         connector_credentials_ready(&provider_type, &provider_code, has_api_key, has_api_secret);
     if is_real_provider_type(&provider_type, &provider_code) && !credentials_ready {
@@ -1893,10 +1898,17 @@ async fn save_bank_integration(
     bank_id: Option<Uuid>,
     request: BankConfigRequest,
 ) -> HttpResponse {
+    let integration_type = normalize_bank_integration_type(&request.integration_type);
+    let Some(integration_type) = integration_type else {
+        return HttpResponse::BadRequest().json(json!({
+            "message": "Choose API, SFTP, manual file upload, or provider managed integration type"
+        }));
+    };
     let masked_account_number = request
         .account_number
         .as_deref()
         .map(mask_bank_account)
+        .or_else(|| request.masked_account_number.clone())
         .unwrap_or_else(|| "not_stored".to_string());
     let encrypted_account = request
         .account_number
@@ -1922,7 +1934,7 @@ async fn save_bank_integration(
         )
         .bind(id)
         .bind(request.acquiring_bank_name.trim())
-        .bind(request.integration_type.trim())
+        .bind(integration_type)
         .bind(request.settlement_account_reference.as_deref())
         .bind(encrypted_account.as_deref())
         .bind(request.bank_account_holder_name.as_deref())
@@ -1954,7 +1966,7 @@ async fn save_bank_integration(
             "#,
         )
         .bind(request.acquiring_bank_name.trim())
-        .bind(request.integration_type.trim())
+        .bind(integration_type)
         .bind(request.settlement_account_reference.as_deref())
         .bind(encrypted_account.as_deref())
         .bind(request.bank_account_holder_name.as_deref())
@@ -1993,6 +2005,16 @@ async fn save_bank_integration(
             tracing::error!("Save bank integration failed: {}", e);
             server_error("Failed to save bank integration")
         }
+    }
+}
+
+fn normalize_bank_integration_type(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "api" | "sandbox" | "host_to_host" => Some("api"),
+        "sftp" => Some("sftp"),
+        "manual" | "manual_file_upload" => Some("manual_file_upload"),
+        "provider" | "provider_managed" => Some("provider_managed"),
+        _ => None,
     }
 }
 
@@ -7279,6 +7301,211 @@ async fn list_checkout_sessions(pool: web::Data<PgPool>) -> impl Responder {
     .await
 }
 
+async fn complete_checkout_session(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let session_id = path.into_inner();
+    let row = sqlx::query(
+        r#"
+        SELECT ps.id, ps.payment_link_id, ps.provider_id, ps.selected_payment_method,
+               pl.business_account_id, pl.amount, pl.currency, pl.description,
+               pl.customer_email, pl.customer_phone
+        FROM payment_sessions_company ps
+        JOIN payment_links_company pl ON pl.id = ps.payment_link_id
+        WHERE ps.id = $1 AND ps.status IN ('created', 'pending')
+        "#,
+    )
+    .bind(session_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    let Ok(Some(row)) = row else {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Checkout session is not available for test payment" }));
+    };
+
+    let business_account_id = match row.get::<Option<Uuid>, _>("business_account_id") {
+        Some(id) => id,
+        None => match sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM merchants ORDER BY created_at ASC LIMIT 1",
+        )
+        .fetch_optional(pool.get_ref())
+        .await
+        {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                return HttpResponse::BadRequest().json(
+                    json!({ "message": "Create a business account before running test checkout" }),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Lookup business account for checkout failed: {}", e);
+                return server_error("Failed to complete test payment");
+            }
+        },
+    };
+
+    let provider_id = match row.get::<Option<Uuid>, _>("provider_id") {
+        Some(id) => Some(id),
+        None => sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT id FROM payment_providers
+            WHERE status = 'active'
+              AND (LOWER(provider_type) IN ('mock','test','simulator') OR LOWER(COALESCE(code, name, display_name)) IN ('mock','test','test_simulator'))
+            ORDER BY priority ASC, created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten(),
+    };
+
+    let amount: i64 = row.get("amount");
+    let currency: String = row.get("currency");
+    let method = row
+        .get::<Option<String>, _>("selected_payment_method")
+        .unwrap_or_else(|| "upi".to_string());
+    let idempotency_key = format!("checkout-test-{session_id}");
+    let order_id = format!("test_{}", session_id.simple());
+    let payment_id = match sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO payment_orders (
+            merchant_id, order_id, amount, currency, status, payment_method, connector,
+            customer_email, customer_phone, description, idempotency_key, gateway_reference,
+            gateway_response, metadata, provider_id, captured_at
+        )
+        VALUES ($1, $2, $3, $4, 'captured', $5, 'mock', $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, NOW())
+        ON CONFLICT (idempotency_key) DO UPDATE SET status = 'captured', updated_at = NOW(), captured_at = COALESCE(payment_orders.captured_at, NOW())
+        RETURNING id
+        "#,
+    )
+    .bind(business_account_id)
+    .bind(order_id)
+    .bind(amount)
+    .bind(currency.trim().to_uppercase())
+    .bind(method.trim())
+    .bind(row.get::<Option<String>, _>("customer_email"))
+    .bind(row.get::<Option<String>, _>("customer_phone"))
+    .bind(row.get::<Option<String>, _>("description"))
+    .bind(&idempotency_key)
+    .bind(format!("mock_{}", session_id.simple()))
+    .bind(json!({ "provider": "mock", "status": "captured", "test_mode": true }).to_string())
+    .bind(json!({ "source": "white_label_checkout", "session_id": session_id, "test_mode": true }).to_string())
+    .bind(provider_id)
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("Create checkout test payment failed: {}", e);
+            return server_error("Failed to complete test payment");
+        }
+    };
+
+    if let Some(provider_id) = provider_id {
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO payment_attempts (
+                payment_order_id, provider_id, status, amount, currency, payment_method,
+                provider_order_id, provider_payment_id, provider_response_summary, idempotency_key
+            )
+            VALUES ($1, $2, 'captured', $3, $4, $5, $6, $7, $8::jsonb, $9)
+            ON CONFLICT (idempotency_key) DO NOTHING
+            "#,
+        )
+        .bind(payment_id)
+        .bind(provider_id)
+        .bind(amount)
+        .bind(currency.trim().to_uppercase())
+        .bind(method.trim())
+        .bind(format!("mock_order_{}", session_id.simple()))
+        .bind(format!("mock_pay_{}", session_id.simple()))
+        .bind(json!({ "status": "captured", "test_mode": true }).to_string())
+        .bind(format!("attempt-{idempotency_key}"))
+        .execute(pool.get_ref())
+        .await;
+
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO provider_performance_metrics (
+                provider_id, payment_method, currency, country, success_rate, failure_rate,
+                avg_latency_ms, p95_latency_ms, provider_fee_percent, attempt_count, updated_at
+            )
+            VALUES ($1, $2, $3, 'IN', 100.00, 0.00, 25, 25, 0.000, 1, NOW())
+            ON CONFLICT (provider_id, payment_method, currency, country)
+            DO UPDATE SET success_rate = 100.00, failure_rate = 0.00,
+                avg_latency_ms = 25, p95_latency_ms = 25,
+                attempt_count = provider_performance_metrics.attempt_count + 1,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(provider_id)
+        .bind(method.trim())
+        .bind(currency.trim().to_uppercase())
+        .execute(pool.get_ref())
+        .await;
+    }
+
+    let _ = post_balanced_ledger(
+        &pool,
+        "payment_capture",
+        "payment_order",
+        payment_id,
+        provider_id,
+        Some(business_account_id),
+        amount,
+        &currency,
+        &format!("ledger-{idempotency_key}"),
+        "Sandbox checkout payment captured",
+    )
+    .await;
+
+    let _ = sqlx::query(
+        "UPDATE payment_sessions_company SET status = 'paid', payment_order_id = $2 WHERE id = $1",
+    )
+    .bind(session_id)
+    .bind(payment_id)
+    .execute(pool.get_ref())
+    .await;
+
+    let receipt_number = format!("RCPT-{}", session_id.simple());
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO checkout_receipts_company (
+            payment_session_id, payment_order_id, receipt_number, recipient_email, status, sent_at
+        )
+        VALUES ($1, $2, $3, $4, 'sent', NOW())
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(session_id)
+    .bind(payment_id)
+    .bind(&receipt_number)
+    .bind(row.get::<Option<String>, _>("customer_email"))
+    .execute(pool.get_ref())
+    .await;
+
+    audit(
+        &pool,
+        "checkout.test_payment_completed",
+        "payment_order",
+        Some(payment_id),
+        json!({ "session_id": session_id, "amount": amount, "currency": currency, "test_mode": true }),
+    )
+    .await;
+
+    HttpResponse::Ok().json(json!({
+        "status": "success",
+        "message": "Test payment completed",
+        "payment_order_id": payment_id,
+        "payment_session_id": session_id,
+        "receipt_number": receipt_number
+    }))
+}
+
 async fn list_checkout_receipts(pool: web::Data<PgPool>) -> impl Responder {
     query_items(
         pool,
@@ -9577,6 +9804,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(create_checkout_session),
         )
         .route(
+            &format!("{prefix}/white-label/sessions/{{id}}/complete-test-payment"),
+            web::post().to(complete_checkout_session),
+        )
+        .route(
             &format!("{prefix}/white-label/receipts"),
             web::get().to(list_checkout_receipts),
         )
@@ -10339,16 +10570,27 @@ mod tests {
     #[test]
     fn connector_readiness_lists_missing_secrets() {
         assert_eq!(
-            connector_readiness_score("stripe", "missing", "configured", "missing"),
+            connector_readiness_score(
+                "stripe",
+                "stripe",
+                "missing",
+                "configured",
+                "missing",
+                "unknown"
+            ),
             35
         );
         assert_eq!(
-            missing_required_secrets("stripe", "missing", "configured"),
+            missing_required_secrets("stripe", "stripe", "missing", "configured"),
             json!(["api_key"])
         );
         assert_eq!(
-            missing_required_secrets("mock", "missing", "missing"),
+            missing_required_secrets("mock", "mock", "missing", "missing"),
             json!([])
+        );
+        assert_eq!(
+            missing_required_secrets("mock", "razorpay", "missing", "missing"),
+            json!(["api_key", "api_secret"])
         );
     }
 

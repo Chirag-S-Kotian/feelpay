@@ -1018,6 +1018,14 @@ export function BusinessAccountsPage() {
     if (status === 'suspended') actions.push('Reactivate');
     return actions;
   };
+  const payoutReason = (row: GenericRecord) => {
+    if (row.payout_ready === true) return 'Ready';
+    if (!['verified', 'approved'].includes(str(row.kyc_status).toLowerCase())) return 'KYC not verified';
+    if (str(row.risk_status).toLowerCase() === 'blocked') return 'Risk blocked';
+    if (!['enabled', 'active'].includes(str(row.payout_status).toLowerCase())) return 'Provider not configured';
+    return 'Bank not configured';
+  };
+  const accountRows = rows.map(row => ({ ...row, payout_readiness_reason: payoutReason(row) }));
   const act = (row: GenericRecord, action: string) => {
     if (action === 'view_detail') void openDetail(row);
     if (action === 'review_kyc') updateAccount(row, { kyc_status: 'verified', note: 'KYC approved from company admin' }, 'Approve KYC');
@@ -1036,8 +1044,8 @@ export function BusinessAccountsPage() {
         <Metric label="Suspended" value={rows.filter(row => row.status === 'suspended').length} icon={ShieldCheck} />
       </div>
       <DataTable
-        rows={rows}
-        columns={['display_name', 'business_type', 'email', 'status', 'kyc_status', 'risk_status', 'payout_status', 'payout_ready', 'created_at']}
+        rows={accountRows}
+        columns={['display_name', 'business_type', 'email', 'status', 'kyc_status', 'risk_status', 'payout_status', 'payout_readiness_reason', 'created_at']}
         empty={{ title: 'No business accounts yet', body: 'Internal company-managed business accounts will appear here after onboarding records are created.' }}
         renderActions={row => <ActionButtons actions={actionsForAccount(row)} onClick={action => act(row, normalizeAction(action))} dropdownOnly />}
       />
@@ -1112,7 +1120,11 @@ export function ProviderConnectorsPage() {
       setTestResults(prev => ({ ...prev, [providerCode]: result }));
       const passed = String(result.status || '').toLowerCase() === 'verified';
       const errorDetail = (result.summary as GenericRecord)?.error || (passed ? '' : 'Credentials required');
-      const friendlyDetail = String(errorDetail) === 'provider_connector_not_configured' ? 'Connector not configured' : 'Credentials required';
+      const friendlyDetail =
+        String(errorDetail) === 'provider_disabled' ? 'Provider disabled' :
+        String(errorDetail) === 'provider_connector_not_configured' ? 'Connector not configured' :
+        String(errorDetail) === 'webhook_secret_missing' ? 'Webhook secret missing' :
+        'Credentials required';
       helpers.setNotice(passed ? `✓ ${providerCode} sandbox test passed` : `${providerCode}: ${friendlyDetail}`);
     } catch (err) {
       helpers.setNotice(`${providerCode}: ${friendlyError(err instanceof Error ? err.message : '')}`);
@@ -1203,7 +1215,7 @@ export function ProviderConnectorsPage() {
                     const summary = (result.summary || {}) as GenericRecord;
                     return (
                       <div style={{ marginTop: 8, fontSize: 11, padding: '6px 8px', borderRadius: 6, background: passed ? '#1DB95411' : '#E54D4D11' }}>
-                        Status: {passed ? '✓ Healthy' : `✗ ${String(summary.error || 'Credentials required')}`}
+                        Auth: {passed ? '✓' : '—'} · Webhook: {passed || secretStatus(cs, 'webhook_secret') !== 'Missing' ? '✓' : 'Missing'} · Sandbox: {passed ? '✓' : `✗ ${String(summary.error || 'Credentials required')}`}
                         {result.provider_reference && <> · Ref: {String(result.provider_reference)}</>}
                       </div>
                     );
@@ -1278,7 +1290,53 @@ export function ProviderConnectorsPage() {
 export function BankIntegrationsPage() {
   const { rows, state, error, load } = useRows(`${API}/bank-integrations`);
   const helpers = useDrawerConfirm();
-  return <TableRoute title="Bank Integrations" subtitle="Acquirer and company bank settlement configuration" rows={rows} state={state} error={error} notice={helpers.notice} columns={['acquiring_bank_name', 'integration_type', 'account_scope', 'currency', 'settlement_cycle', 'masked_account_number', 'last_verified_at', 'status']} actions={['Add bank integration', 'Verify account', 'Disable account', 'Set default', 'View audit log']} onAction={(row) => helpers.setDrawer({ title: 'Bank integration', body: row })} onRefresh={load} helpers={helpers} />;
+  const [form, setForm] = useState({ acquiring_bank_name: '', integration_type: 'api', account_scope: 'company_settlement', currency: 'INR', settlement_cycle: 'T+1', masked_account_number: '', status: 'active' });
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    helpers.setConfirm({
+      title: 'Save bank integration',
+      body: 'Only masked settlement metadata is saved from this form. Full account numbers are never shown.',
+      action: () => helpers.run('Bank integration saved.', () => apiRequest('POST', `${API}/bank-integrations`, {
+        acquiring_bank_name: form.acquiring_bank_name,
+        integration_type: form.integration_type,
+        account_scope: form.account_scope,
+        currency: form.currency,
+        settlement_cycle: form.settlement_cycle,
+        account_number: null,
+        masked_account_number: form.masked_account_number || 'not_stored',
+        settlement_account_reference: form.masked_account_number || null,
+        supported_currencies: [form.currency],
+        supported_payment_methods: ['upi', 'card', 'netbanking'],
+      })).then(load),
+    });
+  };
+  const act = (row: GenericRecord, action: string) => {
+    const id = str(row.id);
+    if (action === 'verify_sandbox_bank_setup') helpers.run('Sandbox bank setup verified.', () => apiRequest('POST', `${API}/bank-integrations/${id}/verify`)).then(load);
+    else if (action === 'disable') helpers.run('Bank integration disabled.', () => apiRequest('POST', `${API}/bank-integrations/${id}/disable`)).then(load);
+    else helpers.setDrawer({ title: 'Bank integration', body: row });
+  };
+  return (
+    <CrudPage title="Bank Integrations" subtitle="Safe settlement bank metadata and sandbox readiness" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+      <section className="card">
+        <h2><Landmark size={18} /> Settlement bank setup</h2>
+        <form onSubmit={save}>
+          <div className="filter-grid">
+            <Field label="Acquiring bank name"><input value={str(form.acquiring_bank_name)} onChange={event => setForm({ ...form, acquiring_bank_name: event.target.value })} required /></Field>
+            <Field label="Integration type"><Select value={str(form.integration_type)} options={[{ label: 'API / sandbox test', value: 'api' }, { label: 'SFTP', value: 'sftp' }, { label: 'Manual file upload', value: 'manual_file_upload' }, { label: 'Provider managed', value: 'provider_managed' }]} onChange={integration_type => setForm({ ...form, integration_type })} /></Field>
+            <Field label="Account scope"><Select value={str(form.account_scope)} options={['company_settlement', 'business_settlement', 'reserve']} onChange={account_scope => setForm({ ...form, account_scope })} /></Field>
+            <Field label="Currency"><input value={str(form.currency)} onChange={event => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></Field>
+            <Field label="Settlement cycle"><input value={str(form.settlement_cycle)} onChange={event => setForm({ ...form, settlement_cycle: event.target.value })} /></Field>
+            <Field label="Masked account display"><input value={str(form.masked_account_number)} onChange={event => setForm({ ...form, masked_account_number: event.target.value })} placeholder="****1234" /></Field>
+            <Field label="Status"><Select value={str(form.status)} options={['active', 'disabled']} onChange={status => setForm({ ...form, status })} /></Field>
+          </div>
+          <button className="btn-primary" type="submit">Save bank integration</button>
+        </form>
+      </section>
+      <DataTable rows={rows} columns={['acquiring_bank_name', 'integration_type', 'account_scope', 'currency', 'settlement_cycle', 'masked_account_number', 'verification_status', 'last_verified_at', 'status']} empty={{ title: 'Add settlement bank before live settlement.', body: 'Full account numbers are never shown. Use sandbox verification for local setup.' }} renderActions={row => <ActionButtons actions={['Verify sandbox bank setup', 'Disable', 'View detail']} onClick={action => act(row, normalizeAction(action))} />} />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function RoutingRulesPage() {
@@ -1385,6 +1443,22 @@ export function WhiteLabelCheckoutPage() {
     if (action === 'create_session') helpers.setConfirm({ title: 'Create payment session', body: 'Session uses immutable checkout theme snapshot and provider routing.', action: () => helpers.run('Session created.', () => apiRequest('POST', `${API}/white-label/sessions`, { payment_link_id: id })).then(load) });
     if (action === 'copy_payment_link') helpers.setDrawer({ title: 'Payment link', body: { payment_link_id: id, note: 'Use signed public URL from checkout gateway service' } });
   };
+  const sessionAction = (row: GenericRecord, action: string) => {
+    const id = str(row.id);
+    if (action === 'complete_test_payment') {
+      helpers.setConfirm({
+        title: 'Complete test payment',
+        body: 'Mock checkout will capture a sandbox payment, post ledger entries, update reports, create receipt, and write audit log.',
+        action: () => helpers.run('Test payment completed.', async () => {
+          const result = await apiRequest<GenericRecord>('POST', `${API}/white-label/sessions/${id}/complete-test-payment`);
+          helpers.setDrawer({ title: 'Test payment success', body: result });
+          await load();
+        }),
+      });
+    } else {
+      helpers.setDrawer({ title: 'Checkout session', body: row });
+    }
+  };
   const businessAccountOptions = businessAccounts.rows
     .filter(row => {
       const needle = businessAccountSearch.trim().toLowerCase();
@@ -1425,7 +1499,7 @@ export function WhiteLabelCheckoutPage() {
           <DataTable rows={paymentLinkRows} columns={['id', 'business_account', 'amount', 'currency', 'description', 'customer_email', 'customer_phone', 'status', 'expires_at', 'created_at']} empty={{ title: 'No payment links yet', body: 'Create white-label payment links for hosted checkout sessions.' }} renderActions={row => <ActionButtons actions={['Create session', 'Expire payment link', 'Copy payment link', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Payment link', body: row }) : linkAction(row, normalizeAction(action))} />} />
         </>
       )}
-      {tab === 'Checkout Sessions' && <DataTable rows={sessions.rows} columns={['id', 'payment_link_id', 'payment_order_id', 'provider_id', 'selected_payment_method', 'status', 'expires_at', 'created_at']} empty={{ title: 'No checkout sessions yet', body: 'Sessions are created from active payment links and provider routing.' }} onView={row => helpers.setDrawer({ title: 'Checkout session', body: row })} />}
+      {tab === 'Checkout Sessions' && <DataTable rows={sessions.rows} columns={['id', 'payment_link_id', 'payment_order_id', 'provider_id', 'selected_payment_method', 'status', 'expires_at', 'created_at']} empty={{ title: 'No checkout sessions yet', body: 'Sessions are created from active payment links and provider routing.' }} renderActions={row => <ActionButtons actions={String(row.status) === 'paid' ? ['View detail'] : ['Complete test payment', 'View detail']} onClick={action => sessionAction(row, normalizeAction(action))} />} />}
       {tab === 'Receipts' && <DataTable rows={receipts.rows} columns={['id', 'payment_session_id', 'payment_order_id', 'receipt_number', 'recipient_email', 'status', 'sent_at', 'created_at']} empty={{ title: 'No receipts yet', body: 'Receipts are generated after successful checkout completion.' }} renderActions={row => <ActionButtons actions={['Resend receipt', 'View detail']} onClick={action => action === 'Resend receipt' ? helpers.run('Receipt resent.', () => apiRequest('POST', `${API}/white-label/receipts/${String(row.id || '')}/resend`)).then(load) : helpers.setDrawer({ title: 'Receipt', body: row })} />} />}
       <Modals helpers={helpers} />
     </CrudPage>
@@ -1710,7 +1784,7 @@ export function SystemHealthPage() {
   };
   const failedEndpoints = Object.entries(endpoints).filter(([_, state]) => state.state === 'error').map(([name]) => name);
   const state: LoadState = failedEndpoints.length === Object.keys(endpoints).length ? 'error' : Object.values(endpoints).some(e => e.state === 'loading') ? 'loading' : 'ready';
-  const error = failedEndpoints.length > 0 ? `Failed to fetch: ${failedEndpoints.join(', ')}` : '';
+  const error = failedEndpoints.length > 0 ? `Some health data could not load: ${failedEndpoints.join(', ')}` : '';
   const load = () => void Promise.all(Object.values(endpoints).map(e => e.load()));
   const retryJob = (row: GenericRecord) => {
     helpers.setConfirm({ title: 'Retry failed job', body: 'Background job retry will be audit logged.', action: () => helpers.run('Job retry queued.', () => apiRequest('POST', `/admin/system-health/jobs/${String(row.id || '')}/retry`)).then(load) });
@@ -2437,6 +2511,7 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
         <Metric label="Success estimate" value={`${(result?.success_estimate || 0).toFixed(1)}%`} icon={BadgeCheck} />
         <Metric label="Strategy used" value={result?.strategy_used || '-'} icon={SlidersHorizontal} />
       </div>
+      {result && !result.selected_provider && <div className="alert alert-warning">No matching rule; create a rule or enable default mock route.</div>}
       {result && <DataTable rows={result.candidate_providers || []} columns={['provider', 'score', 'success_rate', 'latency_ms', 'fee_percent', 'attempt_count']} empty="No candidate providers" />}
       {result && <DataTable rows={result.rejected_providers || []} columns={['provider', 'reason']} empty="No rejected providers" />}
     </section>
