@@ -1,7 +1,7 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-05-06)
 
 ## Corpus Check
-- 229 files · ~444,080 words
+- 229 files · ~444,139 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -788,11 +788,11 @@ Nodes (1): HTTP Strict Transport Security
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 15`, `Community 17`, `Community 23`, `Community 26`, `Community 27`, `Community 38`, `Community 40`, `Community 42`, `Community 43`, `Community 51`?**
-  _High betweenness centrality (0.226) - this node is a cross-community bridge._
+  _High betweenness centrality (0.207) - this node is a cross-community bridge._
 - **Why does `apiRequest()` connect `Community 3` to `Community 8`, `Community 13`, `Community 14`?**
-  _High betweenness centrality (0.113) - this node is a cross-community bridge._
-- **Why does `send_via_sendgrid()` connect `Community 1` to `Community 0`, `Community 2`, `Community 13`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
+- **Why does `main()` connect `Community 1` to `Community 2`, `Community 38`, `Community 7`, `Community 8`, `Community 9`, `Community 12`, `Community 23`?**
+  _High betweenness centrality (0.031) - this node is a cross-community bridge._
 - **Are the 398 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 398 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 52 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**

@@ -2092,13 +2092,29 @@ async fn upload_white_label_logo(
 
     let logo_url = format!("/uploads/branding/{}.{}", file_id, ext);
 
-    // Update the config immediately with the new logo URL
-    let _ = sqlx::query(
+    // 1. Fetch old logo for cleanup
+    let old_logo: Option<String> = sqlx::query_scalar("SELECT checkout_logo_url FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1")
+        .fetch_optional(pool.get_ref())
+        .await
+        .unwrap_or(None);
+
+    // 2. Update the config immediately with the new logo URL
+    let update_result = sqlx::query(
         "UPDATE white_label_payment_config SET checkout_logo_url = $1, updated_at = NOW() WHERE id = (SELECT id FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1)"
     )
     .bind(&logo_url)
     .execute(pool.get_ref())
     .await;
+
+    if update_result.is_ok() {
+        // 3. Cleanup old file if it was a local upload
+        if let Some(old) = old_logo {
+            if old.starts_with("/uploads/branding/") {
+                let old_rel_path = old.trim_start_matches('/');
+                let _ = fs::remove_file(old_rel_path);
+            }
+        }
+    }
 
     HttpResponse::Ok().json(json!({
         "logo_url": logo_url,
