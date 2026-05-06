@@ -1,11 +1,11 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-05-06)
 
 ## Corpus Check
-- 229 files · ~444,840 words
+- 234 files · ~472,129 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2433 nodes · 5321 edges · 127 communities detected
+- 2438 nodes · 5321 edges · 132 communities detected
 - Extraction: 63% EXTRACTED · 37% INFERRED · 0% AMBIGUOUS · INFERRED: 1951 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -137,6 +137,11 @@
 - [[_COMMUNITY_Community 124|Community 124]]
 - [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 130|Community 130]]
+- [[_COMMUNITY_Community 131|Community 131]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `json()` - 400 edges
@@ -654,21 +659,41 @@ Nodes (0):
 
 ### Community 122 - "Community 122"
 Cohesion: 1.0
-Nodes (1): Phase_5_Onboarding
+Nodes (0): 
 
 ### Community 123 - "Community 123"
 Cohesion: 1.0
-Nodes (1): Phase_6_Dashboard
+Nodes (0): 
 
 ### Community 124 - "Community 124"
 Cohesion: 1.0
-Nodes (1): Rust Programming Language
+Nodes (0): 
 
 ### Community 125 - "Community 125"
 Cohesion: 1.0
-Nodes (1): sqlx Library
+Nodes (0): 
 
 ### Community 126 - "Community 126"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 127 - "Community 127"
+Cohesion: 1.0
+Nodes (1): Phase_5_Onboarding
+
+### Community 128 - "Community 128"
+Cohesion: 1.0
+Nodes (1): Phase_6_Dashboard
+
+### Community 129 - "Community 129"
+Cohesion: 1.0
+Nodes (1): Rust Programming Language
+
+### Community 130 - "Community 130"
+Cohesion: 1.0
+Nodes (1): sqlx Library
+
+### Community 131 - "Community 131"
 Cohesion: 1.0
 Nodes (1): HTTP Strict Transport Security
 
@@ -749,40 +774,50 @@ Nodes (1): HTTP Strict Transport Security
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 114`** (1 nodes): `postcss.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 115`** (1 nodes): `vite-env.d.ts`
+- **Thin community `Community 115`** (1 nodes): `playwright.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 116`** (1 nodes): `App.test.tsx`
+- **Thin community `Community 116`** (1 nodes): `vite-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 117`** (1 nodes): `RevenueDashboard.tsx`
+- **Thin community `Community 117`** (1 nodes): `App.test.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 118`** (1 nodes): `AuditLogViewer.tsx`
+- **Thin community `Community 118`** (1 nodes): `RevenueDashboard.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 119`** (1 nodes): `DocumentViewer.tsx`
+- **Thin community `Community 119`** (1 nodes): `AuditLogViewer.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 120`** (1 nodes): `k6-payments.js`
+- **Thin community `Community 120`** (1 nodes): `DocumentViewer.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 121`** (1 nodes): `server.js`
+- **Thin community `Community 121`** (1 nodes): `admin-smoke.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 122`** (1 nodes): `Phase_5_Onboarding`
+- **Thin community `Community 122`** (1 nodes): `admin-api.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 123`** (1 nodes): `Phase_6_Dashboard`
+- **Thin community `Community 123`** (1 nodes): `admin-quality.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (1 nodes): `Rust Programming Language`
+- **Thin community `Community 124`** (1 nodes): `admin-sandbox-payment-flow.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 125`** (1 nodes): `sqlx Library`
+- **Thin community `Community 125`** (1 nodes): `k6-payments.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 126`** (1 nodes): `HTTP Strict Transport Security`
+- **Thin community `Community 126`** (1 nodes): `server.js`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 127`** (1 nodes): `Phase_5_Onboarding`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 128`** (1 nodes): `Phase_6_Dashboard`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 129`** (1 nodes): `Rust Programming Language`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 130`** (1 nodes): `sqlx Library`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 131`** (1 nodes): `HTTP Strict Transport Security`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 14`, `Community 16`, `Community 22`, `Community 25`, `Community 26`, `Community 27`, `Community 34`, `Community 36`, `Community 38`, `Community 40`, `Community 41`, `Community 49`, `Community 70`?**
-  _High betweenness centrality (0.209) - this node is a cross-community bridge._
+  _High betweenness centrality (0.238) - this node is a cross-community bridge._
 - **Why does `apiRequest()` connect `Community 4` to `Community 8`, `Community 12`, `Community 13`, `Community 31`?**
-  _High betweenness centrality (0.145) - this node is a cross-community bridge._
+  _High betweenness centrality (0.088) - this node is a cross-community bridge._
 - **Why does `send_via_sendgrid()` connect `Community 1` to `Community 0`, `Community 3`, `Community 13`?**
-  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Are the 399 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 399 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 52 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**

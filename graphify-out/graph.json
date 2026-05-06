@@ -15376,6 +15376,15 @@
       "norm_label": "postcss.config.js"
     },
     {
+      "label": "playwright.config.ts",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/admin/playwright.config.ts",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_admin_playwright_config_ts",
+      "community": 115,
+      "norm_label": "playwright.config.ts"
+    },
+    {
       "label": "main.tsx",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/main.tsx",
@@ -15390,7 +15399,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/vite-env.d.ts",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_vite_env_d_ts",
-      "community": 115,
+      "community": 116,
       "norm_label": "vite-env.d.ts"
     },
     {
@@ -15399,7 +15408,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/App.test.tsx",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_app_test_tsx",
-      "community": 116,
+      "community": 117,
       "norm_label": "app.test.tsx"
     },
     {
@@ -15588,7 +15597,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/pages/RevenueDashboard.tsx",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_pages_revenuedashboard_tsx",
-      "community": 117,
+      "community": 118,
       "norm_label": "revenuedashboard.tsx"
     },
     {
@@ -15669,7 +15678,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/pages/AuditLogViewer.tsx",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_pages_auditlogviewer_tsx",
-      "community": 118,
+      "community": 119,
       "norm_label": "auditlogviewer.tsx"
     },
     {
@@ -16479,7 +16488,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/admin/src/components/DocumentViewer.tsx",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_admin_src_components_documentviewer_tsx",
-      "community": 119,
+      "community": 120,
       "norm_label": "documentviewer.tsx"
     },
     {
@@ -21181,6 +21190,42 @@
       "norm_label": "unsafe_report_paths_are_rejected()"
     },
     {
+      "label": "admin-smoke.spec.ts",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/admin/tests/e2e/admin-smoke.spec.ts",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_admin_tests_e2e_admin_smoke_spec_ts",
+      "community": 121,
+      "norm_label": "admin-smoke.spec.ts"
+    },
+    {
+      "label": "admin-api.spec.ts",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/admin/tests/e2e/admin-api.spec.ts",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_admin_tests_e2e_admin_api_spec_ts",
+      "community": 122,
+      "norm_label": "admin-api.spec.ts"
+    },
+    {
+      "label": "admin-quality.spec.ts",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/admin/tests/e2e/admin-quality.spec.ts",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_admin_tests_e2e_admin_quality_spec_ts",
+      "community": 123,
+      "norm_label": "admin-quality.spec.ts"
+    },
+    {
+      "label": "admin-sandbox-payment-flow.spec.ts",
+      "file_type": "code",
+      "source_file": "/home/chiragskotian/Desktop/payment/admin/tests/e2e/admin-sandbox-payment-flow.spec.ts",
+      "source_location": "L1",
+      "id": "home_chiragskotian_desktop_payment_admin_tests_e2e_admin_sandbox_payment_flow_spec_ts",
+      "community": 124,
+      "norm_label": "admin-sandbox-payment-flow.spec.ts"
+    },
+    {
       "label": "index.ts",
       "file_type": "code",
       "source_file": "/home/chiragskotian/Desktop/payment/sdks/typescript/src/index.ts",
@@ -21483,7 +21528,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/load/k6-payments.js",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_load_k6_payments_js",
-      "community": 120,
+      "community": 125,
       "norm_label": "k6-payments.js"
     },
     {
@@ -21510,7 +21555,7 @@
       "source_file": "/home/chiragskotian/Desktop/payment/plugins/shopify/feelpay-app/src/server.js",
       "source_location": "L1",
       "id": "home_chiragskotian_desktop_payment_plugins_shopify_feelpay_app_src_server_js",
-      "community": 121,
+      "community": 126,
       "norm_label": "server.js"
     },
     {
@@ -21737,7 +21782,7 @@
       "label": "Phase_5_Onboarding",
       "type": "Milestone",
       "description": "Merchant KYC and platform onboarding workflows.",
-      "community": 122,
+      "community": 127,
       "norm_label": "phase_5_onboarding",
       "id": "Phase_5_Onboarding"
     },
@@ -21745,7 +21790,7 @@
       "label": "Phase_6_Dashboard",
       "type": "Milestone",
       "description": "Expansion of the merchant interface and analytics.",
-      "community": 123,
+      "community": 128,
       "norm_label": "phase_6_dashboard",
       "id": "Phase_6_Dashboard"
     },
@@ -21753,7 +21798,7 @@
       "label": "Rust Programming Language",
       "file_type": "document",
       "source_file": "docs/adrs/ADR-001-rust-actix-sqlx.md",
-      "community": 124,
+      "community": 129,
       "norm_label": "rust programming language",
       "id": "adr_001_rust_actix_sqlx_rust"
     },
@@ -21769,7 +21814,7 @@
       "label": "sqlx Library",
       "file_type": "document",
       "source_file": "docs/adrs/ADR-001-rust-actix-sqlx.md",
-      "community": 125,
+      "community": 130,
       "norm_label": "sqlx library",
       "id": "adr_001_rust_actix_sqlx_sqlx"
     },
@@ -21849,7 +21894,7 @@
       "label": "HTTP Strict Transport Security",
       "file_type": "document",
       "source_file": "docs/OWASP_TOP_10_CHECKLIST.md",
-      "community": 126,
+      "community": 131,
       "norm_label": "http strict transport security",
       "id": "owasp_top_10_checklist_hsts"
     },
