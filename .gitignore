@@ -40,3 +40,4 @@ dashboard/dist/assets
 dashboard/dist/assets/*
 
 admin/target
+admin/server/uploads

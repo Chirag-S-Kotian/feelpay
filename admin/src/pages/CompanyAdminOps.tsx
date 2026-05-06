@@ -2680,6 +2680,11 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
             </div>
           </div>
         </div>
+
+        <div className="button-row" style={{ marginTop: 12, paddingTop: 24, borderTop: '1px solid #E5E7EB', justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onReset}>Discard changes</button>
+          <button className="btn-primary" type="submit">Save configuration</button>
+        </div>
       </form>
     </section>
   );
