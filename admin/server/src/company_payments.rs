@@ -10489,6 +10489,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(send_webhook_test),
         )
         .route(
+            &format!("{prefix}/developer/webhook-events"),
+            web::get().to(list_webhooks),
+        )
+        .route(
             &format!("{prefix}/developer/webhook-replays"),
             web::get().to(list_webhook_replays),
         )
