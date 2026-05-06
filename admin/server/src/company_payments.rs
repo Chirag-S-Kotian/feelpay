@@ -1438,7 +1438,7 @@ async fn test_provider(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl R
     let provider_id = path.into_inner();
     let provider = sqlx::query(
         r#"
-        SELECT provider_type, environment,
+        SELECT provider_type, COALESCE(code, name, display_name) AS provider_code, environment,
                EXISTS(SELECT 1 FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_key' AND pc.status = 'active') AS has_api_key,
                EXISTS(SELECT 1 FROM payment_provider_credentials pc WHERE pc.provider_id = payment_providers.id AND pc.secret_type = 'api_secret' AND pc.status = 'active') AS has_api_secret
         FROM payment_providers
@@ -1458,12 +1458,40 @@ async fn test_provider(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl R
         return HttpResponse::NotFound().json(json!({ "message": "Provider not found" }));
     };
     let provider_type: String = provider.get("provider_type");
+    let provider_code: String = provider.get("provider_code");
     let environment: String = provider.get("environment");
     let has_api_key: bool = provider.get("has_api_key");
     let has_api_secret: bool = provider.get("has_api_secret");
     let credentials_ready =
-        connector_credentials_ready(&provider_type, has_api_key, has_api_secret);
-    let result = connector_for_type(&provider_type, &environment, credentials_ready)
+        connector_credentials_ready(&provider_type, &provider_code, has_api_key, has_api_secret);
+    if is_real_provider_type(&provider_type, &provider_code) && !credentials_ready {
+        let result = connector_failure(&provider_code, "missing_required_credentials");
+        let _ = sqlx::query(
+            "UPDATE payment_providers SET health_status = 'failed', last_connection_test_at = NOW(), updated_at = NOW() WHERE id = $1",
+        )
+        .bind(provider_id)
+        .execute(pool.get_ref())
+        .await;
+        return HttpResponse::Ok().json(result);
+    }
+    if is_real_provider_type(&provider_type, &provider_code)
+        && !has_implemented_real_connector(&provider_type, &provider_code)
+    {
+        let result = connector_failure(&provider_code, "provider_connector_not_configured");
+        let _ = sqlx::query(
+            "UPDATE payment_providers SET health_status = 'failed', last_connection_test_at = NOW(), updated_at = NOW() WHERE id = $1",
+        )
+        .bind(provider_id)
+        .execute(pool.get_ref())
+        .await;
+        return HttpResponse::Ok().json(result);
+    }
+    let connector_type = if has_implemented_real_connector(&provider_type, &provider_code) {
+        provider_code.as_str()
+    } else {
+        provider_type.as_str()
+    };
+    let result = connector_for_type(connector_type, &environment, credentials_ready)
         .health_check()
         .await;
     let status = if result.status == ConnectorOperationStatus::Verified {
@@ -8629,18 +8657,26 @@ fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
     let api_secret_status = secret_status(row.get("api_secret_status"));
     let webhook_secret_status = secret_status(row.get("webhook_secret_status"));
     let provider_type: String = row.get("provider_type");
-    let missing_required_secrets =
-        missing_required_secrets(&provider_type, &api_key_status, &api_secret_status);
+    let provider_code: String = row.get("code");
+    let missing_required_secrets = missing_required_secrets(
+        &provider_type,
+        &provider_code,
+        &api_key_status,
+        &api_secret_status,
+    );
+    let health_status: String = row.get("health_status");
     let connector_readiness_score = connector_readiness_score(
         &provider_type,
+        &provider_code,
         &api_key_status,
         &api_secret_status,
         &webhook_secret_status,
+        &health_status,
     );
     PaymentProviderItem {
         id: row.get("id"),
         name: row.get("display_name"),
-        code: row.get("code"),
+        code: provider_code,
         provider_type: row.get("provider_type"),
         environment: row.get("environment"),
         status: row.get("status"),
@@ -8650,7 +8686,7 @@ fn provider_from_row(row: sqlx::postgres::PgRow) -> PaymentProviderItem {
         supported_payment_methods: row.get("supported_payment_methods"),
         supported_currencies: row.get("supported_currencies"),
         supported_countries: row.get("supported_countries"),
-        health_status: row.get("health_status"),
+        health_status,
         last_health_check_at: row.get("last_health_check_at"),
         last_successful_webhook_at: row.get("last_successful_webhook_at"),
         last_failed_webhook_at: row.get("last_failed_webhook_at"),
@@ -8690,25 +8726,46 @@ fn connector_for_type(
     }
 }
 
+fn is_real_provider_type(provider_type: &str, provider_code: &str) -> bool {
+    let provider_type = provider_type.to_ascii_lowercase();
+    let provider_code = provider_code.to_ascii_lowercase();
+    matches!(
+        provider_type.as_str(),
+        "stripe" | "razorpay" | "adyen" | "cashfree" | "juspay" | "payu"
+    ) || matches!(
+        provider_code.as_str(),
+        "stripe" | "razorpay" | "adyen" | "cashfree" | "juspay" | "payu"
+    )
+}
+
+fn has_implemented_real_connector(provider_type: &str, provider_code: &str) -> bool {
+    let provider_type = provider_type.to_ascii_lowercase();
+    let provider_code = provider_code.to_ascii_lowercase();
+    matches!(provider_type.as_str(), "stripe" | "razorpay" | "adyen")
+        || matches!(provider_code.as_str(), "stripe" | "razorpay" | "adyen")
+}
+
 fn connector_credentials_ready(
     provider_type: &str,
+    provider_code: &str,
     has_api_key: bool,
     has_api_secret: bool,
 ) -> bool {
     match provider_type.to_ascii_lowercase().as_str() {
-        "stripe" | "razorpay" | "adyen" => has_api_key && has_api_secret,
+        provider if is_real_provider_type(provider, provider_code) => has_api_key && has_api_secret,
         _ => true,
     }
 }
 
 fn missing_required_secrets(
     provider_type: &str,
+    provider_code: &str,
     api_key_status: &str,
     api_secret_status: &str,
 ) -> Value {
     if !matches!(
         provider_type.to_ascii_lowercase().as_str(),
-        "stripe" | "razorpay" | "adyen"
+        provider if is_real_provider_type(provider, provider_code)
     ) {
         return json!([]);
     }
@@ -8724,13 +8781,15 @@ fn missing_required_secrets(
 
 fn connector_readiness_score(
     provider_type: &str,
+    provider_code: &str,
     api_key_status: &str,
     api_secret_status: &str,
     webhook_secret_status: &str,
+    health_status: &str,
 ) -> i32 {
     if !matches!(
         provider_type.to_ascii_lowercase().as_str(),
-        "stripe" | "razorpay" | "adyen"
+        provider if is_real_provider_type(provider, provider_code)
     ) {
         return 100;
     }
@@ -8742,7 +8801,13 @@ fn connector_readiness_score(
         score += 35;
     }
     if webhook_secret_status == "configured" {
-        score += 30;
+        score += 10;
+    }
+    if api_key_status == "configured"
+        && api_secret_status == "configured"
+        && matches!(health_status, "healthy" | "verified")
+    {
+        score = 100;
     }
     score
 }

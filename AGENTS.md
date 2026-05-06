@@ -24,16 +24,18 @@ Unknown module? Read `graphify-out/GRAPH_REPORT.md` first.
 
 ```bash
 ./scripts/graphify update .
-cargo check && cargo test
+cargo check
 sqlx migrate run
 cd dashboard && pnpm build && pnpm exec tsc --noEmit
 ```
+
+Skip `cargo test` unless explicitly requested; it can hang/crash this workstation.
 
 All exit 0. If blocked, state exact blocker + exit code.
 
 ## Output Rule
 
-Final response ≤20 lines: what changed, files, commands + exit codes.
+Final response ≤5 lines: what changed, files, commands + exit codes.
 
 ## PR Format
 

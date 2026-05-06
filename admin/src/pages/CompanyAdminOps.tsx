@@ -28,6 +28,7 @@ import {
 import { apiDownload, apiRequest } from '../hooks/useApi';
 
 const API = '/admin/payment-ops';
+const ADMIN_DEBUG_TOOLS = import.meta.env.VITE_ADMIN_DEBUG_TOOLS === 'true';
 
 type GenericValue = string | number | boolean | null | string[] | Record<string, unknown> | Record<string, unknown>[];
 type GenericRecord = Record<string, GenericValue>;
@@ -241,6 +242,31 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
 const str = (value: unknown) => value == null ? '' : String(value);
 const valueList = (value: unknown, fallback: string[] = []) => Array.isArray(value) ? value.join(',') : value == null ? fallback.join(',') : String(value);
 
+const REAL_PROVIDER_TYPES = new Set(['stripe', 'razorpay', 'adyen', 'cashfree', 'juspay', 'payu']);
+const isRealProvider = (providerType: unknown) => REAL_PROVIDER_TYPES.has(str(providerType).toLowerCase());
+const providerLooksReal = (provider: GenericRecord) => [provider.provider_type, provider.code, provider.name, provider.provider].some(isRealProvider);
+const hasConfiguredCredential = (value: unknown) => ['configured', 'active', 'valid', 'verified'].includes(str(value).toLowerCase());
+const connectorReadiness = (provider: GenericRecord) => {
+  const status = str(provider.status).toLowerCase();
+  const health = str(provider.health_status).toLowerCase();
+  const real = providerLooksReal(provider);
+  const hasCoreCredentials = hasConfiguredCredential(provider.api_key_status) && hasConfiguredCredential(provider.api_secret_status);
+  if (status === 'disabled' || status === 'inactive') return { label: 'Disabled', score: 0, note: 'Provider disabled' };
+  if (status === 'maintenance') return { label: 'Maintenance', score: 0, note: 'Provider in maintenance' };
+  if (!real) return { label: 'Sandbox only', score: 100, note: 'Sandbox placeholder. Credentials required for live use.' };
+  if (!hasCoreCredentials) return { label: 'Credentials required', score: 0, note: 'Add and validate required credentials before live use.' };
+  if (health === 'healthy' || health === 'verified') return { label: 'Ready', score: 100, note: 'Credentials configured and validated.' };
+  return { label: 'Unknown', score: Math.min(Number(provider.connector_readiness_score || 0), 80), note: 'Credentials configured. Run sandbox test to validate.' };
+};
+
+const friendlyError = (message: string) => {
+  if (/401|403|unauthenticated|not authorized/i.test(message)) return 'Admin session expired or missing permission.';
+  if (/network|cors|failed to fetch/i.test(message)) return 'Connection blocked or server unreachable.';
+  if (/404|route missing/i.test(message)) return 'This admin action is not available on this server.';
+  if (/500|backend error/i.test(message)) return 'Server could not complete the request.';
+  return message || 'Action could not be completed.';
+};
+
 function money(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value / 100);
 }
@@ -279,13 +305,13 @@ function copyText(value: string) {
 function statusClass(value: string, column?: string) {
   const normalized = value.toLowerCase().replaceAll(' ', '_');
   const isSafetyCheck = column === 'cvv_storage' || column === 'raw_card_storage' || column === 'no_cvv' || column === 'no_raw_card';
-  
+
   if (isSafetyCheck && normalized === 'disabled') return 'success';
   if (isSafetyCheck && normalized === 'enabled') return 'failed';
-  
+
   if (['active', 'captured', 'successful', 'success', 'settled', 'verified', 'enabled', 'won', 'healthy', 'matched', 'resolved', 'approved', 'ready', 'pass'].includes(normalized)) return 'success';
   if (['failed', 'rejected', 'disabled', 'blocked', 'lost', 'critical', 'down', 'mismatch', 'overdue', 'fail'].includes(normalized)) return 'failed';
-  if (['pending', 'processing', 'requested', 'review', 'warning', 'unknown', 'unmatched', 'investigating', 'open', 'partial_data'].includes(normalized)) return 'pending';
+  if (['pending', 'processing', 'requested', 'review', 'warning', 'unknown', 'unmatched', 'investigating', 'open', 'partial_data', 'credentials_required', 'sandbox_only', 'maintenance'].includes(normalized)) return 'pending';
   return normalized;
 }
 
@@ -1047,7 +1073,17 @@ export function ProviderConnectorsPage() {
       setConnectorStatuses((statusData.items || []).map(provider => ({
         provider: str(provider.code || provider.name || provider.id),
         display_name: str(provider.name || provider.code || 'Provider'),
-        readiness_score: Number(provider.connector_readiness_score ?? 0),
+        provider_type: str(provider.provider_type),
+        code: str(provider.code),
+        name: str(provider.name),
+        status: str(provider.status),
+        health_status: str(provider.health_status),
+        api_key_status: str(provider.api_key_status),
+        api_secret_status: str(provider.api_secret_status),
+        webhook_secret_status: str(provider.webhook_secret_status),
+        readiness_status: connectorReadiness(provider).label,
+        readiness_note: connectorReadiness(provider).note,
+        readiness_score: connectorReadiness(provider).score,
         required_keys: Array.isArray(provider.missing_required_secrets) ? provider.missing_required_secrets.map(String) : [],
         available_keys: credentialRows
           .filter(row => String(row.provider_id || '') === String(provider.id || '') && String(row.status || 'active') !== 'disabled')
@@ -1076,9 +1112,10 @@ export function ProviderConnectorsPage() {
       setTestResults(prev => ({ ...prev, [providerCode]: result }));
       const passed = String(result.status || '').toLowerCase() === 'verified';
       const errorDetail = (result.summary as GenericRecord)?.error || (passed ? '' : 'Credentials required');
-      helpers.setNotice(passed ? `✓ ${providerCode} sandbox test passed` : `✗ ${providerCode} test failed: ${String(errorDetail)}`);
+      const friendlyDetail = String(errorDetail) === 'provider_connector_not_configured' ? 'Connector not configured' : 'Credentials required';
+      helpers.setNotice(passed ? `✓ ${providerCode} sandbox test passed` : `${providerCode}: ${friendlyDetail}`);
     } catch (err) {
-      helpers.setNotice(`✗ ${providerCode} test error: ${err instanceof Error ? err.message : 'unknown'}`);
+      helpers.setNotice(`${providerCode}: ${friendlyError(err instanceof Error ? err.message : '')}`);
     } finally {
       setTesting(null);
     }
@@ -1109,12 +1146,22 @@ export function ProviderConnectorsPage() {
 
   const readinessColor = (score: number) => score >= 100 ? '#1DB954' : score >= 50 ? '#F5A623' : '#E54D4D';
   const secretStatus = (cs: GenericRecord, key: string) => {
+    if (!providerLooksReal(cs)) return 'Credentials required for live use';
     const required = (cs.required_keys as string[] || []).includes(key);
     const available = (cs.available_keys as string[] || []).includes(key);
     if (!required) return 'Not required';
     if (available) return 'Configured';
     return 'Missing';
   };
+  const providerTableRows = providers.map(provider => {
+    const readiness = connectorReadiness(provider);
+    return {
+      ...provider,
+      readiness_status: readiness.label,
+      connector_readiness_score: readiness.score,
+      readiness_note: readiness.note,
+    };
+  });
 
   return (
     <CrudPage title="Provider Connectors" subtitle="Integration health, sandbox testing, credentials, and capabilities" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
@@ -1136,6 +1183,8 @@ export function ProviderConnectorsPage() {
                       {score}%
                     </span>
                   </div>
+                  <div style={{ fontSize: 12, color: score >= 100 ? '#1DB954' : '#F5A623', marginBottom: 6, fontWeight: 600 }}>{str(cs.readiness_status)}</div>
+                  <div style={{ fontSize: 12, color: '#b3b3b3', marginBottom: 6 }}>{str(cs.readiness_note)}</div>
                   <div style={{ fontSize: 12, color: '#b3b3b3', marginBottom: 6 }}>
                     Credentials: {['api_key', 'api_secret', 'webhook_secret'].map(key => `${key.replaceAll('_', ' ')}: ${secretStatus(cs, key)}`).join(' · ')}
                   </div>
@@ -1171,7 +1220,7 @@ export function ProviderConnectorsPage() {
               );
             })}
           </div>
-          <TablePanel title="Providers" rows={providers} columns={['name', 'code', 'provider_type', 'environment', 'status', 'health_status', 'connector_readiness_score', 'missing_required_secrets', 'success_rate', 'attempt_count', 'api_key_status', 'api_secret_status', 'webhook_secret_status']} />
+          <TablePanel title="Providers" rows={providerTableRows} columns={['name', 'code', 'provider_type', 'environment', 'status', 'readiness_status', 'connector_readiness_score', 'readiness_note', 'success_rate', 'attempt_count', 'api_key_status', 'api_secret_status', 'webhook_secret_status']} />
         </>
       )}
 
@@ -1268,7 +1317,9 @@ export function WhiteLabelCheckoutPage() {
   const paymentLinks = useRows(`${API}/white-label/payment-links`);
   const sessions = useRows(`${API}/white-label/sessions`);
   const receipts = useRows(`${API}/white-label/receipts`);
+  const businessAccounts = useRows(`${API}/business-accounts`);
   const [linkForm, setLinkForm] = useState({ business_account_id: '', amount: 1000, currency: 'INR', description: '', customer_email: '', customer_phone: '', expires_at: '' });
+  const [businessAccountSearch, setBusinessAccountSearch] = useState('');
   const load = async () => {
     setState('loading');
     setError('');
@@ -1279,6 +1330,7 @@ export function WhiteLabelCheckoutPage() {
         paymentLinks.load(),
         sessions.load(),
         receipts.load(),
+        businessAccounts.load(),
       ]);
       setProviders(providerData.items || []);
       setForm({
@@ -1333,6 +1385,18 @@ export function WhiteLabelCheckoutPage() {
     if (action === 'create_session') helpers.setConfirm({ title: 'Create payment session', body: 'Session uses immutable checkout theme snapshot and provider routing.', action: () => helpers.run('Session created.', () => apiRequest('POST', `${API}/white-label/sessions`, { payment_link_id: id })).then(load) });
     if (action === 'copy_payment_link') helpers.setDrawer({ title: 'Payment link', body: { payment_link_id: id, note: 'Use signed public URL from checkout gateway service' } });
   };
+  const businessAccountOptions = businessAccounts.rows
+    .filter(row => {
+      const needle = businessAccountSearch.trim().toLowerCase();
+      if (!needle) return true;
+      return [row.display_name, row.legal_name, row.email].some(value => str(value).toLowerCase().includes(needle));
+    })
+    .map(row => ({ label: `${str(row.display_name || row.legal_name || 'Business account')}${row.email ? ` · ${str(row.email)}` : ''}`, value: str(row.id) }));
+  const businessAccountName = (id: GenericRecord[string] | undefined) => {
+    const row = businessAccounts.rows.find(item => str(item.id) === str(id));
+    return row ? str(row.display_name || row.legal_name || row.email || 'Business account') : 'All business accounts';
+  };
+  const paymentLinkRows = paymentLinks.rows.map(row => ({ ...row, business_account: businessAccountName(row.business_account_id) }));
   return (
     <CrudPage title="White-label Checkout" subtitle="Company-managed checkout brand, defaults, and descriptors" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
@@ -1346,7 +1410,8 @@ export function WhiteLabelCheckoutPage() {
             <h2><Wallet size={18} /> Payment links</h2>
             <form onSubmit={createLink}>
               <div className="filter-grid">
-                <Field label="Business account ID"><input value={linkForm.business_account_id} onChange={event => setLinkForm({ ...linkForm, business_account_id: event.target.value })} /></Field>
+                <Field label="Business account search"><input value={str(businessAccountSearch)} onChange={event => setBusinessAccountSearch(event.target.value)} placeholder="Search name or email" /></Field>
+                <Field label="Business account"><Select value={str(linkForm.business_account_id)} options={[{ label: 'All business accounts', value: '' }, ...businessAccountOptions]} onChange={business_account_id => setLinkForm({ ...linkForm, business_account_id })} /></Field>
                 <Field label="Amount"><input type="number" value={linkForm.amount} onChange={event => setLinkForm({ ...linkForm, amount: Number(event.target.value) })} /></Field>
                 <Field label="Currency"><input value={linkForm.currency} onChange={event => setLinkForm({ ...linkForm, currency: event.target.value })} /></Field>
                 <Field label="Description"><input value={linkForm.description} onChange={event => setLinkForm({ ...linkForm, description: event.target.value })} /></Field>
@@ -1357,7 +1422,7 @@ export function WhiteLabelCheckoutPage() {
               <button className="btn-primary" type="submit">Create payment link</button>
             </form>
           </section>
-          <DataTable rows={paymentLinks.rows} columns={['id', 'business_account_id', 'amount', 'currency', 'description', 'customer_email', 'customer_phone', 'status', 'expires_at', 'created_at']} empty={{ title: 'No payment links yet', body: 'Create white-label payment links for hosted checkout sessions.' }} renderActions={row => <ActionButtons actions={['Create session', 'Expire payment link', 'Copy payment link', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Payment link', body: row }) : linkAction(row, normalizeAction(action))} />} />
+          <DataTable rows={paymentLinkRows} columns={['id', 'business_account', 'amount', 'currency', 'description', 'customer_email', 'customer_phone', 'status', 'expires_at', 'created_at']} empty={{ title: 'No payment links yet', body: 'Create white-label payment links for hosted checkout sessions.' }} renderActions={row => <ActionButtons actions={['Create session', 'Expire payment link', 'Copy payment link', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Payment link', body: row }) : linkAction(row, normalizeAction(action))} />} />
         </>
       )}
       {tab === 'Checkout Sessions' && <DataTable rows={sessions.rows} columns={['id', 'payment_link_id', 'payment_order_id', 'provider_id', 'selected_payment_method', 'status', 'expires_at', 'created_at']} empty={{ title: 'No checkout sessions yet', body: 'Sessions are created from active payment links and provider routing.' }} onView={row => helpers.setDrawer({ title: 'Checkout session', body: row })} />}
@@ -1368,6 +1433,7 @@ export function WhiteLabelCheckoutPage() {
 }
 
 export function WebhookConfigPage() {
+  const providers = useRows(`${API}/providers`);
   const configs = useRows(`${API}/webhook-configs`);
   const events = useRows(`${API}/webhook-events?limit=100`);
   const attempts = useRows(`${API}/webhook-processing-attempts`);
@@ -1375,7 +1441,7 @@ export function WebhookConfigPage() {
   const [tab, setTab] = useState('Endpoint Configs');
   const [policyForm, setPolicyForm] = useState({ provider_id: '', max_attempts: 6, backoff_strategy: 'exponential', initial_delay_seconds: 60, max_delay_seconds: 3600, status: 'active' });
   const helpers = useDrawerConfirm();
-  const load = () => void Promise.all([configs.load(), events.load(), attempts.load(), policies.load()]);
+  const load = () => void Promise.all([providers.load(), configs.load(), events.load(), attempts.load(), policies.load()]);
   const replay = (row: GenericRecord, dryRun: boolean) => {
     helpers.setConfirm({
       title: dryRun ? 'Dry-run replay' : 'Replay event',
@@ -1395,7 +1461,7 @@ export function WebhookConfigPage() {
     });
   };
   return (
-    <CrudPage title="Webhook Config" subtitle="Endpoint config, events, retry queue, dead-letter, attempts, and retry policies" state={configs.state} error={configs.error || events.error || attempts.error || policies.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Webhook Config" subtitle="Endpoint config, events, retry queue, dead-letter, attempts, and retry policies" state={configs.state} error={providers.error || configs.error || events.error || attempts.error || policies.error} notice={helpers.notice} onRefresh={load}>
       <div className="alert alert-success">Signatures required. Raw payload stored before processing. Processing idempotent. Failed events retried.</div>
       <div className="button-row">
         {['Endpoint Configs', 'Events', 'Retry Queue', 'Dead Letter', 'Processing Attempts', 'Retry Policies'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
@@ -1407,17 +1473,17 @@ export function WebhookConfigPage() {
           empty={{ title: 'No webhook endpoints configured yet.', body: 'Configure provider credentials first. Signing secrets remain masked and signature verification defaults to required.' }}
         />
       )}
-      {tab === 'Events' && <DataTable rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'event_version', 'payload_hash', 'dedupe_key', 'idempotency_key', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} empty="No webhook events" renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run replay', 'View detail']} onClick={action => action === 'Replay event' ? replay(row, false) : action === 'Dry-run replay' ? replay(row, true) : helpers.setDrawer({ title: 'Webhook event', body: row })} />} />}
-      {tab === 'Retry Queue' && <DataTable rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} empty="No retry queue events" renderActions={row => <ActionButtons actions={['Retry now', 'View detail']} onClick={action => action === 'Retry now' ? helpers.run('Retry queued.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Retry queue item', body: row })} />} />}
-      {tab === 'Dead Letter' && <DataTable rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'retry_count', 'dead_letter_reason', 'error_message', 'received_at']} empty="No dead-letter events" renderActions={row => <ActionButtons actions={['Resolve dead letter', 'Ignore', 'View detail']} onClick={action => action === 'Resolve dead letter' ? helpers.run('Dead-letter resolved.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/resolve-dead-letter`, { note: 'Resolved by admin' })).then(load) : action === 'Ignore' ? helpers.run('Webhook ignored.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/ignore`)).then(load) : helpers.setDrawer({ title: 'Dead-letter event', body: row })} />} />}
-      {tab === 'Processing Attempts' && <DataTable rows={attempts.rows} columns={['id', 'webhook_event_id', 'attempt_number', 'status', 'started_at', 'finished_at', 'error_message', 'worker_id']} empty="No processing attempts yet" onView={row => helpers.setDrawer({ title: 'Processing attempt', body: row })} />}
+      {tab === 'Events' && <DataTable rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'event_version', 'payload_hash', 'dedupe_key', 'idempotency_key', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} empty={{ title: 'No webhook events yet.', body: 'Events appear after configured providers send signed webhooks.' }} renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run replay', 'View detail']} onClick={action => action === 'Replay event' ? replay(row, false) : action === 'Dry-run replay' ? replay(row, true) : helpers.setDrawer({ title: 'Webhook event', body: row })} />} />}
+      {tab === 'Retry Queue' && <DataTable rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} empty={{ title: 'No retry queue events.', body: 'Failed webhook events that can be retried will appear here.' }} renderActions={row => <ActionButtons actions={['Retry now', 'View detail']} onClick={action => action === 'Retry now' ? helpers.run('Retry queued.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Retry queue item', body: row })} />} />}
+      {tab === 'Dead Letter' && <DataTable rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'retry_count', 'dead_letter_reason', 'error_message', 'received_at']} empty={{ title: 'No dead-letter events.', body: 'Unrecoverable webhook failures appear here for review.' }} renderActions={row => <ActionButtons actions={['Resolve dead letter', 'Ignore', 'View detail']} onClick={action => action === 'Resolve dead letter' ? helpers.run('Dead-letter resolved.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/resolve-dead-letter`, { note: 'Resolved by admin' })).then(load) : action === 'Ignore' ? helpers.run('Webhook ignored.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/ignore`)).then(load) : helpers.setDrawer({ title: 'Dead-letter event', body: row })} />} />}
+      {tab === 'Processing Attempts' && <DataTable rows={attempts.rows} columns={['id', 'webhook_event_id', 'attempt_number', 'status', 'started_at', 'finished_at', 'error_message', 'worker_id']} empty={{ title: 'No processing attempts yet.', body: 'Attempts appear after webhook workers process events.' }} onView={row => helpers.setDrawer({ title: 'Processing attempt', body: row })} />}
       {tab === 'Retry Policies' && (
         <>
           <section className="card">
             <h2><RefreshCw size={18} /> Retry policy</h2>
             <form onSubmit={savePolicy}>
               <div className="filter-grid">
-                <Field label="Provider ID"><input value={policyForm.provider_id} onChange={event => setPolicyForm({ ...policyForm, provider_id: event.target.value })} /></Field>
+                <Field label="Provider"><Select value={str(policyForm.provider_id)} options={[{ label: 'Select provider', value: '' }, ...providers.rows.map(provider => ({ label: str(provider.name || provider.code || 'Provider'), value: str(provider.id) }))]} onChange={provider_id => setPolicyForm({ ...policyForm, provider_id })} /></Field>
                 <Field label="Max attempts"><input type="number" value={policyForm.max_attempts} onChange={event => setPolicyForm({ ...policyForm, max_attempts: Number(event.target.value) })} /></Field>
                 <Field label="Backoff strategy"><Select value={policyForm.backoff_strategy} options={['fixed', 'exponential']} onChange={backoff_strategy => setPolicyForm({ ...policyForm, backoff_strategy })} /></Field>
                 <Field label="Initial delay sec"><input type="number" value={policyForm.initial_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, initial_delay_seconds: Number(event.target.value) })} /></Field>
@@ -1427,7 +1493,7 @@ export function WebhookConfigPage() {
               <button className="btn-primary" type="submit">Save retry policy</button>
             </form>
           </section>
-          <DataTable rows={policies.rows} columns={['id', 'provider_id', 'max_attempts', 'backoff_strategy', 'initial_delay_seconds', 'max_delay_seconds', 'status', 'updated_at']} empty="No retry policies yet" onView={row => helpers.setDrawer({ title: 'Retry policy', body: row })} />
+          <DataTable rows={policies.rows} columns={['id', 'provider_id', 'max_attempts', 'backoff_strategy', 'initial_delay_seconds', 'max_delay_seconds', 'status', 'updated_at']} empty={{ title: 'No retry policies yet.', body: 'Create a provider retry policy after webhook endpoints are configured.' }} onView={row => helpers.setDrawer({ title: 'Retry policy', body: row })} />
         </>
       )}
       <Modals helpers={helpers} />
@@ -1779,9 +1845,9 @@ export function DeveloperIntegrationPage() {
     });
   };
   const payloads = [
-    { id: 'payment.captured', event: 'payment.captured', sample: '{"id":"pay_test","amount":1000,"currency":"INR","card":"redacted"}' },
-    { id: 'refund.succeeded', event: 'refund.succeeded', sample: '{"id":"rf_test","payment_id":"pay_test","amount":500}' },
-    { id: 'dispute.opened', event: 'dispute.opened', sample: '{"id":"dp_test","payment_id":"pay_test","reason":"fraudulent"}' },
+    { id: 'payment.captured', event: 'payment.captured', sample: { id: 'pay_test', amount: 1000, currency: 'INR', card: 'redacted' } },
+    { id: 'refund.succeeded', event: 'refund.succeeded', sample: { id: 'rf_test', payment_id: 'pay_test', amount: 500 } },
+    { id: 'dispute.opened', event: 'dispute.opened', sample: { id: 'dp_test', payment_id: 'pay_test', reason: 'fraudulent' } },
   ];
   const checklist = ['Create sandbox API key', 'Configure webhook endpoint', 'Send webhook test', 'Replay failed event', 'Review idempotency logs', 'Switch to live mode after approval'].map((item, index) => ({ id: String(index), item, status: index < 2 ? 'ready' : 'pending' }));
   const createIdempotencyRecord = (event: FormEvent) => {
@@ -1821,18 +1887,20 @@ export function DeveloperIntegrationPage() {
       {tab === 'API Versions' && <DataTable rows={apiVersions.rows} columns={['version', 'status', 'sunset_at', 'changelog_url', 'created_at']} empty={{ title: 'No API versions', body: 'Define current, supported, and deprecated versions for external readiness.' }} />}
       {tab === 'Idempotency Logs' && (
         <>
-          <section className="card">
-            <h2><RefreshCw size={18} /> Idempotency key store</h2>
-            <form onSubmit={createIdempotencyRecord}>
-              <div className="filter-grid">
-                <Field label="Idempotency key"><input value={idempotencyForm.idempotency_key} onChange={event => setIdempotencyForm({ ...idempotencyForm, idempotency_key: event.target.value })} /></Field>
-                <Field label="API key ID"><input value={idempotencyForm.api_key_id} onChange={event => setIdempotencyForm({ ...idempotencyForm, api_key_id: event.target.value })} /></Field>
-                <Field label="Resource type"><input value={idempotencyForm.resource_type} onChange={event => setIdempotencyForm({ ...idempotencyForm, resource_type: event.target.value })} /></Field>
-                <Field label="Payload JSON"><textarea value={idempotencyForm.payload} onChange={event => setIdempotencyForm({ ...idempotencyForm, payload: event.target.value })} /></Field>
-              </div>
-              <button className="btn-primary" type="submit">Store idempotency record</button>
-            </form>
-          </section>
+          {ADMIN_DEBUG_TOOLS && (
+            <section className="card">
+              <h2><RefreshCw size={18} /> Idempotency key store</h2>
+              <form onSubmit={createIdempotencyRecord}>
+                <div className="filter-grid">
+                  <Field label="Idempotency key"><input value={str(idempotencyForm.idempotency_key)} onChange={event => setIdempotencyForm({ ...idempotencyForm, idempotency_key: event.target.value })} /></Field>
+                  <Field label="API key ID"><input value={str(idempotencyForm.api_key_id)} onChange={event => setIdempotencyForm({ ...idempotencyForm, api_key_id: event.target.value })} /></Field>
+                  <Field label="Resource type"><input value={str(idempotencyForm.resource_type)} onChange={event => setIdempotencyForm({ ...idempotencyForm, resource_type: event.target.value })} /></Field>
+                  <Field label="Payload JSON"><textarea value={str(idempotencyForm.payload)} onChange={event => setIdempotencyForm({ ...idempotencyForm, payload: event.target.value })} /></Field>
+                </div>
+                <button className="btn-primary" type="submit">Store idempotency record</button>
+              </form>
+            </section>
+          )}
           <DataTable rows={idempotencyLogs.rows} columns={['created_at', 'idempotency_key', 'api_key_id', 'request_hash', 'response_hash', 'response_status', 'resource_type', 'resource_id', 'expires_at']} empty={{ title: 'No idempotency logs', body: 'Idempotency records appear here and link to request logs by key.' }} onView={row => helpers.setDrawer({ title: 'Idempotency record', body: row })} />
         </>
       )}
@@ -1894,7 +1962,7 @@ export function DeveloperIntegrationPage() {
         </section>
       )}
       {tab === 'Event Replay' && <DataTable rows={replays.rows} columns={['id', 'webhook_event_id', 'replay_status', 'replayed_by_admin_id', 'replayed_at', 'error_message', 'created_at']} empty={{ title: 'No webhook replays', body: 'Replay records appear here after failed or selected webhook events are queued again.' }} renderActions={row => <ActionButtons actions={['Replay selected event', 'View detail']} onClick={action => action === 'Replay selected event' ? replayEvent(row) : helpers.setDrawer({ title: 'Webhook replay', body: row })} />} />}
-      {tab === 'Sample Payloads' && <DataTable rows={payloads} columns={['event', 'sample']} empty="No sample payloads" />}
+      {tab === 'Sample Payloads' && <SamplePayloads payloads={payloads} />}
       {tab === 'Integration Checklist' && <DataTable rows={[
         ...checklist,
         { id: 'sandbox_provider', item: 'Sandbox provider configured', status: 'ready' },
@@ -2223,10 +2291,13 @@ function Skeleton({ message }: { message: string }) {
 }
 
 function ErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const [showDetail, setShowDetail] = useState(false);
   return (
     <div className="alert alert-error error-panel">
-      <span>{message}</span>
+      <span>{friendlyError(message)}</span>
       {onRetry && <button type="button" onClick={onRetry}>Retry</button>}
+      {message && message !== friendlyError(message) && <button type="button" onClick={() => setShowDetail(value => !value)}>View technical detail</button>}
+      {showDetail && <pre className="json-preview">{message}</pre>}
     </div>
   );
 }
@@ -2252,8 +2323,9 @@ function TablePanel({ title, rows, columns }: { title: string; rows: GenericReco
 }
 
 function DataTable({ rows, columns, empty, renderActions, onView }: { rows: GenericRecord[]; columns: string[]; empty: string | EmptyStateConfig; renderActions?: (row: GenericRecord) => ReactNode; onView?: (row: GenericRecord) => void }) {
+  const needsScroll = columns.length + (renderActions || onView ? 1 : 0) > 8;
   return (
-    <div className="table-card table-scroll" style={{ padding: 0 }}>
+    <div className={`table-card ${needsScroll ? 'table-scroll' : ''}`} style={{ padding: 0, overflowX: needsScroll ? 'auto' : 'visible' }}>
       <table>
         <thead>
           <tr>
@@ -2440,6 +2512,30 @@ function CheckoutPreview({ value }: { value: WhiteLabelForm }) {
   );
 }
 
+function SamplePayloads({ payloads }: { payloads: { id: string; event: string; sample: Record<string, unknown> }[] }) {
+  const [copied, setCopied] = useState('');
+  const copyPayload = (id: string, sample: Record<string, unknown>) => {
+    void navigator.clipboard.writeText(JSON.stringify(sample, null, 2)).then(() => setCopied(id));
+  };
+  return (
+    <section className="card">
+      <h2><Cable size={18} /> Sample payloads</h2>
+      <p className="muted-text">Redacted examples only. They are safe for integration reference and do not contain live credentials or card data.</p>
+      <div className="grid grid-2">
+        {payloads.map(payload => (
+          <div key={payload.id} className="table-card" style={{ padding: 14 }}>
+            <div className="button-row" style={{ justifyContent: 'space-between' }}>
+              <strong>{payload.event}</strong>
+              <button type="button" onClick={() => copyPayload(payload.id, payload.sample)}><Copy size={14} /> {copied === payload.id ? 'Copied' : 'Copy'}</button>
+            </div>
+            <pre className="json-preview">{JSON.stringify(payload.sample, null, 2)}</pre>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Modals({ helpers }: { helpers: ReturnType<typeof useDrawerConfirm> }) {
   return (
     <>
@@ -2449,7 +2545,7 @@ function Modals({ helpers }: { helpers: ReturnType<typeof useDrawerConfirm> }) {
         void action?.();
       }} />}
       {helpers.drawer && <Drawer state={helpers.drawer} onClose={() => helpers.setDrawer(null)} />}
-      {helpers.error && <div className="alert alert-error">{helpers.error}</div>}
+      {helpers.error && <div className="alert alert-error">{friendlyError(helpers.error)}</div>}
     </>
   );
 }
