@@ -240,7 +240,6 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
 };
 
 const str = (value: unknown) => value == null ? '' : String(value);
-const valueList = (value: unknown, fallback: string[] = []) => Array.isArray(value) ? value.join(',') : value == null ? fallback.join(',') : String(value);
 
 const REAL_PROVIDER_TYPES = new Set(['stripe', 'razorpay', 'adyen', 'cashfree', 'juspay', 'payu']);
 const isRealProvider = (providerType: unknown) => REAL_PROVIDER_TYPES.has(str(providerType).toLowerCase());
@@ -1406,7 +1405,7 @@ export function WhiteLabelCheckoutPage() {
         statement_descriptor: str(config.statement_descriptor),
         default_provider_id: str(config.default_provider_id),
         fallback_provider_id: str(config.fallback_provider_id),
-        default_payment_methods: valueList(config.default_payment_methods, ['upi', 'card', 'netbanking']),
+        default_payment_methods: Array.isArray(config.default_payment_methods) ? config.default_payment_methods.join(',') : str(config.default_payment_methods || DEFAULT_WHITE_LABEL.default_payment_methods),
         default_country: str(config.default_country || DEFAULT_WHITE_LABEL.default_country),
         default_currency: str(config.default_currency || DEFAULT_WHITE_LABEL.default_currency),
         invoice_prefix: str(config.invoice_prefix || DEFAULT_WHITE_LABEL.invoice_prefix),
@@ -2519,32 +2518,167 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
 }
 
 function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { value: WhiteLabelForm; providers: Provider[]; onChange: (value: WhiteLabelForm) => void; onSubmit: (event: FormEvent) => void; onReset: () => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [logoError, setLogoError] = useState('');
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size < 200 * 1024 || file.size > 5 * 1024 * 1024) {
+      setLogoError('Logo must be between 200KB and 5MB');
+      return;
+    }
+    setLogoError('');
+    setUploading(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const result = await apiRequest<{ logo_url: string }>('POST', `${API}/white-label-config/upload-logo`, {
+          content_type: file.type,
+          data_base64: base64,
+        });
+        onChange({ ...value, checkout_logo_url: result.logo_url });
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Upload failed');
+      setUploading(false);
+    }
+  };
+
+  const paymentMethodOptions = [
+    { label: 'UPI', value: 'upi' },
+    { label: 'Card', value: 'card' },
+    { label: 'Net Banking', value: 'netbanking' },
+    { label: 'Wallet', value: 'wallet' },
+    { label: 'EMI', value: 'emi' },
+    { label: 'BNPL', value: 'bnpl' },
+  ];
+
+  const currencyOptions = [
+    { label: 'Indian Rupee (INR)', value: 'INR' },
+    { label: 'US Dollar (USD)', value: 'USD' },
+    { label: 'Euro (EUR)', value: 'EUR' },
+    { label: 'British Pound (GBP)', value: 'GBP' },
+    { label: 'UAE Dirham (AED)', value: 'AED' },
+  ];
+
+  const countryOptions = [
+    { label: 'India', value: 'IN' },
+    { label: 'United States', value: 'US' },
+    { label: 'United Kingdom', value: 'GB' },
+    { label: 'United Arab Emirates', value: 'AE' },
+  ];
+
   return (
     <section className="card">
-      <h2><SlidersHorizontal size={18} /> White-label config</h2>
-      <form onSubmit={onSubmit}>
-        <div className="filter-grid">
-          <Field label="Brand"><input value={str(value.brand_name)} onChange={event => onChange({ ...value, brand_name: event.target.value })} /></Field>
-          <Field label="Logo URL"><input value={str(value.checkout_logo_url)} onChange={event => onChange({ ...value, checkout_logo_url: event.target.value })} /></Field>
-          <Field label="Theme color"><input value={str(value.checkout_theme_color)} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} /></Field>
-          <Field label="Domain"><input value={str(value.payment_page_domain)} onChange={event => onChange({ ...value, payment_page_domain: event.target.value })} /></Field>
-          <Field label="Support email"><input value={str(value.support_email)} onChange={event => onChange({ ...value, support_email: event.target.value })} /></Field>
-          <Field label="Support phone"><input value={str(value.support_phone)} onChange={event => onChange({ ...value, support_phone: event.target.value })} /></Field>
-          <Field label="Terms URL"><input value={str(value.terms_url)} onChange={event => onChange({ ...value, terms_url: event.target.value })} /></Field>
-          <Field label="Privacy URL"><input value={str(value.privacy_url)} onChange={event => onChange({ ...value, privacy_url: event.target.value })} /></Field>
-          <Field label="Refund policy URL"><input value={str(value.refund_policy_url)} onChange={event => onChange({ ...value, refund_policy_url: event.target.value })} /></Field>
-          <Field label="Statement descriptor"><input value={str(value.statement_descriptor)} onChange={event => onChange({ ...value, statement_descriptor: event.target.value })} /></Field>
-          <Field label="Default provider"><Select value={str(value.default_provider_id)} options={[{ label: 'None', value: '' }, ...providers.map(provider => ({ label: provider.name, value: provider.id }))]} onChange={next => onChange({ ...value, default_provider_id: next })} /></Field>
-          <Field label="Fallback provider"><Select value={str(value.fallback_provider_id)} options={[{ label: 'None', value: '' }, ...providers.map(provider => ({ label: provider.name, value: provider.id }))]} onChange={next => onChange({ ...value, fallback_provider_id: next })} /></Field>
-          <Field label="Default methods"><input value={str(value.default_payment_methods)} onChange={event => onChange({ ...value, default_payment_methods: event.target.value })} /></Field>
-          <Field label="Default country"><input value={str(value.default_country)} onChange={event => onChange({ ...value, default_country: event.target.value })} /></Field>
-          <Field label="Default currency"><input value={str(value.default_currency)} onChange={event => onChange({ ...value, default_currency: event.target.value })} /></Field>
-          <Field label="Invoice prefix"><input value={str(value.invoice_prefix)} onChange={event => onChange({ ...value, invoice_prefix: event.target.value })} /></Field>
-          <Field label="Receipt prefix"><input value={str(value.receipt_prefix)} onChange={event => onChange({ ...value, receipt_prefix: event.target.value })} /></Field>
+      <div className="page-header" style={{ marginBottom: 24 }}>
+        <div>
+          <h2><SlidersHorizontal size={18} /> White-label configuration</h2>
+          <p className="muted-text">Customize the checkout experience for all hosted payment flows.</p>
         </div>
         <div className="button-row">
-          <button className="btn-primary" type="submit">Save white-label config</button>
-          <button type="button" onClick={onReset}>Reset to default</button>
+          <button type="button" className="btn-secondary" onClick={onReset}>Reset defaults</button>
+          <button className="btn-primary" type="button" onClick={onSubmit}>Save changes</button>
+        </div>
+      </div>
+
+      <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Visual Branding</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+              <Field label="Brand Name">
+                <input value={str(value.brand_name)} onChange={event => onChange({ ...value, brand_name: event.target.value })} placeholder="FeelPay" />
+              </Field>
+
+              <Field label="Logo Upload (200KB - 5MB)">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #E5E7EB' }}>
+                    {value.checkout_logo_url ? <img src={value.checkout_logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Upload size={20} className="muted-text" />}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploading} style={{ fontSize: 12 }} />
+                    {uploading && <div style={{ fontSize: 11, color: '#6366f1', marginTop: 4 }}>Uploading...</div>}
+                    {logoError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{logoError}</div>}
+                  </div>
+                </div>
+              </Field>
+
+              <Field label="Theme Color">
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="color" value={str(value.checkout_theme_color || '#6366f1')} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} style={{ width: 42, height: 42, padding: 0, border: 'none', borderRadius: 8, cursor: 'pointer' }} />
+                  <input value={str(value.checkout_theme_color)} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} placeholder="#6366f1" style={{ fontFamily: 'monospace', flex: 1 }} />
+                </div>
+              </Field>
+            </div>
+
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 12 }}>Payment Defaults</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+              <Field label="Default Currency">
+                <Select value={str(value.default_currency)} options={currencyOptions} onChange={next => onChange({ ...value, default_currency: next })} />
+              </Field>
+              <Field label="Default Country">
+                <Select value={str(value.default_country)} options={countryOptions} onChange={next => onChange({ ...value, default_country: next })} />
+              </Field>
+              <Field label="Default Payment Methods">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12, border: '1px solid #E5E7EB', borderRadius: 8, background: '#fff' }}>
+                  {paymentMethodOptions.map(opt => {
+                    const methods = list(value.default_payment_methods);
+                    const isChecked = methods.includes(opt.value);
+                    return (
+                      <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', padding: '4px 8px', borderRadius: 6, background: isChecked ? '#EEF2FF' : 'transparent', color: isChecked ? '#4F46E5' : '#4B5563', border: `1px solid ${isChecked ? '#C7D2FE' : 'transparent'}` }}>
+                        <input type="checkbox" checked={isChecked} onChange={e => {
+                          const next = e.target.checked ? [...methods, opt.value] : methods.filter(m => m !== opt.value);
+                          onChange({ ...value, default_payment_methods: next.join(',') });
+                        }} style={{ display: 'none' }} />
+                        {opt.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provider Routing</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+              <Field label="Primary Routing Provider">
+                <Select value={str(value.default_provider_id)} options={[{ label: 'Smart Routing (Automatic)', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]} onChange={next => onChange({ ...value, default_provider_id: next })} />
+              </Field>
+              <Field label="Failover Provider">
+                <Select value={str(value.fallback_provider_id)} options={[{ label: 'None', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]} onChange={next => onChange({ ...value, fallback_provider_id: next })} />
+              </Field>
+            </div>
+
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 12 }}>Legal & Support</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+              <Field label="Support Email">
+                <input value={str(value.support_email)} onChange={event => onChange({ ...value, support_email: event.target.value })} placeholder="support@feelpay.com" />
+              </Field>
+              <Field label="Terms of Service URL">
+                <input value={str(value.terms_url)} onChange={event => onChange({ ...value, terms_url: event.target.value })} placeholder="https://..." />
+              </Field>
+              <Field label="Privacy Policy URL">
+                <input value={str(value.privacy_url)} onChange={event => onChange({ ...value, privacy_url: event.target.value })} placeholder="https://..." />
+              </Field>
+            </div>
+
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 12 }}>Checkout Content</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <Field label="Invoice Prefix">
+                <input value={str(value.invoice_prefix)} onChange={event => onChange({ ...value, invoice_prefix: event.target.value })} />
+              </Field>
+              <Field label="Receipt Prefix">
+                <input value={str(value.receipt_prefix)} onChange={event => onChange({ ...value, receipt_prefix: event.target.value })} />
+              </Field>
+            </div>
+          </div>
         </div>
       </form>
     </section>

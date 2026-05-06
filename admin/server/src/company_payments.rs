@@ -705,6 +705,12 @@ struct WhiteLabelRequest {
 }
 
 #[derive(Deserialize)]
+struct LogoUploadRequest {
+    content_type: String,
+    data_base64: String,
+}
+
+#[derive(Deserialize)]
 struct RoutingRuleRequest {
     name: String,
     payment_method: Option<String>,
@@ -2026,7 +2032,15 @@ async fn get_white_label_config(pool: web::Data<PgPool>) -> impl Responder {
 
     match row {
         Ok(Some(row)) => HttpResponse::Ok().json(row_to_json(&row)),
-        Ok(None) => HttpResponse::Ok().json(json!({ "brand_name": "FeelPay" })),
+        Ok(None) => HttpResponse::Ok().json(json!({
+            "brand_name": "FeelPay",
+            "checkout_theme_color": "#6366f1",
+            "default_currency": "INR",
+            "default_country": "IN",
+            "default_payment_methods": ["upi", "card"],
+            "invoice_prefix": "INV-",
+            "receipt_prefix": "RCP-"
+        })),
         Err(e) => {
             tracing::error!("Load white-label config failed: {}", e);
             server_error("Failed to load white-label config")
@@ -2034,55 +2048,130 @@ async fn get_white_label_config(pool: web::Data<PgPool>) -> impl Responder {
     }
 }
 
+async fn upload_white_label_logo(
+    pool: web::Data<PgPool>,
+    body: web::Json<LogoUploadRequest>,
+) -> impl Responder {
+    let content_type = body.content_type.trim().to_ascii_lowercase();
+    let allowed = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+    if !allowed.contains(&content_type.as_str()) {
+        return HttpResponse::BadRequest().json(json!({ "message": "Only PNG/JPEG/WEBP/SVG allowed" }));
+    }
+
+    let raw = match BASE64.decode(body.data_base64.trim()) {
+        Ok(raw) => raw,
+        Err(_) => return HttpResponse::BadRequest().json(json!({ "message": "Invalid base64 payload" })),
+    };
+
+    if raw.len() < 200 * 1024 {
+        return HttpResponse::BadRequest().json(json!({ "message": "Logo must be at least 200KB" }));
+    }
+    if raw.len() > 5 * 1024 * 1024 {
+        return HttpResponse::BadRequest().json(json!({ "message": "Logo must be <= 5MB" }));
+    }
+
+    let ext = match content_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/svg+xml" => "svg",
+        _ => "webp",
+    };
+
+    let file_id = format!("white_label_logo_{}", Uuid::new_v4().simple());
+    let dir = Path::new("uploads/branding");
+    if let Err(e) = fs::create_dir_all(dir) {
+        tracing::error!("Failed to create branding directory: {}", e);
+        return server_error("Failed to prepare storage");
+    }
+
+    let path = dir.join(format!("{}.{}", file_id, ext));
+    if let Err(e) = fs::write(&path, &raw) {
+        tracing::error!("Failed to write logo file: {}", e);
+        return server_error("Failed to save logo");
+    }
+
+    let logo_url = format!("/uploads/branding/{}.{}", file_id, ext);
+
+    // Update the config immediately with the new logo URL
+    let _ = sqlx::query(
+        "UPDATE white_label_payment_config SET checkout_logo_url = $1, updated_at = NOW() WHERE id = (SELECT id FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1)"
+    )
+    .bind(&logo_url)
+    .execute(pool.get_ref())
+    .await;
+
+    HttpResponse::Ok().json(json!({
+        "logo_url": logo_url,
+        "size_bytes": raw.len(),
+        "message": "Logo uploaded successfully"
+    }))
+}
+
 async fn update_white_label_config(
     pool: web::Data<PgPool>,
     request: web::Json<WhiteLabelRequest>,
 ) -> impl Responder {
-    let saved = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        INSERT INTO white_label_payment_config (
-            brand_name, checkout_logo_url, checkout_theme_color, support_email, support_phone,
-            payment_page_domain, default_currency, default_country, default_payment_methods,
-            default_provider_id, fallback_provider_id, invoice_prefix, receipt_prefix,
-            statement_descriptor, terms_url, privacy_url, refund_policy_url
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16, $17)
-        ON CONFLICT (id) DO NOTHING
-        RETURNING id
-        "#,
-    )
-    .bind(request.brand_name.trim())
-    .bind(request.checkout_logo_url.as_deref())
-    .bind(request.checkout_theme_color.trim())
-    .bind(request.support_email.as_deref())
-    .bind(request.support_phone.as_deref())
-    .bind(request.payment_page_domain.as_deref())
-    .bind(request.default_currency.trim())
-    .bind(request.default_country.trim())
-    .bind(json!(request.default_payment_methods))
-    .bind(request.default_provider_id)
-    .bind(request.fallback_provider_id)
-    .bind(request.invoice_prefix.trim())
-    .bind(request.receipt_prefix.trim())
-    .bind(request.statement_descriptor.as_deref())
-    .bind(request.terms_url.as_deref())
-    .bind(request.privacy_url.as_deref())
-    .bind(request.refund_policy_url.as_deref())
-    .fetch_optional(pool.get_ref())
-    .await;
+    // Check if config exists
+    let existing = sqlx::query_scalar::<_, Uuid>("SELECT id FROM white_label_payment_config ORDER BY created_at ASC LIMIT 1")
+        .fetch_optional(pool.get_ref())
+        .await;
 
-    let id = match saved {
-        Ok(Some(id)) => id,
-        Ok(None) => match update_existing_white_label(pool.get_ref(), &request).await {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!("Update white-label config failed: {}", e);
-                return server_error("Failed to save white-label config");
+    let id = match existing {
+        Ok(Some(_id)) => {
+            // Update existing
+            match update_existing_white_label(pool.get_ref(), &request).await {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::error!("Update existing white-label failed: {}", e);
+                    return server_error("Failed to update configuration");
+                }
             }
-        },
+        }
+        Ok(None) => {
+            // Insert new
+            let inserted = sqlx::query_scalar::<_, Uuid>(
+                r#"
+                INSERT INTO white_label_payment_config (
+                    brand_name, checkout_logo_url, checkout_theme_color, support_email, support_phone,
+                    payment_page_domain, default_currency, default_country, default_payment_methods,
+                    default_provider_id, fallback_provider_id, invoice_prefix, receipt_prefix,
+                    statement_descriptor, terms_url, privacy_url, refund_policy_url
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16, $17)
+                RETURNING id
+                "#,
+            )
+            .bind(request.brand_name.trim())
+            .bind(request.checkout_logo_url.as_deref())
+            .bind(request.checkout_theme_color.trim())
+            .bind(request.support_email.as_deref())
+            .bind(request.support_phone.as_deref())
+            .bind(request.payment_page_domain.as_deref())
+            .bind(request.default_currency.trim())
+            .bind(request.default_country.trim())
+            .bind(json!(request.default_payment_methods))
+            .bind(request.default_provider_id)
+            .bind(request.fallback_provider_id)
+            .bind(request.invoice_prefix.trim())
+            .bind(request.receipt_prefix.trim())
+            .bind(request.statement_descriptor.as_deref())
+            .bind(request.terms_url.as_deref())
+            .bind(request.privacy_url.as_deref())
+            .bind(request.refund_policy_url.as_deref())
+            .fetch_one(pool.get_ref())
+            .await;
+
+            match inserted {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::error!("Insert white-label config failed: {}", e);
+                    return server_error("Failed to create configuration");
+                }
+            }
+        }
         Err(e) => {
-            tracing::error!("Create white-label config failed: {}", e);
-            return server_error("Failed to save white-label config");
+            tracing::error!("Check existing white-label failed: {}", e);
+            return server_error("Database error");
         }
     };
 
@@ -9778,6 +9867,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/white-label-config"),
             web::patch().to(update_white_label_config),
+        )
+        .route(
+            &format!("{prefix}/white-label-config/upload-logo"),
+            web::post().to(upload_white_label_logo),
         )
         .route(
             &format!("{prefix}/white-label-config/preview"),
