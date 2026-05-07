@@ -57,14 +57,11 @@ const ERROR_GUIDE = [
 export default function Developers() {
   const [apiKey, setApiKey] = useState('Loading...');
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
-  const [readiness, setReadiness] = useState({
-    profile: false,
-    kyc: false,
-    bank: false,
-    webhook: false,
-    key: false,
-    testPayment: false,
-  });
+  const [preflight, setPreflight] = useState<{
+    can_go_live: boolean;
+    blockers: string[];
+    checks: Record<string, boolean>;
+  } | null>(null);
   const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedSnippet, setSelectedSnippet] = useState<SnippetId>('curl');
@@ -97,21 +94,16 @@ export default function Developers() {
   };
 
   const loadReadiness = async () => {
-    const [profile, onboarding, bankRes, payments] = await Promise.all([
-      apiRequest<{ business_name?: string | null; business_type?: string | null; webhook_url?: string | null }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 20_000 }),
-      apiRequest<{ onboarding_status?: string; verifications?: Array<{ verification_type: string; status: string }> }>('GET', '/v1/onboarding/status', undefined, undefined, { cacheMs: 20_000 })
-        .catch(() => ({ onboarding_status: 'pending', verifications: [] })),
-      apiRequest<{ accounts?: Array<{ verification_status?: string }> }>('GET', `/v1/merchants/${merchantId()}/bank-accounts`, undefined, undefined, { cacheMs: 20_000 }).catch(() => ({ accounts: [] })),
-      apiRequest<{ data?: Array<{ status?: string }> }>('GET', '/v1/payments?limit=25', undefined, undefined, { useApiKey: true, cacheMs: 20_000 }).catch(() => ({ data: [] })),
-    ]);
-    setReadiness({
-      profile: Boolean(profile.business_name && profile.business_type),
-      kyc: onboarding.onboarding_status === 'approved' || onboarding.verifications?.some((item) => item.status === 'verified') || false,
-      bank: bankRes.accounts?.some((account) => account.verification_status === 'verified') || false,
-      webhook: Boolean(profile.webhook_url),
-      key: Boolean(apiKey && apiKey !== 'Loading...'),
-      testPayment: payments.data?.some((payment) => ['captured', 'success', 'succeeded'].includes(payment.status || '')) || false,
-    });
+    try {
+      const data = await apiRequest<{
+        can_go_live: boolean;
+        blockers: string[];
+        checks: Record<string, boolean>;
+      }>('GET', '/v1/onboarding/live-preflight', undefined, undefined, { cacheMs: 15_000 });
+      setPreflight(data);
+    } catch (err) {
+      console.error('Preflight check failed:', err);
+    }
   };
 
   const loadWebhookEvents = async () => {
@@ -174,15 +166,6 @@ export default function Developers() {
     await loadKeys();
   };
 
-  const merchantId = () => {
-    const raw = localStorage.getItem('feelpay_merchant');
-    if (!raw) return '';
-    try {
-      return (JSON.parse(raw) as { id?: string }).id || '';
-    } catch {
-      return '';
-    }
-  };
 
   const snippets = useMemo<Record<SnippetId, string>>(
     () => ({
@@ -300,7 +283,18 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
         </div>
         <div className="mode-toggle">
           <button className={mode === 'test' ? 'active' : ''} onClick={() => setMode('test')}>Test Mode</button>
-          <button className={mode === 'live' ? 'active' : ''} onClick={() => setMode('live')}>Live Mode</button>
+          <button 
+            className={mode === 'live' ? 'active' : ''} 
+            onClick={() => {
+              if (preflight?.can_go_live) {
+                setMode('live');
+              } else {
+                alert(`Cannot switch to Live Mode. Blockers:\n• ${preflight?.blockers.join('\n• ') || 'Onboarding incomplete'}`);
+              }
+            }}
+          >
+            Live Mode
+          </button>
         </div>
       </div>
 
@@ -396,15 +390,66 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
         </div>
       </section>
 
-      <section className="card">
-        <div className="dev-section-title"><Rocket size={18} /> Go-Live Checklist</div>
-        <div className="checklist-grid">
-          <div className="check-item">{readiness.profile ? '✅' : '○'} Business profile complete</div>
-          <div className="check-item">{readiness.kyc ? '✅' : '○'} KYC verified</div>
-          <div className="check-item">{readiness.bank ? '✅' : '○'} Verified settlement bank account</div>
-          <div className="check-item">{readiness.webhook ? '✅' : '○'} Webhook endpoint configured</div>
-          <div className="check-item">{readiness.key ? '✅' : '○'} API key created or rotated</div>
-          <div className="check-item">{readiness.testPayment ? '✅' : '○'} Test payment completed</div>
+      <section className="card golive-hub-section">
+        <div className="dev-section-title"><Rocket size={18} /> Go-Live Readiness Hub</div>
+        <div className="hub-layout">
+          <div className="checklist-box">
+            <div className={`check-item ${preflight?.checks.onboarding_approved ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks.onboarding_approved ? '✅' : '○'}</span>
+              <div className="text">
+                <strong>Business & KYC Verification</strong>
+                <p>Status: {preflight?.checks.onboarding_approved ? 'Approved' : 'Pending Review'}</p>
+              </div>
+            </div>
+            <div className={`check-item ${preflight?.checks.verified_bank_account ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks.verified_bank_account ? '✅' : '○'}</span>
+              <div className="text">
+                <strong>Settlement Bank Account</strong>
+                <p>{preflight?.checks.verified_bank_account ? 'Verified primary account' : 'Verification required'}</p>
+              </div>
+            </div>
+            <div className={`check-item ${preflight?.checks.webhook_configured ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks.webhook_configured ? '✅' : '○'}</span>
+              <div className="text">
+                <strong>Webhook Configuration</strong>
+                <p>{preflight?.checks.webhook_configured ? 'HTTPS endpoint saved' : 'Production URL missing'}</p>
+              </div>
+            </div>
+            <div className={`check-item ${preflight?.checks.team_present ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks.team_present ? '✅' : '○'}</span>
+              <div className="text">
+                <strong>Team & Security</strong>
+                <p>{preflight?.checks.team_present ? 'Team members invited' : 'No team members found'}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="readiness-summary">
+            <div className={`summary-card ${preflight?.can_go_live ? 'ready' : 'not-ready'}`}>
+              <h3>{preflight?.can_go_live ? 'You are ready!' : 'Readiness: Incomplete'}</h3>
+              <p>
+                {preflight?.can_go_live 
+                  ? 'All production requirements are met. You can now use Live Mode keys.' 
+                  : `You have ${preflight?.blockers.length || 0} blocker(s) remaining before you can go live.`}
+              </p>
+              
+              {!preflight?.can_go_live && preflight?.blockers.length ? (
+                <ul className="blocker-list">
+                  {preflight.blockers.map((b, i) => <li key={i}>• {b}</li>)}
+                </ul>
+              ) : null}
+
+              {preflight?.can_go_live ? (
+                <button className="btn-primary" onClick={() => setMode('live')}>
+                  Switch to Live Mode
+                </button>
+              ) : (
+                <button className="btn-secondary" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                  Go Live (Locked)
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 

@@ -1,7 +1,9 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::api::pagination::{build_cursor, PaginatedResponse, PaginationParams};
@@ -64,6 +66,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::post().to(create_payment))
             .route("", web::get().to(list_payments))
             .route("/{payment_id}", web::get().to(get_payment))
+            .route("/{id}/details", web::get().to(get_payment_details))
+            .route("/{id}/timeline", web::get().to(get_payment_timeline))
             .route("/{payment_id}/capture", web::post().to(capture_payment))
             .route("/{payment_id}/refund", web::post().to(refund_payment))
             .route("/batch-refund", web::post().to(batch_refund)),
@@ -1106,6 +1110,98 @@ pub async fn batch_refund(
         failed,
         results,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/payments/{id}",
+    responses(
+        (status = 200, description = "Detailed payment info"),
+        (status = 404, description = "Payment not found")
+    ),
+    security(("api_key" = []))
+)]
+pub async fn get_payment_details(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let payment_id = path.into_inner();
+
+    let order = sqlx::query_as::<_, PaymentOrder>(
+        "SELECT * FROM payment_orders WHERE id = $1 AND merchant_id = $2"
+    )
+    .bind(payment_id)
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    let Some(order) = order else {
+        return Err(FeelPayError::NotFound("Payment not found".into()));
+    };
+
+    // Fetch related webhooks
+    let webhooks = sqlx::query(
+        "SELECT id, event_type, status, attempts, last_attempt_at, created_at FROM payment_webhook_events WHERE payment_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(payment_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "payment": order,
+        "webhooks": webhooks.into_iter().map(|row| json!({
+            "id": Row::get::<Uuid, _>(&row, "id"),
+            "event_type": Row::get::<String, _>(&row, "event_type"),
+            "status": Row::get::<String, _>(&row, "status"),
+            "attempts": Row::get::<i32, _>(&row, "attempts"),
+            "last_attempt_at": Row::get::<Option<chrono::DateTime<chrono::Utc>>, _>(&row, "last_attempt_at"),
+            "created_at": Row::get::<chrono::DateTime<chrono::Utc>, _>(&row, "created_at"),
+        })).collect::<Vec<_>>()
+    })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/payments/{id}/timeline",
+    responses(
+        (status = 200, description = "Payment event timeline")
+    ),
+    security(("api_key" = []))
+)]
+pub async fn get_payment_timeline(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let payment_id = path.into_inner();
+
+    let events = sqlx::query(
+        r#"
+        SELECT id, event_type, status_before, status_after, metadata, created_at
+        FROM transaction_events
+        WHERE payment_id = $1 AND merchant_id = $2
+        ORDER BY created_at ASC
+        "#
+    )
+    .bind(payment_id)
+    .bind(merchant_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(events.into_iter().map(|row| json!({
+        "id": Row::get::<Uuid, _>(&row, "id"),
+        "event_type": Row::get::<String, _>(&row, "event_type"),
+        "status_before": Row::get::<Option<String>, _>(&row, "status_before"),
+        "status_after": Row::get::<Option<String>, _>(&row, "status_after"),
+        "metadata": Row::get::<Value, _>(&row, "metadata"),
+        "created_at": Row::get::<chrono::DateTime<chrono::Utc>, _>(&row, "created_at"),
+    })).collect::<Vec<_>>()))
 }
 
 #[cfg(test)]

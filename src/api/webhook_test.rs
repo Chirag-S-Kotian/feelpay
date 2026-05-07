@@ -165,6 +165,53 @@ pub async fn send_test_webhook(
     }))
 }
 
+/// Replay webhook endpoint
+#[utoipa::path(
+    post,
+    path = "/api/v1/merchants/{merchant_id}/webhooks/replay/{event_id}",
+    params(
+        ("merchant_id" = Uuid, Path, description = "Merchant ID"),
+        ("event_id" = Uuid, Path, description = "Event ID to replay")
+    ),
+    responses(
+        (status = 200, description = "Webhook replayed", body = TestWebhookResponse),
+        (status = 404, description = "Event not found"),
+        (status = 403, description = "Forbidden"),
+    )
+)]
+pub async fn replay_webhook(
+    merchant_id: web::Path<(Uuid, Uuid)>,
+    claims: JwtClaims,
+    db: web::Data<PgPool>,
+) -> Result<HttpResponse, FeelPayError> {
+    let (merchant_id, event_id) = merchant_id.into_inner();
+
+    // Verify merchant ownership
+    if claims.merchant_id != Some(merchant_id) {
+        return Err(FeelPayError::Forbidden(
+            "You do not have permission to access this merchant".into(),
+        ));
+    }
+
+    let webhook_service = WebhookTestService::new(db.get_ref().clone());
+    let result = webhook_service.replay_event(merchant_id, event_id).await?;
+
+    Ok(HttpResponse::Ok().json(TestWebhookResponse {
+        test_id: result.test_id.to_string(),
+        id: result.test_id.to_string(),
+        event_type: result.event_type,
+        status: result.status,
+        http_status: result.http_status,
+        attempts: 1,
+        signature_verified: true,
+        response_time_ms: result.response_time_ms,
+        response_body: result.response_body,
+        error_message: result.error_message,
+        created_at: result.created_at.to_rfc3339(),
+        last_attempt_at: result.created_at.to_rfc3339(),
+    }))
+}
+
 /// Get webhook test logs endpoint
 #[utoipa::path(
     get,

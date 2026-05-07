@@ -448,6 +448,10 @@ async fn main() -> std::io::Result<()> {
                     .route(
                         "/webhooks/test-logs",
                         web::get().to(api::webhook_test::get_webhook_test_logs),
+                    )
+                    .route(
+                        "/webhooks/replay/{event_id}",
+                        web::post().to(api::webhook_test::replay_webhook),
                     ),
             )
             // Merchants API (registered after /v1/merchants/{merchant_id} scope to avoid route shadowing)

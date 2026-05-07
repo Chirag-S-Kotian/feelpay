@@ -166,6 +166,31 @@ export default function WebhookTesting() {
     }
   };
 
+  const handleReplayWebhook = async (eventId: string) => {
+    if (!merchantId) return;
+
+    setTesting(true);
+    setTestResult(null);
+
+    try {
+      const data = await apiRequest<TestResult>(
+        'POST',
+        `/v1/merchants/${merchantId}/webhooks/replay/${eventId}`
+      );
+      setTestResult(data);
+      await fetchWebhookEndpoints();
+      setNotice('Event replayed. Delivery status updated.');
+    } catch (err) {
+      setTestResult({
+        test_id: 'error',
+        status: 'failed',
+        error_message: err instanceof Error ? err.message : 'Replay failed',
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="page-container">
@@ -360,7 +385,7 @@ export default function WebhookTesting() {
                       });
                       setShowPayload(true);
                     }}>View Payload</button>
-                    <button className="btn-secondary" onClick={() => void handleTestWebhook()}>Replay</button>
+                    <button className="btn-secondary" onClick={() => void handleReplayWebhook(event.id)}>Replay</button>
                   </div>
                 </div>
               ))}

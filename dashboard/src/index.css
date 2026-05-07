@@ -3083,3 +3083,132 @@ pre,
     margin-top: 0 !important;
   }
 }
+
+/* Go-Live Readiness Hub */
+.golive-hub-section {
+  padding: 24px !important;
+  background: linear-gradient(135deg, var(--fp-bg-card), var(--fp-bg-elevated)) !important;
+}
+
+.hub-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.checklist-box {
+  display: grid;
+  gap: 16px;
+}
+
+.check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  border-radius: var(--fp-radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--fp-border);
+  transition: var(--fp-transition);
+}
+
+.check-item.done {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.03);
+}
+
+.check-item .icon {
+  font-size: 20px;
+  margin-top: 2px;
+}
+
+.check-item .text strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.check-item .text p {
+  font-size: 13px;
+  color: var(--fp-text-muted);
+}
+
+.readiness-summary {
+  display: flex;
+}
+
+.summary-card {
+  width: 100%;
+  padding: 24px;
+  border-radius: var(--fp-radius);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+}
+
+.summary-card.ready {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.summary-card.not-ready {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.summary-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.summary-card p {
+  font-size: 14px;
+  color: var(--fp-text-muted);
+}
+
+.blocker-list {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+}
+
+.blocker-list li {
+  font-size: 13px;
+  color: var(--fp-danger);
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+}
+
+.summary-card .btn-primary,
+.summary-card .btn-secondary {
+  margin-top: auto;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--fp-transition);
+}
+
+.summary-card .btn-primary {
+  background: var(--fp-primary);
+  color: #000;
+  border: none;
+}
+
+.summary-card .btn-secondary {
+  background: var(--fp-bg-elevated);
+  color: var(--fp-text-muted);
+  border: 1px solid var(--fp-border);
+}
+
+@media (max-width: 900px) {
+  .hub-layout {
+    grid-template-columns: 1fr;
+  }
+}

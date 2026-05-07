@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Download } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { SideDrawer } from '../components/SideDrawer';
 
 interface Settlement {
   id: string;
@@ -34,6 +35,25 @@ export default function Settlements() {
   const [error, setError] = useState('');
   const [reco, setReco] = useState<ReconciliationSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
+  const [settlementDetails, setSettlementDetails] = useState<any>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedSettlement) return;
+    const loadDetails = async () => {
+      setDetailsLoading(true);
+      try {
+        const res = await apiRequest<any>('GET', `/v1/settlements/${selectedSettlement.id}`, undefined, undefined, { useApiKey: true });
+        setSettlementDetails(res);
+      } catch (e) {
+        console.error('Failed to load settlement details', e);
+      } finally {
+        setDetailsLoading(false);
+      }
+    };
+    void loadDetails();
+  }, [selectedSettlement?.id]);
 
   useEffect(() => {
     const load = async () => {
@@ -115,7 +135,88 @@ export default function Settlements() {
   };
 
   return (
-    <div className="page">
+    <div className="fade-in">
+      {/* Detail Drawer */}
+      <SideDrawer
+        isOpen={!!selectedSettlement}
+        onClose={() => setSelectedSettlement(null)}
+        title="Settlement Details"
+        subtitle={selectedSettlement?.id}
+      >
+        {selectedSettlement && (
+          <>
+            <div className="detail-section">
+              <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+                <div style={{ flex: 1, padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12, border: '1px solid var(--fp-border)' }}>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--fp-text-muted)', marginBottom: 4 }}>Net Amount</label>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--fp-success)' }}>{formatCurrency(selectedSettlement.net)}</div>
+                </div>
+                <div style={{ flex: 1, padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12, border: '1px solid var(--fp-border)' }}>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--fp-text-muted)', marginBottom: 4 }}>Status</label>
+                  <span className={`status-badge ${selectedSettlement.status}`}>{selectedSettlement.status}</span>
+                </div>
+              </div>
+
+              <div className="detail-grid">
+                <div className="detail-item">
+                  <label>UTR Number</label>
+                  <span className="mono">{selectedSettlement.utr || 'Pending'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Settlement Date</label>
+                  <span>{selectedSettlement.date || 'Pending'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="detail-section">
+              <h4>Fee Breakdown</h4>
+              <div className="fee-card" style={{ padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12 }}>
+                <div className="fee-row">
+                  <span>Gross Amount</span>
+                  <span>{formatCurrency(selectedSettlement.amount)}</span>
+                </div>
+                <div className="fee-row">
+                  <span>Merchant Fee</span>
+                  <span className="warning">- {formatCurrency(selectedSettlement.fee)}</span>
+                </div>
+                <div className="fee-row">
+                  <span>Service Tax (GST)</span>
+                  <span className="warning">- {formatCurrency(selectedSettlement.tax)}</span>
+                </div>
+                <div className="fee-row total">
+                  <span>Final Payout</span>
+                  <span className="success">{formatCurrency(selectedSettlement.net)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="detail-section">
+              <h4>Included Transactions</h4>
+              {detailsLoading ? <div className="skeleton" style={{ height: 100 }} /> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {settlementDetails?.items?.map((item: any, i: number) => (
+                    <div key={i} style={{ padding: 12, background: 'var(--fp-bg-elevated)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500, fontFamily: 'monospace' }}>{item.transaction_id.slice(0, 8)}...</div>
+                        <div style={{ fontSize: 11, color: 'var(--fp-text-muted)' }}>{new Date(item.created_at).toLocaleDateString()}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{formatCurrency(item.amount)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--fp-text-muted)' }}>Fee: {formatCurrency(item.fee)}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {(!settlementDetails?.items || settlementDetails.items.length === 0) && (
+                    <p style={{ fontSize: 13, color: 'var(--fp-text-muted)' }}>No individual transaction breakdown available.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </SideDrawer>
+
       <div className="page-header">
         <h1>Settlements</h1>
         <button className="btn-secondary" onClick={exportCsv}>
@@ -186,7 +287,7 @@ export default function Settlements() {
           </thead>
           <tbody>
             {filteredSettlements.map((settlement) => (
-              <tr key={settlement.id}>
+              <tr key={settlement.id} onClick={() => setSelectedSettlement(settlement)} style={{ cursor: 'pointer' }}>
                 <td className="mono">{settlement.id}</td>
                 <td>{settlement.date || '-'}</td>
                 <td>

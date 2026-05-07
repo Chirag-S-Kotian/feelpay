@@ -24,6 +24,7 @@ const DEPRECATED_VERSION: &str = "2025-12-01";
 #[derive(Clone, Debug)]
 pub struct ExternalApiKeyContext {
     pub api_key_id: Option<Uuid>,
+    pub merchant_id: Option<Uuid>,
     pub scopes: Vec<String>,
     pub environment: String,
 }
@@ -444,7 +445,7 @@ async fn authenticate_api_key(
         let hash = hash_secret(api_key);
         let key_row = sqlx::query(
             r#"
-            SELECT id, scopes, environment, status, expires_at
+            SELECT id, merchant_id, scopes, environment, status, expires_at
             FROM developer_api_keys
             WHERE encrypted_key_hash = $1
             LIMIT 1
@@ -456,17 +457,18 @@ async fn authenticate_api_key(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if let Some(row) = key_row {
-            let status: String = row.get("status");
-            let expires_at: Option<chrono::DateTime<Utc>> = row.get("expires_at");
+            let status: String = Row::get(&row, "status");
+            let expires_at: Option<chrono::DateTime<Utc>> = Row::get(&row, "expires_at");
             if status != "active" || expires_at.is_some_and(|expires| expires <= Utc::now()) {
                 return Err(StatusCode::UNAUTHORIZED);
             }
-            let key_env: String = row.get("environment");
+            let key_env: String = Row::get(&row, "environment");
             if key_env != environment && !(key_env == "sandbox" && environment == "test") {
                 return Err(StatusCode::UNAUTHORIZED);
             }
-            let api_key_id: Uuid = row.get("id");
-            let scopes_json: Value = row.get("scopes");
+            let api_key_id: Uuid = Row::get(&row, "id");
+            let merchant_id: Option<Uuid> = Row::try_get(&row, "merchant_id").ok();
+            let scopes_json: Value = Row::get(&row, "scopes");
             let scopes = scopes_json
                 .as_array()
                 .map(|items| {
@@ -482,11 +484,13 @@ async fn authenticate_api_key(
                 .await;
             req.extensions_mut().insert(ExternalApiKeyContext {
                 api_key_id: Some(api_key_id),
+                merchant_id,
                 scopes: scopes.clone(),
                 environment: environment.clone(),
             });
             return Ok(ExternalApiKeyContext {
                 api_key_id: Some(api_key_id),
+                merchant_id,
                 scopes,
                 environment,
             });
@@ -515,11 +519,13 @@ async fn authenticate_api_key(
             let scopes = vec!["*".to_string()];
             req.extensions_mut().insert(ExternalApiKeyContext {
                 api_key_id: None,
+                merchant_id: Some(merchant_id),
                 scopes: scopes.clone(),
                 environment: environment.clone(),
             });
             return Ok(ExternalApiKeyContext {
                 api_key_id: None,
+                merchant_id: Some(merchant_id),
                 scopes,
                 environment,
             });
@@ -824,11 +830,12 @@ async fn log_external_request(
         let _ = sqlx::query(
             r#"
             INSERT INTO api_request_logs
-                (environment, api_key_id, method, path, status_code, latency_ms, idempotency_key, request_id, error_code, request_metadata, response_summary)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb)
+                (environment, merchant_id, api_key_id, method, path, status_code, latency_ms, idempotency_key, request_id, error_code, request_metadata, response_summary)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb)
             "#,
         )
         .bind(&auth.environment)
+        .bind(auth.merchant_id)
         .bind(auth.api_key_id)
         .bind(req.method().as_str())
         .bind(req.path())

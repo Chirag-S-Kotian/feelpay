@@ -4,7 +4,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::Sha256;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -69,8 +69,62 @@ impl WebhookTestService {
         let payload_json = serde_json::to_string(&payload)
             .map_err(|e| FeelPayError::Internal(format!("Failed to serialize payload: {}", e)))?;
 
+        self.send_payload(merchant_id, webhook_url, event_type, &payload_json, webhook_secret).await
+    }
+
+    /// Replay an existing webhook event
+    pub async fn replay_event(
+        &self,
+        merchant_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<WebhookTestResult, FeelPayError> {
+        // Fetch event details and verify ownership
+        // We look in both real events and test logs for convenience in sandbox
+        let row = sqlx::query(
+            r#"
+            SELECT event_type, raw_payload::text, webhook_url, webhook_secret
+            FROM (
+                SELECT pwe.event_type, pwe.raw_payload, m.webhook_url, m.webhook_secret, pwe.id, po.merchant_id
+                FROM payment_webhook_events pwe
+                JOIN payment_orders po ON pwe.related_payment_id = po.id
+                JOIN merchants m ON po.merchant_id = m.id
+                UNION ALL
+                SELECT wtl.event_type, wtl.response_body::jsonb, wtl.webhook_url, m.webhook_secret, wtl.id, wtl.merchant_id
+                FROM webhook_test_logs wtl
+                JOIN merchants m ON wtl.merchant_id = m.id
+            ) combined
+            WHERE id = $1 AND merchant_id = $2
+            LIMIT 1
+            "#
+        )
+        .bind(event_id)
+        .bind(merchant_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        let Some(row) = row else {
+            return Err(FeelPayError::NotFound("Webhook event not found or access denied".into()));
+        };
+
+        let event_type: String = row.get(0);
+        let payload_json: String = row.get(1);
+        let webhook_url: String = row.get(2);
+        let webhook_secret: String = row.get(3);
+
+        self.send_payload(merchant_id, &webhook_url, &event_type, &payload_json, &webhook_secret).await
+    }
+
+    async fn send_payload(
+        &self,
+        merchant_id: Uuid,
+        webhook_url: &str,
+        event_type: &str,
+        payload_json: &str,
+        webhook_secret: &str,
+    ) -> Result<WebhookTestResult, FeelPayError> {
         // Sign the webhook
-        let signature = self.sign_webhook(&payload_json, webhook_secret)?;
+        let signature = self.sign_webhook(payload_json, webhook_secret)?;
         let timestamp = Utc::now().timestamp().to_string();
 
         // Send the webhook
@@ -83,7 +137,7 @@ impl WebhookTestService {
             .header("Content-Type", "application/json")
             .header("X-FeelPay-Signature", &signature)
             .header("X-FeelPay-Timestamp", &timestamp)
-            .body(payload_json.clone())
+            .body(payload_json.to_string())
             .timeout(std::time::Duration::from_secs(10))
             .send()
             .await;
