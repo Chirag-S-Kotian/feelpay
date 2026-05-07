@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ADMIN_ROLES, loginAsAdmin } from './helpers/auth';
 
 /**
  * FeelPay Admin Smoke Test Suite
@@ -6,20 +7,14 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Admin Dashboard Smoke Tests', () => {
-  
   test.beforeEach(async ({ page }) => {
-    // Inject a mock token for UI-only smoke tests to bypass login
-    await page.goto('/login');
-    await page.evaluate(() => {
-      localStorage.setItem('feelpay_token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4iLCJwZXJtaXNzaW9ucyI6WyJwYXltZW50X29wcy52aWV3IiwidHJhbnNhY3Rpb25zLnZpZXciLCJsZWRnZXIudmlldyIsInByb3ZpZGVycy5tYW5hZ2UiLCJiYW5rX2ludGVncmF0aW9ucy5tYW5hZ2UiLCJ3ZWJob29rX2NvbmZpZy5tYW5hZ2UiLCJkZXZlbG9wZXJfdG9vbHMudmlldyIsImF1ZGl0X2xvZ3MudmlldyJdfQ.mock_signature');
-    });
-    await page.goto('/');
+    await loginAsAdmin(page, ADMIN_ROLES.SUPER_ADMIN);
   });
 
   test('should load the shell and dashboard overview', async ({ page }) => {
-    await expect(page.locator('.sidebar')).toBeVisible();
-    await expect(page.getByText('FeelPay', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+    await expect(page.locator('.desktop-sidebar .sidebar')).toBeVisible();
+    await expect(page.locator('.desktop-sidebar').getByText('FeelPay', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Global Overview|Overview/ })).toBeVisible();
   });
 
   test('should navigate to Provider Connectors', async ({ page }) => {
@@ -47,7 +42,7 @@ test.describe('Admin Dashboard Smoke Tests', () => {
     await page.getByRole('link', { name: 'Audit Logs' }).click();
     await expect(page.getByRole('heading', { name: 'Audit Logs' })).toBeVisible();
   });
-  
+
   test('should navigate to Platform Settings', async ({ page }) => {
     await page.getByRole('link', { name: 'Platform Settings' }).click();
     await expect(page.getByRole('heading', { name: 'Platform Settings' })).toBeVisible();

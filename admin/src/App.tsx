@@ -281,7 +281,7 @@ function Layout() {
           <Route path="/compliance-center" element={<RequirePermission permission="compliance.view"><ComplianceCenterPage /></RequirePermission>} />
           <Route path="/readiness-scorecard" element={<RequirePermission permission="compliance.view"><ReadinessScorecardPage /></RequirePermission>} />
           <Route path="/settings" element={<RequirePermission permission="platform_settings.view"><PlatformSettingsPage /></RequirePermission>} />
-          <Route path="*" element={<Navigate to="/" />} />
+          <Route path="*" element={<UnknownAdminRoute />} />
         </Routes>
       </main>
     </div>
@@ -364,6 +364,20 @@ function RequirePermission({ permission, children }: { permission: AdminPermissi
     );
   }
   return <>{children}</>;
+}
+
+function UnknownAdminRoute() {
+  return (
+    <div className="page fade-in">
+      <div className="page-header">
+        <div>
+          <h1>Access denied</h1>
+          <p>Company admin route is not mapped.</p>
+        </div>
+      </div>
+      <div className="card">Route blocked by RBAC deny-by-default policy.</div>
+    </div>
+  );
 }
 
 function hasPermission(permission: AdminPermission) {

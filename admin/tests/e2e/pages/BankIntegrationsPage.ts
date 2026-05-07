@@ -12,7 +12,7 @@ export class BankIntegrationsPage extends GenericAdminPage {
     await this.page.getByLabel('Currency').fill('INR');
     await this.page.getByLabel('Masked account display').fill('****5678');
     await this.page.getByRole('button', { name: 'Save bank integration' }).click();
+    await this.page.getByRole('button', { name: 'Confirm' }).click();
     await expect(this.page.locator('.alert')).toContainText(/Bank integration saved/i);
   }
 }
-

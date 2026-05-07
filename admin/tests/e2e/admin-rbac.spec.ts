@@ -29,7 +29,7 @@ test.describe('admin RBAC', () => {
 
   for (const role of Object.values(ADMIN_ROLES)) {
     test(`${role}: allowed and blocked pages enforce permissions`, async ({ page }) => {
-      await loginAsAdmin(page, role);
+      await loginAsAdmin(page, role, allowedPagesByRole[role][0] || '/');
 
       for (const path of allowedPagesByRole[role]) {
         await page.goto(path);
@@ -45,7 +45,7 @@ test.describe('admin RBAC', () => {
   }
 
   test('Auditor can view but cannot perform write actions', async ({ page }) => {
-    await loginAsAdmin(page, ADMIN_ROLES.AUDITOR);
+    await loginAsAdmin(page, ADMIN_ROLES.AUDITOR, '/audit-logs');
     await page.goto('/audit-logs');
     await expect(page.locator('h1')).not.toHaveText(/Access denied/i);
     await page.goto('/settings');
@@ -53,7 +53,7 @@ test.describe('admin RBAC', () => {
   });
 
   test('Support Agent cannot export reports or change provider secrets', async ({ page }) => {
-    await loginAsAdmin(page, ADMIN_ROLES.SUPPORT);
+    await loginAsAdmin(page, ADMIN_ROLES.SUPPORT, '/transactions');
     await page.goto('/reports');
     await expect(page.locator('h1')).toHaveText(/Access denied/i);
     await page.goto('/connectors');
@@ -61,19 +61,19 @@ test.describe('admin RBAC', () => {
   });
 
   test('Finance, Risk and Compliance admins retain their expected domain access', async ({ page }) => {
-    await loginAsAdmin(page, ADMIN_ROLES.FINANCE);
+    await loginAsAdmin(page, ADMIN_ROLES.FINANCE, '/reports');
     for (const path of ['/reports', '/refunds', '/settlements']) {
       await page.goto(path);
       await expect(page.locator('h1')).not.toHaveText(/Access denied/i);
     }
 
-    await loginAsAdmin(page, ADMIN_ROLES.RISK);
+    await loginAsAdmin(page, ADMIN_ROLES.RISK, '/risk-rules');
     for (const path of ['/risk-rules', '/disputes']) {
       await page.goto(path);
       await expect(page.locator('h1')).not.toHaveText(/Access denied/i);
     }
 
-    await loginAsAdmin(page, ADMIN_ROLES.COMPLIANCE);
+    await loginAsAdmin(page, ADMIN_ROLES.COMPLIANCE, '/audit-logs');
     for (const path of ['/audit-logs', '/compliance-center', '/readiness-scorecard']) {
       await page.goto(path);
       await expect(page.locator('h1')).not.toHaveText(/Access denied/i);
@@ -81,7 +81,7 @@ test.describe('admin RBAC', () => {
   });
 
   test('unmapped admin route denies by default via redirect-safe fallback', async ({ page }) => {
-    await loginAsAdmin(page, ADMIN_ROLES.SUPPORT);
+    await loginAsAdmin(page, ADMIN_ROLES.SUPPORT, '/transactions');
     await page.goto('/__unmapped-admin-route__');
     await expect(page.locator('h1')).not.toContainText(/Application error/i);
     await expect(page.locator('body')).not.toContainText(/CORS|Failed to fetch/i);

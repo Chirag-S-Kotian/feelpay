@@ -30,12 +30,14 @@ export class GenericAdminPage {
   }
 
   async expectNoBrokenEmptyState() {
-    const emptyStates = this.page.locator('.empty-state, text=/No .* yet|No .* configured|No .* found|ready to export/i');
+    const emptyStates = this.page
+      .locator('.empty-state')
+      .or(this.page.getByText(/No .* yet|No .* configured|No .* found|ready to export/i));
     const count = await emptyStates.count();
 
     for (let index = 0; index < count; index += 1) {
       const state = emptyStates.nth(index);
-      await expect(state).not.toContainText(/undefined|null|NaN|failed to fetch|route missing/i);
+      await expect(state).not.toContainText(/\bundefined\b|\bnull\b|\bNaN\b|failed to fetch|route missing/i);
     }
   }
 
@@ -57,4 +59,3 @@ export class GenericAdminPage {
     return this.page.locator('table tbody tr').first();
   }
 }
-

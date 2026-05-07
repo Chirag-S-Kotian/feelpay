@@ -6,8 +6,8 @@ import { GenericAdminPage } from './pages/GenericAdminPage';
 type PageObjectFactory = (page: Page) => GenericAdminPage;
 
 const adminPages: { area: string; name: string; create: PageObjectFactory }[] = [
-  { area: 'Operations', name: 'Overview', create: page => new GenericAdminPage(page, { path: '/', navLabel: 'Overview', heading: /Overview|Dashboard/i }) },
-  { area: 'Operations', name: 'Payment Ops', create: page => new GenericAdminPage(page, { path: '/payment-ops', navLabel: 'Payment Ops', heading: /Payment Operations/i }) },
+  { area: 'Operations', name: 'Overview', create: page => new GenericAdminPage(page, { path: '/', navLabel: 'Overview', heading: /Global Overview|Overview|Dashboard/i }) },
+  { area: 'Operations', name: 'Payment Ops', create: page => new GenericAdminPage(page, { path: '/payment-ops', navLabel: 'Payment Ops', heading: /Payment Ops|Payment Operations/i }) },
   { area: 'Operations', name: 'Transactions', create: page => new GenericAdminPage(page, { path: '/transactions', navLabel: 'Transactions', heading: 'Transactions' }) },
   { area: 'Operations', name: 'Refunds', create: page => new GenericAdminPage(page, { path: '/refunds', navLabel: 'Refunds', heading: 'Refunds' }) },
   { area: 'Operations', name: 'Settlements', create: page => new GenericAdminPage(page, { path: '/settlements', navLabel: 'Settlements', heading: 'Settlements' }) },
@@ -49,4 +49,3 @@ test.describe('all admin pages navigation', () => {
     });
   }
 });
-

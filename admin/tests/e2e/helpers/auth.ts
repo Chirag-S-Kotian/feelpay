@@ -14,7 +14,7 @@ export const ADMIN_ROLES = {
 
 export type AdminRole = typeof ADMIN_ROLES[keyof typeof ADMIN_ROLES];
 
-export async function loginAsAdmin(page: Page, role: AdminRole = ADMIN_ROLES.SUPER_ADMIN) {
+export async function loginAsAdmin(page: Page, role: AdminRole = ADMIN_ROLES.SUPER_ADMIN, landingPath = '/') {
   const secret = process.env.JWT_SECRET || 'feelpay_jwt_secret';
   const adminId = TEST_ADMIN_ID;
   const permissions = getPermissionsForRole(role);
@@ -34,7 +34,7 @@ export async function loginAsAdmin(page: Page, role: AdminRole = ADMIN_ROLES.SUP
   await page.evaluate((t) => {
     localStorage.setItem('feelpay_token', t);
   }, token);
-  await page.goto('/');
+  await page.goto(landingPath);
 }
 
 export function adminAuthHeaders(role: AdminRole = ADMIN_ROLES.SUPER_ADMIN) {
@@ -83,7 +83,7 @@ function getPermissionsForRole(role: AdminRole): string[] {
     case ADMIN_ROLES.SUPPORT:
       return ['transactions.view', 'refunds.request', 'notifications.view'];
     case ADMIN_ROLES.AUDITOR:
-      return allPermissions.filter(p => p.endsWith('.view'));
+      return allPermissions.filter(p => p.endsWith('.view') && !['admin_users.view', 'roles.view'].includes(p));
     default:
       return [];
   }

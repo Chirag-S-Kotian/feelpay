@@ -652,6 +652,11 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::admin::configure),
             )
+            .service(
+                web::scope("")
+                    .wrap(crate::middleware::auth::UnifiedAuth)
+                    .configure(api::admin::configure),
+            )
     })
     .workers(worker_count)
     .shutdown_timeout(30)

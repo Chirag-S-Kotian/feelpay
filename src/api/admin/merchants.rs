@@ -67,7 +67,7 @@ fn actor_id_from_claims(claims: &Claims) -> Result<Uuid, FeelPayError> {
 
 fn ensure_admin_role(claims: &Claims) -> Result<(), FeelPayError> {
     match claims.role.as_str() {
-        "super_admin" | "admin" | "tenant_admin" => Ok(()),
+        "super_admin" | "Super Admin" | "admin" | "tenant_admin" => Ok(()),
         _ => Err(FeelPayError::Forbidden(
             "Admin role required for merchant management".into(),
         )),

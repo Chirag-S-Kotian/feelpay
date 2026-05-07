@@ -242,6 +242,19 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
 
 const str = (value: unknown) => value == null ? '' : String(value);
 
+function adminHasPermission(permission: string) {
+  const token = window.localStorage.getItem('feelpay_token');
+  const payload = token?.split('.')[1];
+  if (!payload) return false;
+  try {
+    const claims = JSON.parse(window.atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { role?: string; permissions?: string[] };
+    if (['Super Admin', 'super_admin', 'admin'].includes(str(claims.role))) return true;
+    return Array.isArray(claims.permissions) && claims.permissions.includes(permission);
+  } catch {
+    return false;
+  }
+}
+
 const REAL_PROVIDER_TYPES = new Set(['stripe', 'razorpay', 'adyen', 'cashfree', 'juspay', 'payu']);
 const isRealProvider = (providerType: unknown) => REAL_PROVIDER_TYPES.has(str(providerType).toLowerCase());
 const providerLooksReal = (provider: GenericRecord) => [provider.provider_type, provider.code, provider.name, provider.provider].some(isRealProvider);
@@ -1156,7 +1169,7 @@ export function ProviderConnectorsPage() {
     });
   };
 
-  const readinessColor = (score: number) => score >= 100 ? '#1DB954' : score >= 50 ? '#F5A623' : '#E54D4D';
+  const readinessColor = (score: number) => score >= 100 ? '#1DB954' : score >= 50 ? '#F5A623' : '#FF8A8A';
   const secretStatus = (cs: GenericRecord, key: string) => {
     if (!providerLooksReal(cs)) return 'Credentials required for live use';
     const required = (cs.required_keys as string[] || []).includes(key);
@@ -2264,6 +2277,7 @@ export function PlatformSettingsPage() {
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
+  const canManageSettings = adminHasPermission('platform_settings.manage');
   const load = async () => {
     setState('loading');
     setError('');
@@ -2323,10 +2337,10 @@ export function PlatformSettingsPage() {
             <label className="form-field"><span>MFA required</span><input type="checkbox" checked={Boolean(form.mfa_required)} onChange={event => setForm({ ...form, mfa_required: event.target.checked })} /></label>
           </div>
           <div className="button-row">
-            <button className="btn-primary" type="submit">Save settings</button>
-            <button type="button" onClick={() => maintenance(true)}>Enable maintenance mode</button>
-            <button type="button" onClick={() => maintenance(false)}>Disable maintenance mode</button>
-            <button type="button" onClick={() => setForm(DEFAULT_PLATFORM_SETTINGS)}>Reset defaults</button>
+            {canManageSettings && <button className="btn-primary" type="submit">Save settings</button>}
+            {canManageSettings && <button type="button" onClick={() => maintenance(true)}>Enable maintenance mode</button>}
+            {canManageSettings && <button type="button" onClick={() => maintenance(false)}>Disable maintenance mode</button>}
+            {canManageSettings && <button type="button" onClick={() => setForm(DEFAULT_PLATFORM_SETTINGS)}>Reset defaults</button>}
           </div>
         </form>
       </section>
@@ -2436,7 +2450,12 @@ function TablePanel({ title, rows, columns }: { title: string; rows: GenericReco
 function DataTable({ rows, columns, empty, renderActions, onView }: { rows: GenericRecord[]; columns: string[]; empty: string | EmptyStateConfig; renderActions?: (row: GenericRecord) => ReactNode; onView?: (row: GenericRecord) => void }) {
   const needsScroll = columns.length + (renderActions || onView ? 1 : 0) > 8;
   return (
-    <div className={`table-card ${needsScroll ? 'table-scroll' : ''}`} style={{ padding: 0, overflowX: needsScroll ? 'auto' : 'visible' }}>
+    <div
+      className={`table-card ${needsScroll ? 'table-scroll' : ''}`}
+      style={{ padding: 0, overflowX: needsScroll ? 'auto' : 'visible' }}
+      tabIndex={needsScroll ? 0 : undefined}
+      aria-label={needsScroll ? 'Scrollable data table' : undefined}
+    >
       <table>
         <thead>
           <tr>
@@ -2628,7 +2647,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
       <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Visual Branding</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0 }}>Visual Branding</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
               <Field label="Brand Name">
                 <input value={str(value.brand_name)} onChange={event => onChange({ ...value, brand_name: event.target.value })} placeholder="FeelPay" />
@@ -2655,7 +2674,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
               </Field>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 12 }}>Payment Defaults</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0, marginTop: 12 }}>Payment Defaults</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
               <Field label="Default Currency">
                 <Select value={str(value.default_currency)} options={currencyOptions} onChange={next => onChange({ ...value, default_currency: next })} />
@@ -2684,7 +2703,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provider Routing</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0 }}>Provider Routing</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
               <Field label="Primary Routing Provider">
                 <Select value={str(value.default_provider_id)} options={[{ label: 'Smart Routing (Automatic)', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]} onChange={next => onChange({ ...value, default_provider_id: next })} />
@@ -2694,7 +2713,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
               </Field>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 12 }}>Legal & Support</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0, marginTop: 12 }}>Legal & Support</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
               <Field label="Support Email">
                 <input value={str(value.support_email)} onChange={event => onChange({ ...value, support_email: event.target.value })} placeholder="support@feelpay.com" />
@@ -2707,7 +2726,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
               </Field>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 12 }}>Checkout Content</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0, marginTop: 12 }}>Checkout Content</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <Field label="Invoice Prefix">
                 <input value={str(value.invoice_prefix)} onChange={event => onChange({ ...value, invoice_prefix: event.target.value })} />

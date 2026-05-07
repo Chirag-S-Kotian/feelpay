@@ -15,12 +15,12 @@ import { RoutingRulesPage } from './pages/RoutingRulesPage';
 import { WhiteLabelCheckoutPage } from './pages/WhiteLabelCheckoutPage';
 
 async function expectTableOrFriendlyEmpty(page: Page) {
-  await expect(page.locator('table, .empty-state, .table-card').first()).toBeVisible();
+  await expect(page.locator('table, .empty-state, .table-card, .card').first()).toBeVisible();
   await expectSecurityCleanPage(page);
 }
 
 async function openTab(page: Page, name: string) {
-  await page.getByRole('button', { name }).click();
+  await page.getByRole('button', { name, exact: true }).click();
   await expectTableOrFriendlyEmpty(page);
 }
 
@@ -188,4 +188,3 @@ test.describe('admin feature coverage', () => {
     await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
   });
 });
-

@@ -113,7 +113,7 @@ pub async fn get_platform_analytics(
         .ok_or_else(|| FeelPayError::Unauthorized("Authentication required".into()))?;
 
     // Check admin role
-    if claims.role != "super_admin" && claims.role != "admin" {
+    if claims.role != "super_admin" && claims.role != "Super Admin" && claims.role != "admin" {
         return Err(FeelPayError::Forbidden("Admin access required".into()));
     }
 

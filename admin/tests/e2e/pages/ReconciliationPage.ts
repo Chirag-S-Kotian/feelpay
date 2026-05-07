@@ -7,8 +7,7 @@ export class ReconciliationPage extends GenericAdminPage {
   }
 
   async expectWorkflowTabs() {
-    await expect(this.page.getByRole('button', { name: 'Uploads' })).toBeVisible();
-    await expect(this.page.getByRole('button', { name: 'Mismatches' })).toBeVisible();
+    await expect(this.page.getByRole('button', { name: 'Uploads', exact: true })).toBeVisible();
+    await expect(this.page.getByRole('button', { name: 'Mismatches', exact: true })).toBeVisible();
   }
 }
-

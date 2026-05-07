@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 set -u
 
-ADMIN_E2E_BASE_URL="${ADMIN_E2E_BASE_URL:-http://localhost:3000}"
+ADMIN_E2E_BASE_URL="${ADMIN_E2E_BASE_URL:-http://127.0.0.1:3000}"
 ADMIN_API_BASE_URL="${ADMIN_API_BASE_URL:-http://127.0.0.1:8081}"
+export ADMIN_E2E_BASE_URL ADMIN_API_BASE_URL
 run_status=0
 
 check_url() {
   local label="$1"
   local url="$2"
+  printf '[check] %s: %s\n' "$label" "$url"
   if curl -fsS "$url" >/dev/null; then
     printf '[ok] %s reachable: %s\n' "$label" "$url"
   else
-    printf '[fail] %s not reachable: %s\n' "$label" "$url"
-    run_status=1
+    printf '[info] %s is not currently reachable; Playwright webServer will try to start it.\n' "$label"
   fi
 }
 
@@ -31,6 +32,9 @@ run_suite() {
 
 check_url "backend" "$ADMIN_API_BASE_URL/health"
 check_url "admin frontend" "$ADMIN_E2E_BASE_URL"
+printf '[info] Manual fallback commands if startup still fails:\n'
+printf '  HOST=127.0.0.1 PORT=8081 CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000 cargo run\n'
+printf '  cd admin && VITE_ADMIN_API_BASE_URL=%s pnpm dev --host 127.0.0.1 --port 3000\n' "$ADMIN_API_BASE_URL"
 
 if [ "$run_status" -eq 0 ]; then
   run_suite "smoke" "pnpm test:e2e:smoke"
@@ -46,4 +50,3 @@ fi
 
 printf '\nPlaywright report: admin/playwright-report/index.html\n'
 exit "$run_status"
-
