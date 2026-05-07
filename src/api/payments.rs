@@ -2,8 +2,8 @@ use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use utoipa::{IntoParams, ToSchema};
 use sqlx::Row;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::api::pagination::{build_cursor, PaginatedResponse, PaginationParams};
@@ -1130,7 +1130,7 @@ pub async fn get_payment_details(
     let payment_id = path.into_inner();
 
     let order = sqlx::query_as::<_, PaymentOrder>(
-        "SELECT * FROM payment_orders WHERE id = $1 AND merchant_id = $2"
+        "SELECT * FROM payment_orders WHERE id = $1 AND merchant_id = $2",
     )
     .bind(payment_id)
     .bind(merchant_id)
@@ -1186,7 +1186,7 @@ pub async fn get_payment_timeline(
         FROM transaction_events
         WHERE payment_id = $1 AND merchant_id = $2
         ORDER BY created_at ASC
-        "#
+        "#,
     )
     .bind(payment_id)
     .bind(merchant_id)
@@ -1194,14 +1194,21 @@ pub async fn get_payment_timeline(
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(events.into_iter().map(|row| json!({
-        "id": Row::get::<Uuid, _>(&row, "id"),
-        "event_type": Row::get::<String, _>(&row, "event_type"),
-        "status_before": Row::get::<Option<String>, _>(&row, "status_before"),
-        "status_after": Row::get::<Option<String>, _>(&row, "status_after"),
-        "metadata": Row::get::<Value, _>(&row, "metadata"),
-        "created_at": Row::get::<chrono::DateTime<chrono::Utc>, _>(&row, "created_at"),
-    })).collect::<Vec<_>>()))
+    Ok(HttpResponse::Ok().json(
+        events
+            .into_iter()
+            .map(|row| {
+                json!({
+                    "id": Row::get::<Uuid, _>(&row, "id"),
+                    "event_type": Row::get::<String, _>(&row, "event_type"),
+                    "status_before": Row::get::<Option<String>, _>(&row, "status_before"),
+                    "status_after": Row::get::<Option<String>, _>(&row, "status_after"),
+                    "metadata": Row::get::<Value, _>(&row, "metadata"),
+                    "created_at": Row::get::<chrono::DateTime<chrono::Utc>, _>(&row, "created_at"),
+                })
+            })
+            .collect::<Vec<_>>(),
+    ))
 }
 
 #[cfg(test)]

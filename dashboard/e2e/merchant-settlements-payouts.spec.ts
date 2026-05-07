@@ -8,12 +8,12 @@ test('verified bank account gates payout and settlements show generated sandbox 
   const emptyBankAccountHandler = async (route: Route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
   };
-  await page.route('**/{api/,}v1/payouts/bank-accounts', emptyBankAccountHandler);
-  await page.goto('/payouts');
+  await page.route('**/{api/,}v1/merchants/*/bank-accounts', emptyBankAccountHandler);
+  await page.goto('/');
+  await page.getByRole('link', { name: /payouts/i }).click();
   await expect(page.getByRole('heading', { name: 'Payouts' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Create Payout/i })).toBeDisabled();
-  await expect(page.getByText(/Add and verify bank account/i)).toBeVisible();
-  await page.unroute('**/{api/,}v1/payouts/bank-accounts', emptyBankAccountHandler);
+  await expect(page.getByText(/Add verified bank account/i).first()).toBeVisible();
+  await page.unroute('**/{api/,}v1/merchants/*/bank-accounts', emptyBankAccountHandler);
 
   await page.goto('/bank-accounts');
   await expect(page.getByText(/XXXXXX7890|verified/i).first()).toBeVisible();

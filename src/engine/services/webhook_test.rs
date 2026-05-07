@@ -69,7 +69,14 @@ impl WebhookTestService {
         let payload_json = serde_json::to_string(&payload)
             .map_err(|e| FeelPayError::Internal(format!("Failed to serialize payload: {}", e)))?;
 
-        self.send_payload(merchant_id, webhook_url, event_type, &payload_json, webhook_secret).await
+        self.send_payload(
+            merchant_id,
+            webhook_url,
+            event_type,
+            &payload_json,
+            webhook_secret,
+        )
+        .await
     }
 
     /// Replay an existing webhook event
@@ -104,7 +111,9 @@ impl WebhookTestService {
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
         let Some(row) = row else {
-            return Err(FeelPayError::NotFound("Webhook event not found or access denied".into()));
+            return Err(FeelPayError::NotFound(
+                "Webhook event not found or access denied".into(),
+            ));
         };
 
         let event_type: String = row.get(0);
@@ -112,7 +121,14 @@ impl WebhookTestService {
         let webhook_url: String = row.get(2);
         let webhook_secret: String = row.get(3);
 
-        self.send_payload(merchant_id, &webhook_url, &event_type, &payload_json, &webhook_secret).await
+        self.send_payload(
+            merchant_id,
+            &webhook_url,
+            &event_type,
+            &payload_json,
+            &webhook_secret,
+        )
+        .await
     }
 
     async fn send_payload(

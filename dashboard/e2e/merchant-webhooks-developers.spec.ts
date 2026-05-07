@@ -22,8 +22,9 @@ test('webhook test/replay and developer logs are visible without exposing secret
   });
   expect(replay.status).toBe('delivered');
 
-  await page.goto('/developers');
-  await expect(page.getByRole('heading', { name: /Build, test, ship payments fast/i })).toBeVisible();
+  await page.getByRole('link', { name: /developers/i }).first().click();
+  await page.waitForURL(/\/developers/);
+  await expect(page.locator('h1', { hasText: /ship payments fast/i }).first()).toBeVisible();
   await expect(page.getByText(/fp_test_demo_key|API Logs|req_test_1/i).first()).toBeVisible();
   await expect(page.getByText(/4111 1111 1111 1111/)).toHaveCount(0);
 });

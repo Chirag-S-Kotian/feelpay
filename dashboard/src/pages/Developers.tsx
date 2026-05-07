@@ -394,32 +394,32 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
         <div className="dev-section-title"><Rocket size={18} /> Go-Live Readiness Hub</div>
         <div className="hub-layout">
           <div className="checklist-box">
-            <div className={`check-item ${preflight?.checks.onboarding_approved ? 'done' : ''}`}>
-              <span className="icon">{preflight?.checks.onboarding_approved ? '✅' : '○'}</span>
+            <div className={`check-item ${preflight?.checks?.onboarding_approved ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks?.onboarding_approved ? '✅' : '○'}</span>
               <div className="text">
                 <strong>Business & KYC Verification</strong>
-                <p>Status: {preflight?.checks.onboarding_approved ? 'Approved' : 'Pending Review'}</p>
+                <p>Status: {preflight?.checks?.onboarding_approved ? 'Approved' : 'Pending Review'}</p>
               </div>
             </div>
-            <div className={`check-item ${preflight?.checks.verified_bank_account ? 'done' : ''}`}>
-              <span className="icon">{preflight?.checks.verified_bank_account ? '✅' : '○'}</span>
+            <div className={`check-item ${preflight?.checks?.verified_bank_account ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks?.verified_bank_account ? '✅' : '○'}</span>
               <div className="text">
                 <strong>Settlement Bank Account</strong>
-                <p>{preflight?.checks.verified_bank_account ? 'Verified primary account' : 'Verification required'}</p>
+                <p>{preflight?.checks?.verified_bank_account ? 'Verified primary account' : 'Verification required'}</p>
               </div>
             </div>
-            <div className={`check-item ${preflight?.checks.webhook_configured ? 'done' : ''}`}>
-              <span className="icon">{preflight?.checks.webhook_configured ? '✅' : '○'}</span>
+            <div className={`check-item ${preflight?.checks?.webhook_configured ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks?.webhook_configured ? '✅' : '○'}</span>
               <div className="text">
                 <strong>Webhook Configuration</strong>
-                <p>{preflight?.checks.webhook_configured ? 'HTTPS endpoint saved' : 'Production URL missing'}</p>
+                <p>{preflight?.checks?.webhook_configured ? 'HTTPS endpoint saved' : 'Production URL missing'}</p>
               </div>
             </div>
-            <div className={`check-item ${preflight?.checks.team_present ? 'done' : ''}`}>
-              <span className="icon">{preflight?.checks.team_present ? '✅' : '○'}</span>
+            <div className={`check-item ${preflight?.checks?.team_present ? 'done' : ''}`}>
+              <span className="icon">{preflight?.checks?.team_present ? '✅' : '○'}</span>
               <div className="text">
                 <strong>Team & Security</strong>
-                <p>{preflight?.checks.team_present ? 'Team members invited' : 'No team members found'}</p>
+                <p>{preflight?.checks?.team_present ? 'Team members invited' : 'No team members found'}</p>
               </div>
             </div>
           </div>

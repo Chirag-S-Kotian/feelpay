@@ -13,11 +13,11 @@ test('exports, settlement reports, and scheduled reports expose history states',
   await expect(page.getByText(/Export job created/i)).toBeVisible();
   await page.getByRole('button', { name: /Export History/i }).click();
   await expect(page.getByText(/completed|transactions/i).first()).toBeVisible();
-  const exportDownloadRequest = page.waitForRequest(/\/exports\/exp_test_1\/download/);
+  const exportDownload = page.waitForRequest(/\/v1\/merchants\/.*\/exports\/exp_test_1\/download/);
   await page.locator('button.btn-small').first().click();
-  await exportDownloadRequest;
+  await exportDownload;
 
-  await page.goto('/settlement-reports');
+  await page.getByRole('link', { name: /Settlement Reports/i }).click();
   await expect(page.getByRole('heading', { name: /Settlement Reports/i })).toBeVisible();
   await expect(page.getByText(/UTRTEST123|completed/i).first()).toBeVisible();
   await page.locator('button.btn-small').first().click();
@@ -31,7 +31,7 @@ test('exports, settlement reports, and scheduled reports expose history states',
   await page.getByRole('button', { name: /Download Report/i }).click();
   expect((await csvDownload).suggestedFilename()).toMatch(/\.csv$/);
 
-  await page.goto('/scheduled-reports');
+  await page.getByRole('link', { name: /Scheduled Reports/i }).click();
   await expect(page.getByRole('heading', { name: /Scheduled Reports/i })).toBeVisible();
   await expect(page.getByText(/daily|active|merchant@example.com/i).first()).toBeVisible();
 });

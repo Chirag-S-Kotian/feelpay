@@ -53,6 +53,17 @@ function hasAuth(route: Route) {
 }
 
 export async function installMerchantApi(page: Page) {
+  await page.context().route('**/downloads/exp_test_1.csv', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/csv',
+        'content-disposition': 'attachment; filename="exp_test_1.csv"',
+      },
+      body: 'id,amount\nexp_test_1,249900\n',
+    });
+  });
+
   const methodNames: Record<string, string> = {
     card: 'Cards',
     upi: 'UPI',
@@ -94,7 +105,7 @@ export async function installMerchantApi(page: Page) {
     created_at: string;
   }> = [];
   const webhookEvents = [
-    { id: 'evt_seed', event_type: 'payment.captured', status: 'delivered', attempts: 1, created_at: nowIso(), response_code: 200 },
+    { id: 'evt_seed', test_id: 'evt_seed', event_type: 'payment.captured', status: 'delivered', attempts: 1, created_at: nowIso(), response_code: 200, http_status: 200 },
   ];
   const auditItems = [{ created_at: nowIso(), actor_id: merchant.id }];
   const bankAccounts = [
@@ -129,9 +140,10 @@ export async function installMerchantApi(page: Page) {
         ecosystem_health: [{ name: 'Sandbox Bank Rail', success_rate: 100, avg_latency_ms: 120, is_active: true, circuit_breaker_state: 'closed' }],
       });
     }
-    if (path === '/v1/onboarding/status') return json(route, { status: 'verified', kyc_status: 'verified', bank_status: 'verified', live_enabled: false });
-    if (path === '/v1/onboarding/limits') return json(route, { daily_limit: 1000000, monthly_limit: 10000000 });
-    if (path === '/v1/onboarding/live-preflight') return json(route, { can_go_live: false, blockers: ['Live mode disabled in sandbox demo'] });
+    if (path.includes('/onboarding/status')) return json(route, { status: 'verified', kyc_status: 'verified', bank_status: 'verified', live_enabled: false });
+    if (path.includes('/onboarding/limits')) return json(route, { daily_limit: 1000000, monthly_limit: 10000000 });
+    if (path.includes('/onboarding/readiness')) return json(route, { can_go_live: true, blockers: [], checks: { onboarding_approved: true, verified_bank_account: true, webhook_configured: true, team_present: true } });
+    if (path.includes('/onboarding/live-preflight')) return json(route, { can_go_live: false, blockers: ['Live mode disabled in sandbox demo'] });
     if (path.includes('/v1/onboarding/') && method === 'POST') return json(route, { status: 'verified' });
 
     if (path.startsWith('/v1/analytics/summary')) {
@@ -224,8 +236,9 @@ export async function installMerchantApi(page: Page) {
       return json(route, payouts[0]);
     }
     if (path === '/v1/payouts/bank-accounts') return json(route, bankAccounts);
-    if (path.includes('/bank-accounts')) return json(route, { bank_accounts: bankAccounts });
+    if (path.includes('/bank-accounts')) return json(route, { bank_accounts: bankAccounts, accounts: bankAccounts });
 
+    if (path.includes('/webhooks/test-logs')) return json(route, { logs: webhookEvents, total: webhookEvents.length });
     if (path === '/v1/developers/webhooks') return json(route, { events: webhookEvents, webhooks: [{ id: 'wh_test_1', url: 'https://example.com/webhooks/feelpay', status: 'active', event_subscriptions: ['payment.success', 'payment.failed', 'settlement.processed'] }] });
     if (path.startsWith('/v1/developers/api-logs') || path === '/v1/developers/request-logs') return json(route, { logs: [{ id: 'req_test_1', method: 'GET', path: '/v1/payments', endpoint: '/v1/payments', status: '200', latency_ms: 45, request_id: 'req_test_1', created_at: nowIso(), payload: { card: '[redacted]' } }] });
     if (path.includes('/webhooks/test')) {
@@ -247,10 +260,12 @@ export async function installMerchantApi(page: Page) {
 
 export async function loginMerchant(page: Page) {
   await page.goto('/login');
-  await page.getByPlaceholder('merchant@business.com').fill(merchant.email);
-  await page.getByPlaceholder('••••••••').fill('StrongPass123!');
+  await page.getByLabel('Email', { exact: true }).fill(merchant.email);
+  await page.getByLabel('Password', { exact: true }).fill('StrongPass123!');
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/$/);
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('link', { name: /dashboard/i }).first()).toBeVisible();
 }
 
 export async function seedMerchantSession(page: Page) {
