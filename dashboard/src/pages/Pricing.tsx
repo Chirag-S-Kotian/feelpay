@@ -65,8 +65,8 @@ export default function Pricing() {
     <div className="page fade-in">
       <div className="page-header">
         <div>
-          <h1>Pricing Plans</h1>
-          <p>Commercial plans synced from landing config for merchant visibility.</p>
+          <h1>Pricing</h1>
+          <p>Your current transaction pricing is managed by the platform. Contact support to change plan.</p>
         </div>
       </div>
 
@@ -75,7 +75,7 @@ export default function Pricing() {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--fp-text-muted)' }}>
           <Sparkles size={16} />
-          <span>{loading ? 'Syncing pricing…' : `Plans loaded: ${plans.length} | Highlighted: ${featuredCount}`}</span>
+          <span>{loading ? 'Loading current pricing...' : `Current plan options: ${plans.length} | Recommended: ${featuredCount}`}</span>
         </div>
       </div>
 
@@ -86,6 +86,7 @@ export default function Pricing() {
             <h3>{plan.name}</h3>
             <strong>{plan.price}</strong>
             <p>{plan.caption}</p>
+            <p>Settlement cycle: T+2 | Payout fee: managed by platform</p>
             <ul>
               {plan.features?.map((feature) => (
                 <li key={feature}>
@@ -94,6 +95,7 @@ export default function Pricing() {
                 </li>
               ))}
             </ul>
+            <button className="btn-secondary" type="button">Contact support to change plan</button>
           </article>
         ))}
       </section>

@@ -97,6 +97,7 @@ pub struct CustomerResponse {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub name: Option<String>,
+    pub metadata: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 
@@ -110,6 +111,7 @@ impl From<Customer> for CustomerResponse {
             email: c.email,
             phone: c.phone,
             name: c.name,
+            metadata: c.metadata,
             created_at: c.created_at,
         }
     }

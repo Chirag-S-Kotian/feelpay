@@ -86,6 +86,10 @@ export default function Disputes() {
 
   const submitEvidence = async () => {
     if (!targetDisputeId) return;
+    if (evidenceFiles.length === 0 && !evidenceText.trim()) {
+      setError('Add evidence note or attach at least one evidence file.');
+      return;
+    }
     setSubmittingEvidence(true);
     setError(null);
     try {
@@ -237,7 +241,18 @@ export default function Disputes() {
                 type="file"
                 multiple
                 accept=".pdf,.png,.jpg,.jpeg,.txt"
-                onChange={e => setEvidenceFiles(Array.from(e.target.files || []))}
+                onChange={e => {
+                  const files = Array.from(e.target.files || []);
+                  const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'];
+                  const invalid = files.find(file => !allowed.includes(file.type) || file.size > 5 * 1024 * 1024);
+                  if (invalid) {
+                    setError('Evidence files must be PDF, PNG, JPG, or TXT and 5MB or smaller.');
+                    setEvidenceFiles([]);
+                    return;
+                  }
+                  setError(null);
+                  setEvidenceFiles(files);
+                }}
               />
               <span className="file-drop-title">Choose files or drag into picker</span>
               <span className="file-drop-sub">PDF, PNG, JPG, TXT</span>

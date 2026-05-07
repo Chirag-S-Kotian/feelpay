@@ -14,8 +14,10 @@ pub struct BankAccountResponse {
     pub id: String,
     pub account_holder_name: String,
     pub account_number_masked: String,
+    pub bank_name: Option<String>,
     pub ifsc_code: String,
     pub account_type: String,
+    pub currency: String,
     pub verification_status: String,
     pub is_primary: bool,
     pub created_at: String,
@@ -33,9 +35,13 @@ pub struct BankAccountsListResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddBankAccountApiRequest {
     pub account_holder_name: String,
+    pub bank_name: Option<String>,
     pub account_number: String,
+    pub confirm_account_number: Option<String>,
     pub ifsc_code: String,
     pub account_type: String,
+    pub currency: Option<String>,
+    pub is_primary: Option<bool>,
 }
 
 /// Add bank account response
@@ -80,6 +86,30 @@ pub async fn add_bank_account(
             "You do not have permission to access this merchant".into(),
         ));
     }
+    if req.account_holder_name.trim().is_empty() {
+        return Err(FeelPayError::BadRequest(
+            "Account holder name is required".into(),
+        ));
+    }
+    if req
+        .confirm_account_number
+        .as_deref()
+        .is_some_and(|confirm| confirm != req.account_number)
+    {
+        return Err(FeelPayError::BadRequest(
+            "Confirm account number does not match".into(),
+        ));
+    }
+    let currency = req
+        .currency
+        .as_deref()
+        .unwrap_or("INR")
+        .to_ascii_uppercase();
+    if currency != "INR" {
+        return Err(FeelPayError::BadRequest(
+            "Only INR settlement accounts are supported".into(),
+        ));
+    }
 
     // Get encryption key from config (TODO: pass from state)
     let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
@@ -96,6 +126,12 @@ pub async fn add_bank_account(
     let account = bank_account_service
         .add_bank_account(merchant_id, add_req)
         .await?;
+
+    if req.is_primary.unwrap_or(false) {
+        let _ = bank_account_service
+            .set_primary_bank_account(merchant_id, account.id)
+            .await;
+    }
 
     Ok(HttpResponse::Ok().json(AddBankAccountApiResponse {
         id: account.id.to_string(),
@@ -149,8 +185,10 @@ pub async fn list_bank_accounts(
             id: account.id.to_string(),
             account_holder_name: account.account_holder_name,
             account_number_masked: mask_bank_account(&account.account_number_encrypted),
+            bank_name: None,
             ifsc_code: account.ifsc_code,
             account_type: account.account_type.as_str().to_string(),
+            currency: "INR".to_string(),
             verification_status: account.verification_status.as_str().to_string(),
             is_primary: account.is_primary,
             created_at: account.created_at.to_rfc3339(),
@@ -207,13 +245,61 @@ pub async fn verify_bank_account(
         id: account.id.to_string(),
         account_holder_name: account.account_holder_name,
         account_number_masked: mask_bank_account(&account.account_number_encrypted),
+        bank_name: None,
         ifsc_code: account.ifsc_code,
         account_type: account.account_type.as_str().to_string(),
+        currency: "INR".to_string(),
         verification_status: account.verification_status.as_str().to_string(),
         is_primary: account.is_primary,
         created_at: account.created_at.to_rfc3339(),
         verified_at: account.verified_at.map(|dt| dt.to_rfc3339()),
     }))
+}
+
+/// Remove/deactivate bank account endpoint
+pub async fn delete_bank_account(
+    path: web::Path<(Uuid, Uuid)>,
+    claims: JwtClaims,
+    db: web::Data<PgPool>,
+) -> Result<HttpResponse, FeelPayError> {
+    let (merchant_id, account_id) = path.into_inner();
+
+    if claims.merchant_id != Some(merchant_id) {
+        return Err(FeelPayError::Forbidden(
+            "You do not have permission to access this merchant".into(),
+        ));
+    }
+
+    let result = sqlx::query(
+        r#"
+        UPDATE bank_accounts
+        SET verification_status = 'deactivated', is_primary = false, updated_at = NOW()
+        WHERE id = $1 AND merchant_id = $2
+        "#,
+    )
+    .bind(account_id)
+    .bind(merchant_id)
+    .execute(db.get_ref())
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(FeelPayError::NotFound("Bank account not found".into()));
+    }
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs (entity_type, entity_id, action, new_state, actor_type, actor_id)
+        VALUES ('bank_account', $1, 'bank_account_deactivated', $2::jsonb, 'merchant_user', $3)
+        "#,
+    )
+    .bind(account_id)
+    .bind(serde_json::json!({"merchant_id": merchant_id}))
+    .bind(merchant_id)
+    .execute(db.get_ref())
+    .await;
+
+    Ok(HttpResponse::NoContent().finish())
 }
 
 /// Set primary bank account endpoint

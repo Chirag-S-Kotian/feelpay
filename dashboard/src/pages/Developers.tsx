@@ -22,8 +22,8 @@ type WebhookEvent = {
 };
 
 const API_BASE_BY_MODE: Record<EnvironmentMode, string> = {
-  test: 'https://sandbox-api.feelpay.in',
-  live: 'https://api.feelpay.in',
+  test: import.meta.env.VITE_SANDBOX_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '/api',
+  live: import.meta.env.VITE_LIVE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL || '/api',
 };
 
 const USE_CASES = [
@@ -47,13 +47,24 @@ const USE_CASES = [
 const ERROR_GUIDE = [
   { code: '400', meaning: 'Invalid payload, state, or validation failed', action: 'Fix request fields, retry with corrected body' },
   { code: '401', meaning: 'Missing/invalid API key or auth context', action: 'Verify `x-api-key`, auth token, and env mode' },
+  { code: '403', meaning: 'Live mode or resource access is blocked', action: 'Complete onboarding or check merchant ownership' },
   { code: '404', meaning: 'Resource/route not found', action: 'Check path params, merchant scope, and endpoint version' },
   { code: '409', meaning: 'Idempotency key reused with different payload', action: 'Reuse key only for exact same body' },
+  { code: '429', meaning: 'Rate limit exceeded', action: 'Back off with jitter and retry using the same idempotency key' },
   { code: '500', meaning: 'Server/database failure', action: 'Retry with same idempotency key; alert support if persistent' },
 ];
 
 export default function Developers() {
   const [apiKey, setApiKey] = useState('Loading...');
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState({
+    profile: false,
+    kyc: false,
+    bank: false,
+    webhook: false,
+    key: false,
+    testPayment: false,
+  });
   const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedSnippet, setSelectedSnippet] = useState<SnippetId>('curl');
@@ -83,13 +94,24 @@ export default function Developers() {
   const loadKeys = async () => {
     const data = await apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys');
     setApiKey(data.api_key);
-    const merchantRaw = localStorage.getItem('feelpay_merchant');
-    if (merchantRaw) {
-      const merchant = JSON.parse(merchantRaw) as Record<string, string>;
-      merchant[mode === 'live' ? 'api_key_live' : 'api_key_test'] = data.api_key;
-      merchant.api_key = data.api_key;
-      localStorage.setItem('feelpay_merchant', JSON.stringify(merchant));
-    }
+  };
+
+  const loadReadiness = async () => {
+    const [profile, onboarding, bankRes, payments] = await Promise.all([
+      apiRequest<{ business_name?: string | null; business_type?: string | null; webhook_url?: string | null }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 20_000 }),
+      apiRequest<{ onboarding_status?: string; verifications?: Array<{ verification_type: string; status: string }> }>('GET', '/v1/onboarding/status', undefined, undefined, { cacheMs: 20_000 })
+        .catch(() => ({ onboarding_status: 'pending', verifications: [] })),
+      apiRequest<{ accounts?: Array<{ verification_status?: string }> }>('GET', `/v1/merchants/${merchantId()}/bank-accounts`, undefined, undefined, { cacheMs: 20_000 }).catch(() => ({ accounts: [] })),
+      apiRequest<{ data?: Array<{ status?: string }> }>('GET', '/v1/payments?limit=25', undefined, undefined, { useApiKey: true, cacheMs: 20_000 }).catch(() => ({ data: [] })),
+    ]);
+    setReadiness({
+      profile: Boolean(profile.business_name && profile.business_type),
+      kyc: onboarding.onboarding_status === 'approved' || onboarding.verifications?.some((item) => item.status === 'verified') || false,
+      bank: bankRes.accounts?.some((account) => account.verification_status === 'verified') || false,
+      webhook: Boolean(profile.webhook_url),
+      key: Boolean(apiKey && apiKey !== 'Loading...'),
+      testPayment: payments.data?.some((payment) => ['captured', 'success', 'succeeded'].includes(payment.status || '')) || false,
+    });
   };
 
   const loadWebhookEvents = async () => {
@@ -133,6 +155,7 @@ export default function Developers() {
     void loadKeys();
     void loadWebhookEvents();
     void loadApiLogs();
+    void loadReadiness();
   }, [mode]);
 
   useEffect(() => {
@@ -146,8 +169,19 @@ export default function Developers() {
   };
 
   const regenerateKeys = async () => {
-    await apiRequest('POST', '/v1/merchants/keys/roll', {});
+    const data = await apiRequest<{ api_key: string; api_secret?: string }>('POST', '/v1/merchants/keys/roll', {});
+    setCreatedSecret(data.api_secret || null);
     await loadKeys();
+  };
+
+  const merchantId = () => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
   };
 
   const snippets = useMemo<Record<SnippetId, string>>(
@@ -297,6 +331,10 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
             <RefreshCw size={16} /> Rotate API Key
           </button>
           <p className="help-text">Secret keys not re-displayed. Rotate immediately if leaked.</p>
+          {createdSecret && (
+            <p className="help-text">New secret is available once in this session. Copy it now, then it will be masked.</p>
+          )}
+          {mode === 'live' && <p className="help-text">Live keys unlock after onboarding approval.</p>}
         </div>
       </section>
 
@@ -361,12 +399,12 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
       <section className="card">
         <div className="dev-section-title"><Rocket size={18} /> Go-Live Checklist</div>
         <div className="checklist-grid">
-          <div className="check-item">✅ Test mode flow validated end-to-end</div>
-          <div className="check-item">✅ Webhook signature verification implemented</div>
-          <div className="check-item">✅ Retry-safe idempotency keys wired on POSTs</div>
-          <div className="check-item">✅ Alerting configured for 4xx/5xx + webhook failures</div>
-          <div className="check-item">✅ API key rotation runbook documented</div>
-          <div className="check-item">✅ Refund/settlement reconciliation cron in place</div>
+          <div className="check-item">{readiness.profile ? '✅' : '○'} Business profile complete</div>
+          <div className="check-item">{readiness.kyc ? '✅' : '○'} KYC verified</div>
+          <div className="check-item">{readiness.bank ? '✅' : '○'} Verified settlement bank account</div>
+          <div className="check-item">{readiness.webhook ? '✅' : '○'} Webhook endpoint configured</div>
+          <div className="check-item">{readiness.key ? '✅' : '○'} API key created or rotated</div>
+          <div className="check-item">{readiness.testPayment ? '✅' : '○'} Test payment completed</div>
         </div>
       </section>
 

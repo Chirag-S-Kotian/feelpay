@@ -1,6 +1,7 @@
 use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -114,6 +115,7 @@ pub struct UpdateSettingsRequest {
     pub avatar_url: Option<String>,
     pub current_password: Option<String>,
     pub new_password: Option<String>,
+    pub confirm_password: Option<String>,
     pub settlement_account: Option<serde_json::Value>,
 }
 
@@ -307,6 +309,95 @@ fn request_environment(req: &HttpRequest) -> &'static str {
     }
 }
 
+fn masked_key(key: &str) -> serde_json::Value {
+    let prefix_len = key
+        .find('_')
+        .map(|idx| (idx + 1).min(key.len()))
+        .unwrap_or(7);
+    let prefix = &key[..prefix_len.min(key.len())];
+    let last4 = if key.len() >= 4 {
+        &key[key.len() - 4..]
+    } else {
+        key
+    };
+    serde_json::json!({
+        "display": format!("{prefix}...{last4}"),
+        "prefix": prefix,
+        "last4": last4,
+    })
+}
+
+fn normalize_phone(raw: &str) -> Result<String, FeelPayError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(FeelPayError::BadRequest("Phone is required".into()));
+    }
+    let mut normalized = String::new();
+    for (idx, ch) in trimmed.chars().enumerate() {
+        if ch == '+' && idx == 0 {
+            normalized.push(ch);
+        } else if ch.is_ascii_digit() {
+            normalized.push(ch);
+        } else if ch == ' ' || ch == '-' || ch == '(' || ch == ')' {
+            continue;
+        } else {
+            return Err(FeelPayError::BadRequest(
+                "Phone contains invalid characters".into(),
+            ));
+        }
+    }
+    let digit_count = normalized.chars().filter(|c| c.is_ascii_digit()).count();
+    if !(8..=15).contains(&digit_count) {
+        return Err(FeelPayError::BadRequest(
+            "Phone must contain 8 to 15 digits".into(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn validate_webhook_url(raw: &str, env: &str) -> Result<(), FeelPayError> {
+    let url = Url::parse(raw.trim())
+        .map_err(|_| FeelPayError::BadRequest("Webhook URL must be a valid URL".into()))?;
+    let host = url.host_str().unwrap_or_default();
+    let localhost =
+        matches!(host, "localhost" | "127.0.0.1" | "::1") || host.ends_with(".localhost");
+    if env == "test" && localhost && matches!(url.scheme(), "http" | "https") {
+        return Ok(());
+    }
+    if url.scheme() != "https" {
+        return Err(FeelPayError::BadRequest(
+            "Webhook URL must be HTTPS in live mode; localhost is allowed only in test mode".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_business_type(raw: &str) -> Result<(), FeelPayError> {
+    match raw.trim() {
+        "individual" | "sole_proprietorship" | "partnership" | "corporation" | "llc" => Ok(()),
+        _ => Err(FeelPayError::BadRequest("Invalid business type".into())),
+    }
+}
+
+async fn write_audit_log(
+    pool: &sqlx::PgPool,
+    merchant_id: Uuid,
+    action: &str,
+    new_state: serde_json::Value,
+) {
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs (entity_type, entity_id, action, new_state, actor_type, actor_id)
+        VALUES ('merchant', $1, $2, $3::jsonb, 'merchant_user', $1)
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(action)
+    .bind(new_state)
+    .execute(pool)
+    .await;
+}
+
 async fn ensure_team_roles_exist(pool: &sqlx::PgPool) -> Result<(), FeelPayError> {
     let role_specs = [
         (
@@ -446,21 +537,44 @@ pub async fn update_profile(
     body: web::Json<UpdateSettingsRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env = request_environment(&req);
+
+    let name = body
+        .name
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let business_name = body
+        .business_name
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if body.name.is_some() && name.is_none() {
+        return Err(FeelPayError::BadRequest("Name is required".into()));
+    }
+    if body.business_name.is_some() && business_name.is_none() {
+        return Err(FeelPayError::BadRequest("Business name is required".into()));
+    }
 
     if let Some(url) = body.webhook_url.as_ref() {
-        if !url.starts_with("https://") {
-            return Err(FeelPayError::BadRequest(
-                "Webhook URL must start with https://".into(),
-            ));
+        if !url.trim().is_empty() {
+            validate_webhook_url(url, env)?;
         }
     }
 
-    if let Some(phone) = body.phone.as_ref() {
-        if !(phone.starts_with('+') || phone.chars().all(|c| c.is_ascii_digit())) {
-            return Err(FeelPayError::BadRequest(
-                "Phone must be digits or include leading +".into(),
-            ));
-        }
+    let phone = body
+        .phone
+        .as_ref()
+        .map(|p| normalize_phone(p))
+        .transpose()?;
+
+    if let Some(value) = body.business_type.as_ref() {
+        validate_business_type(value)?;
+    }
+
+    if let Some(url) = body.avatar_url.as_ref() {
+        Url::parse(url.trim())
+            .map_err(|_| FeelPayError::BadRequest("Avatar URL must be a valid URL".into()))?;
     }
 
     if body.current_password.is_some() || body.new_password.is_some() {
@@ -476,6 +590,13 @@ pub async fn update_profile(
             return Err(FeelPayError::BadRequest(
                 "New password must be at least 8 characters".into(),
             ));
+        }
+        if let Some(confirm) = body.confirm_password.as_deref() {
+            if confirm != new_password {
+                return Err(FeelPayError::BadRequest(
+                    "Confirm password does not match".into(),
+                ));
+            }
         }
 
         let row = sqlx::query("SELECT password_hash FROM merchants WHERE id = $1")
@@ -508,6 +629,14 @@ pub async fn update_profile(
             .execute(&state.db)
             .await
             .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+        write_audit_log(
+            &state.db,
+            merchant_id,
+            "merchant_password_updated",
+            serde_json::json!({"environment": env}),
+        )
+        .await;
     }
 
     sqlx::query(
@@ -529,16 +658,34 @@ pub async fn update_profile(
         "#,
     )
     .bind(merchant_id)
-    .bind(&body.name)
-    .bind(&body.business_name)
+    .bind(&name)
+    .bind(&business_name)
     .bind(&body.webhook_url)
     .bind(&body.settlement_account)
     .bind(&body.business_type)
-    .bind(&body.phone)
+    .bind(&phone)
     .bind(&body.avatar_url)
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    write_audit_log(
+        &state.db,
+        merchant_id,
+        "merchant_profile_updated",
+        serde_json::json!({
+            "updated_fields": {
+                "name": body.name.is_some(),
+                "business_name": body.business_name.is_some(),
+                "business_type": body.business_type.is_some(),
+                "webhook_url": body.webhook_url.is_some(),
+                "phone": body.phone.is_some(),
+                "avatar_url": body.avatar_url.is_some()
+            },
+            "environment": env
+        }),
+    )
+    .await;
 
     get_profile(req, state).await
 }
@@ -556,6 +703,18 @@ pub async fn upload_profile_avatar(
             "Only PNG/JPEG/WEBP allowed".into(),
         ));
     }
+    let expected_ext = match content_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        _ => "webp",
+    };
+    let filename = body.filename.trim().to_ascii_lowercase();
+    if !(filename.ends_with(expected_ext) || (expected_ext == "jpg" && filename.ends_with("jpeg")))
+    {
+        return Err(FeelPayError::BadRequest(
+            "Avatar filename extension must match image type".into(),
+        ));
+    }
 
     let raw = base64::engine::general_purpose::STANDARD
         .decode(body.data_base64.trim())
@@ -569,12 +728,19 @@ pub async fn upload_profile_avatar(
     if raw.len() > 5 * 1024 * 1024 {
         return Err(FeelPayError::BadRequest("Avatar must be <= 5MB".into()));
     }
-
-    let ext = match content_type.as_str() {
-        "image/png" => "png",
-        "image/jpeg" => "jpg",
-        _ => "webp",
+    let magic_ok = match content_type.as_str() {
+        "image/png" => raw.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg" => raw.starts_with(b"\xff\xd8\xff"),
+        "image/webp" => raw.len() > 12 && raw.starts_with(b"RIFF") && &raw[8..12] == b"WEBP",
+        _ => false,
     };
+    if !magic_ok {
+        return Err(FeelPayError::BadRequest(
+            "Avatar file content does not match image type".into(),
+        ));
+    }
+
+    let ext = expected_ext;
     let file_id = format!("{}_{}", merchant_id, Uuid::new_v4().simple());
     let dir = std::path::Path::new("uploads/avatars");
     std::fs::create_dir_all(dir).map_err(|e| FeelPayError::Internal(format!("Create dir: {e}")))?;
@@ -1134,8 +1300,13 @@ pub async fn get_keys(
     };
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "api_key": selected,
-        "environment": env
+        "api_key": masked_key(&selected)["display"].as_str().unwrap_or_default(),
+        "key": masked_key(&selected),
+        "environment": env,
+        "created_at": chrono::Utc::now().to_rfc3339(),
+        "last_used_at": serde_json::Value::Null,
+        "scopes": ["payments:write", "payments:read", "webhooks:write"],
+        "status": "active"
     })))
 }
 
@@ -1207,16 +1378,26 @@ pub async fn roll_keys(
         std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
 
     let mut resp = serde_json::json!({
-        "api_key": api_key,
+        "api_key": masked_key(&api_key)["display"].as_str().unwrap_or_default(),
+        "key": masked_key(&api_key),
         "environment": env,
         "message": "API key rotated."
     });
 
     if allow_secret_reveal {
         resp["api_secret"] = serde_json::json!(api_secret);
+        resp["api_key_once"] = serde_json::json!(api_key);
         resp["message"] =
             serde_json::json!("Store your new API secret safely. It may not be shown again.");
     }
+
+    write_audit_log(
+        &state.db,
+        merchant_id,
+        "merchant_api_key_rotated",
+        serde_json::json!({"environment": env, "key": masked_key(&api_key)}),
+    )
+    .await;
 
     Ok(HttpResponse::Ok().json(resp))
 }

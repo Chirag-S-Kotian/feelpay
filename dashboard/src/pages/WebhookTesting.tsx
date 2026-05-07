@@ -13,8 +13,13 @@ interface WebhookEvent {
   id: string;
   event_type: string;
   status: string;
+  http_status?: number;
   attempts: number;
+  signature_verified?: boolean;
   created_at: string;
+  last_attempt_at?: string;
+  response_body?: string;
+  error_message?: string;
 }
 
 interface TestResult {
@@ -28,7 +33,7 @@ interface TestResult {
 
 interface SamplePayload {
   event_type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 }
 
 const EVENT_TYPES = [
@@ -72,7 +77,9 @@ export default function WebhookTesting() {
     try {
       const [profile, webhookData] = await Promise.all([
         apiRequest<{ webhook_url?: string | null }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 5_000 }),
-        apiRequest<{ events?: WebhookEvent[]; webhooks?: WebhookEndpoint[] }>('GET', '/v1/developers/webhooks', undefined, undefined, { cacheMs: 5_000 }),
+        merchantId
+          ? apiRequest<{ logs?: WebhookEvent[]; events?: WebhookEvent[]; webhooks?: WebhookEndpoint[] }>('GET', `/v1/merchants/${merchantId}/webhooks/test-logs`, undefined, undefined, { cacheMs: 5_000 })
+          : Promise.resolve({ logs: [], events: [], webhooks: [] }),
       ]);
       const savedUrl = profile.webhook_url || '';
       setWebhookUrl(savedUrl);
@@ -85,7 +92,7 @@ export default function WebhookTesting() {
       const webhooks = webhookData.webhooks?.length ? webhookData.webhooks : configuredEndpoint;
       setEndpoints(webhooks);
       setSelectedEndpoint(webhooks[0] ?? null);
-      setEvents(webhookData.events || []);
+      setEvents(webhookData.logs || webhookData.events || []);
     } catch (err) {
       console.error('Failed to fetch webhook endpoints:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch webhook configuration.');
@@ -98,8 +105,9 @@ export default function WebhookTesting() {
     setNotice('');
     setError('');
     const trimmed = webhookUrl.trim();
-    if (!trimmed.startsWith('https://')) {
-      setError('Webhook URL must start with https://');
+    const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(trimmed);
+    if (!trimmed.startsWith('https://') && !isLocalhost) {
+      setError('Webhook URL must be HTTPS. Localhost is allowed only in test mode.');
       return;
     }
     try {
@@ -128,6 +136,8 @@ export default function WebhookTesting() {
         }
       );
       setTestResult(data);
+      await fetchWebhookEndpoints();
+      setNotice('Test event sent. Recent delivery event updated.');
     } catch (err) {
       setTestResult({
         test_id: 'error',
@@ -273,7 +283,7 @@ export default function WebhookTesting() {
         </div>
 
         <div className="card webhook-events-card">
-          <h2>{testResult ? 'Test Result' : 'Recent Delivery Events'}</h2>
+        <h2>Recent Delivery Events</h2>
           {testResult ? (
             <div className={`result-container result-${testResult.status}`}>
               {testResult.status === 'sent' ? (
@@ -319,7 +329,7 @@ export default function WebhookTesting() {
                 <span className="mono">{testResult.test_id}</span>
               </div>
             </div>
-          ) : (
+          ) : null}
             <div className="webhook-event-list">
               {events.length === 0 ? (
                 <div className="empty-state webhook-empty">
@@ -331,11 +341,30 @@ export default function WebhookTesting() {
                 <div className="webhook-event-item" key={event.id}>
                   <strong>{event.event_type}</strong>
                   <span>{event.status}</span>
-                  <small>{event.attempts} attempt(s) • {new Date(event.created_at).toLocaleString()}</small>
+                  <small>
+                    HTTP {event.http_status ?? '-'} • {event.attempts} attempt(s) • signature {event.signature_verified === false ? 'not verified' : 'verified'}
+                  </small>
+                  <small>Created {new Date(event.created_at).toLocaleString()} • Last attempt {new Date(event.last_attempt_at || event.created_at).toLocaleString()}</small>
+                  <div className="event-actions">
+                    <button className="btn-secondary" onClick={() => {
+                      setSamplePayload({
+                        event_type: event.event_type,
+                        payload: {
+                          id: event.id,
+                          event_type: event.event_type,
+                          status: event.status,
+                          http_status: event.http_status ?? null,
+                          response_body: event.response_body ?? null,
+                          error_message: event.error_message ?? null,
+                        },
+                      });
+                      setShowPayload(true);
+                    }}>View Payload</button>
+                    <button className="btn-secondary" onClick={() => void handleTestWebhook()}>Replay</button>
+                  </div>
                 </div>
               ))}
             </div>
-          )}
         </div>
       </div>
 
@@ -514,6 +543,7 @@ export default function WebhookTesting() {
         .webhook-event-item strong { color: #312d28; }
         .webhook-event-item span { color: #eb001b; text-transform: uppercase; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; }
         .webhook-event-item small { color: #6b6862; }
+        .event-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
         .webhook-empty {
           min-height: 260px;
           display: grid;

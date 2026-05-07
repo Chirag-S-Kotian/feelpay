@@ -1,7 +1,7 @@
 use crate::engine::services::webhook_test::WebhookTestService;
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::Row;
@@ -19,11 +19,17 @@ pub struct TestWebhookRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestWebhookResponse {
     pub test_id: String,
+    pub id: String,
+    pub event_type: String,
     pub status: String,
     pub http_status: Option<i32>,
+    pub attempts: i32,
+    pub signature_verified: bool,
     pub response_time_ms: Option<i64>,
     pub response_body: Option<String>,
     pub error_message: Option<String>,
+    pub created_at: String,
+    pub last_attempt_at: String,
 }
 
 /// Send test webhook endpoint
@@ -41,6 +47,7 @@ pub struct TestWebhookResponse {
     )
 )]
 pub async fn send_test_webhook(
+    http_req: HttpRequest,
     merchant_id: web::Path<Uuid>,
     req: web::Json<TestWebhookRequest>,
     claims: JwtClaims,
@@ -80,10 +87,28 @@ pub async fn send_test_webhook(
         .or_else(|| row.get::<Option<String>, _>(0));
     let mut webhook_secret = row.get::<Option<String>, _>(1);
 
+    let env = match http_req
+        .headers()
+        .get("x-feelpay-environment")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("live") => "live",
+        _ => "test",
+    };
     if let Some(url) = webhook_url.as_ref() {
-        if !url.starts_with("https://") {
+        let parsed = reqwest::Url::parse(url.trim())
+            .map_err(|_| FeelPayError::BadRequest("Webhook URL must be valid".into()))?;
+        let host = parsed.host_str().unwrap_or_default();
+        let localhost =
+            matches!(host, "localhost" | "127.0.0.1" | "::1") || host.ends_with(".localhost");
+        if !(env == "test" && localhost && matches!(parsed.scheme(), "http" | "https"))
+            && parsed.scheme() != "https"
+        {
             return Err(FeelPayError::BadRequest(
-                "Webhook URL must start with https://".into(),
+                "Webhook URL must be HTTPS in live mode; localhost is allowed only in test mode"
+                    .into(),
             ));
         }
     }
@@ -126,11 +151,17 @@ pub async fn send_test_webhook(
 
     Ok(HttpResponse::Ok().json(TestWebhookResponse {
         test_id: result.test_id.to_string(),
+        id: result.test_id.to_string(),
+        event_type: result.event_type,
         status: result.status,
         http_status: result.http_status,
+        attempts: 1,
+        signature_verified: true,
         response_time_ms: result.response_time_ms,
         response_body: result.response_body,
         error_message: result.error_message,
+        created_at: result.created_at.to_rfc3339(),
+        last_attempt_at: result.created_at.to_rfc3339(),
     }))
 }
 
@@ -175,11 +206,17 @@ pub async fn get_webhook_test_logs(
         .into_iter()
         .map(|log| TestWebhookResponse {
             test_id: log.test_id.to_string(),
+            id: log.test_id.to_string(),
+            event_type: log.event_type,
             status: log.status,
             http_status: log.http_status,
+            attempts: 1,
+            signature_verified: true,
             response_time_ms: log.response_time_ms,
             response_body: log.response_body,
             error_message: log.error_message,
+            created_at: log.created_at.to_rfc3339(),
+            last_attempt_at: log.created_at.to_rfc3339(),
         })
         .collect();
 

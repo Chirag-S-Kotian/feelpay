@@ -376,6 +376,10 @@ async fn main() -> std::io::Result<()> {
                         "/bank-accounts/{account_id}/set-primary",
                         web::post().to(api::bank_accounts::set_primary_bank_account),
                     )
+                    .route(
+                        "/bank-accounts/{account_id}",
+                        web::delete().to(api::bank_accounts::delete_bank_account),
+                    )
                     // Export jobs
                     .route(
                         "/exports/transactions",

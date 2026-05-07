@@ -10,9 +10,13 @@ export default function AddBankAccountForm({ onClose }: Props) {
   type AccountType = 'savings' | 'current';
   const [formData, setFormData] = useState({
     account_holder_name: '',
+    bank_name: '',
     account_number: '',
+    confirm_account_number: '',
     ifsc_code: '',
     account_type: 'savings' as AccountType,
+    currency: 'INR',
+    is_primary: false,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -39,6 +43,9 @@ export default function AddBankAccountForm({ onClose }: Props) {
       newErrors.account_number = 'Account number is required';
     } else if (!/^\d{9,18}$/.test(formData.account_number)) {
       newErrors.account_number = 'Invalid account number format';
+    }
+    if (formData.confirm_account_number !== formData.account_number) {
+      newErrors.confirm_account_number = 'Account numbers do not match';
     }
 
     if (!formData.ifsc_code.trim()) {
@@ -116,6 +123,8 @@ export default function AddBankAccountForm({ onClose }: Props) {
             <label>Account Number *</label>
             <input
               type="text"
+              inputMode="numeric"
+              autoComplete="off"
               value={formData.account_number}
               onChange={e => setFormData({ ...formData, account_number: e.target.value })}
               placeholder="1234567890123456"
@@ -123,6 +132,31 @@ export default function AddBankAccountForm({ onClose }: Props) {
             {errors.account_number && (
               <span className="error-text">{errors.account_number}</span>
             )}
+          </div>
+
+          <div className="ba-form-group">
+            <label>Confirm Account Number *</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={formData.confirm_account_number}
+              onChange={e => setFormData({ ...formData, confirm_account_number: e.target.value })}
+              placeholder="Re-enter account number"
+            />
+            {errors.confirm_account_number && (
+              <span className="error-text">{errors.confirm_account_number}</span>
+            )}
+          </div>
+
+          <div className="ba-form-group">
+            <label>Bank Name</label>
+            <input
+              type="text"
+              value={formData.bank_name}
+              onChange={e => setFormData({ ...formData, bank_name: e.target.value })}
+              placeholder="HDFC Bank"
+            />
           </div>
 
           <div className="ba-form-group">
@@ -156,6 +190,26 @@ export default function AddBankAccountForm({ onClose }: Props) {
                 Current
               </button>
             </div>
+          </div>
+
+          <div className="ba-form-group">
+            <label>Currency</label>
+            <select value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value })}>
+              <option value="INR">INR</option>
+            </select>
+          </div>
+
+          <label className="ba-checkbox">
+            <input
+              type="checkbox"
+              checked={formData.is_primary}
+              onChange={e => setFormData({ ...formData, is_primary: e.target.checked })}
+            />
+            Make this the primary settlement account after verification
+          </label>
+
+          <div className="ba-sandbox-note">
+            Test mode uses sandbox verification only. No real bank call or money movement is initiated.
           </div>
 
           <div className="ba-form-actions">

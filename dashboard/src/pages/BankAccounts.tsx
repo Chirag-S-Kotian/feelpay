@@ -9,9 +9,11 @@ interface BankAccount {
   id: string;
   account_holder_name: string;
   account_number_masked: string;
+  bank_name?: string | null;
   ifsc_code: string;
   account_type: 'savings' | 'current';
-  verification_status: 'pending' | 'verified' | 'failed';
+  currency?: string;
+  verification_status: 'pending' | 'verified' | 'failed' | 'deactivated';
   is_primary: boolean;
   created_at: string;
   verified_at?: string;
@@ -60,7 +62,7 @@ export default function BankAccounts() {
   };
 
   const handleDelete = async (accountId: string) => {
-    if (!confirm('Delete this bank account?')) return;
+    if (!confirm('Deactivate this bank account? Existing payout history remains available.')) return;
 
     try {
       await apiRequest('DELETE', `/v1/merchants/${merchantId}/bank-accounts/${accountId}`);
@@ -135,7 +137,7 @@ export default function BankAccounts() {
                 <Landmark size={28} />
               </div>
               <h3>No bank accounts configured</h3>
-              <p>Add payout account to unlock settlements, automated transfers, and faster reconciliation.</p>
+              <p>Add and verify a sandbox bank account to unlock test payouts, settlements, and go-live readiness.</p>
               <div className="bank-empty-cta">
                 <button
                   className="btn-primary"
@@ -177,6 +179,10 @@ export default function BankAccounts() {
 
                 <div className="account-details">
                   <div className="detail-row">
+                    <span>Bank:</span>
+                    <strong>{account.bank_name || '-'}</strong>
+                  </div>
+                  <div className="detail-row">
                     <span>IFSC:</span>
                     <strong className="mono">{account.ifsc_code}</strong>
                   </div>
@@ -185,11 +191,15 @@ export default function BankAccounts() {
                     <strong>{account.account_type}</strong>
                   </div>
                   <div className="detail-row">
+                    <span>Currency:</span>
+                    <strong>{account.currency || 'INR'}</strong>
+                  </div>
+                  <div className="detail-row">
                     <span>Status:</span>
                     <span className={`badge badge-${account.verification_status}`}>
                       {account.verification_status === 'verified' && <CheckCircle size={12} />}
                       {account.verification_status === 'failed' && <AlertCircle size={12} />}
-                      {account.verification_status}
+                      {account.verification_status === 'verified' ? 'sandbox verified' : account.verification_status}
                     </span>
                   </div>
                   {account.verified_at && (
@@ -220,6 +230,7 @@ export default function BankAccounts() {
                   <button
                     className="btn-danger"
                     onClick={() => handleDelete(account.id)}
+                    aria-label="Deactivate bank account"
                   >
                     <Trash2 size={14} />
                   </button>

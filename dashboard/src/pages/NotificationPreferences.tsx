@@ -25,6 +25,19 @@ const EVENT_TYPES = [
 ];
 
 const CHANNELS = ['email', 'sms', 'in_app'] as const;
+const EVENT_COPY: Record<string, string> = {
+  'payment.success': 'Payment captured successfully',
+  'payment.failed': 'Payment attempt failed',
+  'refund.initiated': 'Refund was initiated',
+  'refund.success': 'Refund completed',
+  'dispute.created': 'New dispute requires attention',
+  'settlement.processed': 'Settlement batch processed',
+  'subscription.charged': 'Subscription charge succeeded',
+  'subscription.failed': 'Subscription charge failed',
+  'kyc.approved': 'KYC verification approved',
+  'kyc.rejected': 'KYC verification rejected',
+  'kyc.resubmit_required': 'KYC needs resubmission',
+};
 
 export default function NotificationPreferences() {
   const [preferences, setPreferences] = useState<Record<string, NotificationPreference>>({});
@@ -33,6 +46,7 @@ export default function NotificationPreferences() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [showPerUser, setShowPerUser] = useState(false);
+  const [profile, setProfile] = useState<{ phone?: string | null; email?: string | null }>({});
 
   const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
@@ -62,6 +76,8 @@ export default function NotificationPreferences() {
         undefined,
         { cacheMs: 45_000 }
       );
+      const profileRes = await apiRequest<{ phone?: string | null; email?: string | null }>('GET', '/v1/merchants/profile', undefined, undefined, { cacheMs: 45_000 });
+      setProfile(profileRes);
 
       const prefs: Record<string, NotificationPreference> = {};
       EVENT_TYPES.forEach(eventType => {
@@ -143,7 +159,7 @@ export default function NotificationPreferences() {
           className={`tab ${!showPerUser ? 'active' : ''}`}
           onClick={() => setShowPerUser(false)}
         >
-          Merchant Preferences
+          My Preferences
         </button>
         <button
           className={`tab ${showPerUser ? 'active' : ''}`}
@@ -184,6 +200,7 @@ export default function NotificationPreferences() {
               <div key={eventType} className="matrix-row">
                 <div className="event-column">
                   <span className="event-label">{eventType}</span>
+                  <span className="event-description">{EVENT_COPY[eventType]}</span>
                 </div>
                 {CHANNELS.map(channel => (
                   <div key={`${eventType}-${channel}`} className="channel-column">
@@ -191,6 +208,8 @@ export default function NotificationPreferences() {
                       <input
                         type="checkbox"
                         checked={Boolean(preferences[eventType]?.[`${channel}_enabled`])}
+                        disabled={(channel === 'sms' && !profile.phone) || (channel === 'email' && !profile.email)}
+                        title={channel === 'sms' && !profile.phone ? 'Verify phone before enabling SMS' : channel === 'email' && !profile.email ? 'Verify email before enabling email notifications' : undefined}
                         onChange={() => handleToggle(eventType, channel)}
                       />
                       <span className="toggle-slider"></span>
@@ -242,6 +261,12 @@ export default function NotificationPreferences() {
           border-color: var(--fp-border);
           background: #fff9ec;
           color: var(--fp-text) !important;
+        }
+        .event-description {
+          display: block;
+          color: var(--fp-text-muted);
+          font-size: 12px;
+          margin-top: 2px;
         }
         .card {
           border-radius: 28px;

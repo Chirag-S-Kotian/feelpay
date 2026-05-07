@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Landmark, Plus, RefreshCw, Send } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { apiRequest, getEnvironmentMode } from '../hooks/useApi';
 
 type Payout = {
   id: string;
@@ -8,6 +8,8 @@ type Payout = {
   currency: string;
   status: string;
   method: string;
+  purpose?: string;
+  reference?: string;
   bank_account_id?: string | null;
   payout_reference?: string | null;
   gateway_reference?: string | null;
@@ -59,12 +61,25 @@ export default function Payouts() {
   const [method, setMethod] = useState('imps');
   const [bankAccountId, setBankAccountId] = useState('');
   const [purpose, setPurpose] = useState('vendor_payment');
+  const [reference, setReference] = useState('');
+
+  const merchantId = useMemo(() => {
+    const raw = localStorage.getItem('feelpay_merchant');
+    if (!raw) return '';
+    try {
+      return (JSON.parse(raw) as { id?: string }).id || '';
+    } catch {
+      return '';
+    }
+  }, []);
 
   const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
   const totalPaid = payouts
     .filter((payout) => ['success', 'processed', 'completed'].includes(payout.status))
     .reduce((sum, payout) => sum + payout.amount, 0);
   const pendingCount = payouts.filter((payout) => ['created', 'queued', 'processing'].includes(payout.status)).length;
+  const verifiedAccounts = accounts.filter((account) => account.verification_status === 'verified' || account.is_verified);
+  const availableBalance = 5_000_000;
 
   const load = async () => {
     setLoading(true);
@@ -72,11 +87,13 @@ export default function Payouts() {
     try {
       const [payoutRes, accountRes] = await Promise.all([
         apiRequest<Payout[]>('GET', '/v1/payouts', undefined, undefined, { cacheMs: 5_000 }),
-        apiRequest<BankAccount[]>('GET', '/v1/payouts/bank-accounts', undefined, undefined, { cacheMs: 30_000 }),
+        apiRequest<{ accounts?: BankAccount[] }>('GET', `/v1/merchants/${merchantId}/bank-accounts`, undefined, undefined, { cacheMs: 30_000 }),
       ]);
       setPayouts(payoutRes || []);
-      setAccounts(accountRes || []);
-      if (!bankAccountId && accountRes?.[0]?.id) setBankAccountId(accountRes[0].id);
+      const nextAccounts = accountRes.accounts || [];
+      setAccounts(nextAccounts);
+      const firstVerified = nextAccounts.find((account) => account.verification_status === 'verified' || account.is_verified);
+      if (!bankAccountId && firstVerified?.id) setBankAccountId(firstVerified.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load payouts.');
     } finally {
@@ -96,8 +113,20 @@ export default function Payouts() {
       setError('Enter payout amount greater than 0.');
       return;
     }
+    if (Math.round(rupees * 100) < 100) {
+      setError('Minimum payout amount is INR 1.00.');
+      return;
+    }
+    if (Math.round(rupees * 100) > availableBalance) {
+      setError('Payout amount exceeds available sandbox balance.');
+      return;
+    }
     if (!bankAccountId) {
-      setError('Select bank account first.');
+      setError('Add verified bank account before creating payout.');
+      return;
+    }
+    if (!purpose) {
+      setError('Select payout purpose.');
       return;
     }
     setSaving(true);
@@ -107,9 +136,10 @@ export default function Payouts() {
         currency: 'INR',
         method,
         bank_account_id: bankAccountId,
-        metadata: { purpose },
+        metadata: { purpose, reference: reference.trim() || undefined, environment: getEnvironmentMode() },
       }, undefined, { idempotencyKey: `payout_${Date.now()}` });
       setAmount('');
+      setReference('');
       setNotice('Payout queued for processing.');
       await load();
     } catch (err) {
@@ -137,6 +167,15 @@ export default function Payouts() {
       <div className="payout-grid">
         <section className="card">
           <h3 className="section-title"><Send size={17} /> Create Payout</h3>
+          {verifiedAccounts.length === 0 ? (
+            <div className="payout-empty">
+              <Landmark size={26} />
+              <strong>Add verified bank account</strong>
+              <p>No verified settlement account exists yet. Add a sandbox bank account, verify it, then create test payouts.</p>
+              <a className="btn btn-primary" href="/bank-accounts">Add verified bank account</a>
+            </div>
+          ) : (
+          <>
           <div className="payout-form">
             <label>
               Amount
@@ -145,7 +184,7 @@ export default function Payouts() {
             <label>
               Bank Account
               <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}>
-                {accounts.map((account) => (
+                {verifiedAccounts.map((account) => (
                   <option key={account.id} value={account.id}>{accountLabel(account)}</option>
                 ))}
               </select>
@@ -161,6 +200,10 @@ export default function Payouts() {
               </div>
             </label>
             <label>
+              Reference
+              <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="PO-1001" />
+            </label>
+            <label>
               Purpose
               <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
                 <option value="vendor_payment">Vendor payment</option>
@@ -173,7 +216,9 @@ export default function Payouts() {
           <button className="btn btn-primary" onClick={() => void createPayout()} disabled={saving || accounts.length === 0}>
             <Plus size={16} /> {saving ? 'Creating...' : 'Create Payout'}
           </button>
-          {accounts.length === 0 && <p className="mini-help">Add and verify bank account before creating payout.</p>}
+          <p className="mini-help">Test mode simulates payout records only. Live mode fails closed until onboarding and bank verification are complete.</p>
+          </>
+          )}
         </section>
 
         <section className="card payout-summary">
@@ -181,7 +226,7 @@ export default function Payouts() {
           <div className="payout-health-grid">
             <div className="payout-health-tile"><span>Total paid</span><strong>{money(totalPaid)}</strong></div>
             <div className="payout-health-tile"><span>Pending</span><strong>{pendingCount}</strong></div>
-            <div className="payout-health-tile"><span>Accounts</span><strong>{accounts.length}</strong></div>
+            <div className="payout-health-tile"><span>Verified accounts</span><strong>{verifiedAccounts.length}</strong></div>
             <div className="payout-health-tile"><span>Default rail</span><strong>{method.toUpperCase()}</strong></div>
           </div>
         </section>
@@ -242,6 +287,8 @@ export default function Payouts() {
         }
         .payout-health-tile span { font-size: 12px; color: var(--fp-text-muted); }
         .payout-health-tile strong { font-size: 22px; line-height: 1.1; color: var(--fp-text); }
+        .payout-empty { min-height: 210px; display: grid; align-content: center; justify-items: start; gap: 10px; color: var(--fp-text-muted); }
+        .payout-empty strong { color: var(--fp-text); font-size: 18px; }
         .mono { font-family: Fira Code, monospace; font-size: 12px; }
         @media (max-width: 900px) { .payout-grid, .payout-form, .payout-health-grid { grid-template-columns: 1fr; } }
       `}</style>

@@ -218,7 +218,9 @@ export default function SettlementReports() {
           {settlements.length === 0 ? (
             <div className="empty-state">
               <FileText size={32} />
-              <p>No settlements found</p>
+              <h3>No settlements found</h3>
+              <p>No settlement batches exist yet. Complete sandbox checkout payments and add a verified settlement bank account to generate test-mode reports.</p>
+              <a className="btn-primary" href="/bank-accounts">Set up bank account</a>
             </div>
           ) : (
             <div className="table-container">

@@ -303,8 +303,8 @@ impl WebhookTestService {
         let logs = sqlx::query_as::<
             _,
             (
-                String,
-                String,
+                Uuid,
+                Uuid,
                 String,
                 String,
                 String,
@@ -312,7 +312,7 @@ impl WebhookTestService {
                 Option<i64>,
                 Option<String>,
                 Option<String>,
-                String,
+                DateTime<Utc>,
             ),
         >(
             r#"
@@ -351,8 +351,8 @@ impl WebhookTestService {
                     created_at,
                 ) = row;
                 WebhookTestResult {
-                    test_id: Uuid::parse_str(&id).unwrap_or_default(),
-                    merchant_id: Uuid::parse_str(&merchant_id).unwrap_or_default(),
+                    test_id: id,
+                    merchant_id,
                     event_type,
                     webhook_url,
                     status,
@@ -360,9 +360,7 @@ impl WebhookTestService {
                     response_time_ms,
                     response_body,
                     error_message,
-                    created_at: chrono::DateTime::parse_from_rfc3339(&created_at)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now()),
+                    created_at,
                 }
             })
             .collect();

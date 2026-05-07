@@ -36,6 +36,7 @@ pub enum VerificationStatus {
     Pending,
     Verified,
     Failed,
+    Deactivated,
 }
 
 impl VerificationStatus {
@@ -44,6 +45,7 @@ impl VerificationStatus {
             Self::Pending => "pending",
             Self::Verified => "verified",
             Self::Failed => "failed",
+            Self::Deactivated => "deactivated",
         }
     }
 
@@ -52,6 +54,7 @@ impl VerificationStatus {
             "pending" => Some(Self::Pending),
             "verified" => Some(Self::Verified),
             "failed" => Some(Self::Failed),
+            "deactivated" => Some(Self::Deactivated),
             _ => None,
         }
     }
@@ -296,11 +299,11 @@ impl BankAccountService {
         >(
             r#"
             INSERT INTO bank_accounts (
-                id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
+                id, merchant_id, account_holder_name, account_number_encrypted, account_number, ifsc_code,
                 account_type, verification_status, penny_drop_amount_paise, penny_drop_reference,
                 is_primary, created_at, updated_at, verified_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING 
                 id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
                 account_type, verification_status, penny_drop_amount_paise, penny_drop_reference,
@@ -311,6 +314,7 @@ impl BankAccountService {
         .bind(merchant_id)
         .bind(&request.account_holder_name)
         .bind(&encrypted_account)
+        .bind(mask_bank_account(&request.account_number))
         .bind(&request.ifsc_code)
         .bind(account_type.as_str())
         .bind(VerificationStatus::Pending.as_str())

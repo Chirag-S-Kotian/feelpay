@@ -19,6 +19,8 @@ interface MerchantProfile {
   business_name?: string | null;
   business_type?: string | null;
   webhook_url?: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
   daily_limit: number;
   monthly_limit: number;
   onboarding_status: string;
@@ -117,6 +119,12 @@ export default function Settings() {
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('individual');
+  const [phone, setPhone] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [profile, setProfile] = useState<MerchantProfile | null>(null);
   const [security, setSecurity] = useState<SecuritySettings | null>(null);
@@ -180,6 +188,8 @@ export default function Settings() {
       setName(profileRes.name || '');
       setBusinessName(profileRes.business_name || '');
       setBusinessType((profileRes.business_type || 'individual').toLowerCase());
+      setPhone(profileRes.phone || '');
+      setAvatarUrl(profileRes.avatar_url || '');
       setWebhookUrl(profileRes.webhook_url || '');
       setTeam(teamRes || []);
       setHubSections(hubRes || []);
@@ -226,18 +236,65 @@ export default function Settings() {
   const saveProfile = async () => {
     setSaving(true);
     setNotice('');
+    setWarning('');
     try {
+      if (!name.trim() || !businessName.trim()) {
+        setWarning('Account name and business name are required.');
+        return;
+      }
+      if (newPassword && newPassword !== confirmPassword) {
+        setWarning('Confirm password does not match.');
+        return;
+      }
       await apiRequest('PUT', '/v1/merchants/profile', {
-        name: name.trim() || null,
-        business_name: businessName.trim() || null,
+        name: name.trim(),
+        business_name: businessName.trim(),
         business_type: businessType,
         webhook_url: webhookUrl.trim() || null,
+        phone: phone.trim() || null,
+        avatar_url: avatarUrl.trim() || null,
+        current_password: newPassword ? currentPassword : undefined,
+        new_password: newPassword || undefined,
+        confirm_password: newPassword ? confirmPassword : undefined,
       });
       await loadAll();
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
       setNotice('Settings saved.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const uploadAvatar = async (file: File | null) => {
+    setWarning('');
+    if (!file) return;
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setWarning('Avatar must be PNG, JPEG, or WEBP.');
+      return;
+    }
+    if (file.size < 100 * 1024 || file.size > 5 * 1024 * 1024) {
+      setWarning('Avatar must be between 100KB and 5MB.');
+      return;
+    }
+    setUploadProgress(20);
+    const dataBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Unable to read avatar file.'));
+      reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+      reader.readAsDataURL(file);
+    });
+    setUploadProgress(60);
+    const res = await apiRequest<{ avatar_url: string }>('POST', '/v1/merchants/profile/avatar-upload', {
+      filename: file.name,
+      content_type: file.type,
+      data_base64: dataBase64,
+    });
+    setUploadProgress(100);
+    setAvatarUrl(res.avatar_url);
+    setTimeout(() => setUploadProgress(0), 800);
   };
 
   const sendTestWebhook = async () => {
@@ -340,12 +397,20 @@ export default function Settings() {
         <section className="card">
           <h3 className="section-title"><ShieldCheck size={17} /> Business Identity</h3>
           <div className="input-group">
+            <label>Avatar</label>
+            <div className="avatar-row">
+              {avatarUrl ? <img src={avatarUrl} alt="" className="avatar-preview" /> : <div className="avatar-preview avatar-empty" />}
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => void uploadAvatar(e.target.files?.[0] || null)} />
+            </div>
+            {uploadProgress > 0 && <progress value={uploadProgress} max={100} />}
+          </div>
+          <div className="input-group">
             <label>Owner / Account Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Merchant account name" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Merchant account name" autoComplete="name" />
           </div>
           <div className="input-group">
             <label>Business Name</label>
-            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Legal business name" />
+            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Legal business name" autoComplete="organization" />
           </div>
           <div className="input-group">
             <label>Business Type</label>
@@ -358,8 +423,17 @@ export default function Settings() {
             </select>
           </div>
           <div className="input-group">
+            <label>Support Phone</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+919876543210" autoComplete="tel" />
+          </div>
+          <div className="input-group">
             <label>Email</label>
             <input value={profile?.email || ''} readOnly />
+          </div>
+          <div className="password-grid">
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" autoComplete="current-password" />
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" autoComplete="new-password" />
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" autoComplete="new-password" />
           </div>
           <button className="btn-primary" onClick={() => void saveProfile()} disabled={saving}>
             {saving ? 'Saving...' : 'Save Business Settings'}
@@ -580,6 +654,35 @@ export default function Settings() {
           padding: 10px;
           margin: 12px 0;
           background: rgba(14, 34, 63, 0.56);
+        }
+        .avatar-row {
+          display: grid;
+          grid-template-columns: 56px minmax(0, 1fr);
+          gap: 10px;
+          align-items: center;
+        }
+        .avatar-preview {
+          width: 56px;
+          height: 56px;
+          object-fit: cover;
+          border-radius: 50%;
+          border: 1px solid rgba(103, 166, 255, 0.32);
+          background: rgba(14, 34, 63, 0.72);
+        }
+        .avatar-empty::after {
+          content: '';
+          display: block;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          margin: 18px;
+          background: rgba(158, 197, 255, 0.55);
+        }
+        .password-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+          margin-bottom: 12px;
         }
         .security-row {
           display: flex;

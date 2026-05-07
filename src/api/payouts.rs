@@ -31,10 +31,22 @@ async fn request_payout(
         Some(id) => id,
         None => return HttpResponse::BadRequest().body("Bank account ID is required"),
     };
+    if req.amount < 100 {
+        return HttpResponse::BadRequest().body("Minimum payout amount is INR 1.00");
+    }
+    let purpose = req
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("purpose"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if purpose.trim().is_empty() {
+        return HttpResponse::BadRequest().body("Payout purpose is required");
+    }
 
     // Verify bank account belongs to merchant
     let account_exists =
-        sqlx::query("SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2")
+        sqlx::query("SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2 AND (verification_status = 'verified' OR is_verified = true)")
             .bind(bank_account_id)
             .bind(merchant_id)
             .fetch_optional(pool.get_ref())
@@ -42,20 +54,46 @@ async fn request_payout(
 
     match account_exists {
         Ok(Some(_)) => (),
-        Ok(None) => return HttpResponse::BadRequest().body("Invalid bank account"),
+        Ok(None) => {
+            return HttpResponse::BadRequest()
+                .body("Add verified bank account before creating payout")
+        }
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    }
+
+    let mode = req
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("environment"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("test");
+    let onboarding_ok: bool = sqlx::query_scalar(
+        "SELECT COALESCE(onboarding_status, 'pending') IN ('approved', 'verified') FROM merchants WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(false);
+    if mode == "live" && !onboarding_ok {
+        return HttpResponse::Forbidden()
+            .body("Live payouts unlock after onboarding approval and bank verification");
     }
 
     let payout = sqlx::query_as::<_, Payout>(
         "INSERT INTO payouts (merchant_id, amount, currency, method, bank_account_id, status, metadata) 
-         VALUES ($1, $2, $3, $4, $5, 'created', $6) RETURNING *"
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *"
     )
     .bind(merchant_id)
     .bind(req.amount)
     .bind(&req.currency)
     .bind(&req.method)
     .bind(bank_account_id)
-    .bind(&req.metadata)
+    .bind(if mode == "live" { "created" } else { "processed" })
+    .bind(serde_json::json!({
+        "purpose": purpose,
+        "environment": mode,
+        "sandbox": mode != "live"
+    }))
     .fetch_one(pool.get_ref())
     .await;
 
@@ -71,6 +109,20 @@ async fn request_payout(
         }
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SafePayoutBankAccount {
+    id: Uuid,
+    account_holder_name: String,
+    account_number_masked: String,
+    ifsc_code: String,
+    bank_name: Option<String>,
+    is_verified: bool,
+    verification_status: String,
+    is_primary: bool,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[get("")]
@@ -101,14 +153,42 @@ async fn get_bank_accounts(pool: web::Data<PgPool>, claims: Claims) -> impl Resp
     };
 
     let accounts = sqlx::query_as::<_, BankAccount>(
-        "SELECT * FROM bank_accounts WHERE merchant_id = $1 ORDER BY created_at DESC",
+        "SELECT * FROM bank_accounts WHERE merchant_id = $1 AND COALESCE(verification_status, CASE WHEN is_verified THEN 'verified' ELSE 'pending' END) <> 'deactivated' ORDER BY is_primary DESC, created_at DESC",
     )
     .bind(merchant_id)
     .fetch_all(pool.get_ref())
     .await;
 
     match accounts {
-        Ok(a) => HttpResponse::Ok().json(a),
+        Ok(a) => HttpResponse::Ok().json(
+            a.into_iter()
+                .map(|account| {
+                    let raw = account.account_number;
+                    let last4 = if raw.len() >= 4 {
+                        &raw[raw.len() - 4..]
+                    } else {
+                        "----"
+                    };
+                    let status = if account.is_verified {
+                        "verified".to_string()
+                    } else {
+                        "pending".to_string()
+                    };
+                    SafePayoutBankAccount {
+                        id: account.id,
+                        account_holder_name: account.account_holder_name,
+                        account_number_masked: format!("XXXX...{}", last4),
+                        ifsc_code: account.ifsc_code,
+                        bank_name: account.bank_name,
+                        is_verified: account.is_verified || status == "verified",
+                        verification_status: status,
+                        is_primary: account.is_primary,
+                        created_at: account.created_at,
+                        updated_at: account.updated_at,
+                    }
+                })
+                .collect::<Vec<_>>(),
+        ),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }

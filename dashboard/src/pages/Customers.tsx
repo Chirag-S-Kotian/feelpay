@@ -9,6 +9,7 @@ interface Customer {
   email?: string;
   phone?: string;
   name?: string;
+  metadata?: { notes?: string; lifetime_value?: number };
   created_at: string;
 }
 
@@ -43,6 +44,7 @@ export default function Customers() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>([]);
+  const [methodCounts, setMethodCounts] = useState<Record<string, number>>({});
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel'>('csv');
   const [createError, setCreateError] = useState('');
@@ -63,6 +65,7 @@ export default function Customers() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     fetchCustomers();
@@ -72,6 +75,15 @@ export default function Customers() {
     try {
       const data = await apiRequest<CustomersResponse>('GET', '/v1/customers');
       setCustomers(data.data || []);
+      const countEntries = await Promise.all((data.data || []).slice(0, 50).map(async (customer) => {
+        try {
+          const methods = await apiRequest<SavedPaymentMethod[]>('GET', `/v1/customers/${customer.id}/payment-methods`, undefined, undefined, { cacheMs: 30_000 });
+          return [customer.id, methods.length] as const;
+        } catch {
+          return [customer.id, 0] as const;
+        }
+      }));
+      setMethodCounts(Object.fromEntries(countEntries));
     } catch (err) {
       console.error('Failed to fetch customers:', err);
     } finally {
@@ -105,14 +117,23 @@ export default function Customers() {
       setCreateError('Enter valid phone reference');
       return;
     }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setCreateError('Enter valid email');
+      return;
+    }
+    if (phone.trim() && !/^\+?[0-9\s-]{8,20}$/.test(phone.trim())) {
+      setCreateError('Enter valid phone');
+      return;
+    }
 
     try {
       await apiRequest('POST', '/v1/customers', {
         customer_reference: refValue.trim(),
         customer_reference_type: refType,
         name: name || undefined,
-        email: email || undefined,
-        phone: phone || undefined,
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        metadata: { notes: notes.trim() || undefined },
       });
 
       setShowCreate(false);
@@ -120,6 +141,7 @@ export default function Customers() {
       setName('');
       setEmail('');
       setPhone('');
+      setNotes('');
       setCreateError('');
       fetchCustomers();
     } catch (err) {
@@ -149,6 +171,22 @@ export default function Customers() {
       window.location.href = `/v1/merchants/${merchantId}/exports/${res.job_id}/file`;
     } catch (err) {
       console.error('Failed to export customers:', err);
+      const header = ['name', 'email', 'phone', 'reference_type', 'reference', 'created_at'];
+      const rows = customers.map((customer) => [
+        customer.name || '',
+        customer.email || '',
+        customer.phone || '',
+        customer.customer_reference_type,
+        customer.customer_reference,
+        customer.created_at,
+      ]);
+      const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `feelpay-customers-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
     } finally {
       setExporting(false);
     }
@@ -256,6 +294,15 @@ export default function Customers() {
                 placeholder="+91 98765 43210"
               />
             </div>
+            <div className="customers-field customers-span-2">
+              <label className="form-label">Notes (optional)</label>
+              <textarea
+                className="form-input customers-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Internal customer note"
+              />
+            </div>
           </div>
 
           <div className="customers-form-actions">
@@ -312,6 +359,8 @@ export default function Customers() {
                 <th>Contact</th>
                 <th>Reference</th>
                 <th>Created</th>
+                <th>Methods</th>
+                <th>LTV</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -342,6 +391,8 @@ export default function Customers() {
                     <div className="customers-sub" style={{ marginTop: 4 }}>{customer.customer_reference}</div>
                   </td>
                   <td className="customers-date">{formatDate(customer.created_at)}</td>
+                  <td>{methodCounts[customer.id] ?? 0}</td>
+                  <td>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format((customer.metadata?.lifetime_value || 0) / 100)}</td>
                   <td>
                     <div className="customers-action-row">
                       <button
