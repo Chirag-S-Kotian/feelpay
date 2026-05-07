@@ -1,50 +1,113 @@
-# FeelPay Agent Guide
+# AGENTS.md
+# Optimized for Codex CLI / Cursor / Claude Code / Cline
+# Goals:
+# - minimal tokens
+# - stable cache prefix
+# - fast responses
+# - low context drift
+# - repo-safe edits
 
-Evidence first. Small context. Small diff.
+## Core
+- evidence > assumptions
+- minimal context
+- minimal diff
+- read before write
+- verify touched surfaces only
+- never scan entire repo
+- avoid repeated reads
+- summarize completed work
+- drop irrelevant history
 
-## Context Loading
+## Routing
+backend=src/api|src/middleware|src/models|src/**/*.rs
+frontend=dashboard|admin
+payments=src/engine|src/vault
+db=migrations|src/db|.sqlx|**/*.sql
 
-Load `.agents/` modules **only** when touching their domain:
-- `backend.md` → `src/api/`, `src/middleware/`, `src/models/`, `src/*.rs`
-- `frontend.md` → `dashboard/`, `admin/`
-- `payments.md` → `src/engine/`, `src/vault/`
-- `db.md` → `migrations/`, `src/db/`, `.sqlx/`, SQL queries
+unknown=graphify-out/GRAPH_REPORT.md
 
-Unknown module? Read `graphify-out/GRAPH_REPORT.md` first.
+## Load Policy
+- load only matching domain file
+- never preload all agents
+- never reread unchanged files
+- prefer rg over full reads
+- prefer targeted slices
+- max file read: 300 lines
+- max concurrent files: 5
 
-## Workflow
+## Execution
+1.restate task
+2.load relevant agent
+3.read minimal files
+4.patch
+5.verify touched areas
+6.report concise result
 
-1. Restate task (1 line). Load relevant `.agents/` context.
-2. Read only needed files via `rg` / targeted slices. No bulk context.
-3. Plan for risky/multi-file work; otherwise patch directly.
-4. After code changes: `./scripts/graphify update .`
-5. Run verification gate. Report files + commands + exit status.
+## Verification Matrix
+rust:
+- cargo check
 
-## Verification Gate
+db:
+- sqlx migrate run
 
-```bash
-./scripts/graphify update .
-cargo check
-sqlx migrate run
-cd dashboard && pnpm build && pnpm exec tsc --noEmit
-```
+frontend:
+- cd dashboard && pnpm exec tsc --noEmit
+- cd dashboard && pnpm build
 
-Skip `cargo test` unless explicitly requested; it can hang/crash this workstation.
+graph:
+- ./scripts/graphify update .
 
-All exit 0. If blocked, state exact blocker + exit code.
+## Verification Rules
+- run only relevant checks
+- skip untouched domains
+- never run cargo test unless requested
+- stop on first failing gate
+- report exact failing command + exit code
 
-## Output Rule
+## Context Budget
+- target active context <12k
+- compress every 5 turns
+- summarize before large edits
+- evict logs/tool-output after use
+- keep only:
+  - decisions
+  - touched files
+  - blockers
+  - active task
 
-Final response ≤5 lines: what changed, files, commands + exit codes.
+## Diff Rules
+- avoid formatting-only edits
+- avoid unrelated refactors
+- preserve existing style
+- prefer smallest safe patch
+- never rewrite working code unnecessarily
 
-## PR Format
+## Search Rules
+- use rg first
+- avoid global searches
+- avoid opening generated files
+- avoid vendor/build dirs
+- avoid lockfiles unless needed
 
-```
-## What — [one sentence]
-## How — [2-4 bullets]
-## Tested — [command] - [exit status]
-```
+## Safety
+- confirm before destructive ops
+- never expose secrets
+- never hardcode credentials
+- never modify prod configs blindly
 
-## Compact Summary
+## Output
+max 5 lines:
+- changed files
+- commands
+- exit codes
+- blockers
 
-Preserve: task, changed files, decisions, commands/exit codes, blockers, next step.
+## PR
+What:
+- one-line summary
+
+How:
+- concise bullets
+
+Tested:
+- command + exit code
