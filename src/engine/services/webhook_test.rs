@@ -340,7 +340,7 @@ impl WebhookTestService {
         offset: i64,
     ) -> Result<(Vec<WebhookTestResult>, i64), FeelPayError> {
         // Get total count
-        let (total,): (i64,) = sqlx::query_as(
+        let total_result = sqlx::query_as::<sqlx::Postgres, (i64,)>(
             r#"
             SELECT COUNT(*) FROM webhook_test_logs WHERE merchant_id = $1
             "#,
@@ -349,9 +349,21 @@ impl WebhookTestService {
         .fetch_one(&self.db)
         .await
         .map_err(|e| {
+            // If table doesn't exist yet, don't 500, just return 0
+            if let Some(db_err) = e.as_database_error() {
+                if db_err.code() == Some(std::borrow::Cow::Borrowed("42P01")) {
+                    return FeelPayError::Database("Table missing".into()); // Will be caught below
+                }
+            }
             tracing::error!("Failed to count webhook test logs: {:?}", e);
             FeelPayError::Database(e.to_string())
-        })?;
+        });
+
+        // Special handling for missing table
+        let total = match total_result {
+            Ok((t,)) => t,
+            Err(_) => return Ok((vec![], 0)),
+        };
 
         // Get paginated results
         let logs = sqlx::query_as::<

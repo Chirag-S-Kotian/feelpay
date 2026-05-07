@@ -394,27 +394,27 @@ export default function Settings() {
       )}
 
       <div className="settings-grid">
-        <section className="card">
+        <form className="card" onSubmit={(e) => { e.preventDefault(); void saveProfile(); }}>
           <h3 className="section-title"><ShieldCheck size={17} /> Business Identity</h3>
           <div className="input-group">
-            <label>Avatar</label>
+            <label htmlFor="settings-avatar">Avatar</label>
             <div className="avatar-row">
               {avatarUrl ? <img src={avatarUrl} alt="" className="avatar-preview" /> : <div className="avatar-preview avatar-empty" />}
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => void uploadAvatar(e.target.files?.[0] || null)} />
+              <input id="settings-avatar" type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => void uploadAvatar(e.target.files?.[0] || null)} />
             </div>
             {uploadProgress > 0 && <progress value={uploadProgress} max={100} />}
           </div>
           <div className="input-group">
-            <label>Owner / Account Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Merchant account name" autoComplete="name" />
+            <label htmlFor="settings-name">Owner / Account Name</label>
+            <input id="settings-name" name="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Merchant account name" autoComplete="name" />
           </div>
           <div className="input-group">
-            <label>Business Name</label>
-            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Legal business name" autoComplete="organization" />
+            <label htmlFor="settings-business-name">Business Name</label>
+            <input id="settings-business-name" name="organization" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Legal business name" autoComplete="organization" />
           </div>
           <div className="input-group">
-            <label>Business Type</label>
-            <select value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
+            <label htmlFor="settings-business-type">Business Type</label>
+            <select id="settings-business-type" value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
               <option value="individual">Individual</option>
               <option value="sole_proprietorship">Sole Proprietorship</option>
               <option value="partnership">Partnership</option>
@@ -423,22 +423,22 @@ export default function Settings() {
             </select>
           </div>
           <div className="input-group">
-            <label>Support Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+919876543210" autoComplete="tel" />
+            <label htmlFor="settings-phone">Support Phone</label>
+            <input id="settings-phone" name="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+919876543210" autoComplete="tel" />
           </div>
           <div className="input-group">
-            <label>Email</label>
-            <input value={profile?.email || ''} readOnly />
+            <label htmlFor="settings-email">Email</label>
+            <input id="settings-email" value={profile?.email || ''} readOnly autoComplete="email" />
           </div>
           <div className="password-grid">
-            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" autoComplete="current-password" />
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" autoComplete="new-password" />
-            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" autoComplete="new-password" />
+            <input id="settings-current-password" name="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" autoComplete="current-password" />
+            <input id="settings-new-password" name="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" autoComplete="new-password" />
+            <input id="settings-confirm-password" name="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" autoComplete="new-password" />
           </div>
-          <button className="btn-primary" onClick={() => void saveProfile()} disabled={saving}>
+          <button type="submit" className="btn-primary" disabled={saving}>
             {saving ? 'Saving...' : 'Save Business Settings'}
           </button>
-        </section>
+        </form>
 
         <section className="card">
           <h3 className="section-title"><KeyRound size={17} /> API Authentication</h3>

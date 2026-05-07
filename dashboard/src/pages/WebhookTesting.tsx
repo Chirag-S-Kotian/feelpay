@@ -217,9 +217,11 @@ export default function WebhookTesting() {
           <h2>Endpoint</h2>
 
           <div className="form-group">
-            <label>Webhook URL</label>
+            <label htmlFor="webhook-url-input">Webhook URL</label>
             <div className="webhook-url-row">
               <input
+                id="webhook-url-input"
+                name="webhook_url"
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
                 placeholder="https://merchant.example/webhooks/feelpay"

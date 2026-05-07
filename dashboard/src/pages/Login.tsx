@@ -121,8 +121,11 @@ export default function Login() {
               {error && <div className="error-message">{error}</div>}
               
               <div className="form-group">
-                <label>Email</label>
+                <label htmlFor="login-email">Email</label>
                 <input 
+                  id="login-email"
+                  name="email"
+                  autoComplete="username"
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -132,9 +135,12 @@ export default function Login() {
               </div>
 
               <div className="form-group">
-                <label>Password</label>
+                <label htmlFor="login-password">Password</label>
                 <div className="password-input-wrapper">
                   <input 
+                    id="login-password"
+                    name="password"
+                    autoComplete="current-password"
                     type={showPassword ? "text" : "password"} 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

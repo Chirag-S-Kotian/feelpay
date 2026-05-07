@@ -1,12 +1,12 @@
 # Graph Report - /home/chiragskotian/Desktop/payment  (2026-05-07)
 
 ## Corpus Check
-- 306 files · ~490,202 words
+- 306 files · ~490,450 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2726 nodes · 5667 edges · 162 communities detected
-- Extraction: 64% EXTRACTED · 36% INFERRED · 0% AMBIGUOUS · INFERRED: 2030 edges (avg confidence: 0.8)
+- 2726 nodes · 5668 edges · 162 communities detected
+- Extraction: 64% EXTRACTED · 36% INFERRED · 0% AMBIGUOUS · INFERRED: 2031 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -201,7 +201,7 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
-Nodes (384): AuditLogQuery, list_audit_logs(), list_kyc_audit_logs(), AccessReviewDecisionRequest, AccessReviewRequest, acknowledge_notification(), admin_user_audit(), admin_user_id_from_request() (+376 more)
+Nodes (387): AuditLogQuery, list_audit_logs(), list_kyc_audit_logs(), AccessReviewDecisionRequest, AccessReviewRequest, acknowledge_notification(), admin_user_audit(), admin_user_id_from_request() (+379 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
@@ -213,15 +213,15 @@ Nodes (122): mfa_setup(), adyen_event(), filter_value(), nested_provider_id(), p
 
 ### Community 3 - "Community 3"
 Cohesion: 0.02
-Nodes (137): hash_password(), ApiKeyMiddleware, ApiKeyMiddlewareService, ApiKeyMiddlewareService<S>, AuthResponse, bearer_token_from_request(), captcha(), CaptchaResponse (+129 more)
+Nodes (89): fetchData(), load(), create(), load(), getAdminClaims(), handleLogout(), handleSubmit(), hasPermission() (+81 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.02
-Nodes (88): AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse, BankAccountService, VerificationStatus, BinInfo, BinLookup (+80 more)
+Cohesion: 0.03
+Nodes (130): hash_password(), ApiKeyMiddleware, ApiKeyMiddlewareService, ApiKeyMiddlewareService<S>, AuthResponse, bearer_token_from_request(), captcha(), CaptchaResponse (+122 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.02
-Nodes (85): fetchData(), load(), create(), load(), getAdminClaims(), handleLogout(), handleSubmit(), hasPermission() (+77 more)
+Nodes (80): AccountType, AddBankAccountRequest, BankAccount, BankAccountResponse, BankAccountService, VerificationStatus, BinInfo, BinLookup (+72 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.01
@@ -237,7 +237,7 @@ Nodes (69): create_customer(), CustomerListResponse, delete_customer(), get_cust
 
 ### Community 9 - "Community 9"
 Cohesion: 0.05
-Nodes (50): AdminUserRequest, create_admin_user(), deactivate_admin_user(), list_admin_users(), update_admin_user(), admin_id_from_claims(), log_audit(), actor_id_from_claims() (+42 more)
+Nodes (54): AdminUserRequest, create_admin_user(), deactivate_admin_user(), list_admin_users(), update_admin_user(), admin_id_from_claims(), log_audit(), actor_id_from_claims() (+46 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.04
@@ -321,11 +321,11 @@ Nodes (4): simulator_fail_action_declines_payment(), simulator_success_action_ca
 
 ### Community 30 - "Community 30"
 Cohesion: 0.15
-Nodes (5): CreateScheduledReportRequest, ReportFrequency, ReportType, ScheduledReport, UpdateScheduledReportRequest
+Nodes (8): CapturePaymentRequest, ConnectorResponse, ConnectorType, CreatePaymentRequest, PaymentListQuery, PaymentListResponse, PaymentOrder, PaymentStatus
 
 ### Community 31 - "Community 31"
-Cohesion: 0.27
-Nodes (4): createNote(), deleteNote(), fetchNotes(), updateNote()
+Cohesion: 0.15
+Nodes (5): CreateScheduledReportRequest, ReportFrequency, ReportType, ScheduledReport, UpdateScheduledReportRequest
 
 ### Community 32 - "Community 32"
 Cohesion: 0.22
@@ -336,12 +336,12 @@ Cohesion: 0.29
 Nodes (5): CreatePaymentLinkRequest, ListPaymentLinksQuery, PaymentLink, PaymentLinkResponse, PaymentLinkStatus
 
 ### Community 34 - "Community 34"
-Cohesion: 0.43
-Nodes (6): cancel_mandate(), execute_mandate(), get_mandate(), initiate_mandate(), list_mandates(), merchant_id_from_req()
-
-### Community 35 - "Community 35"
 Cohesion: 0.29
 Nodes (4): ReplayCheckPassed, ReplayPrevention, ReplayPreventionMiddleware, test_replay_nonce_format()
+
+### Community 35 - "Community 35"
+Cohesion: 0.43
+Nodes (6): cancel_mandate(), execute_mandate(), get_mandate(), initiate_mandate(), list_mandates(), merchant_id_from_req()
 
 ### Community 36 - "Community 36"
 Cohesion: 0.43
@@ -996,10 +996,10 @@ Nodes (1): HTTP Strict Transport Security
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 15`, `Community 16`, `Community 17`, `Community 26`, `Community 27`, `Community 34`, `Community 37`, `Community 39`, `Community 40`, `Community 47`?**
-  _High betweenness centrality (0.202) - this node is a cross-community bridge._
-- **Why does `apiRequest()` connect `Community 5` to `Community 10`, `Community 11`, `Community 14`, `Community 31`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
+- **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 15`, `Community 16`, `Community 17`, `Community 26`, `Community 27`, `Community 35`, `Community 37`, `Community 39`, `Community 40`, `Community 47`?**
+  _High betweenness centrality (0.205) - this node is a cross-community bridge._
+- **Why does `apiRequest()` connect `Community 3` to `Community 10`, `Community 11`, `Community 14`?**
+  _High betweenness centrality (0.117) - this node is a cross-community bridge._
 - **Are the 413 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 413 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 53 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**
