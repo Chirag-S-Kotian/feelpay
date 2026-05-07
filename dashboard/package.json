@@ -9,7 +9,10 @@
     "lint": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test e2e/merchant-auth.spec.ts e2e/login-flow.spec.ts --project=chromium-desktop",
+    "test:e2e:full-merchant": "playwright test e2e/merchant-*.spec.ts --project=chromium-desktop",
+    "test:e2e:a11y": "playwright test e2e/merchant-a11y.spec.ts e2e/login-flow.spec.ts --project=chromium-desktop"
   },
   "dependencies": {
     "react": "^19.0.0",

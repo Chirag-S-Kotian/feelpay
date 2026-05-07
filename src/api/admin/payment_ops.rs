@@ -29,7 +29,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::resource("/admin/users/{tail:.*}").route(web::post().to(write_ok)))
         .service(web::resource("/admin/exports").route(web::get().to(exports)))
         .service(web::resource("/admin/exports/bulk").route(web::post().to(export_bulk)))
-        .service(web::resource("/admin/exports/{tail:.*}/download").route(web::get().to(export_download)))
+        .service(
+            web::resource("/admin/exports/{tail:.*}/download")
+                .route(web::get().to(export_download)),
+        )
         .service(web::resource("/admin/system-health/{tail:.*}").route(web::post().to(write_ok)))
         .service(web::resource("/admin/notifications/{tail:.*}").route(web::post().to(write_ok)));
 }
@@ -94,7 +97,9 @@ async fn payment_ops_get(req: HttpRequest) -> HttpResponse {
             "summary": { "total_balance": 0, "debits": 1250, "credits": 1250 },
             "items": ledger_entries()
         }),
-        "ledger/export" => json!({ "status": "ready", "download_url": "/admin/payment-ops/ledger/export.csv" }),
+        "ledger/export" => {
+            json!({ "status": "ready", "download_url": "/admin/payment-ops/ledger/export.csv" })
+        }
         "refunds" => json!({ "items": [] }),
         "settlements" => json!({ "items": [{
             "id": sandbox_id(),
@@ -164,7 +169,9 @@ async fn payment_ops_get(req: HttpRequest) -> HttpResponse {
             "status": "sent",
             "created_at": "2026-05-07T00:00:00Z"
         }] }),
-        "webhook-events" | "developer/webhook-events" => json!({ "items": webhook_events(), "rows": webhook_events() }),
+        "webhook-events" | "developer/webhook-events" => {
+            json!({ "items": webhook_events(), "rows": webhook_events() })
+        }
         "webhook-processing-attempts" => json!({ "items": [{
             "id": sandbox_id(),
             "webhook_event_id": sandbox_id(),
@@ -186,7 +193,9 @@ async fn payment_ops_get(req: HttpRequest) -> HttpResponse {
             "status": "READY",
             "created_at": "2026-05-07T00:00:00Z"
         }] }),
-        tail if tail.starts_with("reports/download/") => json!({ "status": "READY", "download_url": "/sandbox-report.csv" }),
+        tail if tail.starts_with("reports/download/") => {
+            json!({ "status": "READY", "download_url": "/sandbox-report.csv" })
+        }
         "developer/request-logs" => json!({ "items": [] }),
         "developer/replays" | "developer/webhook-replays" => json!({ "items": [{
             "id": sandbox_id(),
@@ -199,10 +208,17 @@ async fn payment_ops_get(req: HttpRequest) -> HttpResponse {
             "name": "Payment captured",
             "sample": { "event": "payment.captured", "card": "redacted" }
         }] }),
-        "developer/api-versions" | "developer/idempotency-records" | "developer/error-catalog" | "developer/rate-limits" => json!({ "items": [] }),
+        "developer/api-versions"
+        | "developer/idempotency-records"
+        | "developer/error-catalog"
+        | "developer/rate-limits" => json!({ "items": [] }),
         "system-health" => json!({ "items": [] }),
         "system-health/providers" => json!({ "items": [provider_performance()] }),
-        "system-health/jobs" | "system-health/metrics" | "system-health/slos" | "system-health/incidents" | "system-health/traces" => json!({ "items": [] }),
+        "system-health/jobs"
+        | "system-health/metrics"
+        | "system-health/slos"
+        | "system-health/incidents"
+        | "system-health/traces" => json!({ "items": [] }),
         "notifications" => json!({ "items": [] }),
         "readiness-scorecard" => json!({ "items": readiness_rows(), "score": 92 }),
         "readiness-scorecard/export" => json!({ "status": "ready" }),
@@ -253,8 +269,12 @@ async fn payment_ops_write(req: HttpRequest, body: web::Bytes) -> HttpResponse {
             "status": "processed"
         }),
         tail if tail.ends_with("/replay") => json!({ "id": sandbox_id(), "status": "success" }),
-        "white-label/sessions" => json!({ "id": sandbox_id(), "session_id": sandbox_id(), "status": "created" }),
-        tail if tail.ends_with("/complete-test-payment") => json!({ "id": sandbox_id(), "status": "captured" }),
+        "white-label/sessions" => {
+            json!({ "id": sandbox_id(), "session_id": sandbox_id(), "status": "created" })
+        }
+        tail if tail.ends_with("/complete-test-payment") => {
+            json!({ "id": sandbox_id(), "status": "captured" })
+        }
         _ => json!({ "id": sandbox_id(), "status": "ok" }),
     };
 
@@ -287,7 +307,12 @@ async fn export_download() -> HttpResponse {
 }
 
 fn check_idempotency(req: &HttpRequest, body: &[u8]) -> Option<HttpResponse> {
-    let key = req.headers().get("idempotency-key")?.to_str().ok()?.to_owned();
+    let key = req
+        .headers()
+        .get("idempotency-key")?
+        .to_str()
+        .ok()?
+        .to_owned();
     let hash = payload_hash(body);
     let store = IDEMPOTENCY.get_or_init(|| Mutex::new(HashMap::new()));
     let mut records = store.lock().ok()?;

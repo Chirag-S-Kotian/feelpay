@@ -62,7 +62,13 @@ export default function Disputes() {
   };
 
   const openEvidenceModal = (id?: string) => {
-    setTargetDisputeId(id || actionableDisputes[0]?.id || null);
+    const nextDisputeId = id || actionableDisputes[0]?.id || null;
+    if (!nextDisputeId) {
+      setError('No disputes yet. Create a test failed/dispute scenario from sandbox tools.');
+      setShowEvidenceModal(false);
+      return;
+    }
+    setTargetDisputeId(nextDisputeId);
     setEvidenceText('');
     setEvidenceFiles([]);
     setEvidenceTemplate('delivery');
@@ -111,6 +117,8 @@ export default function Disputes() {
         <button
           className="btn btn-primary"
           onClick={() => openEvidenceModal()}
+          disabled={actionableDisputes.length === 0}
+          title={actionableDisputes.length === 0 ? 'Create a test dispute before uploading evidence.' : 'Upload evidence'}
         >
           Upload Evidence
         </button>
@@ -162,7 +170,15 @@ export default function Disputes() {
             </div>
           </div>
         ))}
-        {!loading && disputes.length === 0 && <div>No disputes found.</div>}
+        {!loading && disputes.length === 0 && (
+          <div className="card dispute-empty-state">
+            <h3>No disputes yet.</h3>
+            <p>Create a test failed/dispute scenario from sandbox tools. Evidence upload becomes available only after an open dispute exists.</p>
+            <button className="btn btn-secondary" type="button" disabled>
+              Test dispute generator pending
+            </button>
+          </div>
+        )}
       </div>
 
       {showEvidenceModal && (

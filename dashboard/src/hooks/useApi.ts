@@ -1,6 +1,22 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export const MERCHANT_SESSION_INVALID_EVENT = 'feelpay:merchant-session-invalid';
+
+type ApiErrorBody = {
+  error?: { message?: string };
+  message?: string;
+};
+
+export class MerchantAuthError extends Error {
+  status: number;
+
+  constructor(message = 'Session expired. Please sign in again.', status = 401) {
+    super(message);
+    this.name = 'MerchantAuthError';
+    this.status = status;
+  }
+}
 
 function getToken() {
   return localStorage.getItem('feelpay_token');
@@ -39,6 +55,15 @@ export function clearMerchantSession() {
   inFlight.clear();
 }
 
+function notifyInvalidSession(reason: 'expired' | 'unauthorized' = 'unauthorized') {
+  clearMerchantSession();
+  window.dispatchEvent(
+    new CustomEvent(MERCHANT_SESSION_INVALID_EVENT, {
+      detail: { reason },
+    }),
+  );
+}
+
 export function setSessionExpiryFromSeconds(seconds = 86_400) {
   localStorage.setItem(SESSION_EXPIRES_AT_KEY, String(Date.now() + seconds * 1000));
 }
@@ -57,6 +82,24 @@ export function setEnvironmentMode(mode: EnvironmentMode) {
   localStorage.setItem(ENV_KEY, mode);
 }
 
+function isPublicPath(path: string) {
+  return (
+    path.startsWith('/v1/public/') ||
+    path === '/v1/merchants/login' ||
+    path === '/v1/merchants/register' ||
+    path === '/v1/merchants/forgot-password' ||
+    path.startsWith('/v1/checkout/public/')
+  );
+}
+
+function messageFromBody(data: unknown, fallback: string) {
+  if (data && typeof data === 'object') {
+    const body = data as ApiErrorBody;
+    return body.error?.message || body.message || fallback;
+  }
+  return fallback;
+}
+
 export async function apiRequest<T = unknown>(
   method: ApiMethod,
   path: string,
@@ -69,15 +112,25 @@ export async function apiRequest<T = unknown>(
   };
 
   const token = customToken || getToken();
+  const apiKey = opts?.useApiKey ? getApiKey() : null;
+  const protectedPath = !isPublicPath(path);
+
+  if (protectedPath && !customToken && isSessionExpired()) {
+    notifyInvalidSession('expired');
+    throw new MerchantAuthError();
+  }
+
+  if (protectedPath && !token && !apiKey) {
+    notifyInvalidSession('unauthorized');
+    throw new MerchantAuthError();
+  }
+
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  if (opts?.useApiKey) {
-    const apiKey = getApiKey();
-    if (apiKey) {
-      headers['x-api-key'] = apiKey;
-    }
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
   }
 
   if (opts?.idempotencyKey) {
@@ -125,7 +178,7 @@ export async function apiRequest<T = unknown>(
     }
 
     const text = await res.text();
-    let data: any = null;
+    let data: unknown = null;
     if (text) {
       try {
         data = JSON.parse(text);
@@ -135,18 +188,22 @@ export async function apiRequest<T = unknown>(
     }
 
     if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        notifyInvalidSession('unauthorized');
+        throw new MerchantAuthError(messageFromBody(data, 'Session expired. Please sign in again.'), res.status);
+      }
       if (isGet) {
         const stale = getCache.get(cacheKey);
-        if (stale?.data) {
-          return stale.data as T;
-        }
-      }
-      if (res.status === 401) {
-        clearMerchantSession();
+        if (stale?.data) return stale.data as T;
       }
       throw new Error(
-        data?.error?.message || data?.message || `API request failed (${res.status})`,
+        messageFromBody(data, `API request failed (${res.status})`),
       );
+    }
+
+    if (!isGet) {
+      getCache.clear();
+      inFlight.clear();
     }
 
     if (isGet && cacheMs > 0) {

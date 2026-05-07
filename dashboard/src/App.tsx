@@ -30,6 +30,7 @@ import {
   EnvironmentMode,
   getEnvironmentMode,
   isSessionExpired,
+  MERCHANT_SESSION_INVALID_EVENT,
   setEnvironmentMode,
 } from './hooks/useApi';
 import { apiRequest } from './hooks/useApi';
@@ -490,7 +491,7 @@ function Layout() {
                         <div key={`${provider.name || 'provider'}-${idx}`} className="header-dropdown-item">
                           <strong>{provider.name || 'Provider'}</strong>
                           <p>
-                            {Math.round(provider.success_rate || 0)}% success • {provider.avg_latency_ms || 0} ms • {provider.circuit_breaker_state || 'closed'}
+                            {Math.round(provider.success_rate || 0)}% success • {provider.avg_latency_ms || 0} ms • {provider.is_active === false ? 'Unavailable' : 'Available'} • {provider.circuit_breaker_state === 'open' ? 'Circuit open' : 'Circuit healthy'}
                           </p>
                         </div>
                       ))}
@@ -670,13 +671,39 @@ function RouteLoader() {
 }
 
 function ProtectedLayout() {
+  const navigate = useNavigate();
+  const [sessionValid, setSessionValid] = useState(() => Boolean(localStorage.getItem('feelpay_token')) && !isSessionExpired());
+
+  useEffect(() => {
+    const onInvalidSession = (event: Event) => {
+      const reason = event instanceof CustomEvent && event.detail?.reason === 'expired' ? 'expired' : 'invalid';
+      setSessionValid(false);
+      navigate(`/login?reason=${reason}`, { replace: true });
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === 'feelpay_token' && !event.newValue) {
+        setSessionValid(false);
+        navigate('/login?reason=invalid', { replace: true });
+      }
+    };
+    window.addEventListener(MERCHANT_SESSION_INVALID_EVENT, onInvalidSession);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(MERCHANT_SESSION_INVALID_EVENT, onInvalidSession);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [navigate]);
+
   const token = localStorage.getItem('feelpay_token');
   if (!token) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login?reason=invalid" replace />;
   }
   if (isSessionExpired()) {
     clearMerchantSession();
     return <Navigate to="/login?reason=expired" replace />;
+  }
+  if (!sessionValid) {
+    return <Navigate to="/login?reason=invalid" replace />;
   }
   return <Layout />;
 }

@@ -122,6 +122,31 @@ export default function SettlementReports() {
     URL.revokeObjectURL(url);
   };
 
+  const buildPdf = (detail: SettlementDetail) => {
+    const lines = [
+      'FeelPay Settlement Report',
+      `Settlement ID: ${detail.id}`,
+      `Date: ${detail.settlement_date || detail.created_at}`,
+      `Status: ${detail.status}`,
+      `UTR: ${detail.utr || 'N/A'}`,
+      `Gross: INR ${(detail.amount / 100).toFixed(2)}`,
+      `Fees + Tax: INR ${((detail.fee_amount + detail.tax_amount) / 100).toFixed(2)}`,
+      `Net: INR ${(detail.net_amount / 100).toFixed(2)}`,
+      `Rows: ${detail.items?.length || 0}`,
+    ];
+    const escaped = lines.join('\\n').replace(/[()\\]/g, '\\$&');
+    const stream = `BT /F1 16 Tf 54 760 Td (${escaped}) Tj ET`;
+    const objects = [
+      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+      '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj',
+      '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+      `5 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
+    ];
+    const body = objects.join('\n');
+    return `%PDF-1.4\n${body}\ntrailer << /Root 1 0 R >>\n%%EOF`;
+  };
+
   const handleDownload = async (settlementId: string, format: 'pdf' | 'csv' | 'excel') => {
     setDownloadingId(settlementId);
     try {
@@ -150,9 +175,7 @@ export default function SettlementReports() {
           'application/vnd.ms-excel;charset=utf-8'
         );
       } else {
-        // Lightweight fallback until backend PDF endpoint is ready.
-        const pdfFallback = `Settlement Summary\n\n${csvContent.replace(/,/g, ' | ')}`;
-        downloadTextFile(`${baseName}.txt`, pdfFallback, 'text/plain;charset=utf-8');
+        downloadTextFile(`${baseName}.pdf`, buildPdf(detail), 'application/pdf');
       }
     } catch (err) {
       console.error('Download failed:', err);

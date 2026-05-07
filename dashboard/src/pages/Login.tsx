@@ -16,7 +16,7 @@ export default function Login() {
     const impersonateToken = params.get('token');
     const reason = params.get('reason');
 
-    if (reason === 'expired') setError('Session expired after 24 hours. Sign in again.');
+    if (reason === 'expired' || reason === 'invalid') setError('Session expired. Please sign in again.');
     if (reason === 'logout') setError('You have been logged out.');
 
     if (impersonateToken) {
@@ -92,7 +92,7 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
+    <main className="login-page">
       <div className="login-card">
         <div className="auth-shell">
           <section className="auth-hero">
@@ -146,6 +146,7 @@ export default function Login() {
                     className="password-toggle"
                     onClick={() => setShowPassword(!showPassword)}
                     tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -167,6 +168,6 @@ export default function Login() {
           </section>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

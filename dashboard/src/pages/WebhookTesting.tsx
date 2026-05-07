@@ -199,6 +199,7 @@ export default function WebhookTesting() {
           <div className="form-group">
             <label>Webhook Endpoint</label>
             <select
+              aria-label="Webhook Endpoint"
               value={selectedEndpoint?.id || ''}
               onChange={e => {
                 const endpoint = endpoints.find(ep => ep.id === e.target.value);
@@ -231,6 +232,7 @@ export default function WebhookTesting() {
           <div className="form-group">
             <label>Event Type</label>
             <select
+              aria-label="Event Type"
               value={selectedEventType}
               onChange={e => setSelectedEventType(e.target.value)}
             >

@@ -204,7 +204,7 @@ export default function CheckoutPreview() {
         const checkoutSettings: CheckoutSettings = await apiRequest<CheckoutSettings>('GET', '/v1/merchants/checkout-settings', undefined, undefined, { cacheMs: 20_000 }).catch(() => ({} as CheckoutSettings));
         const auditRes = await apiRequest<{ items?: CheckoutAuditItem[] }>('GET', '/v1/merchants/checkout-settings/audit', undefined, undefined, { cacheMs: 10_000 }).catch(() => ({ items: [] }));
         const normalized = normalize(data.methods || []);
-        const order = checkoutSettings.payment_configuration?.method_order || settings.payment_configuration?.method_order || [];
+        const order = checkoutSettings.payment_configuration?.method_order || [];
         const ordered = normalized
           .map((method) => ({
             ...method,
@@ -302,6 +302,14 @@ export default function CheckoutPreview() {
       'promoted_methods',
       current.includes(methodType) ? current.filter((item) => item !== methodType) : [...current, methodType],
     );
+  };
+
+  const togglePaymentConfigList = (
+    key: 'blocked_card_networks' | 'allowed_upi_apps',
+    value: string,
+  ) => {
+    const current = settings.payment_configuration?.[key] || [];
+    setPaymentConfig(key, current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   };
 
   const runPreviewPayment = async () => {
@@ -648,18 +656,32 @@ export default function CheckoutPreview() {
                   </div>
                 ))}
               </div>
-              <label>
-                Blocked card networks
-                <select multiple value={settings.payment_configuration?.blocked_card_networks || []} onChange={(e) => setPaymentConfig('blocked_card_networks', Array.from(e.target.selectedOptions).map((option) => option.value))}>
-                  {CARD_NETWORKS.map((network) => <option key={network} value={network}>{network}</option>)}
-                </select>
-              </label>
-              <label>
-                UPI apps shown
-                <select multiple value={settings.payment_configuration?.allowed_upi_apps || []} onChange={(e) => setPaymentConfig('allowed_upi_apps', Array.from(e.target.selectedOptions).map((option) => option.value))}>
-                  {UPI_APPS.map((app) => <option key={app} value={app}>{app}</option>)}
-                </select>
-              </label>
+              <div className="chip-field">
+                <span>Blocked card networks</span>
+                <div className="settings-chip-list" role="group" aria-label="Blocked card networks">
+                  {CARD_NETWORKS.map((network) => {
+                    const active = (settings.payment_configuration?.blocked_card_networks || []).includes(network);
+                    return (
+                      <button key={network} type="button" className={active ? 'active' : ''} onClick={() => togglePaymentConfigList('blocked_card_networks', network)}>
+                        {network}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="chip-field">
+                <span>UPI apps shown</span>
+                <div className="settings-chip-list" role="group" aria-label="UPI apps shown">
+                  {UPI_APPS.map((app) => {
+                    const active = (settings.payment_configuration?.allowed_upi_apps || []).includes(app);
+                    return (
+                      <button key={app} type="button" className={active ? 'active' : ''} onClick={() => togglePaymentConfigList('allowed_upi_apps', app)}>
+                        {app}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -817,33 +839,38 @@ export default function CheckoutPreview() {
           background: #ffffff;
           padding: 24px;
         }
-        .preview-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 16px; }
+        .preview-shell { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 16px; }
         .preview-controls { display: grid; gap: 14px; position: sticky; top: 20px; background: #ffffff !important; border-radius: 18px !important; }
         .preview-controls h3 { margin: 0; font-size: 22px; }
         .checkout-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
         .checkout-settings-tabs button { border: 1px solid #d9e2ef; background: #ffffff; border-radius: 999px; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #64748b; cursor: pointer; }
         .checkout-settings-tabs button.active { border-color: ${themeColor}; color: #0f172a; background: #eef6ff; }
-        .checkout-settings-grid { display: grid; gap: 8px; }
-        .checkout-settings-grid label { display: grid; gap: 6px; font-size: 12px; color: #6b6862; }
-        .checkout-settings-grid input[type='checkbox'] { margin-right: 8px; accent-color: #eb001b; }
+        .checkout-settings-grid { display: grid; gap: 10px; }
+        .checkout-settings-grid label { display: grid; gap: 6px; font-size: 13px; color: #4f4a43; font-weight: 700; }
+        .checkout-settings-grid label:has(input[type='checkbox']) { min-height: 44px; display: flex; flex-direction: row; align-items: center; gap: 10px; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 16px; padding: 10px 12px; color: #172033; }
+        .checkout-settings-grid input[type='checkbox'] { width: 22px; height: 22px; margin: 0; accent-color: #eb001b; flex: 0 0 auto; }
         .checkout-audit { display: grid; gap: 6px; border-top: 1px dashed #d9e2ef; padding-top: 10px; }
         .checkout-audit > span { font-size: 12px; color: #64748b; font-weight: 700; }
         .checkout-audit-item { font-size: 12px; color: #0f172a; background: #f6f8fb; border: 1px solid #d9e2ef; border-radius: 10px; padding: 6px 8px; }
         .preview-merchant-name { color: #172033; background: #f6f8fb; border: 1px solid #d9e2ef; border-radius: 999px; padding: 12px 14px; font-weight: 800; font-size: 18px; }
         .preview-controls label { display: flex; flex-direction: column; gap: 6px; color: var(--fp-text-muted); font-size: 13px; }
         .preview-controls input,
-        .preview-controls select { background: #ffffff; border: 1px solid #d9e2ef; color: #0f172a; border-radius: 999px; padding: 10px 12px; min-width: 0; }
-        .preview-controls select[multiple] { border-radius: 18px; min-height: 92px; }
+        .preview-controls select { background: #ffffff; border: 1px solid #d9e2ef; color: #0f172a; border-radius: 999px; padding: 10px 12px; min-width: 0; min-height: 42px; font-size: 14px; }
         .preview-method-list { display: grid; gap: 8px; }
         .preview-method-list span { color: var(--fp-text-muted); font-size: 13px; }
         .preview-method-list button { text-align: left; background: #ffffff; border: 1px solid #d9e2ef; color: #64748b; border-radius: 999px; padding: 9px 12px; cursor: pointer; }
         .preview-method-list button.selected { border-color: ${themeColor}; color: #0f172a; background: #eef6ff; }
         .method-config-builder { display: grid; gap: 8px; }
         .method-config-builder > span { color: #6b6862; font-size: 12px; font-weight: 800; }
-        .method-config-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px 34px 78px; gap: 6px; align-items: center; border: 1px solid #d9e2ef; background: #ffffff; border-radius: 18px; padding: 8px; }
+        .method-config-row { display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px minmax(78px, auto); gap: 7px; align-items: center; border: 1px solid #d9e2ef; background: #ffffff; border-radius: 18px; padding: 9px; }
         .method-config-row label { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; color: #172033; }
-        .method-config-row button { border: 1px solid #d9e2ef; background: #f6f8fb; color: #172033; border-radius: 999px; min-height: 30px; cursor: pointer; font-weight: 800; }
+        .method-config-row button { border: 1px solid #d9e2ef; background: #f6f8fb; color: #172033; border-radius: 999px; min-height: 38px; cursor: pointer; font-weight: 800; }
         .method-config-row button.active { border-color: ${themeColor}; color: ${themeColor}; background: #fff; }
+        .chip-field { display: grid; gap: 8px; }
+        .chip-field > span { color: #4f4a43; font-size: 13px; font-weight: 800; }
+        .settings-chip-list { display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 18px; padding: 10px; }
+        .settings-chip-list button { border: 1px solid #d9e2ef; background: #ffffff; color: #172033; border-radius: 999px; min-height: 40px; padding: 8px 12px; cursor: pointer; font-weight: 800; }
+        .settings-chip-list button.active { border-color: ${themeColor}; color: ${themeColor}; background: #eef6ff; box-shadow: inset 0 0 0 1px ${themeColor}; }
         .checkout-stage { min-height: 720px; border: 1px solid #d9e2ef; border-radius: 34px; background: #f6f8fb; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
         .checkout-stage.browser { width: 100%; }
         .checkout-stage.laptop { width: min(100%, 980px); margin: 0 auto; padding: 18px 18px 54px; border-radius: 26px; background: #172033; position: relative; }
@@ -922,8 +949,8 @@ export default function CheckoutPreview() {
         .payment-flow-grid h4 { margin: 0 0 4px; font-size: 14px; }
         .payment-flow-grid p { margin: 0; color: #6b6862; font-size: 12px; line-height: 1.45; }
         .payment-flow-grid span { display: inline-flex; margin-top: 10px; border: 1px solid #d5c9af; border-radius: 999px; padding: 3px 8px; color: #6b6862; font-size: 11px; }
-        @media (max-width: 980px) { .preview-shell { grid-template-columns: 1fr; } .preview-controls { position: static; } .checkout-stage { min-height: auto; } .checkout-settings-tabs { grid-template-columns: 1fr; } }
-        @media (max-width: 430px) { .checkout-stage.mobile { width: 100%; box-shadow: inset 0 0 0 6px #312d28; } }
+        @media (max-width: 980px) { .preview-shell { grid-template-columns: 1fr; } .preview-controls { position: static; max-width: none; } .checkout-stage { min-height: auto; } .checkout-settings-tabs { grid-template-columns: 1fr; } }
+        @media (max-width: 520px) { .checkout-preview-page .page-header { border-radius: 22px; padding: 18px; } .preview-controls { padding: 16px !important; border-radius: 18px !important; } .method-config-row { grid-template-columns: 1fr 40px 40px; } .method-config-row button:last-child { grid-column: 1 / -1; } .checkout-stage { padding: 10px; } .checkout-stage.mobile { width: 100%; box-shadow: inset 0 0 0 6px #312d28; } .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-card { max-width: 100%; } .checkout-card { padding: 16px; } .simulation-timeline { grid-template-columns: 1fr; } }
         @media (max-width: 980px) { .payment-flow-grid { grid-template-columns: 1fr; } }
       `}</style>
     </div>

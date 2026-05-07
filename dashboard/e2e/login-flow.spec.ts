@@ -8,7 +8,7 @@ test("login page renders on all viewport projects", async ({ page }) => {
 
 test("a11y baseline on login page", async ({ page }) => {
   await page.goto("/login");
+  await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
   const accessibilityScanResults = await new AxeBuilder({ page }).analyze();
   expect(accessibilityScanResults.violations).toEqual([]);
 });
-

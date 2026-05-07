@@ -1614,8 +1614,8 @@ table tr:hover td {
 }
 
 .btn-primary {
-  background: var(--fp-cta);
-  color: #fff9ec;
+  background: #c90017;
+  color: #ffffff;
 }
 
 .btn-primary:hover {
