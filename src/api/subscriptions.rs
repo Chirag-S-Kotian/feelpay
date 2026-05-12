@@ -407,7 +407,7 @@ pub async fn list_subscription_invoices(
 // Helper function to extract merchant_id from request
 fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
     req.extensions()
-        .get::<Uuid>()
-        .copied()
+        .get::<crate::middleware::auth::MerchantId>()
+        .map(|m| m.0)
         .ok_or_else(|| FeelPayError::Unauthorized("Merchant ID not found".into()))
 }

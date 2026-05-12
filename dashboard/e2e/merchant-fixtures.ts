@@ -111,6 +111,18 @@ export async function installMerchantApi(page: Page) {
   const bankAccounts = [
     { id: 'ba_test_1', account_holder_name: 'Demo Merchant', bank_name: 'HDFC Bank', account_number_masked: 'XXXXXX7890', ifsc_code: 'HDFC0001234', account_type: 'current', verification_status: 'verified', is_primary: true, created_at: nowIso(), verified_at: nowIso() },
   ];
+  const subscriptionPlans = [
+    { id: '11111111-1111-1111-1111-111111111111', name: 'Gold Monthly', amount: 99000, currency: 'INR', billing_cycle: 'monthly', trial_days: 7 },
+  ];
+  const subscriptions = [
+    { id: '22222222-2222-2222-2222-222222222222', customer_id: '33333333-3333-3333-3333-333333333333', plan_name: 'Gold Monthly', amount: 99000, currency: 'INR', billing_cycle: 'monthly', status: 'active', current_period_end: nowIso(), cancel_at_period_end: false },
+  ];
+  const mandates = [
+    { id: '44444444-4444-4444-4444-444444444444', mandate_type: 'upi', mandate_reference: 'feelpay.seed@bank', status: 'active', amount_limit: 250000, currency: 'INR', frequency: 'monthly', payer_vpa: 'buyer@upi', payer_name: 'Buyer One', created_at: nowIso() },
+  ];
+  const virtualAccounts = [
+    { id: '55555555-5555-5555-5555-555555555555', account_number: 'FEELP000000000001', ifsc_code: 'FEEL0000001', bank_name: 'FeelPay Virtual Bank', beneficiary_name: 'Demo Collections', status: 'active', created_at: nowIso() },
+  ];
 
   await page.context().route('**/{api/,}v1/**', async (route) => {
     const path = pathFromRoute(route);
@@ -153,6 +165,8 @@ export async function installMerchantApi(page: Page) {
     }
     if (path.startsWith('/v1/analytics/volume')) return json(route, { chart: [{ day: 'Today', volume: payments.reduce((sum, p) => sum + p.amount, 0) / 100, count: payments.length }] });
     if (path.startsWith('/v1/analytics/alerts')) return json(route, { alerts: [] });
+    if (path.includes('/v1/payments/') && path.endsWith('/details')) return json(route, { payment: payments[0], webhooks: webhookEvents });
+    if (path.includes('/v1/payments/') && path.endsWith('/timeline')) return json(route, [{ event_type: 'payment_captured', status_after: 'captured', created_at: nowIso() }]);
     if (path.startsWith('/v1/payments')) return json(route, { data: payments });
 
     if (path === '/v1/checkout/preview-config') {
@@ -253,6 +267,55 @@ export async function installMerchantApi(page: Page) {
     if (path.startsWith('/v1/merchants/') && path.includes('/exports')) return json(route, { job_id: 'exp_test_1', status: 'completed', download_url: '/downloads/exp_test_1.csv' });
     if (path.startsWith('/v1/exports')) return json(route, { exports: [{ id: 'exp_test_1', export_type: 'transactions', status: 'ready', format: 'csv', row_count: payments.length, download_url: '/downloads/exp_test_1.csv', created_at: nowIso() }] });
     if (path.includes('/scheduled-reports')) return json(route, { reports: [{ id: 'sched_test_1', report_type: 'settlement', frequency: 'daily', time_of_day: '09:00', recipient_emails: [merchant.email], format: 'csv', is_active: true, created_at: nowIso(), last_run_at: nowIso(), next_run_at: nowIso() }] });
+
+    if (path === '/v1/subscriptions/plans' && method === 'GET') return json(route, subscriptionPlans);
+    if (path === '/v1/subscriptions/plans' && method === 'POST') {
+      const body = route.request().postDataJSON() as { name?: string; amount?: number; billing_cycle?: string; trial_days?: number };
+      subscriptionPlans.unshift({ id: `11111111-1111-1111-1111-${String(subscriptionPlans.length + 2).padStart(12, '0')}`, name: body.name || 'New Plan', amount: body.amount || 10000, currency: 'INR', billing_cycle: body.billing_cycle || 'monthly', trial_days: body.trial_days || 0 });
+      return json(route, subscriptionPlans[0], 201);
+    }
+    if (path === '/v1/subscriptions' && method === 'GET') return json(route, subscriptions);
+    if (path === '/v1/subscriptions' && method === 'POST') {
+      const body = route.request().postDataJSON() as { customer_id?: string; plan_id?: string; plan_name?: string; amount?: number; billing_cycle?: string };
+      const plan = subscriptionPlans.find((item) => item.id === body.plan_id);
+      subscriptions.unshift({ id: `22222222-2222-2222-2222-${String(subscriptions.length + 2).padStart(12, '0')}`, customer_id: body.customer_id || '33333333-3333-3333-3333-333333333333', plan_name: plan?.name || body.plan_name || 'Custom Plan', amount: plan?.amount || body.amount || 10000, currency: 'INR', billing_cycle: plan?.billing_cycle || body.billing_cycle || 'monthly', status: 'active', current_period_end: nowIso(), cancel_at_period_end: false });
+      return json(route, subscriptions[0], 201);
+    }
+    if (path.includes('/v1/subscriptions/') && path.endsWith('/pause')) {
+      const sub = subscriptions.find((item) => path.includes(item.id));
+      if (sub) sub.status = 'paused';
+      return json(route, sub || subscriptions[0]);
+    }
+    if (path.includes('/v1/subscriptions/') && path.endsWith('/resume')) {
+      const sub = subscriptions.find((item) => path.includes(item.id));
+      if (sub) sub.status = 'active';
+      return json(route, sub || subscriptions[0]);
+    }
+    if (path.includes('/v1/subscriptions/') && path.endsWith('/cancel')) {
+      const sub = subscriptions.find((item) => path.includes(item.id));
+      if (sub) sub.status = 'cancelled';
+      return json(route, sub || subscriptions[0]);
+    }
+
+    if (path === '/v1/mandates' && method === 'GET') return json(route, mandates);
+    if (path === '/v1/mandates' && method === 'POST') {
+      const body = route.request().postDataJSON() as { mandate_type?: string; amount_limit?: number; frequency?: string; payer_vpa?: string; payer_name?: string };
+      mandates.unshift({ id: `44444444-4444-4444-4444-${String(mandates.length + 2).padStart(12, '0')}`, mandate_type: body.mandate_type || 'upi', mandate_reference: `feelpay.${mandates.length + 2}@bank`, status: 'active', amount_limit: body.amount_limit || 10000, currency: 'INR', frequency: body.frequency || 'monthly', payer_vpa: body.payer_vpa || 'buyer@upi', payer_name: body.payer_name || 'Buyer', created_at: nowIso() });
+      return json(route, mandates[0]);
+    }
+    if (path.includes('/v1/mandates/') && path.endsWith('/execute')) return json(route, { status: 'executed', payment_id: 'pay_mandate_test' });
+    if (path.includes('/v1/mandates/') && path.endsWith('/cancel')) {
+      const mandate = mandates.find((item) => path.includes(item.id));
+      if (mandate) mandate.status = 'revoked';
+      return json(route, { status: 'revoked' });
+    }
+
+    if (path === '/v1/virtual-accounts' && method === 'GET') return json(route, virtualAccounts);
+    if (path === '/v1/virtual-accounts' && method === 'POST') {
+      const body = route.request().postDataJSON() as { beneficiary_name?: string };
+      virtualAccounts.unshift({ id: `55555555-5555-5555-5555-${String(virtualAccounts.length + 2).padStart(12, '0')}`, account_number: `FEELP000000${String(virtualAccounts.length + 2).padStart(6, '0')}`, ifsc_code: 'FEEL0000001', bank_name: 'FeelPay Virtual Bank', beneficiary_name: body.beneficiary_name || 'FeelPay Beneficiary', status: 'active', created_at: nowIso() });
+      return json(route, virtualAccounts[0]);
+    }
 
     return json(route, {});
   });

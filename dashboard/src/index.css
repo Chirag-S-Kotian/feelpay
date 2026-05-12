@@ -944,8 +944,78 @@ table tr:hover td {
   background: var(--fp-bg-hover);
 }
 
+.btn-danger {
+  background: #fff1f2;
+  border-color: rgba(220, 38, 38, 0.28);
+  color: #b91c1c;
+}
+
+.btn-danger:hover {
+  background: #ffe4e6;
+}
+
 .btn-full {
   width: 100%;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.form-input {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--fp-border);
+  background: #fff9ec;
+  color: var(--fp-text);
+  padding: 9px 11px;
+}
+
+.form-input:focus {
+  border-color: var(--fp-primary);
+  outline: 2px solid rgba(235, 0, 27, 0.16);
+  outline-offset: 1px;
+}
+
+.compact-input {
+  width: 92px;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.error-banner,
+.success-banner {
+  border-radius: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+
+.error-banner {
+  background: #fff1f2;
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  color: #b91c1c;
+}
+
+.success-banner {
+  background: #ecfdf5;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  color: #047857;
 }
 
 .pill-tabs {
@@ -2873,6 +2943,8 @@ select option:checked {
   .notification-grid,
   .dev-grid,
   .usecase-grid,
+  .grid-2,
+  .form-grid,
   .methods-layout,
   .methods-list,
   .preview-shell {
@@ -2893,6 +2965,7 @@ select option:checked {
   }
 
   .form-actions,
+  .action-row,
   .key-row,
   .webhook-url-row,
   .settlements-filter-bar,

@@ -19,6 +19,7 @@ import {
   Smartphone,
   LogOut,
   Layers3,
+  Repeat2,
   UserCircle2,
   Activity,
   PanelLeftClose,
@@ -59,6 +60,9 @@ const NotificationPreferences = lazy(() => import('./pages/NotificationPreferenc
 const WebhookTesting = lazy(() => import('./pages/WebhookTesting'));
 const BankAccounts = lazy(() => import('./pages/BankAccounts'));
 const Pricing = lazy(() => import('./pages/Pricing'));
+const Subscriptions = lazy(() => import('./pages/Subscriptions'));
+const Mandates = lazy(() => import('./pages/Mandates'));
+const VirtualAccounts = lazy(() => import('./pages/VirtualAccounts'));
 
 const routePreloaders: Record<string, () => Promise<unknown>> = {
   '/': () => import('./pages/Dashboard'),
@@ -67,6 +71,9 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   '/payouts': () => import('./pages/Payouts'),
   '/payment-methods': () => import('./pages/PaymentMethods'),
   '/checkout-preview': () => import('./pages/CheckoutPreview'),
+  '/subscriptions': () => import('./pages/Subscriptions'),
+  '/mandates': () => import('./pages/Mandates'),
+  '/virtual-accounts': () => import('./pages/VirtualAccounts'),
   '/customers': () => import('./pages/Customers'),
   '/settlements': () => import('./pages/Settlements'),
   '/exports': () => import('./pages/Exports'),
@@ -110,6 +117,9 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/payouts', label: 'Payouts', icon: Send },
       { path: '/payment-methods', label: 'Payment Methods', icon: SlidersHorizontal },
       { path: '/checkout-preview', label: 'Checkout Preview', icon: Smartphone },
+      { path: '/subscriptions', label: 'Subscriptions', icon: Repeat2 },
+      { path: '/mandates', label: 'Mandates', icon: Activity },
+      { path: '/virtual-accounts', label: 'Virtual Accounts', icon: Building2 },
       { path: '/webhooks', label: 'Webhooks', icon: Code2 },
     ],
   },
@@ -518,6 +528,9 @@ function Layout() {
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/payment-methods" element={<PaymentMethods />} />
             <Route path="/checkout-preview" element={<CheckoutPreview />} />
+            <Route path="/subscriptions" element={<Subscriptions />} />
+            <Route path="/mandates" element={<Mandates />} />
+            <Route path="/virtual-accounts" element={<VirtualAccounts />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/settlements" element={<Settlements />} />
             <Route path="/exports" element={<Exports />} />

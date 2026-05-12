@@ -303,6 +303,9 @@ async fn main() -> std::io::Result<()> {
                     .wrap(crate::middleware::external_api::ExternalApiGateway::new())
                     .route("", web::post().to(api::payments::create_payment))
                     .route("", web::get().to(api::payments::list_payments))
+                    .route("/batch-refund", web::post().to(api::payments::batch_refund))
+                    .route("/{id}/details", web::get().to(api::payments::get_payment_details))
+                    .route("/{id}/timeline", web::get().to(api::payments::get_payment_timeline))
                     .route("/{id}", web::get().to(api::payments::get_payment))
                     .route(
                         "/{id}/capture",
@@ -315,7 +318,7 @@ async fn main() -> std::io::Result<()> {
             )
             // Providers & Routing API
             .service(
-                web::scope("/v1/providers")
+                web::scope("/v1")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::providers::configure),
             )
@@ -593,7 +596,7 @@ async fn main() -> std::io::Result<()> {
             )
             // EMI & BNPL API
             .service(
-                web::scope("/v1/emi-bnpl")
+                web::scope("/v1")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::emi_bnpl::configure),
             )
@@ -630,7 +633,7 @@ async fn main() -> std::io::Result<()> {
             )
             // Fee Plans API
             .service(
-                web::scope("/v1/fee-plans")
+                web::scope("/v1")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::fee_plans::configure),
             )
@@ -642,13 +645,13 @@ async fn main() -> std::io::Result<()> {
             )
             // Virtual Accounts API
             .service(
-                web::scope("/v1/virtual-accounts")
+                web::scope("/v1")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::virtual_accounts::configure),
             )
             // Mandates API
             .service(
-                web::scope("/v1/mandates")
+                web::scope("/v1")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::mandates::configure),
             )
