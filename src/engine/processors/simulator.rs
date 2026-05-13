@@ -8,6 +8,12 @@ use crate::engine::processor::{
 use crate::error::FeelPayError;
 use crate::models::payment_order::PaymentStatus;
 
+fn paise_decimal(amount: i64) -> String {
+    let sign = if amount < 0 { "-" } else { "" };
+    let absolute = amount.abs();
+    format!("{}{}.{:02}", sign, absolute / 100, absolute % 100)
+}
+
 /// Simulator processor — mimics real payment flows for testing
 pub struct SimulatorProcessor {
     success_rate: f64,
@@ -122,7 +128,7 @@ impl PaymentMethodProcessor for SimulatorProcessor {
                         Some(format!(
                             "upi://pay?pa={}&pn=FeelPay&am={}&tr={}",
                             "merchant@feelpay",
-                            txn.amount as f64 / 100.0,
+                            paise_decimal(txn.amount),
                             txn.order_id
                         )),
                     ),

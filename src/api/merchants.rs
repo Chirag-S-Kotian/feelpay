@@ -3,7 +3,7 @@ use argon2::password_hash::{rand_core::OsRng, PasswordHash, SaltString};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::engine::services::auth::MfaService;
@@ -82,6 +82,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/checkout-settings/audit",
                 web::get().to(get_checkout_settings_audit),
             )
+            .route("/audit-logs", web::get().to(list_merchant_audit_logs))
             .route("/webhook-secret/roll", web::post().to(roll_webhook_secret))
             .route("/{merchant_id}", web::get().to(get_merchant))
             // Team management
@@ -296,6 +297,32 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
+fn tenant_id_from_req(req: &HttpRequest) -> Option<Uuid> {
+    req.extensions()
+        .get::<crate::middleware::auth::TenantId>()
+        .map(|tenant| tenant.0)
+}
+
+fn actor_id_from_req(req: &HttpRequest, fallback_merchant_id: Uuid) -> String {
+    req.extensions()
+        .get::<crate::middleware::auth::UserId>()
+        .map(|user| user.0.to_string())
+        .unwrap_or_else(|| fallback_merchant_id.to_string())
+}
+
+fn request_ip(req: &HttpRequest) -> Option<String> {
+    req.connection_info()
+        .realip_remote_addr()
+        .map(|value| value.to_string())
+}
+
+fn request_user_agent(req: &HttpRequest) -> Option<String> {
+    req.headers()
+        .get("user-agent")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string())
+}
+
 fn request_environment(req: &HttpRequest) -> &'static str {
     match req
         .headers()
@@ -398,20 +425,138 @@ async fn write_audit_log(
     .await;
 }
 
+async fn write_merchant_audit_log(
+    pool: &sqlx::PgPool,
+    req: &HttpRequest,
+    merchant_id: Uuid,
+    action: &str,
+    target: &str,
+    metadata: serde_json::Value,
+) {
+    let tenant_id = tenant_id_from_req(req);
+    let actor_id = actor_id_from_req(req, merchant_id);
+    let ip_address = request_ip(req);
+    let user_agent = request_user_agent(req);
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs (
+            tenant_id, merchant_id, entity_type, entity_id, action, target,
+            metadata, new_state, actor_type, actor_id, ip_address, user_agent
+        )
+        VALUES ($1, $2, 'merchant', $2, $3, $4, $5::jsonb, $5::jsonb, 'merchant_user', $6, $7, $8)
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(merchant_id)
+    .bind(action)
+    .bind(target)
+    .bind(metadata)
+    .bind(actor_id)
+    .bind(ip_address)
+    .bind(user_agent)
+    .execute(pool)
+    .await;
+}
+
+const MERCHANT_TEAM_ROLES: &[&str] = &[
+    "merchant_owner",
+    "merchant_admin",
+    "merchant_developer",
+    "merchant_finance",
+    "merchant_support",
+    "merchant_read_only",
+    // Backward-compatible legacy roles.
+    "merchant_staff",
+    "merchant_viewer",
+];
+
+fn ensure_valid_team_role(role: &str) -> Result<(), FeelPayError> {
+    if MERCHANT_TEAM_ROLES.contains(&role) {
+        Ok(())
+    } else {
+        Err(FeelPayError::BadRequest(format!(
+            "Invalid role. Must be one of: {}",
+            MERCHANT_TEAM_ROLES.join(", ")
+        )))
+    }
+}
+
+fn require_team_admin(req: &HttpRequest) -> Result<(), FeelPayError> {
+    let extensions = req.extensions();
+    let role = extensions
+        .get::<crate::middleware::auth::UserRole>()
+        .map(|role| role.0.as_str())
+        .unwrap_or("merchant_owner");
+    match role {
+        "merchant_owner" | "merchant_admin" => Ok(()),
+        _ => Err(FeelPayError::Forbidden(
+            "Only owner or admin can manage merchant team access".into(),
+        )),
+    }
+}
+
+async fn merchant_session_context(
+    pool: &sqlx::PgPool,
+    merchant_id: Uuid,
+) -> Result<(Uuid, Option<Uuid>, String), FeelPayError> {
+    let row = sqlx::query(
+        r#"
+        SELECT u.id, u.tenant_id, COALESCE(r.name, 'merchant_owner') AS role
+        FROM users u
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        LEFT JOIN roles r ON r.id = ur.role_id
+        WHERE u.merchant_id = $1 AND u.status = 'active'
+        ORDER BY
+            CASE COALESCE(r.name, 'merchant_owner')
+                WHEN 'merchant_owner' THEN 1
+                WHEN 'merchant_admin' THEN 2
+                ELSE 3
+            END,
+            u.created_at ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    Ok(match row {
+        Some(row) => (
+            row.get::<Uuid, _>("id"),
+            row.get::<Option<Uuid>, _>("tenant_id"),
+            row.get::<String, _>("role"),
+        ),
+        None => (merchant_id, None, "merchant_owner".to_string()),
+    })
+}
+
 async fn ensure_team_roles_exist(pool: &sqlx::PgPool) -> Result<(), FeelPayError> {
     let role_specs = [
+        ("merchant_owner", "Owner access to all merchant features"),
         (
             "merchant_admin",
-            "Administrative access to merchant features",
+            "Admin access to merchant operations and settings",
         ),
         (
-            "merchant_staff",
-            "Operational access for merchant team members",
+            "merchant_developer",
+            "Developer access to API keys, webhooks, logs, and docs",
         ),
         (
-            "merchant_viewer",
-            "Read-only access for merchant team members",
+            "merchant_finance",
+            "Finance access to transactions, settlements, refunds, and exports",
         ),
+        (
+            "merchant_support",
+            "Support access to customers, transactions, and disputes",
+        ),
+        (
+            "merchant_read_only",
+            "Read-only access to merchant dashboard data",
+        ),
+        ("merchant_staff", "Legacy operational merchant role"),
+        ("merchant_viewer", "Legacy read-only merchant role"),
     ];
 
     for (name, description) in role_specs {
@@ -1133,6 +1278,16 @@ pub async fn update_checkout_settings(
     .execute(&state.db)
     .await;
 
+    write_merchant_audit_log(
+        &state.db,
+        &req,
+        merchant_id,
+        "checkout_settings_updated",
+        "merchant_checkout_settings",
+        payload.clone(),
+    )
+    .await;
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Checkout settings updated",
         "settings": payload
@@ -1168,6 +1323,90 @@ pub async fn get_checkout_settings_audit(
                 "actor_id": row.get::<Option<String>, _>(1),
                 "old_state": row.get::<Option<serde_json::Value>, _>(2),
                 "new_state": row.get::<Option<serde_json::Value>, _>(3)
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
+}
+
+#[derive(Deserialize, ToSchema, IntoParams)]
+pub struct ListMerchantAuditLogsQuery {
+    pub action: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/merchants/audit-logs",
+    params(
+        ListMerchantAuditLogsQuery
+    ),
+    responses(
+        (status = 200, description = "Merchant audit logs")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn list_merchant_audit_logs(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    query: web::Query<ListMerchantAuditLogsQuery>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let tenant_id = tenant_id_from_req(&req);
+    let limit = query.limit.unwrap_or(100).clamp(1, 200);
+    let action = query
+        .action
+        .as_deref()
+        .filter(|value| !value.eq_ignore_ascii_case("all"));
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            id,
+            COALESCE(merchant_id, entity_id) AS scoped_merchant_id,
+            tenant_id,
+            action,
+            COALESCE(target, entity_type || ':' || entity_id::TEXT) AS target,
+            COALESCE(metadata, new_state, '{}'::jsonb) AS metadata,
+            actor_type,
+            actor_id,
+            ip_address,
+            user_agent,
+            created_at
+        FROM audit_logs
+        WHERE (merchant_id = $1 OR (merchant_id IS NULL AND entity_id = $1))
+          AND ($2::UUID IS NULL OR tenant_id IS NULL OR tenant_id = $2)
+          AND ($3::TEXT IS NULL OR action = $3)
+        ORDER BY created_at DESC
+        LIMIT $4
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(tenant_id)
+    .bind(action)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<Uuid, _>("id"),
+                "merchant_id": row.get::<Uuid, _>("scoped_merchant_id"),
+                "tenant_id": row.get::<Option<Uuid>, _>("tenant_id"),
+                "action": row.get::<String, _>("action"),
+                "target": row.get::<String, _>("target"),
+                "metadata": row.get::<serde_json::Value, _>("metadata"),
+                "actor_type": row.get::<Option<String>, _>("actor_type"),
+                "actor_id": row.get::<Option<String>, _>("actor_id"),
+                "ip_address": row.get::<Option<String>, _>("ip_address"),
+                "user_agent": row.get::<Option<String>, _>("user_agent"),
+                "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
             })
         })
         .collect();
@@ -1216,6 +1455,16 @@ pub async fn roll_webhook_secret(
     if allow_secret_reveal {
         response["webhook_secret"] = serde_json::json!(new_secret);
     }
+
+    write_merchant_audit_log(
+        &state.db,
+        &req,
+        merchant_id,
+        "webhook_secret_rotated",
+        "webhook_secret",
+        serde_json::json!({ "webhook_secret_hint": hint }),
+    )
+    .await;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -1374,22 +1623,14 @@ pub async fn roll_keys(
         .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     }
 
-    let allow_secret_reveal =
-        std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
-
-    let mut resp = serde_json::json!({
+    let resp = serde_json::json!({
         "api_key": masked_key(&api_key)["display"].as_str().unwrap_or_default(),
         "key": masked_key(&api_key),
         "environment": env,
-        "message": "API key rotated."
+        "api_secret": api_secret,
+        "api_key_once": api_key,
+        "message": "Store your new API secret safely. It may not be shown again."
     });
-
-    if allow_secret_reveal {
-        resp["api_secret"] = serde_json::json!(api_secret);
-        resp["api_key_once"] = serde_json::json!(api_key);
-        resp["message"] =
-            serde_json::json!("Store your new API secret safely. It may not be shown again.");
-    }
 
     write_audit_log(
         &state.db,
@@ -1463,13 +1704,17 @@ pub async fn login_merchant(
         })));
     }
 
-    let token = crate::middleware::auth::create_token(merchant_id, &body.email)?;
+    let (user_id, tenant_id, role) = merchant_session_context(&state.db, merchant_id).await?;
+    let token =
+        crate::middleware::auth::create_merchant_token(merchant_id, user_id, tenant_id, &role)?;
     let expires_at = merchant_session_expires_at();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "success",
         "token": token,
         "merchant_id": merchant_id,
+        "user_id": user_id,
+        "role": role,
         "name": name,
         "email": email,
         "api_key": api_key,
@@ -1559,12 +1804,17 @@ pub async fn verify_mfa_merchant(
 
         if let Some(mfa_secret) = &m.mfa_secret {
             if MfaService::verify_token(mfa_secret, &body.code)? {
-                let token = crate::middleware::auth::create_token(m.id, &m.email)?;
+                let (user_id, tenant_id, role) = merchant_session_context(&state.db, m.id).await?;
+                let token = crate::middleware::auth::create_merchant_token(
+                    m.id, user_id, tenant_id, &role,
+                )?;
                 let expires_at = merchant_session_expires_at();
                 Ok(HttpResponse::Ok().json(serde_json::json!({
                     "status": "success",
                     "token": token,
                     "merchant_id": m.id,
+                    "user_id": user_id,
+                    "role": role,
                     "name": m.name,
                     "email": m.email,
                     "api_key": m.api_key,
@@ -1614,7 +1864,7 @@ pub async fn forgot_password() -> Result<HttpResponse, FeelPayError> {
 pub struct InviteTeamMemberRequest {
     pub email: String,
     pub full_name: String,
-    pub role: String, // merchant_admin, merchant_staff, merchant_viewer
+    pub role: String,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -1693,15 +1943,9 @@ pub async fn invite_team_member(
     body: web::Json<InviteTeamMemberRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    require_team_admin(&req)?;
     ensure_team_roles_exist(&state.db).await?;
-
-    // Validate role
-    let valid_roles = ["merchant_admin", "merchant_staff", "merchant_viewer"];
-    if !valid_roles.contains(&body.role.as_str()) {
-        return Err(FeelPayError::BadRequest(
-            "Invalid role. Must be one of: merchant_admin, merchant_staff, merchant_viewer".into(),
-        ));
-    }
+    ensure_valid_team_role(&body.role)?;
 
     // Get tenant_id from merchant
     let merchant_row = sqlx::query("SELECT tenant_id FROM merchants WHERE id = $1")
@@ -1768,6 +2012,20 @@ pub async fn invite_team_member(
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
+    write_merchant_audit_log(
+        &state.db,
+        &req,
+        merchant_id,
+        "team_member_invited",
+        "team_member",
+        serde_json::json!({
+            "user_id": user_id,
+            "email": body.email,
+            "role": body.role
+        }),
+    )
+    .await;
+
     // In a real app, send invitation email here (password setup link).
     Ok(HttpResponse::Created().json(serde_json::json!({
         "id": user_id,
@@ -1802,6 +2060,7 @@ pub async fn remove_team_member(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    require_team_admin(&req)?;
     let user_id = path.into_inner();
 
     // Verify user belongs to this merchant
@@ -1826,6 +2085,16 @@ pub async fn remove_team_member(
                 .execute(&state.db)
                 .await
                 .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            write_merchant_audit_log(
+                &state.db,
+                &req,
+                merchant_id,
+                "team_member_removed",
+                "team_member",
+                serde_json::json!({ "user_id": user_id }),
+            )
+            .await;
 
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "message": "Team member removed"
@@ -1860,16 +2129,10 @@ pub async fn update_team_member_role(
     body: web::Json<UpdateRoleRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    require_team_admin(&req)?;
     let user_id = path.into_inner();
     ensure_team_roles_exist(&state.db).await?;
-
-    // Validate role
-    let valid_roles = ["merchant_admin", "merchant_staff", "merchant_viewer"];
-    if !valid_roles.contains(&body.role.as_str()) {
-        return Err(FeelPayError::BadRequest(
-            "Invalid role. Must be one of: merchant_admin, merchant_staff, merchant_viewer".into(),
-        ));
-    }
+    ensure_valid_team_role(&body.role)?;
 
     // Verify user belongs to this merchant
     let row = sqlx::query("SELECT merchant_id FROM users WHERE id = $1")
@@ -1903,6 +2166,19 @@ pub async fn update_team_member_role(
                 .execute(&state.db)
                 .await
                 .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            write_merchant_audit_log(
+                &state.db,
+                &req,
+                merchant_id,
+                "team_member_role_updated",
+                "team_member",
+                serde_json::json!({
+                    "user_id": user_id,
+                    "role": body.role
+                }),
+            )
+            .await;
 
             Ok(HttpResponse::Ok().json(serde_json::json!({
                 "message": "Role updated",

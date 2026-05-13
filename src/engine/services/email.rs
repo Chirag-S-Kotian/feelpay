@@ -381,11 +381,13 @@ async fn send_via_postmark(
 
 /// Format amount with currency
 fn format_amount(paise: i64, currency: &str) -> String {
-    let amount = paise as f64 / 100.0;
+    let sign = if paise < 0 { "-" } else { "" };
+    let absolute = paise.abs();
+    let amount = format!("{}{}.{:02}", sign, absolute / 100, absolute % 100);
     match currency {
-        "INR" => format!("₹{:.2}", amount),
-        "USD" => format!("${:.2}", amount),
-        _ => format!("{:.2} {}", amount, currency),
+        "INR" => format!("₹{}", amount),
+        "USD" => format!("${}", amount),
+        _ => format!("{} {}", amount, currency),
     }
 }
 

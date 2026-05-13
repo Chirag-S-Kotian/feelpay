@@ -41,32 +41,36 @@ pub async fn get_emi_plans(
     query: web::Query<EmiPlansQuery>,
 ) -> Result<HttpResponse, FeelPayError> {
     let amount = query.amount;
+    let total_with_bps = |basis_points: i64| amount.saturating_mul(10_000 + basis_points) / 10_000;
 
     // Simulated EMI plans from major Indian banks
+    let hdfc_total = total_with_bps(300);
+    let icici_total = total_with_bps(700);
+    let sbi_total = total_with_bps(1_000);
     let plans = vec![
         EmiPlan {
             bank_name: "HDFC Bank".into(),
             bank_code: "HDFC".into(),
             duration_months: 3,
             interest_rate: 12.0,
-            monthly_installment: (amount as f64 * 1.03 / 3.0) as i64,
-            total_amount: (amount as f64 * 1.03) as i64,
+            monthly_installment: hdfc_total / 3,
+            total_amount: hdfc_total,
         },
         EmiPlan {
             bank_name: "ICICI Bank".into(),
             bank_code: "ICICI".into(),
             duration_months: 6,
             interest_rate: 14.0,
-            monthly_installment: (amount as f64 * 1.07 / 6.0) as i64,
-            total_amount: (amount as f64 * 1.07) as i64,
+            monthly_installment: icici_total / 6,
+            total_amount: icici_total,
         },
         EmiPlan {
             bank_name: "SBI".into(),
             bank_code: "SBI".into(),
             duration_months: 9,
             interest_rate: 13.5,
-            monthly_installment: (amount as f64 * 1.10 / 9.0) as i64,
-            total_amount: (amount as f64 * 1.10) as i64,
+            monthly_installment: sbi_total / 9,
+            total_amount: sbi_total,
         },
     ];
 

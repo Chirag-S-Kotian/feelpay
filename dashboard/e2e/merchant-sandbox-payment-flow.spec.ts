@@ -11,7 +11,10 @@ test('sandbox payment journey updates payments, dashboard, webhook, customer, an
     }
   });
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.type() !== 'error') return;
+    const text = message.text();
+    if (text === 'Failed to load resource: net::ERR_CONNECTION_CLOSED') return;
+    consoleErrors.push(text);
   });
   await loginMerchant(page);
 

@@ -1,6 +1,10 @@
 use crate::engine::payout;
+use crate::engine::services::bank_account::{
+    mask_bank_account, AddBankAccountRequest, BankAccountService,
+};
 use crate::models::payout::{BankAccount, CreateBankAccountRequest, CreatePayoutRequest, Payout};
 use crate::models::user::Claims;
+use crate::state::AppState;
 use actix_web::{get, post, web, HttpResponse, Responder};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -195,7 +199,7 @@ async fn get_bank_accounts(pool: web::Data<PgPool>, claims: Claims) -> impl Resp
 
 #[post("/bank-accounts")]
 async fn add_bank_account(
-    pool: web::Data<PgPool>,
+    state: web::Data<AppState>,
     req: web::Json<CreateBankAccountRequest>,
     claims: Claims,
 ) -> impl Responder {
@@ -204,21 +208,44 @@ async fn add_bank_account(
         None => return HttpResponse::Forbidden().body("Merchant ID missing in token"),
     };
 
-    let account = sqlx::query_as::<_, BankAccount>(
-        "INSERT INTO bank_accounts (merchant_id, account_holder_name, account_number, ifsc_code, bank_name, is_primary) 
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *"
-    )
-    .bind(merchant_id)
-    .bind(&req.account_holder_name)
-    .bind(&req.account_number)
-    .bind(&req.ifsc_code)
-    .bind(&req.bank_name)
-    .bind(req.is_primary.unwrap_or(false))
-    .fetch_one(pool.get_ref())
-    .await;
+    let service =
+        match BankAccountService::new(state.db.clone(), &state.config.vault_encryption_key) {
+            Ok(service) => service,
+            Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+        };
+
+    let account = service
+        .add_bank_account(
+            merchant_id,
+            AddBankAccountRequest {
+                account_holder_name: req.account_holder_name.trim().to_string(),
+                account_number: req.account_number.trim().to_string(),
+                ifsc_code: req.ifsc_code.trim().to_uppercase(),
+                account_type: "current".to_string(),
+            },
+        )
+        .await;
 
     match account {
-        Ok(a) => HttpResponse::Created().json(a),
+        Ok(a) => {
+            if req.is_primary.unwrap_or(false) {
+                if let Err(e) = service.set_primary_bank_account(merchant_id, a.id).await {
+                    return HttpResponse::InternalServerError().body(e.to_string());
+                }
+            }
+            HttpResponse::Created().json(SafePayoutBankAccount {
+                id: a.id,
+                account_holder_name: a.account_holder_name,
+                account_number_masked: mask_bank_account(req.account_number.trim()),
+                ifsc_code: a.ifsc_code,
+                bank_name: req.bank_name.clone(),
+                is_verified: false,
+                verification_status: a.verification_status.as_str().to_string(),
+                is_primary: req.is_primary.unwrap_or(false),
+                created_at: a.created_at,
+                updated_at: a.updated_at,
+            })
+        }
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }

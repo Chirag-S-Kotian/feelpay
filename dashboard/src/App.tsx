@@ -22,6 +22,7 @@ import {
   Repeat2,
   UserCircle2,
   Activity,
+  ClipboardList,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -39,10 +40,13 @@ import { apiRequest } from './hooks/useApi';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Payments = lazy(() => import('./pages/Payments'));
 const Settlements = lazy(() => import('./pages/Settlements'));
+const Refunds = lazy(() => import('./pages/Refunds'));
 const Analytics = lazy(() => import('./pages/Analytics'));
+const Reports = lazy(() => import('./pages/Reports'));
 const Developers = lazy(() => import('./pages/Developers'));
 const Disputes = lazy(() => import('./pages/Disputes'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Team = lazy(() => import('./pages/Team'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
@@ -57,6 +61,7 @@ const Exports = lazy(() => import('./pages/Exports'));
 const SettlementReports = lazy(() => import('./pages/SettlementReports'));
 const ScheduledReports = lazy(() => import('./pages/ScheduledReports'));
 const NotificationPreferences = lazy(() => import('./pages/NotificationPreferences'));
+const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const WebhookTesting = lazy(() => import('./pages/WebhookTesting'));
 const BankAccounts = lazy(() => import('./pages/BankAccounts'));
 const Pricing = lazy(() => import('./pages/Pricing'));
@@ -76,16 +81,20 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   '/virtual-accounts': () => import('./pages/VirtualAccounts'),
   '/customers': () => import('./pages/Customers'),
   '/settlements': () => import('./pages/Settlements'),
+  '/refunds': () => import('./pages/Refunds'),
+  '/reports': () => import('./pages/Reports'),
   '/exports': () => import('./pages/Exports'),
   '/settlement-reports': () => import('./pages/SettlementReports'),
   '/scheduled-reports': () => import('./pages/ScheduledReports'),
   '/analytics': () => import('./pages/Analytics'),
   '/disputes': () => import('./pages/Disputes'),
   '/notifications': () => import('./pages/NotificationPreferences'),
+  '/audit-logs': () => import('./pages/AuditLogs'),
   '/webhooks': () => import('./pages/WebhookTesting'),
   '/bank-accounts': () => import('./pages/BankAccounts'),
   '/pricing': () => import('./pages/Pricing'),
   '/developers': () => import('./pages/Developers'),
+  '/team': () => import('./pages/Team'),
   '/settings': () => import('./pages/Settings'),
   '/onboarding': () => import('./pages/Onboarding'),
   '/login': () => import('./pages/Login'),
@@ -103,6 +112,8 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/', label: 'Dashboard', icon: LayoutDashboard },
       { path: '/payments', label: 'Payments', icon: CreditCard },
       { path: '/settlements', label: 'Settlements', icon: Wallet },
+      { path: '/refunds', label: 'Refunds', icon: Repeat2 },
+      { path: '/reports', label: 'Reports', icon: BarChart3 },
       { path: '/exports', label: 'Exports', icon: BarChart3 },
       { path: '/settlement-reports', label: 'Settlement Reports', icon: BarChart3 },
       { path: '/scheduled-reports', label: 'Scheduled Reports', icon: BarChart3 },
@@ -129,7 +140,9 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/customers', label: 'Customers', icon: Users },
       { path: '/bank-accounts', label: 'Bank Accounts', icon: Wallet },
       { path: '/developers', label: 'Developers', icon: Code2 },
+      { path: '/team', label: 'Team', icon: Users },
       { path: '/notifications', label: 'Notifications', icon: Bell },
+      { path: '/audit-logs', label: 'Audit Logs', icon: ClipboardList },
     ],
   },
   {
@@ -533,16 +546,20 @@ function Layout() {
             <Route path="/virtual-accounts" element={<VirtualAccounts />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/settlements" element={<Settlements />} />
+            <Route path="/refunds" element={<Refunds />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/exports" element={<Exports />} />
             <Route path="/settlement-reports" element={<SettlementReports />} />
             <Route path="/scheduled-reports" element={<ScheduledReports />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/disputes" element={<Disputes />} />
             <Route path="/notifications" element={<NotificationPreferences />} />
+            <Route path="/audit-logs" element={<AuditLogs />} />
             <Route path="/webhooks" element={<WebhookTesting />} />
             <Route path="/bank-accounts" element={<BankAccounts />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/developers" element={<Developers />} />
+            <Route path="/team" element={<Team />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="*" element={<Navigate to="/" />} />

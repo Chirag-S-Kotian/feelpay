@@ -282,7 +282,15 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/notifications")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::post().to(api::notifications::create_notification))
-                    .route("", web::get().to(api::notifications::list_notifications)),
+                    .route("", web::get().to(api::notifications::list_notifications))
+                    .route(
+                        "/mark-all-read",
+                        web::post().to(api::notifications::mark_all_notifications_read),
+                    )
+                    .route(
+                        "/{id}/read",
+                        web::post().to(api::notifications::mark_notification_as_read),
+                    ),
             )
             .service(
                 web::scope("/v1/reports")
@@ -304,8 +312,14 @@ async fn main() -> std::io::Result<()> {
                     .route("", web::post().to(api::payments::create_payment))
                     .route("", web::get().to(api::payments::list_payments))
                     .route("/batch-refund", web::post().to(api::payments::batch_refund))
-                    .route("/{id}/details", web::get().to(api::payments::get_payment_details))
-                    .route("/{id}/timeline", web::get().to(api::payments::get_payment_timeline))
+                    .route(
+                        "/{id}/details",
+                        web::get().to(api::payments::get_payment_details),
+                    )
+                    .route(
+                        "/{id}/timeline",
+                        web::get().to(api::payments::get_payment_timeline),
+                    )
                     .route("/{id}", web::get().to(api::payments::get_payment))
                     .route(
                         "/{id}/capture",
@@ -315,6 +329,13 @@ async fn main() -> std::io::Result<()> {
                         "/{id}/refund",
                         web::post().to(api::payments::refund_payment),
                     ),
+            )
+            // Refunds API
+            .service(
+                web::scope("/v1/refunds")
+                    .wrap(crate::middleware::external_api::ExternalApiGateway::new())
+                    .route("", web::get().to(api::payments::list_refunds))
+                    .route("/{id}", web::get().to(api::payments::get_refund)),
             )
             // Providers & Routing API
             .service(
@@ -514,6 +535,10 @@ async fn main() -> std::io::Result<()> {
                             .route(
                                 "/checkout-settings/audit",
                                 web::get().to(api::merchants::get_checkout_settings_audit),
+                            )
+                            .route(
+                                "/audit-logs",
+                                web::get().to(api::merchants::list_merchant_audit_logs),
                             )
                             .route(
                                 "/webhook-secret/roll",

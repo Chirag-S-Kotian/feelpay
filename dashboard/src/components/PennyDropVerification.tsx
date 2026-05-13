@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, AlertCircle, CheckCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise } from '../utils/money';
 
 interface Props {
   accountId: string;
@@ -126,7 +127,7 @@ export default function PennyDropVerification({ accountId, onClose }: Props) {
                 </div>
                 <div className="info-row">
                   <span>Expected Amount:</span>
-                  <strong>₹{(verificationData.penny_drop_amount_paise / 100).toFixed(2)}</strong>
+                  <strong>{formatPaise(verificationData.penny_drop_amount_paise)}</strong>
                 </div>
               </div>
             )}

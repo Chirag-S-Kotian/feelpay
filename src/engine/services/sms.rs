@@ -209,8 +209,9 @@ async fn send_via_twilio(to: &str, body: &str) -> Result<(), Box<dyn std::error:
 
 /// Format amount in INR
 fn format_amount(paise: i64) -> String {
-    let rupees = paise as f64 / 100.0;
-    format!("₹{:.2}", rupees)
+    let sign = if paise < 0 { "-" } else { "" };
+    let absolute = paise.abs();
+    format!("{}₹{}.{:02}", sign, absolute / 100, absolute % 100)
 }
 
 #[cfg(test)]

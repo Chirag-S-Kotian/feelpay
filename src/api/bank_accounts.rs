@@ -3,6 +3,7 @@ use crate::engine::services::bank_account::{
 };
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
+use crate::state::AppState;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -76,7 +77,7 @@ pub async fn add_bank_account(
     merchant_id: web::Path<Uuid>,
     req: web::Json<AddBankAccountApiRequest>,
     claims: JwtClaims,
-    db: web::Data<PgPool>,
+    state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id.into_inner();
 
@@ -111,10 +112,8 @@ pub async fn add_bank_account(
         ));
     }
 
-    // Get encryption key from config (TODO: pass from state)
-    let encryption_key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
-
-    let bank_account_service = BankAccountService::new(db.get_ref().clone(), &encryption_key)?;
+    let bank_account_service =
+        BankAccountService::new(state.db.clone(), &state.config.vault_encryption_key)?;
 
     let add_req = AddBankAccountRequest {
         account_holder_name: req.account_holder_name.clone(),

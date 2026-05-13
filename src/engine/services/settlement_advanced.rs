@@ -95,7 +95,7 @@ impl SettlementAdvancedService {
     pub fn calculate_tds(&self, amount: i64) -> i64 {
         // Simplified: 1% TDS
         // In production: check merchant turnover, GST registration, etc.
-        (amount as f64 * 0.01) as i64
+        amount / 100
     }
 
     /// Create TDS calculation record
@@ -107,7 +107,8 @@ impl SettlementAdvancedService {
         tds_rate: f64,
     ) -> Result<TdsCalculation, sqlx::Error> {
         let id = Uuid::new_v4();
-        let tds_amount = (gross_amount as f64 * tds_rate / 100.0) as i64;
+        let tds_rate_bps = (tds_rate * 100.0).round() as i128;
+        let tds_amount = ((gross_amount as i128 * tds_rate_bps) / 10_000) as i64;
         let net_amount = gross_amount - tds_amount;
         let financial_year = self.get_financial_year();
 

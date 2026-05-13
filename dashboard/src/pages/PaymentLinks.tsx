@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, Plus, Copy, ExternalLink, Trash2 } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise, parseInrToPaise } from '../utils/money';
 
 interface PaymentLink {
   id: string;
@@ -58,7 +59,8 @@ export default function PaymentLinks() {
 
   const createLink = async () => {
     setCreateError('');
-    if (!amount || Number(amount) <= 0) {
+    const amountPaise = parseInrToPaise(amount);
+    if (!amountPaise || amountPaise <= 0) {
       setCreateError('Enter valid amount greater than 0');
       return;
     }
@@ -68,7 +70,7 @@ export default function PaymentLinks() {
       expiresAt.setHours(expiresAt.getHours() + parseInt(expiryHours));
       
       await apiRequest('POST', '/v1/payment-links', {
-        amount: parseInt(amount) * 100, // Convert to paise
+        amount: amountPaise,
         description,
         customer_email: customerEmail || undefined,
         customer_name: customerName || undefined,
@@ -105,12 +107,7 @@ export default function PaymentLinks() {
     setTimeout(() => setCopiedId((curr) => (curr === id ? null : curr)), 1200);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-    }).format(amount / 100);
-  };
+  const formatCurrency = (amount: number) => formatPaise(amount);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-IN', {

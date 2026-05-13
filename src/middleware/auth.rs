@@ -529,16 +529,25 @@ where
 
 /// Create a new JWT token for a user or merchant
 pub fn create_token(id: Uuid, _email: &str) -> Result<String, crate::error::FeelPayError> {
+    create_merchant_token(id, id, None, "merchant_owner")
+}
+
+pub fn create_merchant_token(
+    merchant_id: Uuid,
+    user_id: Uuid,
+    tenant_id: Option<Uuid>,
+    role: &str,
+) -> Result<String, crate::error::FeelPayError> {
     let expiry_hours = std::env::var("JWT_EXPIRY_HOURS")
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(24);
     let exp = Utc::now() + Duration::hours(expiry_hours);
     let claims = Claims {
-        sub: id.to_string(),
-        tenant_id: None,
-        merchant_id: Some(id), // For merchant login, the ID is the merchant ID
-        role: "merchant".to_string(),
+        sub: user_id.to_string(),
+        tenant_id,
+        merchant_id: Some(merchant_id),
+        role: role.to_string(),
         exp: exp.timestamp() as usize,
         iat: Utc::now().timestamp() as usize,
     };

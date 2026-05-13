@@ -40,20 +40,26 @@ impl UpiProcessor {
             && handle.chars().all(|c| c.is_alphanumeric())
     }
 
+    fn paise_decimal(amount: i64) -> String {
+        let sign = if amount < 0 { "-" } else { "" };
+        let absolute = amount.abs();
+        format!("{}{}.{:02}", sign, absolute / 100, absolute % 100)
+    }
+
     /// Generate UPI deep link URI
     fn generate_intent_url(&self, txn: &TransactionContext) -> String {
-        let amount_rupees = txn.amount as f64 / 100.0;
+        let amount_rupees = Self::paise_decimal(txn.amount);
         format!(
-            "upi://pay?pa={}&pn=FeelPay&am={:.2}&tr={}&cu=INR&mc=5411",
+            "upi://pay?pa={}&pn=FeelPay&am={}&tr={}&cu=INR&mc=5411",
             self.merchant_vpa, amount_rupees, txn.order_id
         )
     }
 
     /// Generate UPI QR string
     fn generate_qr_string(&self, txn: &TransactionContext) -> String {
-        let amount_rupees = txn.amount as f64 / 100.0;
+        let amount_rupees = Self::paise_decimal(txn.amount);
         format!(
-            "upi://pay?pa={}&pn=FeelPay&am={:.2}&tr={}&cu=INR&mode=02&purpose=00",
+            "upi://pay?pa={}&pn=FeelPay&am={}&tr={}&cu=INR&mode=02&purpose=00",
             self.merchant_vpa, amount_rupees, txn.order_id
         )
     }

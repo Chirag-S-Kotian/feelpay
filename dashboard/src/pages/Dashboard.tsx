@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise } from '../utils/money';
 
 type Summary = {
   total_transactions: number;
@@ -90,18 +91,18 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     if (!summary) {
       return [
-        { label: 'Total Volume', value: '₹0' },
+      { label: 'Total Volume', value: formatPaise(0) },
         { label: 'Successful Txns', value: '0' },
         { label: 'Success Rate', value: '0%' },
-        { label: 'Avg Ticket Size', value: '₹0' },
+      { label: 'Avg Ticket Size', value: formatPaise(0) },
       ];
     }
-    const avg = summary.total_transactions > 0 ? Math.round(summary.total_volume / summary.total_transactions) : 0;
+    const avg = summary.total_transactions > 0 ? Math.trunc(summary.total_volume / summary.total_transactions) : 0;
     return [
-      { label: 'Total Volume', value: `₹${summary.total_volume.toLocaleString('en-IN')}` },
+      { label: 'Total Volume', value: formatPaise(summary.total_volume) },
       { label: 'Successful Txns', value: `${summary.successful.toLocaleString('en-IN')}` },
       { label: 'Success Rate', value: `${summary.success_rate}%` },
-      { label: 'Avg Ticket Size', value: `₹${avg.toLocaleString('en-IN')}` },
+      { label: 'Avg Ticket Size', value: formatPaise(avg) },
     ];
   }, [summary]);
 
@@ -177,7 +178,7 @@ export default function Dashboard() {
               <tr key={t.id}>
                 <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-soft)' }}>{t.id}</td>
                 <td>{t.order_id}</td>
-                <td style={{ fontWeight: 600 }}>₹{Number(t.amount).toLocaleString('en-IN')}</td>
+                <td style={{ fontWeight: 600 }}>{formatPaise(t.amount)}</td>
                 <td>{t.payment_method}</td>
                 <td><span className={`badge ${t.status}`}>{t.status}</span></td>
                 <td style={{ color: 'var(--fp-text-muted)', fontSize: 13 }}>{new Date(t.created_at).toLocaleString('en-IN')}</td>

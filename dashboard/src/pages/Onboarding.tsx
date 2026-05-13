@@ -352,7 +352,7 @@ export default function Onboarding() {
                 {digilockerEnabled ? 'Connect DigiLocker' : 'DigiLocker Disabled by Infra'}
               </button>
             </div>
-            <p className="mini-help">Pattern from Stripe/Razorpay: collect mandatory first (PAN), optional next (GSTIN), then verify async.</p>
+            <p className="mini-help">Collect mandatory details first (PAN), optional next (GSTIN), then verify async.</p>
           </>
         )}
 

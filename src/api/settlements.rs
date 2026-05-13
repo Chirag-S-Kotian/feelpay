@@ -9,6 +9,10 @@ use crate::engine::services::settlement::SettlementService;
 use crate::error::FeelPayError;
 use crate::state::AppState;
 
+fn gst_on_fee_paise(fee_amount: i64) -> i64 {
+    (((fee_amount as i128 * 18) + 50) / 100) as i64
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/settlements")
@@ -123,7 +127,7 @@ pub async fn list_settlements(
                 processed_at,
                 created_at,
             )| {
-                let tax_amount = ((fee_amount as f64) * 0.18_f64).round() as i64;
+                let tax_amount = gst_on_fee_paise(fee_amount);
                 serde_json::json!({
                     "id": id,
                     "settlement_date": settlement_date,
@@ -226,16 +230,54 @@ pub async fn get_settlement(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
+    let refund_adjustments: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(r.amount), 0)::BIGINT
+        FROM settlement_items si
+        JOIN refunds r ON r.payment_order_id = si.transaction_id
+        WHERE si.settlement_id = $1
+          AND r.merchant_id = $2
+          AND r.status IN ('requested', 'processing', 'succeeded')
+        "#,
+    )
+    .bind(settlement_id)
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let bank_account: Option<(String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT account_holder_name, COALESCE(account_number, 'XXXX...XXXX') AS account_number, ifsc_code
+        FROM bank_accounts
+        WHERE merchant_id = $1
+        ORDER BY is_primary DESC, created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": id,
         "settlement_date": settlement_date,
         "status": status,
         "amount": amount,
         "fee_amount": fee_amount,
-        "tax_amount": ((fee_amount as f64) * 0.18_f64).round() as i64,
+        "tax_amount": gst_on_fee_paise(fee_amount),
+        "refund_adjustments": refund_adjustments,
+        "chargeback_adjustments": 0,
+        "other_adjustments": 0,
         "net_amount": net_amount,
         "utr": utr_number,
         "bank_reference": bank_reference,
+        "bank_account": bank_account.map(|(account_holder_name, account_number_masked, ifsc_code)| serde_json::json!({
+            "account_holder_name": account_holder_name,
+            "account_number_masked": account_number_masked,
+            "ifsc_code": ifsc_code
+        })),
         "error_message": error_message,
         "processed_at": processed_at,
         "created_at": created_at,
@@ -308,7 +350,7 @@ pub async fn get_reconciliation_summary(
     let gross: i64 = row.get("gross");
     let fees: i64 = row.get("fees");
     let net: i64 = row.get("net");
-    let tax = ((fees as f64) * 0.18_f64).round() as i64;
+    let tax = gst_on_fee_paise(fees);
     let completed_count: i64 = row.get("completed_count");
     let pending_count: i64 = row.get("pending_count");
     let failed_count: i64 = row.get("failed_count");

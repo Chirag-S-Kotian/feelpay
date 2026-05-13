@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Play, Plus, XCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise, parseInrToPaise } from '../utils/money';
 
 type Mandate = {
   id: string;
@@ -15,7 +16,7 @@ type Mandate = {
   created_at: string;
 };
 
-const money = (amount: number) => `₹${(amount / 100).toLocaleString('en-IN')}`;
+const money = (amount: number) => formatPaise(amount);
 
 export default function Mandates() {
   const [mandates, setMandates] = useState<Mandate[]>([]);
@@ -49,7 +50,7 @@ export default function Mandates() {
     try {
       await apiRequest('POST', '/v1/mandates', {
         mandate_type: form.mandate_type,
-        amount_limit: Math.round(Number(form.amount_limit) * 100),
+        amount_limit: parseInrToPaise(form.amount_limit) || 0,
         currency: 'INR',
         frequency: form.frequency,
         payer_vpa: form.payer_vpa.trim() || null,
@@ -70,7 +71,7 @@ export default function Mandates() {
     setError('');
     setMessage('');
     try {
-      await apiRequest('POST', `/v1/mandates/${id}/${action}`, action === 'execute' ? { amount: Math.round(Number(executeAmount[id]) * 100) } : {});
+      await apiRequest('POST', `/v1/mandates/${id}/${action}`, action === 'execute' ? { amount: parseInrToPaise(executeAmount[id] || '0') || 0 } : {});
       setMessage(action === 'execute' ? 'Mandate executed.' : 'Mandate cancelled.');
       await load();
     } catch (err) {

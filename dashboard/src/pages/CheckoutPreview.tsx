@@ -13,6 +13,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise, parseInrToPaise } from '../utils/money';
 
 type MethodKey = 'card' | 'upi' | 'netbanking' | 'wallet' | 'emi' | 'bnpl';
 
@@ -126,7 +127,7 @@ const FALLBACK_METHODS: PaymentMethod[] = (Object.keys(LABELS) as MethodKey[]).m
 
 const LANGUAGES = ['English', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Marathi'];
 const CARD_NETWORKS = ['Visa', 'Mastercard', 'RuPay', 'Amex', 'Diners'];
-const UPI_APPS = ['GPay', 'PhonePe', 'Paytm', 'BHIM'];
+const UPI_APPS = ['GPay', 'Paytm', 'BHIM'];
 
 function normalize(methods: PaymentMethod[]) {
   const incoming = new Map(methods.map((method) => [method.method_type, method]));
@@ -216,7 +217,7 @@ export default function CheckoutPreview() {
         setMethods(ordered);
         setMerchantName(data.merchant?.business_name || data.merchant?.name || 'FeelPay Merchant');
         setMerchantTagline('Payments that build trust');
-        if (data.sample_order?.amount) setAmount(String(data.sample_order.amount / 100));
+        if (data.sample_order?.amount) setAmount(formatPaise(data.sample_order.amount, { symbol: false }));
         if (data.sample_order?.customer_email) setCustomer(data.sample_order.customer_email);
         setEventFlow(data.event_flow || []);
         setSettings((prev) => ({
@@ -323,7 +324,7 @@ export default function CheckoutPreview() {
       const session = await apiRequest<{ session_id: string }>('POST', '/v1/checkout/session', {
         merchant_id: merchant.id,
         order_id: `preview_${Date.now()}`,
-        amount: Math.round(Number(amount || 0) * 100),
+        amount: parseInrToPaise(amount || '0') || 0,
         currency: 'INR',
         customer_email: customer,
         metadata: { source: 'dashboard_checkout_preview' },
@@ -431,7 +432,7 @@ export default function CheckoutPreview() {
             <div>
               <strong>Scan or open UPI app</strong>
               <span>UPI ID: teststore@feelpay • Intent fallback enabled for mobile.</span>
-              <div className="mini-actions"><button>PhonePe</button><button>GPay</button><button>Paytm</button></div>
+              <div className="mini-actions"><button>GPay</button><button>Paytm</button><button>BHIM</button></div>
             </div>
           </div>
         );
@@ -743,7 +744,7 @@ export default function CheckoutPreview() {
 
             <div className="checkout-amount">
               <span>Amount payable</span>
-              <strong>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
+              <strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
               <small>
                 {settings.features?.collect_email ? customer : 'Email collection off'}
                 {settings.features?.readonly_email ? ' • locked' : ''}
@@ -796,9 +797,9 @@ export default function CheckoutPreview() {
 
             {settings.features?.show_fee_breakup && (
               <div className="fee-breakup">
-                <span>Amount</span><strong>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
+                <span>Amount</span><strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
                 <span>Gateway fee</span><strong>₹0.00</strong>
-                <span>Total</span><strong>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
+                <span>Total</span><strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
               </div>
             )}
 

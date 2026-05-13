@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Landmark, Plus, RefreshCw, Send } from 'lucide-react';
 import { apiRequest, getEnvironmentMode } from '../hooks/useApi';
+import { formatPaise, parseInrToPaise } from '../utils/money';
 
 type Payout = {
   id: string;
@@ -33,7 +34,7 @@ type BankAccount = {
 const METHODS = ['imps', 'neft', 'rtgs'];
 
 function money(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(amount / 100);
+  return currency === 'INR' ? formatPaise(amount) : `${currency} ${formatPaise(amount, { symbol: false })}`;
 }
 
 function statusClass(status: string) {
@@ -108,16 +109,16 @@ export default function Payouts() {
   const createPayout = async () => {
     setError('');
     setNotice('');
-    const rupees = Number(amount);
-    if (!rupees || rupees <= 0) {
+    const amountPaise = parseInrToPaise(amount);
+    if (!amountPaise || amountPaise <= 0) {
       setError('Enter payout amount greater than 0.');
       return;
     }
-    if (Math.round(rupees * 100) < 100) {
+    if (amountPaise < 100) {
       setError('Minimum payout amount is INR 1.00.');
       return;
     }
-    if (Math.round(rupees * 100) > availableBalance) {
+    if (amountPaise > availableBalance) {
       setError('Payout amount exceeds available sandbox balance.');
       return;
     }
@@ -132,7 +133,7 @@ export default function Payouts() {
     setSaving(true);
     try {
       await apiRequest('POST', '/v1/payouts', {
-        amount: Math.round(rupees * 100),
+        amount: amountPaise,
         currency: 'INR',
         method,
         bank_account_id: bankAccountId,

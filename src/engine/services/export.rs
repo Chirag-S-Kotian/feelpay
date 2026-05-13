@@ -1239,7 +1239,7 @@ impl ExportService {
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
         sheet
-            .write_number(row, 1, total_amount as f64, None)
+            .write_string(row, 1, &total_amount.to_string(), None)
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
@@ -1321,7 +1321,7 @@ impl ExportService {
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
             sheet
-                .write_number(row, 4, amount as f64, None)
+                .write_string(row, 4, &amount.to_string(), None)
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
@@ -1351,7 +1351,7 @@ impl ExportService {
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
             sheet
-                .write_number(row, 10, refund_amount as f64, None)
+                .write_string(row, 10, &refund_amount.to_string(), None)
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())

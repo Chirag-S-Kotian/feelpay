@@ -44,8 +44,19 @@ interface TeamMember {
   full_name?: string | null;
   status: string;
   created_at: string;
-  role: 'merchant_admin' | 'merchant_staff' | 'merchant_viewer' | string;
+  role: string;
 }
+
+const MERCHANT_ROLES = [
+  { value: 'merchant_owner', label: 'Owner' },
+  { value: 'merchant_admin', label: 'Admin' },
+  { value: 'merchant_developer', label: 'Developer' },
+  { value: 'merchant_finance', label: 'Finance' },
+  { value: 'merchant_support', label: 'Support' },
+  { value: 'merchant_read_only', label: 'Read Only' },
+  { value: 'merchant_staff', label: 'Staff (Legacy)' },
+  { value: 'merchant_viewer', label: 'Viewer (Legacy)' },
+];
 
 interface HubLink {
   key: string;
@@ -134,7 +145,7 @@ export default function Settings() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState<'merchant_admin' | 'merchant_staff' | 'merchant_viewer'>('merchant_staff');
+  const [inviteRole, setInviteRole] = useState('merchant_support');
   const [hubSections, setHubSections] = useState<HubSection[]>([]);
 
   const merchantId = useMemo(() => {
@@ -321,10 +332,6 @@ export default function Settings() {
       setWarning('');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      if (msg.toLowerCase().includes('not implemented') || msg.includes('(501)')) {
-        setWarning('Test webhook route exists but server still running old/stub implementation. Restart API with latest code.');
-        return;
-      }
       setWarning(msg || 'Failed to send test webhook.');
     }
   };
@@ -562,10 +569,10 @@ export default function Settings() {
             </div>
             <div className="input-group" style={{ marginBottom: 0 }}>
               <label>Role</label>
-              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as 'merchant_admin' | 'merchant_staff' | 'merchant_viewer')}>
-                <option value="merchant_admin">Admin</option>
-                <option value="merchant_staff">Staff</option>
-                <option value="merchant_viewer">Viewer</option>
+              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
+                {MERCHANT_ROLES.map((role) => (
+                  <option key={role.value} value={role.value}>{role.label}</option>
+                ))}
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'end' }}>
@@ -593,9 +600,9 @@ export default function Settings() {
                     <td>{member.email}</td>
                     <td>
                       <select value={member.role} onChange={(e) => void updateRole(member.id, e.target.value)}>
-                        <option value="merchant_admin">Admin</option>
-                        <option value="merchant_staff">Staff</option>
-                        <option value="merchant_viewer">Viewer</option>
+                        {MERCHANT_ROLES.map((role) => (
+                          <option key={role.value} value={role.value}>{role.label}</option>
+                        ))}
                       </select>
                     </td>
                     <td>{member.status}</td>

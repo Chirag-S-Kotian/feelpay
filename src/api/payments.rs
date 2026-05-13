@@ -85,6 +85,13 @@ pub struct ListPaymentsQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Deserialize, ToSchema, IntoParams)]
+pub struct ListRefundsQuery {
+    pub status: Option<String>,
+    pub search: Option<String>,
+    pub limit: Option<i64>,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct CapturePaymentRequest {
     pub amount: i64,
@@ -114,6 +121,19 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
                 .and_then(|s| Uuid::parse_str(s).ok())
         })
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant ID context".into()))
+}
+
+fn tenant_id_from_req(req: &HttpRequest) -> Option<Uuid> {
+    req.extensions()
+        .get::<crate::middleware::auth::TenantId>()
+        .map(|tenant| tenant.0)
+}
+
+fn actor_id_from_req(req: &HttpRequest, fallback_merchant_id: Uuid) -> String {
+    req.extensions()
+        .get::<crate::middleware::auth::UserId>()
+        .map(|user| user.0.to_string())
+        .unwrap_or_else(|| fallback_merchant_id.to_string())
 }
 
 fn request_hash<T: serde::Serialize>(body: &T) -> Result<String, FeelPayError> {
@@ -686,7 +706,11 @@ pub async fn capture_payment(
 
     if order.status == PaymentStatus::Captured {
         // Record in ledger
-        let fee = (order.amount as f64 * 0.03) as i64; // 3% platform fee
+        let fee = order
+            .amount
+            .checked_mul(3)
+            .ok_or_else(|| FeelPayError::Internal("Fee calculation overflow".into()))?
+            / 100; // 3% platform fee in paise
         state
             .ledger
             .record_transaction(
@@ -891,6 +915,39 @@ pub async fn refund_payment(
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs (
+            tenant_id, merchant_id, entity_type, entity_id, action, target,
+            new_state, metadata, actor_type, actor_id, ip_address, user_agent
+        )
+        VALUES ($1, $2, 'refund', $3, 'refund_created', 'payment_refund', $4::jsonb, $5::jsonb, 'merchant_user', $6, $7, $8)
+        "#,
+    )
+    .bind(tenant_id_from_req(&req))
+    .bind(merchant_id)
+    .bind(refund_id)
+    .bind(serde_json::json!({
+        "payment_id": order.id,
+        "refund_id": refund_id,
+        "status": order.status.as_str(),
+        "refunded_amount": refund_amount,
+        "total_refunded": order.refunded_amount
+    }))
+    .bind(serde_json::json!({
+        "reason_present": payload.reason.as_ref().is_some_and(|reason| !reason.trim().is_empty())
+    }))
+    .bind(actor_id_from_req(&req, merchant_id))
+    .bind(req.connection_info().realip_remote_addr().map(str::to_string))
+    .bind(
+        req.headers()
+            .get("user-agent")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+    )
+    .execute(&state.db)
+    .await;
 
     let body = serde_json::json!({
         "payment_id": order.id,
@@ -1110,6 +1167,172 @@ pub async fn batch_refund(
         failed,
         results,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/refunds",
+    params(
+        ListRefundsQuery
+    ),
+    responses(
+        (status = 200, description = "List refunds for authenticated merchant")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn list_refunds(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    query: web::Query<ListRefundsQuery>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let status = query
+        .status
+        .as_deref()
+        .filter(|value| !value.eq_ignore_ascii_case("all"));
+    let search = query
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("%{}%", value));
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            r.id,
+            r.payment_order_id,
+            po.order_id,
+            r.amount,
+            r.status,
+            r.reason,
+            r.gateway_reference,
+            r.created_at,
+            r.processed_at,
+            po.customer_email,
+            po.status AS payment_status,
+            po.refunded_amount,
+            po.amount AS payment_amount
+        FROM refunds r
+        JOIN payment_orders po ON po.id = r.payment_order_id AND po.merchant_id = r.merchant_id
+        WHERE r.merchant_id = $1
+          AND ($2::TEXT IS NULL OR r.status = $2)
+          AND (
+            $3::TEXT IS NULL
+            OR r.id::TEXT ILIKE $3
+            OR po.order_id ILIKE $3
+            OR COALESCE(po.customer_email, '') ILIKE $3
+          )
+        ORDER BY r.created_at DESC
+        LIMIT $4
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(status)
+    .bind(search)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let refunds: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            json!({
+                "id": row.get::<Uuid, _>("id"),
+                "payment_order_id": row.get::<Uuid, _>("payment_order_id"),
+                "order_id": row.get::<String, _>("order_id"),
+                "amount": row.get::<i64, _>("amount"),
+                "status": row.get::<String, _>("status"),
+                "reason": row.get::<Option<String>, _>("reason"),
+                "gateway_reference": row.get::<Option<String>, _>("gateway_reference"),
+                "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+                "processed_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("processed_at"),
+                "customer_email": row.get::<Option<String>, _>("customer_email"),
+                "payment_status": row.get::<String, _>("payment_status"),
+                "refunded_amount": row.get::<i64, _>("refunded_amount"),
+                "payment_amount": row.get::<i64, _>("payment_amount"),
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(json!({ "refunds": refunds })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/refunds/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Refund ID")
+    ),
+    responses(
+        (status = 200, description = "Refund detail"),
+        (status = 404, description = "Refund not found")
+    ),
+    security(
+        ("api_key" = [])
+    )
+)]
+pub async fn get_refund(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let merchant_id = merchant_id_from_req(&req)?;
+    let refund_id = path.into_inner();
+
+    let row = sqlx::query(
+        r#"
+        SELECT
+            r.id,
+            r.payment_order_id,
+            po.order_id,
+            r.amount,
+            r.status,
+            r.reason,
+            r.idempotency_key,
+            r.gateway_reference,
+            r.created_at,
+            r.processed_at,
+            po.customer_email,
+            po.customer_phone,
+            po.payment_method,
+            po.status AS payment_status,
+            po.refunded_amount,
+            po.amount AS payment_amount
+        FROM refunds r
+        JOIN payment_orders po ON po.id = r.payment_order_id AND po.merchant_id = r.merchant_id
+        WHERE r.id = $1 AND r.merchant_id = $2
+        "#,
+    )
+    .bind(refund_id)
+    .bind(merchant_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+    .ok_or_else(|| FeelPayError::NotFound("Refund not found".into()))?;
+
+    Ok(HttpResponse::Ok().json(json!({
+        "id": row.get::<Uuid, _>("id"),
+        "payment_order_id": row.get::<Uuid, _>("payment_order_id"),
+        "order_id": row.get::<String, _>("order_id"),
+        "amount": row.get::<i64, _>("amount"),
+        "status": row.get::<String, _>("status"),
+        "reason": row.get::<Option<String>, _>("reason"),
+        "idempotency_key": row.get::<Option<String>, _>("idempotency_key"),
+        "gateway_reference": row.get::<Option<String>, _>("gateway_reference"),
+        "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+        "processed_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("processed_at"),
+        "customer_email": row.get::<Option<String>, _>("customer_email"),
+        "customer_phone": row.get::<Option<String>, _>("customer_phone"),
+        "payment_method": row.get::<Option<String>, _>("payment_method"),
+        "payment_status": row.get::<String, _>("payment_status"),
+        "refunded_amount": row.get::<i64, _>("refunded_amount"),
+        "payment_amount": row.get::<i64, _>("payment_amount"),
+    })))
 }
 
 #[utoipa::path(

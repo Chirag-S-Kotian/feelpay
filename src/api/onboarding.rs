@@ -8,6 +8,9 @@ use std::time::Duration;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::engine::services::bank_account::{
+    mask_bank_account, AddBankAccountRequest, BankAccountService,
+};
 use crate::error::FeelPayError;
 use crate::state::AppState;
 
@@ -386,33 +389,34 @@ pub async fn submit_bank_account(
         return Err(FeelPayError::BadRequest("Invalid account number".into()));
     }
 
+    let bank_account_service =
+        BankAccountService::new(state.db.clone(), &state.config.vault_encryption_key)?;
+    let account = bank_account_service
+        .add_bank_account(
+            merchant_id,
+            AddBankAccountRequest {
+                account_holder_name: body.account_holder_name.trim().to_string(),
+                account_number: body.account_number.trim().to_string(),
+                ifsc_code: ifsc.clone(),
+                account_type: "current".to_string(),
+            },
+        )
+        .await?;
+    bank_account_service
+        .set_primary_bank_account(merchant_id, account.id)
+        .await?;
+
     let mut tx = state
         .db
         .begin()
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    // 1. Insert into bank_accounts table
-    sqlx::query(
-        r#"
-        INSERT INTO bank_accounts (merchant_id, account_holder_name, account_number, ifsc_code, bank_name, is_primary)
-        VALUES ($1, $2, $3, $4, $5, true)
-        ON CONFLICT (merchant_id, account_number) DO UPDATE 
-        SET account_holder_name = $2, ifsc_code = $4, bank_name = $5, is_verified = false, updated_at = NOW()
-        "#
-    )
-    .bind(merchant_id)
-    .bind(body.account_holder_name.trim())
-    .bind(body.account_number.trim())
-    .bind(&ifsc)
-    .bind(body.bank_name.as_deref().unwrap_or(""))
-    .execute(&mut *tx)
-    .await?;
-
-    // 2. Update merchant settlement_account JSONB for backward compatibility
+    // Update merchant settlement_account JSONB for backward compatibility.
     let settlement = serde_json::json!({
         "account_holder_name": body.account_holder_name.trim(),
-        "account_number_masked": format!("****{}", &body.account_number[body.account_number.len().saturating_sub(4)..]),
+        "account_number_masked": mask_bank_account(body.account_number.trim()),
+        "bank_account_id": account.id,
         "ifsc_code": ifsc,
         "bank_name": body.bank_name.as_deref().unwrap_or(""),
         "verification_status": "penny_drop_pending"
@@ -436,10 +440,8 @@ pub async fn submit_bank_account(
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    // 3. Trigger Penny Drop verification simulation
+    // Trigger Penny Drop verification simulation.
     let pool = state.db.clone();
-    let _account_num = body.account_number.trim().to_string();
-    let _ifsc_val = ifsc.clone();
 
     tokio::spawn(async move {
         // Wait a bit to simulate async processing

@@ -27,10 +27,19 @@ type PaymentLinkRow = {
 
 const merchant = {
   id: '00000000-0000-0000-0000-000000000001',
+  user_id: '00000000-0000-0000-0000-000000000101',
   name: 'Demo Merchant',
   email: 'merchant@example.com',
   api_key: 'fp_test_demo_key',
+  role: 'merchant_owner',
 };
+
+function merchantIdFromPath(path: string, resource: string) {
+  const cleanPath = path.split('?')[0];
+  const parts = cleanPath.split('/').filter(Boolean);
+  if (parts[0] !== 'v1' || parts[1] !== 'merchants' || parts[3] !== resource) return null;
+  return parts[2] || null;
+}
 
 const nowIso = () => new Date().toISOString();
 
@@ -92,6 +101,23 @@ export async function installMerchantApi(page: Page) {
       created_at: nowIso(),
     },
   ];
+  const refunds = [
+    {
+      id: 'ref_seed_1',
+      payment_order_id: 'pay_seed_success',
+      order_id: 'order_seed_1',
+      amount: 49900,
+      status: 'processed',
+      reason: 'Customer requested refund',
+      gateway_reference: 'gw_refund_seed_1',
+      created_at: nowIso(),
+      processed_at: nowIso(),
+      customer_email: 'buyer@example.com',
+      payment_status: 'partially_refunded',
+      refunded_amount: 49900,
+      payment_amount: 249900,
+    },
+  ];
   const paymentLinks: PaymentLinkRow[] = [];
   const payouts: Array<{
     id: string;
@@ -108,6 +134,66 @@ export async function installMerchantApi(page: Page) {
     { id: 'evt_seed', test_id: 'evt_seed', event_type: 'payment.captured', status: 'delivered', attempts: 1, created_at: nowIso(), response_code: 200, http_status: 200 },
   ];
   const auditItems = [{ created_at: nowIso(), actor_id: merchant.id }];
+  const auditLogs = [
+    {
+      id: 'aud_seed_1',
+      action: 'team_member_invited',
+      target: 'team_member',
+      metadata: { email: 'finance@example.com', role: 'merchant_staff' },
+      actor_type: 'merchant_user',
+      actor_id: merchant.id,
+      ip_address: '127.0.0.1',
+      user_agent: 'Playwright',
+      created_at: nowIso(),
+    },
+  ];
+  const teamMembers = [
+    {
+      id: 'team_seed_1',
+      email: 'finance@example.com',
+      full_name: 'Finance User',
+      status: 'active',
+      created_at: nowIso(),
+      role: 'merchant_finance',
+    },
+  ];
+  const notificationItems: Array<{
+    id: string;
+    notification_type: string;
+    recipient_type: string;
+    recipient_id: string;
+    recipient_email: string;
+    recipient_phone: string | null;
+    subject: string;
+    body: string;
+    status: string;
+    entity_type: string;
+    entity_id: string;
+    metadata: Record<string, unknown>;
+    is_read: boolean;
+    read_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }> = [
+    {
+      id: 'not_seed_1',
+      notification_type: 'in_app',
+      recipient_type: 'merchant',
+      recipient_id: merchant.id,
+      recipient_email: merchant.email,
+      recipient_phone: null,
+      subject: 'KYC incomplete',
+      body: 'Complete KYC/KYB before requesting live mode.',
+      status: 'pending',
+      entity_type: 'kyc',
+      entity_id: merchant.id,
+      metadata: {},
+      is_read: false,
+      read_at: null,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    },
+  ];
   const bankAccounts = [
     { id: 'ba_test_1', account_holder_name: 'Demo Merchant', bank_name: 'HDFC Bank', account_number_masked: 'XXXXXX7890', ifsc_code: 'HDFC0001234', account_type: 'current', verification_status: 'verified', is_primary: true, created_at: nowIso(), verified_at: nowIso() },
   ];
@@ -137,20 +223,75 @@ export async function installMerchantApi(page: Page) {
       return json(route, { message: 'Authentication required. Provide valid x-api-key or Bearer token' }, 401);
     }
 
+    for (const resource of ['exports', 'scheduled-reports', 'notification-preferences', 'webhooks', 'bank-accounts']) {
+      const scopedMerchantId = merchantIdFromPath(path, resource);
+      if (scopedMerchantId && scopedMerchantId !== merchant.id) {
+        return json(route, { message: 'You do not have permission to access this merchant' }, 403);
+      }
+    }
+
     if (path === '/v1/merchants/login') {
-      return json(route, { token: 'fake-token', merchant_id: merchant.id, name: merchant.name, email: merchant.email, api_key: merchant.api_key, expires_in: 86400 });
+      return json(route, { token: 'fake-token', merchant_id: merchant.id, user_id: merchant.user_id, role: merchant.role, name: merchant.name, email: merchant.email, api_key: merchant.api_key, expires_in: 86400 });
     }
     if (path === '/v1/merchants/logout') return json(route, { ok: true });
     if (path === '/v1/merchants/profile') return json(route, { ...merchant, business_name: 'Demo Store', business_type: 'individual', webhook_url: 'https://example.com/webhooks/feelpay' });
     if (path === '/v1/merchants/keys') return json(route, { api_key: merchant.api_key });
+    if (path === '/v1/merchants/keys/roll' && method === 'POST') {
+      merchant.api_key = `fp_test_rotated_${Date.now()}`;
+      return json(route, {
+        api_key: `${merchant.api_key.slice(0, 12)}...${merchant.api_key.slice(-4)}`,
+        api_secret: 'fp_secret_once_for_test',
+        api_key_once: merchant.api_key,
+        message: 'Store your new API secret safely. It may not be shown again.',
+      });
+    }
     if (path === '/v1/merchants/settings/security') return json(route, { mfa_enabled: false, settlement_cycle: 'T+2', per_transaction_limit: 100000, daily_limit: 1000000, monthly_limit: 10000000, allowed_payment_methods: {}, webhook_secret_hint: 'whsec_test_••••1234', updated_at: nowIso() });
-    if (path === '/v1/merchants/team') return json(route, []);
+    if (path === '/v1/merchants/team' && method === 'GET') return json(route, teamMembers);
+    if (path === '/v1/merchants/team/invite' && method === 'POST') {
+      const body = route.request().postDataJSON() as { email?: string; full_name?: string; role?: string };
+      teamMembers.unshift({
+        id: `team_seed_${teamMembers.length + 1}`,
+        email: body.email || 'new@example.com',
+        full_name: body.full_name || 'New User',
+        status: 'pending',
+        created_at: nowIso(),
+        role: body.role || 'merchant_support',
+      });
+      return json(route, teamMembers[0], 201);
+    }
+    if (path.includes('/v1/merchants/team/') && path.endsWith('/role') && method === 'PUT') {
+      const body = route.request().postDataJSON() as { role?: string };
+      const member = teamMembers.find((item) => path.includes(item.id));
+      if (member && body.role) member.role = body.role;
+      return json(route, { message: 'Role updated', new_role: body.role });
+    }
+    if (path.includes('/v1/merchants/team/') && method === 'DELETE') {
+      const index = teamMembers.findIndex((item) => path.includes(item.id));
+      if (index >= 0) teamMembers.splice(index, 1);
+      return json(route, { message: 'Team member removed' });
+    }
     if (path === '/v1/merchants/account-settings-hub') return json(route, { sections: [] });
     if (path === '/v1/merchants/dashboard-signals') {
       return json(route, {
         announcements: [],
         ecosystem_health: [{ name: 'Sandbox Bank Rail', success_rate: 100, avg_latency_ms: 120, is_active: true, circuit_breaker_state: 'closed' }],
       });
+    }
+    if (path.startsWith('/v1/notifications') && method === 'GET') return json(route, notificationItems);
+    if (path === '/v1/notifications/mark-all-read' && method === 'POST') {
+      notificationItems.forEach((item) => {
+        item.is_read = true;
+        item.read_at = nowIso();
+      });
+      return json(route, { message: 'All notifications marked as read' });
+    }
+    if (path.startsWith('/v1/notifications/') && path.endsWith('/read') && method === 'POST') {
+      const item = notificationItems.find((note) => path.includes(note.id));
+      if (item) {
+        item.is_read = true;
+        item.read_at = nowIso();
+      }
+      return json(route, { message: 'Notification marked as read' });
     }
     if (path.includes('/onboarding/status')) return json(route, { status: 'verified', kyc_status: 'verified', bank_status: 'verified', live_enabled: false });
     if (path.includes('/onboarding/limits')) return json(route, { daily_limit: 1000000, monthly_limit: 10000000 });
@@ -167,6 +308,37 @@ export async function installMerchantApi(page: Page) {
     if (path.startsWith('/v1/analytics/alerts')) return json(route, { alerts: [] });
     if (path.includes('/v1/payments/') && path.endsWith('/details')) return json(route, { payment: payments[0], webhooks: webhookEvents });
     if (path.includes('/v1/payments/') && path.endsWith('/timeline')) return json(route, [{ event_type: 'payment_captured', status_after: 'captured', created_at: nowIso() }]);
+    if (path.includes('/v1/payments/') && path.endsWith('/refund') && method === 'POST') {
+      const body = route.request().postDataJSON() as { amount?: number; reason?: string };
+      const payment = payments.find((item) => path.includes(item.id));
+      if (!payment) return json(route, { message: 'Payment not found' }, 404);
+      if (!body.reason?.trim()) return json(route, { message: 'Refund reason is required' }, 400);
+      const amount = Math.trunc(body.amount || 0);
+      const refunded = Math.trunc((payment as SandboxPayment & { refunded_amount?: number }).refunded_amount || 0);
+      const remaining = payment.amount - refunded;
+      if (amount <= 0 || amount > remaining) return json(route, { message: 'Invalid refund amount' }, 400);
+      (payment as SandboxPayment & { refunded_amount?: number }).refunded_amount = refunded + amount;
+      payment.status = (payment as SandboxPayment & { refunded_amount?: number }).refunded_amount! >= payment.amount ? 'refunded' : 'partially_refunded';
+      const refund = {
+        id: `ref_seed_${refunds.length + 1}`,
+        payment_order_id: payment.id,
+        order_id: payment.order_id,
+        amount,
+        status: 'processed',
+        reason: body.reason,
+        gateway_reference: `gw_refund_seed_${refunds.length + 1}`,
+        created_at: nowIso(),
+        processed_at: nowIso(),
+        customer_email: payment.customer_email,
+        payment_status: payment.status,
+        refunded_amount: (payment as SandboxPayment & { refunded_amount?: number }).refunded_amount,
+        payment_amount: payment.amount,
+      };
+      refunds.unshift(refund);
+      return json(route, { payment_id: payment.id, refund_id: refund.id, status: payment.status, refunded_amount: amount, total_refunded: refund.refunded_amount });
+    }
+    if (path.startsWith('/v1/refunds?') || path === '/v1/refunds') return json(route, { refunds });
+    if (path.startsWith('/v1/refunds/')) return json(route, refunds[0]);
     if (path.startsWith('/v1/payments')) return json(route, { data: payments });
 
     if (path === '/v1/checkout/preview-config') {
@@ -186,6 +358,7 @@ export async function installMerchantApi(page: Page) {
     }
     if (path === '/v1/merchants/checkout-settings') return json(route, {});
     if (path === '/v1/merchants/checkout-settings/audit') return json(route, { items: auditItems });
+    if (path.startsWith('/v1/merchants/audit-logs')) return json(route, { items: auditLogs });
     if (path === '/v1/merchants/checkout-settings' && method === 'PUT') return json(route, { ok: true });
     if (path === '/v1/merchants/payment-methods') return json(route, methodState);
     if (path.startsWith('/v1/merchants/payment-methods/') && method === 'PUT') {

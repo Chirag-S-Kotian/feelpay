@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, FileText, Loader, RefreshCw } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise } from '../utils/money';
 
 interface Settlement {
   id: string;
@@ -26,10 +27,18 @@ interface SettlementDetail {
   amount: number;
   fee_amount: number;
   tax_amount: number;
+  refund_adjustments?: number;
+  chargeback_adjustments?: number;
+  other_adjustments?: number;
   net_amount: number;
   status: string;
   utr?: string;
   bank_reference?: string;
+  bank_account?: {
+    account_holder_name: string;
+    account_number_masked: string;
+    ifsc_code: string;
+  } | null;
   processed_at?: string;
   created_at: string;
   items: SettlementItem[];
@@ -87,17 +96,17 @@ export default function SettlementReports() {
       ['Settlement Date', detail.settlement_date || 'N/A'],
       ['Status', detail.status],
       ['UTR', detail.utr || 'N/A'],
-      ['Gross Amount (INR)', (detail.amount / 100).toFixed(2)],
-      ['Fee Amount (INR)', (detail.fee_amount / 100).toFixed(2)],
-      ['Tax Amount (INR)', (detail.tax_amount / 100).toFixed(2)],
-      ['Net Amount (INR)', (detail.net_amount / 100).toFixed(2)],
+      ['Gross Amount (INR)', formatPaise(detail.amount, { symbol: false })],
+      ['Fee Amount (INR)', formatPaise(detail.fee_amount, { symbol: false })],
+      ['Tax Amount (INR)', formatPaise(detail.tax_amount, { symbol: false })],
+      ['Net Amount (INR)', formatPaise(detail.net_amount, { symbol: false })],
       ['Transaction Count', `${detail.items?.length || 0}`],
       [],
       ['Transaction ID', 'Amount (INR)', 'Fee (INR)'],
       ...(detail.items || []).map(item => [
         item.transaction_id,
-        (item.amount / 100).toFixed(2),
-        (item.fee / 100).toFixed(2),
+        formatPaise(item.amount, { symbol: false }),
+        formatPaise(item.fee, { symbol: false }),
       ]),
     ];
 
@@ -129,9 +138,9 @@ export default function SettlementReports() {
       `Date: ${detail.settlement_date || detail.created_at}`,
       `Status: ${detail.status}`,
       `UTR: ${detail.utr || 'N/A'}`,
-      `Gross: INR ${(detail.amount / 100).toFixed(2)}`,
-      `Fees + Tax: INR ${((detail.fee_amount + detail.tax_amount) / 100).toFixed(2)}`,
-      `Net: INR ${(detail.net_amount / 100).toFixed(2)}`,
+      `Gross: INR ${formatPaise(detail.amount, { symbol: false })}`,
+      `Fees + Tax: INR ${formatPaise(detail.fee_amount + detail.tax_amount, { symbol: false })}`,
+      `Net: INR ${formatPaise(detail.net_amount, { symbol: false })}`,
       `Rows: ${detail.items?.length || 0}`,
     ];
     const escaped = lines.join('\\n').replace(/[()\\]/g, '\\$&');
@@ -250,9 +259,9 @@ export default function SettlementReports() {
                         </span>
                       </td>
                       <td>-</td>
-                      <td>₹{(settlement.amount / 100).toFixed(2)}</td>
-                      <td>₹{((settlement.fee_amount + settlement.tax_amount) / 100).toFixed(2)}</td>
-                      <td className="font-bold">₹{(settlement.net_amount / 100).toFixed(2)}</td>
+                      <td>{formatPaise(settlement.amount)}</td>
+                      <td>{formatPaise(settlement.fee_amount + settlement.tax_amount)}</td>
+                      <td className="font-bold">{formatPaise(settlement.net_amount)}</td>
                       <td>
                         <button
                           className="btn-small"
@@ -293,19 +302,31 @@ export default function SettlementReports() {
                 <h3>Financial Breakdown</h3>
                 <div className="preview-row">
                   <span>Gross Amount:</span>
-                  <strong>₹{(reportPreview.amount / 100).toFixed(2)}</strong>
+                  <strong>{formatPaise(reportPreview.amount)}</strong>
                 </div>
                 <div className="preview-row">
                   <span>Fee:</span>
-                  <strong>₹{(reportPreview.fee_amount / 100).toFixed(2)}</strong>
+                  <strong>{formatPaise(reportPreview.fee_amount)}</strong>
                 </div>
                 <div className="preview-row">
                   <span>Tax on Fee:</span>
-                  <strong>₹{(reportPreview.tax_amount / 100).toFixed(2)}</strong>
+                  <strong>{formatPaise(reportPreview.tax_amount)}</strong>
+                </div>
+                <div className="preview-row">
+                  <span>Refunds:</span>
+                  <strong>{formatPaise(reportPreview.refund_adjustments || 0)}</strong>
+                </div>
+                <div className="preview-row">
+                  <span>Chargebacks:</span>
+                  <strong>{formatPaise(reportPreview.chargeback_adjustments || 0)}</strong>
+                </div>
+                <div className="preview-row">
+                  <span>Adjustments:</span>
+                  <strong>{formatPaise(reportPreview.other_adjustments || 0)}</strong>
                 </div>
                 <div className="preview-row">
                   <span>Net Amount:</span>
-                  <strong>₹{(reportPreview.net_amount / 100).toFixed(2)}</strong>
+                  <strong>{formatPaise(reportPreview.net_amount)}</strong>
                 </div>
               </div>
 
@@ -326,6 +347,14 @@ export default function SettlementReports() {
                 <div className="preview-row">
                   <span>UTR:</span>
                   <strong className="mono">{reportPreview.utr || 'N/A'}</strong>
+                </div>
+                <div className="preview-row">
+                  <span>Bank Account:</span>
+                  <strong>
+                    {reportPreview.bank_account
+                      ? `${reportPreview.bank_account.account_number_masked} / ${reportPreview.bank_account.ifsc_code}`
+                      : 'N/A'}
+                  </strong>
                 </div>
               </div>
 

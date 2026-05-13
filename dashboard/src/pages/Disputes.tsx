@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise } from '../utils/money';
 
 type Dispute = {
   id: string;
@@ -141,7 +142,7 @@ export default function Disputes() {
               <span className={`badge ${d.status}`}>{d.status}</span>
               <span className="dispute-card__id">{d.id}</span>
             </div>
-            <div className="dispute-card__amount">₹{d.amount.toLocaleString('en-IN')}</div>
+            <div className="dispute-card__amount">{formatPaise(d.amount)}</div>
             <div className="dispute-card__row">
               <span>Payment</span>
               <code>{d.payment_order_id}</code>

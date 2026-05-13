@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Pause, Play, Plus, XCircle } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import { formatPaise, parseInrToPaise } from '../utils/money';
 
 type Plan = {
   id: string;
@@ -23,7 +24,7 @@ type Subscription = {
   cancel_at_period_end: boolean;
 };
 
-const money = (amount: number) => `₹${(amount / 100).toLocaleString('en-IN')}`;
+const money = (amount: number) => formatPaise(amount);
 
 export default function Subscriptions() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -63,7 +64,7 @@ export default function Subscriptions() {
     try {
       await apiRequest('POST', '/v1/subscriptions/plans', {
         name: planForm.name.trim(),
-        amount: Math.round(Number(planForm.amount) * 100),
+        amount: parseInrToPaise(planForm.amount) || 0,
         currency: 'INR',
         billing_cycle: planForm.billing_cycle,
         trial_days: planForm.trial_days ? Number(planForm.trial_days) : null,
@@ -88,7 +89,7 @@ export default function Subscriptions() {
         customer_id: subForm.customer_id.trim(),
         plan_id: subForm.plan_id || null,
         plan_name: selectedPlan?.name || subForm.plan_name.trim(),
-        amount: selectedPlan?.amount || Math.round(Number(subForm.amount) * 100),
+        amount: selectedPlan?.amount || parseInrToPaise(subForm.amount) || 0,
         currency: 'INR',
         billing_cycle: selectedPlan?.billing_cycle || subForm.billing_cycle,
       });

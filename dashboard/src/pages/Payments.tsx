@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../hooks/useApi';
 import { SideDrawer } from '../components/SideDrawer';
+import { formatPaise, parseInrToPaise } from '../utils/money';
 
 type Payment = {
   id: string;
@@ -10,14 +11,17 @@ type Payment = {
   connector?: string | null;
   status: string;
   customer_email?: string | null;
+  refunded_amount?: number | null;
   created_at: string;
 };
 
-function paymentAmount(amount: number) {
-  return (amount / 100).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+function paiseInputValue(amount: number) {
+  const absolute = Math.max(0, Math.trunc(amount));
+  return `${Math.trunc(absolute / 100)}.${String(absolute % 100).padStart(2, '0')}`;
+}
+
+function percentageOfPaise(amount: number, basisPoints: number) {
+  return Math.trunc((Math.trunc(amount) * basisPoints) / 10_000);
 }
 
 function statusTone(status: string) {
@@ -35,8 +39,6 @@ function connectorLabel(connector?: string | null) {
     simulator: 'Simulator',
     core_card_rail: 'Card rail',
     upi_stub: 'UPI rail',
-    razorpay: 'Razorpay',
-    stripe: 'Stripe',
   };
   return labels[connector] || connector.replace(/_/g, ' ');
 }
@@ -44,8 +46,8 @@ function connectorLabel(connector?: string | null) {
 function connectorTone(connector?: string | null) {
   if (!connector) return 'unknown';
   if (connector === 'simulator') return 'test';
-  if (connector.includes('card') || connector === 'stripe') return 'card';
-  if (connector.includes('upi') || connector === 'razorpay') return 'upi';
+  if (connector.includes('card')) return 'card';
+  if (connector.includes('upi')) return 'upi';
   return 'live';
 }
 
@@ -97,6 +99,20 @@ export default function Payments() {
   const [timeline, setTimeline] = useState<any[]>([]);
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [refundError, setRefundError] = useState('');
+  const [refundNotice, setRefundNotice] = useState('');
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+
+  const refundableAmount = selectedPayment
+    ? Math.max(0, Math.trunc(selectedPayment.amount) - Math.trunc(selectedPayment.refunded_amount || 0))
+    : 0;
+  const refundAllowed = Boolean(
+    selectedPayment &&
+    refundableAmount > 0 &&
+    ['captured', 'settled', 'partially_refunded'].includes(selectedPayment.status.toLowerCase()),
+  );
 
   useEffect(() => {
     if (!selectedPayment) return;
@@ -109,6 +125,11 @@ export default function Payments() {
         ]);
         setTimeline(timelineRes || []);
         setWebhooks(detailRes.webhooks || []);
+        if (detailRes.payment) {
+          setSelectedPayment((current) =>
+            current?.id === selectedPayment.id ? { ...current, ...detailRes.payment } : current,
+          );
+        }
       } catch (e) {
         console.error('Failed to load payment details', e);
       } finally {
@@ -116,6 +137,14 @@ export default function Payments() {
       }
     };
     void loadDetails();
+  }, [selectedPayment?.id]);
+
+  useEffect(() => {
+    if (!selectedPayment) return;
+    setRefundAmount(paiseInputValue(Math.max(0, selectedPayment.amount - (selectedPayment.refunded_amount || 0))));
+    setRefundReason('');
+    setRefundError('');
+    setRefundNotice('');
   }, [selectedPayment?.id]);
 
   useEffect(() => {
@@ -137,6 +166,53 @@ export default function Payments() {
     };
     void load();
   }, [filter]);
+
+  const submitRefund = async () => {
+    if (!selectedPayment) return;
+    const amountPaise = parseInrToPaise(refundAmount);
+    if (!amountPaise || amountPaise <= 0) {
+      setRefundError('Enter a valid refund amount.');
+      return;
+    }
+    if (amountPaise > refundableAmount) {
+      setRefundError('Refund amount exceeds the remaining refundable balance.');
+      return;
+    }
+    if (!refundReason.trim()) {
+      setRefundError('Refund reason is required.');
+      return;
+    }
+    setRefundSubmitting(true);
+    setRefundError('');
+    setRefundNotice('');
+    try {
+      const response = await apiRequest<{
+        status: string;
+        refunded_amount: number;
+        total_refunded: number;
+      }>(
+        'POST',
+        `/v1/payments/${selectedPayment.id}/refund`,
+        { amount: amountPaise, reason: refundReason.trim() },
+        undefined,
+        { useApiKey: true, idempotencyKey: `refund-${selectedPayment.id}-${crypto.randomUUID()}` },
+      );
+      const updatedPayment = {
+        ...selectedPayment,
+        status: response.status,
+        refunded_amount: response.total_refunded,
+      };
+      setSelectedPayment(updatedPayment);
+      setPayments((items) => items.map((item) => (item.id === selectedPayment.id ? updatedPayment : item)));
+      setRefundNotice(`Refund submitted for ${formatPaise(response.refunded_amount)}.`);
+      setRefundReason('');
+      setRefundAmount(paiseInputValue(Math.max(0, selectedPayment.amount - response.total_refunded)));
+    } catch (err) {
+      setRefundError(err instanceof Error ? err.message : 'Failed to submit refund.');
+    } finally {
+      setRefundSubmitting(false);
+    }
+  };
 
   const filtered = payments.filter(p => {
     if (
@@ -163,7 +239,7 @@ export default function Payments() {
               <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
                 <div style={{ flex: 1, padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12, border: '1px solid var(--fp-border)' }}>
                   <label style={{ display: 'block', fontSize: 12, color: 'var(--fp-text-muted)', marginBottom: 4 }}>Amount</label>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>₹{paymentAmount(selectedPayment.amount)}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPaise(selectedPayment.amount)}</div>
                 </div>
                 <div style={{ flex: 1, padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12, border: '1px solid var(--fp-border)' }}>
                   <label style={{ display: 'block', fontSize: 12, color: 'var(--fp-text-muted)', marginBottom: 4 }}>Status</label>
@@ -217,20 +293,72 @@ export default function Payments() {
               <div className="fee-card" style={{ padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12 }}>
                 <div className="fee-row">
                   <span>Gross Amount</span>
-                  <span>₹{paymentAmount(selectedPayment.amount)}</span>
+                  <span>{formatPaise(selectedPayment.amount)}</span>
                 </div>
                 <div className="fee-row">
                   <span>FeelPay Fee (2%)</span>
-                  <span className="warning">- ₹{paymentAmount(selectedPayment.amount * 0.02)}</span>
+                  <span className="warning">- {formatPaise(percentageOfPaise(selectedPayment.amount, 200))}</span>
                 </div>
                 <div className="fee-row">
                   <span>GST (18% of fee)</span>
-                  <span className="warning">- ₹{paymentAmount(selectedPayment.amount * 0.02 * 0.18)}</span>
+                  <span className="warning">- {formatPaise(percentageOfPaise(percentageOfPaise(selectedPayment.amount, 200), 1800))}</span>
                 </div>
                 <div className="fee-row total">
                   <span>Net Settlement</span>
-                  <span className="success">₹{paymentAmount(selectedPayment.amount * (1 - 0.02 * 1.18))}</span>
+                  <span className="success">{formatPaise(selectedPayment.amount - percentageOfPaise(selectedPayment.amount, 200) - percentageOfPaise(percentageOfPaise(selectedPayment.amount, 200), 1800))}</span>
                 </div>
+              </div>
+            </div>
+
+            <div className="detail-section">
+              <h4>Refund</h4>
+              <div className="refund-panel">
+                <div className="fee-row">
+                  <span>Refundable Balance</span>
+                  <span>{formatPaise(refundableAmount)}</span>
+                </div>
+                {refundNotice && <div className="success-banner">{refundNotice}</div>}
+                {refundError && <div className="error-banner">{refundError}</div>}
+                <label className="refund-field">
+                  <span>Amount (INR)</span>
+                  <input
+                    value={refundAmount}
+                    onChange={(event) => setRefundAmount(event.target.value)}
+                    inputMode="decimal"
+                    disabled={!refundAllowed || refundSubmitting}
+                  />
+                </label>
+                <label className="refund-field">
+                  <span>Reason</span>
+                  <textarea
+                    value={refundReason}
+                    onChange={(event) => setRefundReason(event.target.value)}
+                    rows={3}
+                    disabled={!refundAllowed || refundSubmitting}
+                    placeholder="Required for audit and support follow-up"
+                  />
+                </label>
+                <div className="refund-actions">
+                  <button
+                    className="btn-secondary"
+                    type="button"
+                    onClick={() => setRefundAmount(paiseInputValue(refundableAmount))}
+                    disabled={!refundAllowed || refundSubmitting}
+                  >
+                    Full Refund
+                  </button>
+                  <button
+                    className="btn-primary"
+                    type="button"
+                    onClick={() => void submitRefund()}
+                    disabled={!refundAllowed || refundSubmitting}
+                  >
+                    {refundSubmitting ? 'Submitting...' : 'Submit Refund'}
+                  </button>
+                </div>
+                {!refundAllowed && (
+                  <p className="muted">Refunds are available only for captured or partially refunded payments with remaining balance.</p>
+                )}
               </div>
             </div>
 
@@ -306,7 +434,7 @@ export default function Payments() {
                     <td style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--fp-primary-soft)' }}>{p.id}</td>
                     <td style={{ fontWeight: 500 }}>{p.order_id}</td>
                     <td style={{ color: 'var(--fp-text-muted)', fontSize: 13 }}>{p.customer_email || '-'}</td>
-                    <td style={{ fontWeight: 600 }}>₹{paymentAmount(p.amount)}</td>
+                    <td style={{ fontWeight: 600 }}>{formatPaise(p.amount)}</td>
                     <td>
                       <span className="payment-chip">{p.payment_method || 'Not set'}</span>
                     </td>
@@ -382,6 +510,40 @@ export default function Payments() {
           background: rgba(139, 92, 246, 0.14);
           border-color: rgba(139, 92, 246, 0.3);
           color: #c4b5fd;
+        }
+
+        .refund-panel {
+          display: grid;
+          gap: 12px;
+          padding: 16px;
+          background: var(--fp-bg-elevated);
+          border: 1px solid var(--fp-border);
+          border-radius: 12px;
+        }
+
+        .refund-field {
+          display: grid;
+          gap: 6px;
+          color: var(--fp-text-muted);
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .refund-field input,
+        .refund-field textarea {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 8px;
+          border: 1px solid var(--fp-border);
+          background: var(--fp-bg);
+          color: var(--fp-text);
+          font: inherit;
+        }
+
+        .refund-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
         }
 
         @media (max-width: 760px) {

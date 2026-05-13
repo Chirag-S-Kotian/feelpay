@@ -184,10 +184,30 @@ export default function Settlements() {
                   <span>Service Tax (GST)</span>
                   <span className="warning">- {formatCurrency(selectedSettlement.tax)}</span>
                 </div>
+                <div className="fee-row">
+                  <span>Refunds</span>
+                  <span className="warning">- {formatCurrency(settlementDetails?.refund_adjustments || 0)}</span>
+                </div>
+                <div className="fee-row">
+                  <span>Chargebacks</span>
+                  <span className="warning">- {formatCurrency(settlementDetails?.chargeback_adjustments || 0)}</span>
+                </div>
+                <div className="fee-row">
+                  <span>Adjustments</span>
+                  <span>{formatCurrency(settlementDetails?.other_adjustments || 0)}</span>
+                </div>
                 <div className="fee-row total">
                   <span>Final Payout</span>
                   <span className="success">{formatCurrency(selectedSettlement.net)}</span>
                 </div>
+              </div>
+            </div>
+
+            <div className="detail-section">
+              <h4>Bank Account</h4>
+              <div className="detail-grid">
+                <div><span>Account</span><strong>{settlementDetails?.bank_account?.account_number_masked || 'N/A'}</strong></div>
+                <div><span>IFSC</span><strong>{settlementDetails?.bank_account?.ifsc_code || 'N/A'}</strong></div>
               </div>
             </div>
 

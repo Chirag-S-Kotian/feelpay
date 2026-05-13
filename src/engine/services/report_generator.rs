@@ -122,7 +122,7 @@ impl ReportGeneratorService {
                 po.id::TEXT as transaction_id,
                 po.created_at::DATE as date,
                 po.amount,
-                (po.amount * 0.18)::BIGINT as gst_amount,
+                (po.amount * 18 / 100)::BIGINT as gst_amount,
                 po.payment_method,
                 po.customer_email
             FROM payment_orders po
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn test_gst_calculation() {
         let amount = 100000; // 1000 INR
-        let gst = (amount as f64 * 0.18) as i64;
+        let gst = amount * 18 / 100;
         assert_eq!(gst, 18000); // 180 INR
     }
 }

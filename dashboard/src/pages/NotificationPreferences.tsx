@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Save, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle, Bell, Check } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import PerUserNotificationPreferences from '../components/PerUserNotificationPreferences';
 
@@ -8,6 +8,17 @@ interface NotificationPreference {
   email_enabled: boolean;
   sms_enabled: boolean;
   in_app_enabled: boolean;
+}
+
+interface NotificationItem {
+  id: string;
+  notification_type: string;
+  subject?: string | null;
+  body?: string | null;
+  status: string;
+  entity_type?: string | null;
+  is_read: boolean;
+  created_at: string;
 }
 
 const EVENT_TYPES = [
@@ -47,6 +58,9 @@ export default function NotificationPreferences() {
   const [success, setSuccess] = useState(false);
   const [showPerUser, setShowPerUser] = useState(false);
   const [profile, setProfile] = useState<{ phone?: string | null; email?: string | null }>({});
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationLoading, setNotificationLoading] = useState(true);
+  const [notificationError, setNotificationError] = useState('');
 
   const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
@@ -60,7 +74,21 @@ export default function NotificationPreferences() {
 
   useEffect(() => {
     fetchPreferences();
+    fetchNotifications();
   }, []);
+
+  const fetchNotifications = async () => {
+    setNotificationLoading(true);
+    setNotificationError('');
+    try {
+      const data = await apiRequest<NotificationItem[]>('GET', '/v1/notifications?per_page=20', undefined, undefined, { cacheMs: 0 });
+      setNotifications(data || []);
+    } catch (err) {
+      setNotificationError(err instanceof Error ? err.message : 'Failed to load notification alerts');
+    } finally {
+      setNotificationLoading(false);
+    }
+  };
 
   const fetchPreferences = async () => {
     if (!merchantId) {
@@ -139,6 +167,16 @@ export default function NotificationPreferences() {
     }
   };
 
+  const markRead = async (id: string) => {
+    await apiRequest('POST', `/v1/notifications/${id}/read`, {});
+    await fetchNotifications();
+  };
+
+  const markAllRead = async () => {
+    await apiRequest('POST', '/v1/notifications/mark-all-read', {});
+    await fetchNotifications();
+  };
+
   if (loading) {
     return (
       <div className="page-container">
@@ -150,9 +188,44 @@ export default function NotificationPreferences() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Notification Preferences</h1>
-        <p>Configure how you receive notifications for different events</p>
+        <h1>Notifications</h1>
+        <p>Review merchant alerts and configure delivery preferences</p>
       </div>
+
+      <section className="card notification-inbox">
+        <div className="notification-header">
+          <h2><Bell size={18} /> Alerts</h2>
+          <button className="btn-secondary" type="button" onClick={() => void markAllRead()} disabled={!notifications.some((item) => !item.is_read)}>
+            <Check size={15} />
+            Mark all read
+          </button>
+        </div>
+        {notificationError && <div className="alert alert-error"><AlertCircle size={16} />{notificationError}</div>}
+        {notificationLoading ? (
+          <div className="loading">Loading notifications...</div>
+        ) : notifications.length ? (
+          <div className="notification-list">
+            {notifications.map((item) => (
+              <article key={item.id} className={`notification-item ${item.is_read ? '' : 'unread'}`}>
+                <div>
+                  <strong>{item.subject || item.entity_type || item.notification_type}</strong>
+                  <p>{item.body || 'No message body provided.'}</p>
+                  <span>{new Date(item.created_at).toLocaleString('en-IN')} • {item.status}</span>
+                </div>
+                {!item.is_read && (
+                  <button className="btn-secondary" type="button" onClick={() => void markRead(item.id)}>Mark read</button>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Bell size={28} aria-hidden={true} />
+            <strong>No notifications</strong>
+            <p>KYC, settlement, webhook, dispute, and API key alerts will appear here.</p>
+          </div>
+        )}
+      </section>
 
       <div className="tabs">
         <button
@@ -246,6 +319,49 @@ export default function NotificationPreferences() {
           border: 1px solid var(--fp-border);
           background: #e7decb;
           border-radius: 999px;
+        }
+        .notification-inbox {
+          margin-bottom: 16px;
+        }
+        .notification-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+        .notification-header h2 {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 16px;
+          margin: 0;
+        }
+        .notification-list {
+          display: grid;
+          gap: 10px;
+        }
+        .notification-item {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          border: 1px solid var(--fp-border);
+          border-radius: 12px;
+          padding: 12px;
+          background: #fffdf5;
+        }
+        .notification-item.unread {
+          border-color: rgba(235, 0, 27, 0.34);
+          background: rgba(235, 0, 27, 0.06);
+        }
+        .notification-item p {
+          margin: 4px 0;
+          color: var(--fp-text-muted);
+          font-size: 13px;
+        }
+        .notification-item span {
+          color: var(--fp-text-muted);
+          font-size: 12px;
         }
         .tab {
           border: 1px solid transparent;

@@ -3,7 +3,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::error::FeelPayError;
-use crate::middleware::auth::MerchantId;
+use crate::middleware::auth::{MerchantId, TenantId};
 use crate::models::notification::{
     CreateNotificationRequest, CreateReportRequest, NotificationQueue, ReportJob, ReportJobResponse,
 };
@@ -14,6 +14,10 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .get::<MerchantId>()
         .map(|id| id.0)
         .ok_or_else(|| FeelPayError::Unauthorized("Merchant ID not found".to_string()))
+}
+
+fn tenant_id_from_req(req: &HttpRequest) -> Option<Uuid> {
+    req.extensions().get::<TenantId>().map(|id| id.0)
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,16 +40,17 @@ pub async fn create_notification(
     let result = sqlx::query(
         r#"
         INSERT INTO notification_queue (
-            notification_type, recipient_type, recipient_id, recipient_email,
+            tenant_id, merchant_id, notification_type, recipient_type, recipient_id, recipient_email,
             recipient_phone, subject, body, template_id, template_data,
             scheduled_at, entity_type, entity_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ) VALUES ($1, $2, $3, $4, $2, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
         "#,
     )
+    .bind(tenant_id_from_req(&req))
+    .bind(_merchant_id)
     .bind(&body.notification_type)
     .bind(&body.recipient_type)
-    .bind(body.recipient_id)
     .bind(&body.recipient_email)
     .bind(&body.recipient_phone)
     .bind(&body.subject)
@@ -83,21 +88,20 @@ pub async fn list_notifications(
     let unread_only = query.unread_only.unwrap_or(false);
     let offset = ((page - 1) * per_page) as i64;
 
-    let base_query = "SELECT * FROM notification_queue 
-         WHERE (recipient_id = $1 OR recipient_email = $2)";
+    let base_query = "SELECT * FROM notification_queue
+         WHERE (merchant_id = $1 OR recipient_id = $1 OR recipient_email = (SELECT email FROM merchants WHERE id = $1))";
 
     let filter = if unread_only {
         " AND is_read = false"
     } else {
         ""
     };
-    let order_limit = " ORDER BY created_at DESC LIMIT $3 OFFSET $4";
+    let order_limit = " ORDER BY created_at DESC LIMIT $2 OFFSET $3";
 
     let sql = format!("{}{}{}", base_query, filter, order_limit);
 
     let notifications = sqlx::query(&sql)
         .bind(merchant_id)
-        .bind(None::<String>)
         .bind(per_page as i64)
         .bind(offset)
         .map(NotificationQueue::from)
@@ -117,8 +121,8 @@ pub async fn mark_notification_as_read(
     let mut conn = state.db.acquire().await?;
 
     let result = sqlx::query(
-        "UPDATE notification_queue SET is_read = true, read_at = NOW() 
-         WHERE id = $1 AND (recipient_id = $2 OR recipient_email = (SELECT email FROM merchants WHERE id = $2))"
+        "UPDATE notification_queue SET is_read = true, read_at = NOW()
+         WHERE id = $1 AND (merchant_id = $2 OR recipient_id = $2 OR recipient_email = (SELECT email FROM merchants WHERE id = $2))"
     )
     .bind(notification_id)
     .bind(merchant_id)
@@ -140,8 +144,8 @@ pub async fn mark_all_notifications_read(
     let mut conn = state.db.acquire().await?;
 
     sqlx::query(
-        "UPDATE notification_queue SET is_read = true, read_at = NOW() 
-         WHERE (recipient_id = $1 OR recipient_email = (SELECT email FROM merchants WHERE id = $1)) AND is_read = false"
+        "UPDATE notification_queue SET is_read = true, read_at = NOW()
+         WHERE (merchant_id = $1 OR recipient_id = $1 OR recipient_email = (SELECT email FROM merchants WHERE id = $1)) AND is_read = false"
     )
     .bind(merchant_id)
     .execute(&mut *conn)

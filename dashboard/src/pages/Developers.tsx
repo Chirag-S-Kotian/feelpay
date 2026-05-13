@@ -279,7 +279,7 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
         <div>
           <div className="dev-kicker">Developer Platform</div>
           <h1>Build, test, ship payments fast.</h1>
-          <p>Stripe/Razorpay-style integration hub: keys, examples, use-cases, reliability and go-live controls.</p>
+          <p>Integration hub for FeelPay keys, examples, idempotency, reliability, and go-live controls.</p>
         </div>
         <div className="mode-toggle">
           <button className={mode === 'test' ? 'active' : ''} onClick={() => setMode('test')}>Test Mode</button>
@@ -326,7 +326,15 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
           </button>
           <p className="help-text">Secret keys not re-displayed. Rotate immediately if leaked.</p>
           {createdSecret && (
-            <p className="help-text">New secret is available once in this session. Copy it now, then it will be masked.</p>
+            <div className="one-time-secret" role="status">
+              <p className="help-text">New secret is available once in this session. Copy it now, then it will be masked.</p>
+              <div className="key-row">
+                <code>{createdSecret}</code>
+                <button onClick={() => copyToClipboard(createdSecret, 'secret')}>
+                  {copied === 'secret' ? <Check size={16} /> : <Copy size={16} />}
+                </button>
+              </div>
+            </div>
           )}
           {mode === 'live' && <p className="help-text">Live keys unlock after onboarding approval.</p>}
         </div>
@@ -641,6 +649,14 @@ function verifyFeelPayWebhook(rawBody, signature, webhookSecret) {
           gap: 12px;
           align-items: center;
           flex-wrap: wrap;
+        }
+        .one-time-secret {
+          display: grid;
+          gap: 8px;
+          padding: 12px;
+          border: 1px solid rgba(245, 158, 11, 0.35);
+          border-radius: 10px;
+          background: rgba(245, 158, 11, 0.08);
         }
         .dev-bullets {
           margin: 8px 0 14px 18px;
