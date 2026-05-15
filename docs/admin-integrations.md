@@ -36,13 +36,15 @@ Provider kinds are explicit and provider-agnostic:
 
 ### Email
 
-Store SMTP host, port, user, from name/email, reply-to, and template mapping in config. Store SMTP password as a secret. Use test email before enabling.
+Store SMTP host, port, user, from name/email, reply-to, SMTP security (`starttls`, `tls`, or `none`), and template mapping in config. Store SMTP password as a secret. Use test email before enabling.
 
 Template keys should cover onboarding, OTP, payout, refund, dispute, API key, and webhook failure events.
 
 ### SMS / OTP
 
-Store sender ID, route type, callback URL, and template mapping in config. Store API keys or tokens as secrets. Test SMS and OTP flows before enabling. Delivery callbacks can be recorded through the notification provider when available.
+Store sender ID, route type, callback URL, and template mapping in config. Store API keys or tokens as secrets.
+
+The current admin model does not yet define a safe generic HTTP SMS request schema for URL, headers, and body substitution, so real generic SMS/OTP dispatch is intentionally not enabled in this pass. Delivery callbacks can be recorded through the notification provider when available once a concrete adapter exists.
 
 ### Bank / Payout
 
@@ -62,6 +64,12 @@ Use notification providers for outbound delivery and callback/webhook metadata. 
 
 ## Limitations
 
-- The current implementation provides a provider-neutral control plane and safe test actions; it does not add real external providers by itself.
+- SMTP test email uses the configured encrypted credential and performs a real provider delivery attempt.
+- `Test default email` resolves the configured default email provider for the selected environment before sending.
+- Generic SMS/OTP dispatch is still disabled because the current model does not yet define a safe request schema.
 - Live bank payout mode remains intentionally gated.
-- Adapter-specific network implementations still need to be added behind these contracts before a provider can perform real production work.
+- Operational platform notifications are not yet rewired to select the default Integration Center provider automatically; that remains a separate integration step beyond the admin test path.
+
+## Validation Note
+
+Real migrated local Postgres validation was not available in this workspace because `pg_isready` reported `/run/postgresql:5432 - no response`. The required fallback is `SQLX_OFFLINE=true cargo test` until a reachable migrated local database is provided.

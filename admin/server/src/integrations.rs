@@ -3,6 +3,9 @@ use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
+use lettre::message::Mailbox;
+use lettre::transport::smtp::authentication::Credentials;
+use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -79,6 +82,18 @@ struct StatusRequest {
     live_enable_approved: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
+struct SmtpConfig {
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+    from_name: String,
+    from_email: String,
+    reply_to: Option<String>,
+    security: String,
+}
+
 #[derive(Debug, Serialize)]
 struct ProviderResponse {
     id: Uuid,
@@ -148,6 +163,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/providers/{id}/test-email",
                 web::post().to(send_test_email),
             )
+            .route(
+                "/providers/default/email/{environment}/test-email",
+                web::post().to(send_default_test_email),
+            )
             .route("/providers/{id}/test-sms", web::post().to(send_test_sms))
             .route("/providers/{id}/test-otp", web::post().to(send_test_otp))
             .route(
@@ -190,6 +209,114 @@ fn encrypt_secret(value: &str) -> Result<(String, String), String> {
         .encrypt(Nonce::from_slice(&nonce_bytes), value.as_bytes())
         .map_err(|_| "Credential encryption failed".to_string())?;
     Ok((BASE64.encode(encrypted), BASE64.encode(nonce_bytes)))
+}
+
+fn decrypt_secret(encrypted_value: &str, nonce: &str) -> Result<String, String> {
+    let raw_key = env::var("VAULT_ENCRYPTION_KEY")
+        .map_err(|_| "VAULT_ENCRYPTION_KEY is required to read integration secrets".to_string())?;
+    let key = hex::decode(raw_key.trim())
+        .map_err(|_| "VAULT_ENCRYPTION_KEY must be 64 hex characters".to_string())?;
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|_| "VAULT_ENCRYPTION_KEY must decode to 32 bytes".to_string())?;
+    let encrypted = BASE64
+        .decode(encrypted_value)
+        .map_err(|_| "Stored credential is invalid".to_string())?;
+    let nonce = BASE64
+        .decode(nonce)
+        .map_err(|_| "Stored credential nonce is invalid".to_string())?;
+    let decrypted = cipher
+        .decrypt(Nonce::from_slice(&nonce), encrypted.as_ref())
+        .map_err(|_| "Credential decryption failed".to_string())?;
+    String::from_utf8(decrypted).map_err(|_| "Stored credential is not valid UTF-8".to_string())
+}
+
+async fn load_secret(
+    pool: &PgPool,
+    provider_id: Uuid,
+    secret_name: &str,
+) -> Result<String, String> {
+    let row = sqlx::query(
+        "SELECT encrypted_value, nonce FROM integration_provider_secrets WHERE provider_id = $1 AND secret_name = $2",
+    )
+    .bind(provider_id)
+    .bind(secret_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| "Failed to load integration secret".to_string())?;
+    let Some(row) = row else {
+        return Err(format!("Missing required secret: {secret_name}"));
+    };
+    decrypt_secret(row.get("encrypted_value"), row.get("nonce"))
+}
+
+fn required_string(config: &Value, key: &str) -> Result<String, String> {
+    config
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("Missing required SMTP config: {key}"))
+}
+
+async fn smtp_config(
+    pool: &PgPool,
+    provider_id: Uuid,
+    config: &Value,
+) -> Result<SmtpConfig, String> {
+    let port = config
+        .get("smtp_port")
+        .and_then(Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .unwrap_or(587);
+    let security = config
+        .get("smtp_security")
+        .and_then(Value::as_str)
+        .unwrap_or("starttls")
+        .to_string();
+    if !matches!(security.as_str(), "starttls" | "tls" | "none") {
+        return Err("smtp_security must be starttls, tls, or none".to_string());
+    }
+    Ok(SmtpConfig {
+        host: required_string(config, "smtp_host")?,
+        port,
+        username: required_string(config, "smtp_user")?,
+        password: load_secret(pool, provider_id, "password").await?,
+        from_name: required_string(config, "from_name")?,
+        from_email: required_string(config, "from_email")?,
+        reply_to: config
+            .get("reply_to")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        security,
+    })
+}
+
+fn smtp_transport(config: &SmtpConfig) -> Result<AsyncSmtpTransport<Tokio1Executor>, String> {
+    let builder = match config.security.as_str() {
+        "tls" => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host),
+        "starttls" => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.host),
+        "none" => Ok(AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(
+            &config.host,
+        )),
+        _ => unreachable!(),
+    }
+    .map_err(|_| "Invalid SMTP host or TLS configuration".to_string())?;
+    Ok(builder
+        .port(config.port)
+        .credentials(Credentials::new(
+            config.username.clone(),
+            config.password.clone(),
+        ))
+        .build())
+}
+
+fn parse_mailbox(value: &str) -> Result<Mailbox, String> {
+    value
+        .parse::<Mailbox>()
+        .map_err(|_| "Invalid email address".to_string())
 }
 
 async fn ensure_internal_admin(
@@ -770,17 +897,58 @@ async fn provider_action(
         return HttpResponse::BadRequest()
             .json(json!({ "message": "Bank payout tests are allowed only in safe test mode" }));
     }
-    let success = status == "enabled";
-    let error_code = if success {
+    let config: Value = provider.get("config");
+    let mut success = status == "enabled";
+    let mut error_code = if success {
         None
     } else {
         Some("provider_disabled")
     };
-    let error_message = if success {
+    let mut error_message = if success {
         None
     } else {
-        Some("Provider is disabled")
+        Some("Provider is disabled".to_string())
     };
+    if success && action == "test_email" {
+        let recipient = match body.as_ref().and_then(|value| value.recipient.as_deref()) {
+            Some(value) if !value.trim().is_empty() => value.trim(),
+            _ => {
+                return HttpResponse::BadRequest()
+                    .json(json!({ "message": "recipient is required" }));
+            }
+        };
+        let send_result = async {
+            let smtp = smtp_config(pool.get_ref(), provider_id, &config).await?;
+            let from = parse_mailbox(&format!("{} <{}>", smtp.from_name, smtp.from_email))?;
+            let to = parse_mailbox(recipient)?;
+            let mut builder = Message::builder()
+                .from(from)
+                .to(to)
+                .subject("FeelPay integration test email");
+            if let Some(reply_to) = smtp.reply_to.as_deref() {
+                builder = builder.reply_to(parse_mailbox(reply_to)?);
+            }
+            let message = builder
+                .body("This is a FeelPay SMTP integration test email.".to_string())
+                .map_err(|_| "Failed to build test email".to_string())?;
+            smtp_transport(&smtp)?
+                .send(message)
+                .await
+                .map_err(|_| "SMTP delivery failed".to_string())?;
+            Ok::<(), String>(())
+        }
+        .await;
+        if let Err(message) = send_result {
+            success = false;
+            error_code = Some("smtp_delivery_failed");
+            error_message = Some(message);
+        }
+    }
+    if success && matches!(action, "test_sms" | "test_otp") {
+        success = false;
+        error_code = Some("generic_sms_not_configured");
+        error_message = Some("No safe generic HTTP SMS adapter schema exists yet".to_string());
+    }
     let _ = sqlx::query(
         r#"
         UPDATE integration_providers
@@ -797,7 +965,7 @@ async fn provider_action(
     .bind(if success { "healthy" } else { "failed" })
     .bind(success)
     .bind(error_code)
-    .bind(error_message)
+    .bind(error_message.as_deref())
     .execute(pool.get_ref())
     .await;
     let summary = json!({
@@ -818,7 +986,7 @@ async fn provider_action(
         if success { "success" } else { "failed" },
         1,
         error_code,
-        error_message,
+        error_message.as_deref(),
         summary.clone(),
         json!({ "ok": success }),
     )
@@ -865,6 +1033,41 @@ async fn send_test_email(
         pool,
         request,
         path.into_inner(),
+        "test_email",
+        "email",
+        Some(body.into_inner()),
+    )
+    .await
+}
+
+async fn send_default_test_email(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<TestActionRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let environment = path.into_inner();
+    if !matches!(environment.as_str(), "test" | "live") {
+        return HttpResponse::BadRequest().json(json!({ "message": "Invalid environment" }));
+    }
+    let provider_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM integration_providers WHERE provider_kind = 'email' AND environment = $1 AND is_default = true ORDER BY priority, name LIMIT 1",
+    )
+    .bind(&environment)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(provider_id)) = provider_id else {
+        return HttpResponse::NotFound().json(json!({
+            "message": "No default email provider configured"
+        }));
+    };
+    provider_action(
+        pool,
+        request,
+        provider_id,
         "test_email",
         "email",
         Some(body.into_inner()),

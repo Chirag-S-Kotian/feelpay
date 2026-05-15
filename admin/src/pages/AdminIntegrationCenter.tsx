@@ -69,6 +69,7 @@ const KINDS: ProviderKind[] = [
   'notification',
   'reconciliation',
 ];
+const TEMPLATE_KEYS = ['onboarding', 'otp', 'payout', 'refund', 'dispute', 'api_key', 'webhook_failure'] as const;
 
 const DEFAULT_FORM = {
   provider_kind: 'email' as ProviderKind,
@@ -84,6 +85,7 @@ const DEFAULT_FORM = {
   smtp_host: '',
   smtp_port: '587',
   smtp_user: '',
+  smtp_security: 'starttls',
   from_name: '',
   from_email: '',
   reply_to: '',
@@ -142,6 +144,7 @@ export default function AdminIntegrationCenter() {
     smtp_host: form.smtp_host || undefined,
     smtp_port: form.smtp_port ? Number(form.smtp_port) : undefined,
     smtp_user: form.smtp_user || undefined,
+    smtp_security: form.smtp_security || 'starttls',
     from_name: form.from_name || undefined,
     from_email: form.from_email || undefined,
     reply_to: form.reply_to || undefined,
@@ -207,6 +210,7 @@ export default function AdminIntegrationCenter() {
       smtp_host: String(config.smtp_host || ''),
       smtp_port: String(config.smtp_port || '587'),
       smtp_user: String(config.smtp_user || ''),
+      smtp_security: String(config.smtp_security || 'starttls'),
       from_name: String(config.from_name || ''),
       from_email: String(config.from_email || ''),
       reply_to: String(config.reply_to || ''),
@@ -270,6 +274,7 @@ export default function AdminIntegrationCenter() {
               <Field label="SMTP host"><input value={form.smtp_host} onChange={event => setForm({ ...form, smtp_host: event.target.value })} /></Field>
               <Field label="SMTP port"><input value={form.smtp_port} onChange={event => setForm({ ...form, smtp_port: event.target.value })} /></Field>
               <Field label="SMTP user"><input value={form.smtp_user} onChange={event => setForm({ ...form, smtp_user: event.target.value })} /></Field>
+              <Field label="SMTP security"><Select value={form.smtp_security} options={['starttls', 'tls', 'none']} onChange={smtp_security => setForm({ ...form, smtp_security })} /></Field>
               <Field label="From name"><input value={form.from_name} onChange={event => setForm({ ...form, from_name: event.target.value })} /></Field>
               <Field label="From email"><input value={form.from_email} onChange={event => setForm({ ...form, from_email: event.target.value })} /></Field>
               <Field label="Reply to"><input value={form.reply_to} onChange={event => setForm({ ...form, reply_to: event.target.value })} /></Field>
@@ -306,10 +311,12 @@ export default function AdminIntegrationCenter() {
             <button onClick={() => selected && void run('Secret rotated.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets/${secretName}/rotate`, { secret_name: secretName, value: secretValue }))}>Rotate secret</button>
             <button onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
             <button onClick={() => selected && void run('Test email sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-email`, { recipient: testRecipient }))}><Mail size={14} /> Test email</button>
-            <button onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
-            <button onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone, otp: 'redacted' }))}>Test OTP</button>
+            <button onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
+            <button disabled title="No safe generic SMS adapter schema exists yet"><Smartphone size={14} /> Test SMS</button>
+            <button disabled title="No safe generic OTP adapter schema exists yet">Test OTP</button>
             <button onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
           </div>
+          <p className="muted-copy">Generic SMS/OTP delivery remains disabled until a safe provider request schema is added.</p>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Secret</th><th>Masked value</th><th>Rotated</th></tr></thead>
@@ -327,6 +334,21 @@ export default function AdminIntegrationCenter() {
           </div>
         </section>
       </div>
+
+      <section className="table-wrap">
+        <h2>Notification Template Mapping</h2>
+        <table>
+          <thead><tr><th>Template key</th><th>Selected provider mapping</th></tr></thead>
+          <tbody>
+            {TEMPLATE_KEYS.map(key => (
+              <tr key={key}>
+                <td>{label(key)}</td>
+                <td>{String(((selected?.config.template_mapping as Record<string, string> | undefined) || {})[key] || '-')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
       <section className="table-wrap">
         <table>
