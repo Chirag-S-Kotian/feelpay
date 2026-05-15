@@ -43,6 +43,7 @@ type IntegrationProvider = {
   last_failure_at?: string | null;
   last_error_code?: string | null;
   last_error_message?: string | null;
+  approved_for_live?: boolean;
   config: Record<string, unknown>;
   masked_secrets: MaskedSecret[];
 };
@@ -57,6 +58,16 @@ type IntegrationLog = {
   error_code?: string | null;
   error_message?: string | null;
   actor_admin_id?: string | null;
+  created_at: string;
+};
+
+type BankPayoutCallback = {
+  id: string;
+  payout_id?: string | null;
+  provider_event_id: string;
+  provider_reference?: string | null;
+  mapped_status: string;
+  processing_status: string;
   created_at: string;
 };
 
@@ -101,6 +112,9 @@ const DEFAULT_FORM = {
   sms_body_template: '{"to":"{{phone}}","message":"{{message}}","sender":"{{sender_id}}","template_id":"{{template_id}}"}',
   callback_url: '',
   client_id: '',
+  client_key: '',
+  certificate_metadata: '',
+  key_metadata: '',
   settlement_account_mapping: '',
   reconciliation_source: '',
   utr_reference_field: '',
@@ -112,6 +126,7 @@ const label = (value: string) => value.replaceAll('_', ' ');
 export default function AdminIntegrationCenter() {
   const [providers, setProviders] = useState<IntegrationProvider[]>([]);
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
+  const [callbacks, setCallbacks] = useState<BankPayoutCallback[]>([]);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState('');
@@ -143,6 +158,15 @@ export default function AdminIntegrationCenter() {
   }, []);
 
   const selected = providers.find(provider => provider.id === selectedId);
+  useEffect(() => {
+    if (!selected || selected.provider_kind !== 'bank_payout') {
+      setCallbacks([]);
+      return;
+    }
+    void apiRequest<{ items: BankPayoutCallback[] }>('GET', `/admin/integrations/providers/${selected.id}/bank-payout-callbacks`)
+      .then(response => setCallbacks(response.items))
+      .catch(() => setCallbacks([]));
+  }, [selected?.id]);
   const counts = useMemo(() => ({
     enabled: providers.filter(provider => provider.status === 'enabled').length,
     healthy: providers.filter(provider => provider.health_status === 'healthy').length,
@@ -169,6 +193,9 @@ export default function AdminIntegrationCenter() {
     sms_body_template: form.sms_body_template ? JSON.parse(form.sms_body_template) : undefined,
     callback_url: form.callback_url || undefined,
     client_id: form.client_id || undefined,
+    client_key: form.client_key || undefined,
+    certificate_metadata: form.certificate_metadata || undefined,
+    key_metadata: form.key_metadata || undefined,
     settlement_account_mapping: form.settlement_account_mapping || undefined,
     reconciliation_source: form.reconciliation_source || undefined,
     utr_reference_field: form.utr_reference_field || undefined,
@@ -243,6 +270,9 @@ export default function AdminIntegrationCenter() {
       sms_body_template: JSON.stringify(config.sms_body_template || { to: '{{phone}}', message: '{{message}}', sender: '{{sender_id}}', template_id: '{{template_id}}' }),
       callback_url: String(config.callback_url || ''),
       client_id: String(config.client_id || ''),
+      client_key: String(config.client_key || ''),
+      certificate_metadata: String(config.certificate_metadata || ''),
+      key_metadata: String(config.key_metadata || ''),
       settlement_account_mapping: String(config.settlement_account_mapping || ''),
       reconciliation_source: String(config.reconciliation_source || ''),
       utr_reference_field: String(config.utr_reference_field || ''),
@@ -315,6 +345,9 @@ export default function AdminIntegrationCenter() {
               <Field label="SMS body JSON"><input value={form.sms_body_template} onChange={event => setForm({ ...form, sms_body_template: event.target.value })} /></Field>
               <Field label="Callback URL"><input value={form.callback_url} onChange={event => setForm({ ...form, callback_url: event.target.value })} /></Field>
               <Field label="Client ID"><input value={form.client_id} onChange={event => setForm({ ...form, client_id: event.target.value })} /></Field>
+              <Field label="Client key"><input value={form.client_key} onChange={event => setForm({ ...form, client_key: event.target.value })} /></Field>
+              <Field label="Certificate metadata"><input value={form.certificate_metadata} onChange={event => setForm({ ...form, certificate_metadata: event.target.value })} /></Field>
+              <Field label="Key metadata"><input value={form.key_metadata} onChange={event => setForm({ ...form, key_metadata: event.target.value })} /></Field>
               <Field label="Settlement mapping"><input value={form.settlement_account_mapping} onChange={event => setForm({ ...form, settlement_account_mapping: event.target.value })} /></Field>
               <Field label="Reconciliation source"><input value={form.reconciliation_source} onChange={event => setForm({ ...form, reconciliation_source: event.target.value })} placeholder="api or file" /></Field>
               <Field label="UTR reference field"><input value={form.utr_reference_field} onChange={event => setForm({ ...form, utr_reference_field: event.target.value })} /></Field>
@@ -389,7 +422,7 @@ export default function AdminIntegrationCenter() {
           <thead>
             <tr>
               <th>Provider</th><th>Kind</th><th>Env</th><th>Status</th><th>Default</th>
-              <th>Priority</th><th>Health</th><th>Last success</th><th>Last failure</th><th>Actions</th>
+              <th>Priority</th><th>Health</th><th>Live approved</th><th>Last success</th><th>Last failure</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -402,11 +435,15 @@ export default function AdminIntegrationCenter() {
                 <td>{provider.is_default ? 'yes' : 'no'}</td>
                 <td>{provider.priority}</td>
                 <td>{provider.health_status}</td>
+                <td>{provider.approved_for_live ? 'yes' : 'no'}</td>
                 <td>{provider.last_success_at || '-'}</td>
                 <td>{provider.last_failure_at || '-'}</td>
                 <td>
                   <button onClick={() => edit(provider)}>Edit</button>
                   <button onClick={() => void run(provider.status === 'enabled' ? 'Provider disabled.' : 'Provider enabled.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/status`, { enabled: provider.status !== 'enabled', live_enable_approved: false }))}>{provider.status === 'enabled' ? 'Disable' : 'Enable'}</button>
+                  {provider.provider_kind === 'bank_payout' && provider.environment === 'live' && !provider.approved_for_live && (
+                    <button onClick={() => void run('Live bank provider approved.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/status`, { enabled: true, live_enable_approved: true }))}>Approve live</button>
+                  )}
                   <button onClick={() => void run('Default provider updated.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/default`))}>Set default</button>
                 </td>
               </tr>
@@ -435,6 +472,28 @@ export default function AdminIntegrationCenter() {
           </tbody>
         </table>
       </section>
+
+      {selected?.provider_kind === 'bank_payout' && (
+        <section className="table-wrap">
+          <h2>Bank Payout Callbacks</h2>
+          <table>
+            <thead><tr><th>Event</th><th>Payout</th><th>Reference</th><th>Mapped status</th><th>Processing</th><th>Time</th></tr></thead>
+            <tbody>
+              {callbacks.map(callback => (
+                <tr key={callback.id}>
+                  <td>{callback.provider_event_id}</td>
+                  <td>{callback.payout_id || '-'}</td>
+                  <td>{callback.provider_reference || '-'}</td>
+                  <td>{callback.mapped_status}</td>
+                  <td>{callback.processing_status}</td>
+                  <td>{callback.created_at}</td>
+                </tr>
+              ))}
+              {!callbacks.length && <tr><td colSpan={6}>No callback events recorded</td></tr>}
+            </tbody>
+          </table>
+        </section>
+      )}
     </section>
   );
 }

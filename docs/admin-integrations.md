@@ -74,9 +74,23 @@ Errors store only safe status/code summaries. They do not persist Twilio credent
 
 Use only official bank, acquirer, or payout APIs. Do not scrape bank websites and do not fake live payouts.
 
-Store client IDs, callback URLs, settlement-account mapping, and reconciliation metadata in config. Store client secrets, certificates, and signing keys as encrypted secrets. Bank payout tests are accepted only in `test` mode. Live bank providers cannot be enabled unless an internal admin explicitly approves that action.
+The adapter boundary is provider-neutral and requires these operations from any future official implementation: `test_connection`, `create_payout`, `get_payout_status`, `handle_callback`, optional `fetch_reconciliation_report`, `parse_provider_reference`, and `map_provider_error`.
 
-UTR/reference tracking and reconciliation file/API settings belong in config plus integration logs.
+Store client IDs/keys, callback URLs, certificate/key metadata, settlement-account mapping, timeout/retry config, and reconciliation metadata in config. Store client secrets, certificates, and signing keys as encrypted secrets. Bank payout tests are accepted only in `test` mode. Live bank providers cannot be enabled unless an internal admin explicitly approves that action, and live usage stays disabled until a real official provider mapping is implemented.
+
+Callbacks are idempotent by `(provider_id, provider_event_id)`. Payout creation is idempotent by provider plus idempotency key. Provider responses persist only redacted summaries. A payout is not marked `paid` unless an explicit manual/test reference or mapped provider callback/status confirms it.
+
+Provider onboarding checklist:
+
+- official API docs and sandbox credentials
+- callback signature scheme and event identifiers
+- payout create/status payload mapping
+- provider-reference and UTR/reference field mapping
+- reconciliation report/API shape if supported
+- timeout/retry limits and error catalog
+- live approval by internal admin after safe test verification
+
+Current limitation: no official live bank/acquirer payout adapter is configured in this repo, so the only executable adapter is test-only readiness behavior.
 
 ### KYC / KYB
 

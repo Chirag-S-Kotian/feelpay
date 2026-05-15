@@ -48,9 +48,11 @@ Settlement and payout hardening adds explicit reconciliation links from company 
 
 Reconciliation mismatch creation also emits internal risk evaluations so admins can review repeated mismatch patterns without exposing those risk internals to merchants.
 
+Bank/payout provider callbacks may attach provider references to payouts and link them to existing reconciliation items when the same redacted provider reference is present. Duplicate callbacks are ignored idempotently; callbacks do not auto-close open mismatches or bypass admin review.
+
 ## Boundaries
 
-- Bank and provider APIs are still outside this foundation. No live bank/payout API was added.
+- Live bank/provider APIs are still outside this foundation until an official provider mapping is configured and approved. The readiness layer supports a test-only adapter plus callback/idempotency plumbing, not a live rail.
 - Internal payout state is separate from bank confirmation. `paid` requires an explicit manual, test, or provider reference; fake UTRs and implied bank success are not generated.
 - Existing legacy reconciliation tables remain for older company-admin flows; the batch/item model is the canonical foundation for new work.
 - Manual matching and adjustment workflows are foundational only; they do not move money.

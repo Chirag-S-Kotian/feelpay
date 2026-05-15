@@ -16,6 +16,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::middleware::AdminClaims;
+use feelpay::engine::services::bank_payout_provider::{
+    BankPayoutProviderAdapter, BankPayoutRequest, TestBankPayoutAdapter,
+};
 use feelpay::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use feelpay::engine::services::risk_engine::{evaluate_and_record, RiskDisposition, RiskEvent};
 
@@ -1040,6 +1043,7 @@ struct TransferReversalCreateRequest {
 struct PayoutCreateRequest {
     business_account_id: Uuid,
     provider_id: Option<Uuid>,
+    bank_payout_provider_id: Option<Uuid>,
     bank_account_id: Option<Uuid>,
     amount: i64,
     currency: Option<String>,
@@ -9034,6 +9038,19 @@ async fn create_transfer_company(
     if req.idempotency_key.trim().is_empty() {
         return HttpResponse::BadRequest().json(json!({ "message": "idempotency_key required" }));
     }
+    if let Ok(Some(row)) = sqlx::query(
+        "SELECT id, status FROM payouts_company WHERE idempotency_key = $1",
+    )
+    .bind(req.idempotency_key.trim())
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        return HttpResponse::Ok().json(json!({
+            "id": row.get::<Uuid, _>("id"),
+            "status": row.get::<String, _>("status"),
+            "idempotent_replay": true
+        }));
+    }
     let id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO transfers_company (
@@ -9140,12 +9157,27 @@ async fn create_payout_company(
             AND COALESCE(m.review_status, '') = 'approved'
             AND COALESCE(m.risk_status, '') <> 'blocked'
             AND COALESCE(m.payout_status, '') IN ('enabled','pending_verification')
-        ) AS payout_eligible
+        ) AS payout_eligible,
+        COALESCE(ba.is_verified, false) AS bank_verified,
+        COALESCE((
+            SELECT COUNT(*) = 0
+            FROM reconciliation_mismatches rm
+            JOIN reconciliation_items ri ON ri.id = rm.item_id
+            WHERE ri.payout_id IS NOT NULL
+              AND rm.status = 'open'
+        ), true) AS reconciliation_ready,
+        COALESCE((
+            SELECT SUM(balance)
+            FROM ledger_accounts
+            WHERE owner_type = 'company'
+        ), 0)::bigint AS available_balance
         FROM merchants m
+        LEFT JOIN bank_accounts ba ON ba.id = $2
         WHERE m.id = $1
         "#,
     )
     .bind(req.business_account_id)
+    .bind(req.bank_account_id)
     .fetch_optional(pool.get_ref())
     .await;
     let Ok(Some(row)) = eligibility else {
@@ -9156,18 +9188,51 @@ async fn create_payout_company(
         return HttpResponse::Forbidden()
             .json(json!({ "message": "Payout blocked by eligibility rules" }));
     }
+    if !row.get::<bool, _>("bank_verified") {
+        return HttpResponse::Conflict()
+            .json(json!({ "message": "Payout requires a verified bank account" }));
+    }
+    if !row.get::<bool, _>("reconciliation_ready") {
+        return HttpResponse::Conflict()
+            .json(json!({ "message": "Payout blocked until reconciliation mismatches are reviewed" }));
+    }
+    if row.get::<i64, _>("available_balance") < req.amount {
+        return HttpResponse::Conflict()
+            .json(json!({ "message": "Insufficient available balance for payout" }));
+    }
+    if let Some(provider_id) = req.bank_payout_provider_id {
+        let provider = sqlx::query(
+            "SELECT environment, status, approved_for_live FROM integration_providers WHERE id = $1 AND provider_kind = 'bank_payout'",
+        )
+        .bind(provider_id)
+        .fetch_optional(pool.get_ref())
+        .await;
+        let Ok(Some(provider)) = provider else {
+            return HttpResponse::BadRequest().json(json!({ "message": "Bank payout provider not found" }));
+        };
+        let environment: String = provider.get("environment");
+        let status: String = provider.get("status");
+        let approved_for_live: bool = provider.get("approved_for_live");
+        if environment == "live" {
+            return HttpResponse::Conflict().json(json!({ "message": "No official live bank payout adapter is configured yet" }));
+        }
+        if status != "enabled" || (environment == "live" && !approved_for_live) {
+            return HttpResponse::Conflict().json(json!({ "message": "Bank payout provider is not ready for use" }));
+        }
+    }
     let id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO payouts_company (
-            business_account_id, provider_id, bank_account_id, amount, currency, status,
+            business_account_id, provider_id, bank_payout_provider_id, bank_account_id, amount, currency, status,
             scheduled_at, idempotency_key
         )
-        VALUES ($1, $2, $3, $4, $5, 'draft', COALESCE($6, NOW()), $7)
+        VALUES ($1, $2, $3, $4, $5, $6, 'draft', COALESCE($7, NOW()), $8)
         RETURNING id
         "#,
     )
     .bind(req.business_account_id)
     .bind(req.provider_id)
+    .bind(req.bank_payout_provider_id)
     .bind(req.bank_account_id)
     .bind(req.amount)
     .bind(req.currency.unwrap_or_else(|| "INR".to_string()))
@@ -9396,6 +9461,64 @@ async fn transition_payout_company(
                 }
                 RiskDisposition::RestrictMerchant | RiskDisposition::Allow => {}
             }
+        }
+    }
+    if target_status == "processing" {
+        let provider = sqlx::query(
+            r#"
+            SELECT p.id, p.amount, p.currency, p.idempotency_key, ip.environment
+            FROM payouts_company p
+            LEFT JOIN integration_providers ip ON ip.id = p.bank_payout_provider_id
+            WHERE p.id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+        let Ok(Some(provider)) = provider else {
+            return HttpResponse::NotFound().json(json!({ "message": "Payout not found" }));
+        };
+        if provider.get::<Option<String>, _>("environment").as_deref() == Some("test") {
+            let idempotency_key = provider
+                .get::<Option<String>, _>("idempotency_key")
+                .unwrap_or_else(|| id.to_string());
+            let adapter = TestBankPayoutAdapter;
+            let result = adapter
+                .create_payout(BankPayoutRequest {
+                    idempotency_key: idempotency_key.clone(),
+                    amount_paise: provider.get("amount"),
+                    currency: provider.get("currency"),
+                    payout_id: id.to_string(),
+                })
+                .await;
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO bank_payout_provider_attempts (
+                    payout_id, provider_id, idempotency_key, operation, status,
+                    provider_reference, response_summary_redacted, error_code
+                )
+                SELECT $1, bank_payout_provider_id, $2, 'create_payout', $3, $4, $5::jsonb, $6
+                FROM payouts_company
+                WHERE id = $1
+                ON CONFLICT (provider_id, idempotency_key, operation) DO NOTHING
+                "#,
+            )
+            .bind(id)
+            .bind(&idempotency_key)
+            .bind(&result.status)
+            .bind(result.provider_reference.as_deref())
+            .bind(&result.summary_redacted)
+            .bind(result.error_code.as_deref())
+            .execute(pool.get_ref())
+            .await;
+            let _ = sqlx::query(
+                "UPDATE payouts_company SET provider_reference = COALESCE($2, provider_reference), provider_response_summary = $3::jsonb WHERE id = $1",
+            )
+            .bind(id)
+            .bind(result.provider_reference.as_deref())
+            .bind(&result.summary_redacted)
+            .execute(pool.get_ref())
+            .await;
         }
     }
     if target_status == "paid" {

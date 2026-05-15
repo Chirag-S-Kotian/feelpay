@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod bank_account;
+pub mod bank_payout_provider;
 pub mod blacklist;
 pub mod device_fingerprint;
 pub mod email;

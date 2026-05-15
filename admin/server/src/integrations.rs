@@ -14,6 +14,9 @@ use std::env;
 use uuid::Uuid;
 
 use crate::middleware::AdminClaims;
+use feelpay::engine::services::bank_payout_provider::{
+    map_provider_status, BankPayoutCallback, BankPayoutProviderAdapter, TestBankPayoutAdapter,
+};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,6 +117,14 @@ struct KycTestRequest {
     scenario: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct BankPayoutCallbackRequest {
+    payout_id: Option<Uuid>,
+    provider_event_id: String,
+    provider_reference: Option<String>,
+    provider_status: String,
+}
+
 #[derive(Debug, Clone)]
 struct SmtpConfig {
     host: String,
@@ -159,6 +170,7 @@ struct ProviderResponse {
     last_failure_at: Option<DateTime<Utc>>,
     last_error_code: Option<String>,
     last_error_message: Option<String>,
+    approved_for_live: bool,
     config: Value,
     masked_secrets: Vec<Value>,
     created_at: DateTime<Utc>,
@@ -249,6 +261,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route(
                 "/providers/{id}/test-bank-payout",
                 web::post().to(test_bank_payout),
+            )
+            .route(
+                "/providers/{id}/bank-payout-callbacks",
+                web::post().to(record_bank_payout_callback),
+            )
+            .route(
+                "/providers/{id}/bank-payout-callbacks",
+                web::get().to(list_bank_payout_callbacks),
             )
             .route("/providers/{id}/logs", web::get().to(list_provider_logs))
             .route("/logs", web::get().to(list_logs))
@@ -838,7 +858,7 @@ async fn provider_json(pool: &PgPool, id: Uuid) -> Result<Option<ProviderRespons
         r#"
         SELECT id, provider_kind, name, code, environment, status, is_default, priority,
                timeout_ms, max_retries, retry_backoff_ms, health_status, last_success_at,
-               last_failure_at, last_error_code, last_error_message, config, created_at, updated_at
+               last_failure_at, last_error_code, last_error_message, approved_for_live, config, created_at, updated_at
         FROM integration_providers
         WHERE id = $1
         "#,
@@ -879,6 +899,7 @@ async fn provider_json(pool: &PgPool, id: Uuid) -> Result<Option<ProviderRespons
         last_failure_at: row.get("last_failure_at"),
         last_error_code: row.get("last_error_code"),
         last_error_message: row.get("last_error_message"),
+        approved_for_live: row.get("approved_for_live"),
         config: row.get("config"),
         masked_secrets,
         created_at: row.get("created_at"),
@@ -948,10 +969,14 @@ async fn save_provider(
     if body.provider_kind == "bank_payout"
         && body.environment == "live"
         && status == "enabled"
-        && body.live_enable_approved != Some(true)
     {
+        if body.live_enable_approved != Some(true) {
+            return HttpResponse::BadRequest().json(json!({
+                "message": "Live bank payout providers require explicit internal approval"
+            }));
+        }
         return HttpResponse::BadRequest().json(json!({
-            "message": "Live bank payout providers require explicit internal approval"
+            "message": "No official live bank payout adapter is configured yet"
         }));
     }
     let config = body.config.unwrap_or_else(|| json!({}));
@@ -962,7 +987,7 @@ async fn save_provider(
             UPDATE integration_providers
             SET name = $2, code = $3, environment = $4, status = $5, is_default = $6,
                 priority = $7, timeout_ms = $8, max_retries = $9, retry_backoff_ms = $10,
-                config = $11::jsonb, updated_at = NOW()
+                config = $11::jsonb, approved_for_live = CASE WHEN $4 = 'live' AND $5 = 'enabled' AND $12 THEN true ELSE approved_for_live END, updated_by_admin_id = $13, updated_at = NOW()
             WHERE id = $1
             RETURNING id
             "#,
@@ -978,6 +1003,8 @@ async fn save_provider(
             .bind(body.max_retries.unwrap_or(3))
             .bind(body.retry_backoff_ms.unwrap_or(1000))
             .bind(&config)
+            .bind(body.live_enable_approved == Some(true))
+            .bind(actor(&request))
             .fetch_one(pool.get_ref())
             .await
         }
@@ -986,9 +1013,10 @@ async fn save_provider(
                 r#"
             INSERT INTO integration_providers (
                 provider_kind, name, code, environment, status, is_default, priority,
-                timeout_ms, max_retries, retry_backoff_ms, config
+                timeout_ms, max_retries, retry_backoff_ms, config, approved_for_live,
+                created_by_admin_id, updated_by_admin_id
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$13)
             RETURNING id
             "#,
             )
@@ -1003,6 +1031,8 @@ async fn save_provider(
             .bind(body.max_retries.unwrap_or(3))
             .bind(body.retry_backoff_ms.unwrap_or(1000))
             .bind(&config)
+            .bind(body.environment == "live" && body.live_enable_approved == Some(true))
+            .bind(actor(&request))
             .fetch_one(pool.get_ref())
             .await
         }
@@ -1081,15 +1111,19 @@ async fn set_status(
     if kind == "bank_payout"
         && environment == "live"
         && body.enabled
-        && body.live_enable_approved != Some(true)
     {
+        if body.live_enable_approved != Some(true) {
+            return HttpResponse::BadRequest().json(json!({
+                "message": "Live bank payout providers require explicit internal approval"
+            }));
+        }
         return HttpResponse::BadRequest().json(json!({
-            "message": "Live bank payout providers require explicit internal approval"
+            "message": "No official live bank payout adapter is configured yet"
         }));
     }
     let status = if body.enabled { "enabled" } else { "disabled" };
     let _ = sqlx::query(
-        "UPDATE integration_providers SET status = $2, live_enabled_approved_at = CASE WHEN $3 THEN NOW() ELSE live_enabled_approved_at END, live_enabled_approved_by = CASE WHEN $3 THEN $4 ELSE live_enabled_approved_by END, updated_at = NOW() WHERE id = $1",
+        "UPDATE integration_providers SET status = $2, approved_for_live = CASE WHEN $3 THEN true ELSE approved_for_live END, live_enabled_approved_at = CASE WHEN $3 THEN NOW() ELSE live_enabled_approved_at END, live_enabled_approved_by = CASE WHEN $3 THEN $4 ELSE live_enabled_approved_by END, updated_by_admin_id = $4, updated_at = NOW() WHERE id = $1",
     )
     .bind(id)
     .bind(status)
@@ -1109,6 +1143,16 @@ async fn set_status(
         json!({ "status": status }),
     )
     .await;
+    if kind == "bank_payout" && environment == "live" && body.enabled {
+        audit(
+            pool.get_ref(),
+            &request,
+            "integration_provider.live_approved",
+            Some(id),
+            json!({ "status": status }),
+        )
+        .await;
+    }
     provider_json(pool.get_ref(), id)
         .await
         .ok()
@@ -1410,6 +1454,15 @@ async fn provider_action(
             });
         }
     }
+    if success && action == "test_bank_payout" {
+        let result = TestBankPayoutAdapter.test_connection().await;
+        success = result.error_code.is_none();
+        if !success {
+            error_code = Some("bank_payout_test_failed");
+            error_message = Some("Bank payout test failed".to_string());
+        }
+        response_summary = result.summary_redacted;
+    }
     let _ = sqlx::query(
         r#"
         UPDATE integration_providers
@@ -1584,6 +1637,166 @@ async fn test_bank_payout(
         None,
     )
     .await
+}
+
+async fn record_bank_payout_callback(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<BankPayoutCallbackRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let provider_id = path.into_inner();
+    let provider = sqlx::query(
+        "SELECT environment, status FROM integration_providers WHERE id = $1 AND provider_kind = 'bank_payout'",
+    )
+    .bind(provider_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(provider)) = provider else {
+        return HttpResponse::NotFound().finish();
+    };
+    if provider.get::<String, _>("status") != "enabled" {
+        return HttpResponse::Conflict().json(json!({ "message": "Bank payout provider is disabled" }));
+    }
+    if provider.get::<String, _>("environment") != "test" {
+        return HttpResponse::Conflict().json(json!({ "message": "No official live bank payout adapter is configured yet" }));
+    }
+    let adapter = TestBankPayoutAdapter;
+    let result = adapter
+        .handle_callback(BankPayoutCallback {
+            provider_event_id: body.provider_event_id.clone(),
+            provider_reference: body.provider_reference.clone(),
+            provider_status: body.provider_status.clone(),
+        })
+        .await;
+    let mapped_status = map_provider_status(&result.status);
+    let inserted = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO bank_payout_provider_callbacks (
+            provider_id, payout_id, provider_event_id, provider_reference,
+            mapped_status, payload_summary_redacted
+        )
+        VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+        ON CONFLICT (provider_id, provider_event_id) DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(provider_id)
+    .bind(body.payout_id)
+    .bind(body.provider_event_id.trim())
+    .bind(body.provider_reference.as_deref())
+    .bind(mapped_status)
+    .bind(&result.summary_redacted)
+    .fetch_optional(pool.get_ref())
+    .await;
+    match inserted {
+        Ok(Some(callback_id)) => {
+            if let Some(payout_id) = body.payout_id {
+                if matches!(mapped_status, "paid" | "failed" | "reversed") {
+                    let previous = sqlx::query_scalar::<_, String>(
+                        "SELECT status FROM payouts_company WHERE id = $1",
+                    )
+                    .bind(payout_id)
+                    .fetch_optional(pool.get_ref())
+                    .await
+                    .ok()
+                    .flatten();
+                    if let Some(previous) = previous {
+                        let _ = sqlx::query(
+                            "UPDATE payouts_company SET status = $2, provider_reference = COALESCE($3, provider_reference), provider_response_summary = $4::jsonb, processed_at = CASE WHEN $2 IN ('paid','failed','reversed') THEN NOW() ELSE processed_at END WHERE id = $1",
+                        )
+                        .bind(payout_id)
+                        .bind(mapped_status)
+                        .bind(body.provider_reference.as_deref())
+                        .bind(&result.summary_redacted)
+                        .execute(pool.get_ref())
+                        .await;
+                        let _ = sqlx::query(
+                            "INSERT INTO payout_status_history (payout_id, from_status, to_status, reason, reference_kind, reference_value) VALUES ($1,$2,$3,'provider callback','provider',$4)",
+                        )
+                        .bind(payout_id)
+                        .bind(previous)
+                        .bind(mapped_status)
+                        .bind(body.provider_reference.as_deref())
+                        .execute(pool.get_ref())
+                        .await;
+                    }
+                }
+                if let Some(reference) = body.provider_reference.as_deref() {
+                    let _ = sqlx::query(
+                        "UPDATE payouts_company p SET reconciliation_item_id = ri.id, reconciliation_batch_id = ri.batch_id FROM reconciliation_items ri WHERE p.id = $1 AND ri.provider_reference = $2 AND p.reconciliation_item_id IS NULL",
+                    )
+                    .bind(payout_id)
+                    .bind(reference)
+                    .execute(pool.get_ref())
+                    .await;
+                }
+            }
+            write_log(
+                pool.get_ref(),
+                Some(provider_id),
+                &request,
+                "bank_payout_callback",
+                "callback",
+                "success",
+                0,
+                None,
+                None,
+                json!({
+                    "event_id_present": !body.provider_event_id.trim().is_empty(),
+                    "provider_reference_present": body.provider_reference.is_some(),
+                    "environment": provider.get::<String, _>("environment")
+                }),
+                result.summary_redacted,
+            )
+            .await;
+            audit(
+                pool.get_ref(),
+                &request,
+                "integration_provider.bank_payout_callback",
+                Some(provider_id),
+                json!({ "callback_id": callback_id, "mapped_status": mapped_status }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": callback_id, "status": mapped_status }))
+        }
+        Ok(None) => HttpResponse::Ok().json(json!({ "status": "duplicate" })),
+        Err(error) => {
+            tracing::error!("Record bank payout callback failed: {}", error);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+async fn list_bank_payout_callbacks(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let rows = sqlx::query(
+        "SELECT id, payout_id, provider_event_id, provider_reference, mapped_status, processing_status, created_at FROM bank_payout_provider_callbacks WHERE provider_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(path.into_inner())
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+    HttpResponse::Ok().json(json!({
+        "items": rows.into_iter().map(|row| json!({
+            "id": row.get::<Uuid, _>("id"),
+            "payout_id": row.get::<Option<Uuid>, _>("payout_id"),
+            "provider_event_id": row.get::<String, _>("provider_event_id"),
+            "provider_reference": row.get::<Option<String>, _>("provider_reference"),
+            "mapped_status": row.get::<String, _>("mapped_status"),
+            "processing_status": row.get::<String, _>("processing_status"),
+            "created_at": row.get::<DateTime<Utc>, _>("created_at"),
+        })).collect::<Vec<_>>()
+    }))
 }
 
 async fn test_kyc(
