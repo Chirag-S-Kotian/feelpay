@@ -122,6 +122,13 @@ fn merchant_role_allows_request(role: &str, method: &actix_web::http::Method, pa
     }
 }
 
+fn path_is_admin(path: &str) -> bool {
+    path == "/admin"
+        || path.starts_with("/admin/")
+        || path == "/v1/admin"
+        || path.starts_with("/v1/admin/")
+}
+
 pub fn bearer_token_from_request(req: &HttpRequest) -> Option<String> {
     req.headers()
         .get("authorization")
@@ -316,6 +323,11 @@ where
             let Some((merchant_id, tenant_id)) = merchant else {
                 return Err(actix_web::error::ErrorUnauthorized("Invalid API key"));
             };
+            if path_is_admin(req.path()) {
+                return Err(actix_web::error::ErrorForbidden(
+                    "Merchant credentials cannot access admin APIs",
+                ));
+            }
 
             // Set context for RLS and logging using wrapper types
             req.extensions_mut().insert(MerchantId(merchant_id));
@@ -500,6 +512,11 @@ where
                         merchant_from_hashed_api_key(pool.get_ref(), key, env_mode).await?;
 
                     if let Some((mid, tid)) = merchant {
+                        if path_is_admin(req.path()) {
+                            return Err(actix_web::error::ErrorForbidden(
+                                "Merchant credentials cannot access admin APIs",
+                            ));
+                        }
                         req.extensions_mut().insert(MerchantId(mid));
                         if let Some(tenant_id) = tid {
                             req.extensions_mut().insert(TenantId(tenant_id));
@@ -542,6 +559,13 @@ where
                             req.extensions_mut().insert(MerchantId(mid));
                         }
                         let role = claims.role;
+                        if path_is_admin(req.path())
+                            && (claims.merchant_id.is_some() || role.starts_with("merchant_"))
+                        {
+                            return Err(actix_web::error::ErrorForbidden(
+                                "Merchant sessions cannot access admin APIs",
+                            ));
+                        }
                         req.extensions_mut().insert(UserRole(role.clone()));
                         if !merchant_role_allows_request(&role, req.method(), req.path()) {
                             return Err(actix_web::error::ErrorForbidden(
@@ -562,7 +586,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::merchant_role_allows_request;
+    use super::{merchant_role_allows_request, path_is_admin};
     use actix_web::http::Method;
 
     #[test]
@@ -606,6 +630,13 @@ mod tests {
             &Method::GET,
             "/v1/settlements"
         ));
+    }
+
+    #[test]
+    fn admin_path_detection_covers_mounted_admin_scopes() {
+        assert!(path_is_admin("/admin/users"));
+        assert!(path_is_admin("/v1/admin/tenants"));
+        assert!(!path_is_admin("/v1/merchants/profile"));
     }
 }
 

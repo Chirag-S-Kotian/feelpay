@@ -6,6 +6,8 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use rand::RngCore;
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -1000,10 +1002,10 @@ struct SplitRuleRequest {
     name: String,
     business_account_id: Option<Uuid>,
     rule_type: String,
-    company_fee_percent: Option<f64>,
+    company_fee_percent: Option<Decimal>,
     company_fee_fixed: Option<i64>,
-    tax_percent: Option<f64>,
-    reserve_percent: Option<f64>,
+    tax_percent: Option<Decimal>,
+    reserve_percent: Option<Decimal>,
     settlement_delay_days: Option<i32>,
     status: Option<String>,
     priority: Option<i32>,
@@ -1015,10 +1017,10 @@ struct SplitSimulationRequest {
     gross_amount: i64,
     provider_fee_amount: Option<i64>,
     currency: Option<String>,
-    company_fee_percent: Option<f64>,
+    company_fee_percent: Option<Decimal>,
     company_fee_fixed: Option<i64>,
-    tax_percent: Option<f64>,
-    reserve_percent: Option<f64>,
+    tax_percent: Option<Decimal>,
+    reserve_percent: Option<Decimal>,
 }
 
 #[derive(Deserialize)]
@@ -2524,7 +2526,7 @@ async fn simulate_routing(
                p.display_name AS provider_name, COALESCE(p.code, p.name) AS provider_code,
                p.health_status, fp.display_name AS fallback_provider_name,
                COALESCE(pm.success_rate, p.success_rate, 0)::float8 AS success_rate,
-               COALESCE(pm.provider_fee_percent, 0)::float8 AS provider_fee_percent,
+               COALESCE(pm.provider_fee_percent, 0) AS provider_fee_percent,
                COALESCE(pm.avg_latency_ms, p.avg_latency_ms, 0)::int AS avg_latency_ms,
                COALESCE(pm.attempt_count, 0)::bigint AS attempt_count,
                (
@@ -2576,9 +2578,8 @@ async fn simulate_routing(
 
     match row {
         Ok(Some(row)) => {
-            let provider_fee_percent = row.get::<f64, _>("provider_fee_percent");
-            let estimated_provider_fee =
-                ((request.amount as f64) * provider_fee_percent / 100.0).round() as i64;
+            let provider_fee_percent = row.get::<Decimal, _>("provider_fee_percent");
+            let estimated_provider_fee = percentage_amount_rounded(request.amount, provider_fee_percent);
             HttpResponse::Ok().json(RoutingSimulationResponse {
                 selected_provider_id: Some(row.get("provider_id")),
                 selected_provider_code: Some(row.get("provider_code")),
@@ -4119,6 +4120,24 @@ async fn close_reconciliation_batch(
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
+    let open_mismatches = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*)::bigint FROM reconciliation_mismatches WHERE batch_id = $1 AND status = 'open'",
+    )
+    .bind(id)
+    .fetch_one(pool.get_ref())
+    .await;
+    match open_mismatches {
+        Ok(count) if count > 0 => {
+            return HttpResponse::Conflict().json(json!({
+                "message": "Review all reconciliation mismatches before closing the batch"
+            }));
+        }
+        Err(e) => {
+            tracing::error!("Failed checking open reconciliation mismatches: {}", e);
+            return server_error("Failed checking reconciliation mismatches");
+        }
+        _ => {}
+    }
     let updated = sqlx::query(
         "UPDATE reconciliation_batches SET status = 'closed', closed_at = NOW(), updated_at = NOW() WHERE id = $1",
     )
@@ -8972,10 +8991,10 @@ async fn create_split_rule(
     .bind(req.name.trim())
     .bind(req.business_account_id)
     .bind(req.rule_type.trim())
-    .bind(req.company_fee_percent.unwrap_or(0.0))
+    .bind(req.company_fee_percent.unwrap_or(Decimal::ZERO))
     .bind(req.company_fee_fixed.unwrap_or(0))
-    .bind(req.tax_percent.unwrap_or(0.0))
-    .bind(req.reserve_percent.unwrap_or(0.0))
+    .bind(req.tax_percent.unwrap_or(Decimal::ZERO))
+    .bind(req.reserve_percent.unwrap_or(Decimal::ZERO))
     .bind(req.settlement_delay_days.unwrap_or(0))
     .bind(req.status.unwrap_or_else(|| "active".to_string()))
     .bind(req.priority.unwrap_or(100))
@@ -9004,10 +9023,10 @@ async fn simulate_split(request: web::Json<SplitSimulationRequest>) -> impl Resp
     let req = request.into_inner();
     let gross = req.gross_amount;
     let provider_fee = req.provider_fee_amount.unwrap_or(0);
-    let company_fee = (gross as f64 * req.company_fee_percent.unwrap_or(0.0) / 100.0) as i64
+    let company_fee = percentage_amount(gross, req.company_fee_percent.unwrap_or(Decimal::ZERO))
         + req.company_fee_fixed.unwrap_or(0);
-    let tax = (gross as f64 * req.tax_percent.unwrap_or(0.0) / 100.0) as i64;
-    let reserve = (gross as f64 * req.reserve_percent.unwrap_or(0.0) / 100.0) as i64;
+    let tax = percentage_amount(gross, req.tax_percent.unwrap_or(Decimal::ZERO));
+    let reserve = percentage_amount(gross, req.reserve_percent.unwrap_or(Decimal::ZERO));
     let payable = gross - provider_fee - company_fee - tax - reserve;
     HttpResponse::Ok().json(json!({
         "business_account_id": req.business_account_id,
@@ -9019,6 +9038,20 @@ async fn simulate_split(request: web::Json<SplitSimulationRequest>) -> impl Resp
         "reserve_amount": reserve,
         "payable_amount": payable.max(0)
     }))
+}
+
+fn percentage_amount(amount: i64, percent: Decimal) -> i64 {
+    (Decimal::from(amount) * percent / Decimal::from(100))
+        .trunc()
+        .to_i64()
+        .unwrap_or(0)
+}
+
+fn percentage_amount_rounded(amount: i64, percent: Decimal) -> i64 {
+    (Decimal::from(amount) * percent / Decimal::from(100))
+        .round()
+        .to_i64()
+        .unwrap_or(0)
 }
 
 async fn list_transfers_company(pool: web::Data<PgPool>) -> impl Responder {
@@ -12272,6 +12305,13 @@ mod tests {
     fn secrets_and_bank_accounts_are_masked() {
         assert_eq!(mask_secret("sk_test_placeholder"), "****lder");
         assert_eq!(mask_bank_account("123456789012"), "********9012");
+    }
+
+    #[test]
+    fn percentage_amount_uses_decimal_minor_unit_math() {
+        assert_eq!(percentage_amount(10_000, Decimal::new(175, 2)), 175);
+        assert_eq!(percentage_amount(999, Decimal::new(250, 2)), 24);
+        assert_eq!(percentage_amount_rounded(999, Decimal::new(250, 2)), 25);
     }
 
     #[test]

@@ -9,6 +9,9 @@ use uuid::Uuid;
 static IDEMPOTENCY: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    if fake_admin_payment_ops_disabled() {
+        return;
+    }
     cfg.service(web::resource("/admin/stats").route(web::get().to(admin_stats)))
         .service(
             web::scope("/admin/payment-ops")
@@ -35,6 +38,17 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         )
         .service(web::resource("/admin/system-health/{tail:.*}").route(web::post().to(write_ok)))
         .service(web::resource("/admin/notifications/{tail:.*}").route(web::post().to(write_ok)));
+}
+
+fn fake_admin_payment_ops_disabled() -> bool {
+    fake_admin_payment_ops_disabled_for(
+        std::env::var("APP_ENV").ok().as_deref(),
+        std::env::var("PAYMENT_MODE").ok().as_deref(),
+    )
+}
+
+fn fake_admin_payment_ops_disabled_for(app_env: Option<&str>, payment_mode: Option<&str>) -> bool {
+    app_env == Some("production") || payment_mode == Some("live")
 }
 
 async fn admin_stats() -> HttpResponse {
@@ -341,6 +355,24 @@ fn payload_hash(body: &[u8]) -> u64 {
 
 fn sandbox_id() -> String {
     Uuid::nil().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fake_admin_payment_ops_disabled_for;
+
+    #[test]
+    fn fake_payment_ops_are_disabled_in_live_or_production_modes() {
+        assert!(fake_admin_payment_ops_disabled_for(
+            Some("production"),
+            None
+        ));
+        assert!(fake_admin_payment_ops_disabled_for(None, Some("live")));
+        assert!(!fake_admin_payment_ops_disabled_for(
+            Some("development"),
+            Some("test")
+        ));
+    }
 }
 
 fn providers() -> Vec<Value> {
