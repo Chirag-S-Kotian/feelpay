@@ -7,6 +7,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::engine::services::auth::MfaService;
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequest};
 use crate::state::AppState;
@@ -885,6 +886,43 @@ pub async fn update_profile(
             },
             "environment": env
         }),
+    )
+    .await;
+
+    let merchant_email =
+        sqlx::query_scalar::<_, Option<String>>("SELECT email FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    let mut revoked_variables = std::collections::BTreeMap::new();
+    revoked_variables.insert("environment".to_string(), env.to_string());
+    let _ = dispatch_event(
+        &state.db,
+        DispatchRequest {
+            merchant_id: Some(merchant_id),
+            event_type: "api_key_revoked".to_string(),
+            environment: env.to_string(),
+            recipient_email: merchant_email.clone(),
+            recipient_phone: None,
+            variables: revoked_variables,
+        },
+    )
+    .await;
+    let mut created_variables = std::collections::BTreeMap::new();
+    created_variables.insert("environment".to_string(), env.to_string());
+    let _ = dispatch_event(
+        &state.db,
+        DispatchRequest {
+            merchant_id: Some(merchant_id),
+            event_type: "api_key_created".to_string(),
+            environment: env.to_string(),
+            recipient_email: merchant_email,
+            recipient_phone: None,
+            variables: created_variables,
+        },
     )
     .await;
 
@@ -2297,6 +2335,32 @@ pub async fn update_kyc_status(
         body.message.as_deref(),
     )
     .await;
+    let event_type = match body.status.as_str() {
+        "approved" => Some("kyc_approved"),
+        "rejected" => Some("kyc_rejected"),
+        _ => None,
+    };
+    if let Some(event_type) = event_type {
+        let mut variables = std::collections::BTreeMap::new();
+        variables.insert("status".to_string(), body.status.clone());
+        let _ = dispatch_event(
+            &state.db,
+            DispatchRequest {
+                merchant_id: Some(merchant_id),
+                event_type: event_type.to_string(),
+                environment: if state.config.is_live() {
+                    "live"
+                } else {
+                    "test"
+                }
+                .to_string(),
+                recipient_email: Some(merchant_email.clone()),
+                recipient_phone: None,
+                variables,
+            },
+        )
+        .await;
+    }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "KYC status updated and notifications queued",

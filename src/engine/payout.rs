@@ -1,3 +1,4 @@
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::models::payout::Payout;
 use sqlx::{PgPool, Row};
@@ -50,6 +51,38 @@ pub async fn process_payout(pool: &PgPool, payout_id: Uuid) -> Result<(), FeelPa
             .await
             .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     }
+
+    let merchant_email =
+        sqlx::query_scalar::<_, Option<String>>("SELECT email FROM merchants WHERE id = $1")
+            .bind(payout.merchant_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert("payout_id".to_string(), payout.id.to_string());
+    variables.insert("amount".to_string(), payout.amount.to_string());
+    let _ = dispatch_event(
+        pool,
+        DispatchRequest {
+            merchant_id: Some(payout.merchant_id),
+            event_type: if success {
+                "payout_processed"
+            } else {
+                "payout_failed"
+            }
+            .to_string(),
+            environment: std::env::var("APP_ENV")
+                .ok()
+                .filter(|value| value == "live")
+                .unwrap_or_else(|| "test".to_string()),
+            recipient_email: merchant_email,
+            recipient_phone: None,
+            variables,
+        },
+    )
+    .await;
 
     Ok(())
 }

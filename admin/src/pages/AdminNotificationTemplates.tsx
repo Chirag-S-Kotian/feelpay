@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, Mail, Send, Smartphone } from 'lucide-react';
+import { Eye, Mail, RefreshCw, Send, Smartphone } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
 type Template = {
@@ -16,6 +16,18 @@ type Template = {
   default_sms_provider_id?: string | null;
 };
 type Provider = { id: string; name: string; provider_kind: string; environment: string; status: string };
+type DispatchLog = {
+  id: string;
+  event_type: string;
+  channel: 'email' | 'sms';
+  recipient_masked: string;
+  status: 'sent' | 'failed' | 'skipped';
+  error_code?: string | null;
+  retry_count: number;
+  max_retries: number;
+  retryable: boolean;
+  created_at: string;
+};
 
 const DEFAULT_SAMPLE = '{"customer_name":"Asha","amount":"INR 499.00","otp":"000000","reference":"FP123"}';
 
@@ -23,6 +35,7 @@ export default function AdminNotificationTemplates() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [types, setTypes] = useState<string[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [dispatchLogs, setDispatchLogs] = useState<DispatchLog[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [sampleData, setSampleData] = useState(DEFAULT_SAMPLE);
   const [recipient, setRecipient] = useState('');
@@ -35,13 +48,15 @@ export default function AdminNotificationTemplates() {
   const smsProviders = useMemo(() => providers.filter(p => p.provider_kind === 'sms' && p.status === 'enabled'), [providers]);
 
   const load = async () => {
-    const [templateData, providerData] = await Promise.all([
+    const [templateData, providerData, dispatchData] = await Promise.all([
       apiRequest<{ items: Template[]; template_types: string[] }>('GET', '/admin/integrations/templates'),
       apiRequest<{ items: Provider[] }>('GET', '/admin/integrations/providers'),
+      apiRequest<{ items: DispatchLog[] }>('GET', '/admin/integrations/dispatch-logs'),
     ]);
     setTemplates(templateData.items);
     setTypes(templateData.template_types);
     setProviders(providerData.items);
+    setDispatchLogs(dispatchData.items);
     setSelectedId(current => current || templateData.items[0]?.id || '');
   };
   useEffect(() => { void load(); }, []);
@@ -88,6 +103,11 @@ export default function AdminNotificationTemplates() {
     setNotice(enabled ? 'Template enabled.' : 'Template disabled.');
     await load();
   };
+  const retry = async (id: string) => {
+    await apiRequest('POST', `/admin/integrations/dispatch-logs/${id}/retry`);
+    setNotice('Retry scheduled.');
+    await load();
+  };
   if (!selected) return <div className="page"><button onClick={() => void create()}>Create first template</button></div>;
   const update = (patch: Partial<Template>) => setTemplates(items => items.map(item => item.id === selected.id ? { ...item, ...patch } : item));
   return (
@@ -118,6 +138,31 @@ export default function AdminNotificationTemplates() {
           <button onClick={() => void testSend()}><Send size={14} /> Test send</button>
           {preview && <pre className="json-preview">{JSON.stringify(preview, null, 2)}</pre>}
           <p className="muted-copy"><Mail size={14} /> Email and <Smartphone size={14} /> SMS tests use mapped providers.</p>
+        </div>
+      </div>
+      <div className="card">
+        <h2>Recent Delivery Attempts</h2>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Event</th><th>Channel</th><th>Recipient</th><th>Status</th><th>Retries</th><th>Created</th><th /></tr></thead>
+            <tbody>
+              {dispatchLogs.map(log => (
+                <tr key={log.id}>
+                  <td>{log.event_type}</td>
+                  <td>{log.channel}</td>
+                  <td>{log.recipient_masked}</td>
+                  <td>{log.status}{log.error_code ? ` / ${log.error_code}` : ''}</td>
+                  <td>{log.retry_count}/{log.max_retries}</td>
+                  <td>{new Date(log.created_at).toLocaleString()}</td>
+                  <td>
+                    {log.status === 'failed' && log.retryable && log.event_type !== 'otp' && (
+                      <button onClick={() => void retry(log.id)}><RefreshCw size={14} /> Retry</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

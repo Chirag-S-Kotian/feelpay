@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::api::pagination::{build_cursor, PaginatedResponse, PaginationParams};
 use crate::engine::processor::{MethodData, TransactionContext};
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::models::payment_order::{PaymentOrder, PaymentStatus};
 use crate::state::AppState;
@@ -966,6 +967,28 @@ pub async fn refund_payment(
         store_idempotency_response(&state.db, merchant_id, key, "refund", &req_hash, 200, &body)
             .await?;
     }
+
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert("refund_id".to_string(), refund_id.to_string());
+    variables.insert("payment_id".to_string(), order.id.to_string());
+    variables.insert("amount".to_string(), refund_amount.to_string());
+    let _ = dispatch_event(
+        &state.db,
+        DispatchRequest {
+            merchant_id: Some(merchant_id),
+            event_type: "refund_created".to_string(),
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            }
+            .to_string(),
+            recipient_email: order.customer_email.clone(),
+            recipient_phone: order.customer_phone.clone(),
+            variables,
+        },
+    )
+    .await;
 
     Ok(HttpResponse::Ok().json(body))
 }

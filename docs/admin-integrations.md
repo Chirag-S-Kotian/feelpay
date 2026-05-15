@@ -96,6 +96,10 @@ Company admins manage transactional templates from **Notification Templates**. S
 - Test send uses the selected mapped email/SMS providers. Disabled templates, disabled providers, or missing provider mappings fail closed.
 - Live template tests require explicit internal approval; test-mode templates are the normal validation path.
 - Template create, update, enable, disable, and test actions are audited. Secrets, OTP values, and full phone numbers are never logged.
+- Runtime dispatch currently wires only real existing flows: `otp`, `onboarding`, `kyc_approved`, `kyc_rejected`, `api_key_created`, `api_key_revoked`, `refund_created`, `payout_processed`, `payout_failed`, and terminal `webhook_failure`.
+- Company-admin delivery logs expose masked recipients only. Retry payloads remain private to the dispatcher so failed non-OTP deliveries can be replayed without exposing raw addresses in the UI.
+- Failed non-OTP deliveries are retried by a backend worker on a one-minute pass up to the configured retry cap. OTP deliveries are never retried by the dispatcher.
+- Events not listed above are intentionally not synthesized yet; each needs a real source flow and recipient path before wiring.
 
 Use sample JSON in Preview to verify variables before enabling a template. Test send requires a test recipient email and/or phone number matching the chosen channel.
 
@@ -105,7 +109,7 @@ Use sample JSON in Preview to verify variables before enabling a template. Test 
 - `Test default email` resolves the configured default email provider for the selected environment before sending.
 - No Twilio credentials are stored in this repo; live Twilio delivery stays disabled until an internal admin saves the required config and encrypted secret.
 - Live bank payout mode remains intentionally gated.
-- Operational platform notifications are not yet rewired to select the default Integration Center provider automatically; that remains a separate integration step beyond the admin test path.
+- Operational platform notifications are now wired only for the supported runtime event set listed above; other template types remain admin-configurable but inactive until their real flows are connected.
 
 ## Postgres Validation
 

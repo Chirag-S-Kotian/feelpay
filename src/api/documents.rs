@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::models::document::{
     ApprovalRequest, CreateApprovalRequest, Document, DocumentResponse, GenerateUploadUrlRequest,
@@ -579,6 +580,26 @@ pub async fn send_otp(
             .await
             .map_err(|e| FeelPayError::Internal(e.to_string()))?;
     }
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert("code".to_string(), otp.clone());
+    variables.insert("purpose".to_string(), body.otp_type.clone());
+    let _ = dispatch_event(
+        &state.db,
+        DispatchRequest {
+            merchant_id: None,
+            event_type: "otp".to_string(),
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            }
+            .to_string(),
+            recipient_email: body.email.clone(),
+            recipient_phone: body.phone.clone(),
+            variables,
+        },
+    )
+    .await;
     tracing::info!(
         email = ?body.email.as_ref().map(|_| "redacted"),
         phone = ?body.phone.as_ref().map(|_| "redacted"),

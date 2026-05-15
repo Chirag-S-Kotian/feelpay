@@ -1,3 +1,4 @@
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -203,6 +204,33 @@ async fn handle_retry(pool: &PgPool, event: &WebhookEvent, error: &str) -> Resul
             merchant_id = %event.merchant_id,
             "Webhook moved to dead letter queue"
         );
+
+        let merchant_email =
+            sqlx::query_scalar::<_, Option<String>>("SELECT email FROM merchants WHERE id = $1")
+                .bind(event.merchant_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .flatten();
+        let mut variables = std::collections::BTreeMap::new();
+        variables.insert("webhook_id".to_string(), event.id.to_string());
+        variables.insert("event_type".to_string(), event.event_type.clone());
+        let _ = dispatch_event(
+            pool,
+            DispatchRequest {
+                merchant_id: Some(event.merchant_id),
+                event_type: "webhook_failure".to_string(),
+                environment: std::env::var("APP_ENV")
+                    .ok()
+                    .filter(|value| value == "live")
+                    .unwrap_or_else(|| "test".to_string()),
+                recipient_email: merchant_email,
+                recipient_phone: None,
+                variables,
+            },
+        )
+        .await;
     } else {
         sqlx::query(
             r#"

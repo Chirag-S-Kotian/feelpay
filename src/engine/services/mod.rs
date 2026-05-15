@@ -8,6 +8,7 @@ pub mod export;
 pub mod job_queue;
 pub mod ledger;
 pub mod notification;
+pub mod notification_dispatcher;
 pub mod notification_templates;
 pub mod report;
 pub mod report_generator;

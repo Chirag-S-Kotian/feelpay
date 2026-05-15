@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::engine::services::bank_account::{
     mask_bank_account, AddBankAccountRequest, BankAccountService,
 };
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::state::AppState;
 use crate::vault::crypto::VaultCrypto;
@@ -370,6 +371,35 @@ pub async fn submit_kyc(
         .await?;
     }
 
+    let merchant_email =
+        sqlx::query_scalar::<_, Option<String>>("SELECT email FROM merchants WHERE id = $1")
+            .bind(merchant_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert("verification_type".to_string(), verification_type.clone());
+    variables.insert("status".to_string(), status.to_string());
+    let _ = dispatch_event(
+        &state.db,
+        DispatchRequest {
+            merchant_id: Some(merchant_id),
+            event_type: "onboarding".to_string(),
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            }
+            .to_string(),
+            recipient_email: merchant_email,
+            recipient_phone: None,
+            variables,
+        },
+    )
+    .await;
+
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": id,
         "verification_type": verification_type,
@@ -527,6 +557,26 @@ pub async fn initiate_aadhaar_ekyc(
     let _ =
         crate::engine::services::sms::send_otp_sms(&state.db, &body.phone, &otp, "Aadhaar eKYC")
             .await;
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert("code".to_string(), otp.clone());
+    variables.insert("purpose".to_string(), "Aadhaar eKYC".to_string());
+    let _ = dispatch_event(
+        &state.db,
+        DispatchRequest {
+            merchant_id: Some(merchant_id),
+            event_type: "otp".to_string(),
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            }
+            .to_string(),
+            recipient_email: None,
+            recipient_phone: Some(body.phone.clone()),
+            variables,
+        },
+    )
+    .await;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "OTP sent to your registered mobile number",

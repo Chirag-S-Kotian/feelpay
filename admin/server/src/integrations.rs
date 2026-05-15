@@ -261,6 +261,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route(
                 "/templates/{id}/test",
                 web::post().to(test_notification_template),
+            )
+            .route(
+                "/dispatch-logs",
+                web::get().to(list_notification_dispatch_logs),
+            )
+            .route(
+                "/dispatch-logs/{id}/retry",
+                web::post().to(retry_notification_dispatch),
             ),
     );
 }
@@ -2041,6 +2049,86 @@ async fn test_notification_template(
     )
     .await;
     HttpResponse::Ok().json(json!({ "status": "success", "channels": sent }))
+}
+
+async fn list_notification_dispatch_logs(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT id, merchant_id, event_type, channel, template_id, provider_id, recipient_masked,
+               status, error_code, error_message, latency_ms, retry_count, max_retries, retryable,
+               next_retry_at, sent_at, created_at
+        FROM notification_dispatch_logs
+        ORDER BY created_at DESC
+        LIMIT 100
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+    HttpResponse::Ok().json(json!({
+        "items": rows.into_iter().map(|row| json!({
+            "id": row.get::<Uuid, _>("id"),
+            "merchant_id": row.get::<Option<Uuid>, _>("merchant_id"),
+            "event_type": row.get::<String, _>("event_type"),
+            "channel": row.get::<String, _>("channel"),
+            "template_id": row.get::<Option<Uuid>, _>("template_id"),
+            "provider_id": row.get::<Option<Uuid>, _>("provider_id"),
+            "recipient_masked": row.get::<String, _>("recipient_masked"),
+            "status": row.get::<String, _>("status"),
+            "error_code": row.get::<Option<String>, _>("error_code"),
+            "error_message": row.get::<Option<String>, _>("error_message"),
+            "latency_ms": row.get::<i32, _>("latency_ms"),
+            "retry_count": row.get::<i32, _>("retry_count"),
+            "max_retries": row.get::<i32, _>("max_retries"),
+            "retryable": row.get::<bool, _>("retryable"),
+            "next_retry_at": row.get::<Option<DateTime<Utc>>, _>("next_retry_at"),
+            "sent_at": row.get::<Option<DateTime<Utc>>, _>("sent_at"),
+            "created_at": row.get::<DateTime<Utc>, _>("created_at"),
+        })).collect::<Vec<_>>()
+    }))
+}
+
+async fn retry_notification_dispatch(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let id = path.into_inner();
+    let row = sqlx::query(
+        r#"
+        SELECT event_type
+        FROM notification_dispatch_logs
+        WHERE id=$1 AND status='failed' AND retryable=true
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(row)) = row else {
+        return HttpResponse::NotFound().json(json!({ "message": "Retryable delivery not found" }));
+    };
+    if row.get::<String, _>("event_type") == "otp" {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "OTP deliveries cannot be retried" }));
+    }
+    let updated =
+        sqlx::query("UPDATE notification_dispatch_logs SET next_retry_at = NOW() WHERE id=$1")
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+    match updated {
+        Ok(_) => HttpResponse::Ok().json(json!({ "id": id })),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
 }
 
 async fn list_logs_for(pool: web::Data<PgPool>, provider_id: Option<Uuid>) -> HttpResponse {

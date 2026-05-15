@@ -180,6 +180,7 @@ async fn main() -> std::io::Result<()> {
     let rate_limiter =
         crate::middleware::rate_limit::RateLimiter::new(config.rate_limit_per_minute);
     let cors_allowed_origins = config.cors_allowed_origins.clone();
+    let notification_retry_pool = state.db.clone();
 
     let server = HttpServer::new(move || {
         let mut cors = Cors::default()
@@ -700,6 +701,21 @@ async fn main() -> std::io::Result<()> {
     .run();
 
     let server_handle = server.handle();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            if let Err(error) =
+                crate::engine::services::notification_dispatcher::retry_due_dispatches(
+                    &notification_retry_pool,
+                    25,
+                )
+                .await
+            {
+                tracing::warn!(error = %error, "notification retry pass failed");
+            }
+        }
+    });
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {

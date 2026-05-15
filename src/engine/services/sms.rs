@@ -33,7 +33,7 @@ pub async fn send_sms(
     to: &str,
     body: &str,
     template_id: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     if let Some(provider) = load_default_generic_sms_provider(pool).await? {
         let attempt = send_via_generic_provider(&provider, to, body, template_id).await?;
         return log_sms(
@@ -72,7 +72,7 @@ pub async fn send_otp_sms(
     to: &str,
     otp: &str,
     purpose: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let body = format!(
         "Your FeelPay {} OTP is {}. Valid for 5 minutes. Do not share.",
         purpose, otp
@@ -89,7 +89,7 @@ pub async fn send_payment_sms(
     amount: i64,
     order_id: &str,
     status: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let amount_formatted = format_amount(amount);
     let body = match status {
         "captured" | "success" => format!(
@@ -116,7 +116,7 @@ pub async fn send_settlement_sms(
     to: &str,
     amount: i64,
     utr: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let amount_formatted = format_amount(amount);
     let body = if let Some(utr) = utr {
         format!("Settlement of {} credited. UTR: {}", amount_formatted, utr)
@@ -142,7 +142,7 @@ async fn send_via_msg91(
     to: &str,
     body: &str,
     template_id: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = std::env::var("MSG91_API_KEY").map_err(|_| "MSG91_API_KEY not configured")?;
     let sender_id = std::env::var("MSG91_SENDER_ID").unwrap_or_else(|_| "FEELPY".to_string());
 
@@ -170,7 +170,10 @@ async fn send_via_msg91(
 }
 
 /// Send via Twilio
-async fn send_via_twilio(to: &str, body: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn send_via_twilio(
+    to: &str,
+    body: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let account_sid =
         std::env::var("TWILIO_ACCOUNT_SID").map_err(|_| "TWILIO_ACCOUNT_SID not configured")?;
     let auth_token =
@@ -217,7 +220,7 @@ struct GenericSmsProvider {
 
 async fn load_default_generic_sms_provider(
     pool: &PgPool,
-) -> Result<Option<GenericSmsProvider>, Box<dyn std::error::Error>> {
+) -> Result<Option<GenericSmsProvider>, Box<dyn std::error::Error + Send + Sync>> {
     let row = sqlx::query(
         r#"
         SELECT p.id, p.config, s.encrypted_value, s.nonce
@@ -304,7 +307,10 @@ async fn load_default_generic_sms_provider(
     }))
 }
 
-fn required_config(config: &Value, key: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn required_config(
+    config: &Value,
+    key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     config
         .get(key)
         .and_then(Value::as_str)
@@ -315,7 +321,7 @@ fn required_config(config: &Value, key: &str) -> Result<String, Box<dyn std::err
 fn decrypt_integration_secret(
     encrypted_value: &str,
     nonce: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::{Aes256Gcm, Nonce};
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -340,7 +346,7 @@ fn render_sms_template(
     route_type: Option<&str>,
     template_id: Option<&str>,
     auth_token: &str,
-) -> Result<Value, Box<dyn std::error::Error>> {
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     Ok(match value {
         Value::String(input) => {
             let rendered = input
@@ -387,7 +393,8 @@ fn render_sms_template(
                         )?,
                     ))
                 })
-                .collect::<Result<serde_json::Map<_, _>, Box<dyn std::error::Error>>>()?,
+                .collect::<Result<serde_json::Map<_, _>, Box<dyn std::error::Error + Send + Sync>>>(
+                )?,
         ),
         other => other.clone(),
     })
@@ -398,7 +405,7 @@ async fn send_via_generic_provider(
     to: &str,
     body: &str,
     template_key: Option<&str>,
-) -> Result<SmsDeliveryAttempt, Box<dyn std::error::Error>> {
+) -> Result<SmsDeliveryAttempt, Box<dyn std::error::Error + Send + Sync>> {
     if provider.provider_code == "twilio" {
         return send_via_twilio_provider(provider, to, body).await;
     }
@@ -456,7 +463,7 @@ async fn send_via_twilio_provider(
     provider: &GenericSmsProvider,
     to: &str,
     body: &str,
-) -> Result<SmsDeliveryAttempt, Box<dyn std::error::Error>> {
+) -> Result<SmsDeliveryAttempt, Box<dyn std::error::Error + Send + Sync>> {
     let account_sid = provider
         .account_sid
         .as_deref()
@@ -504,7 +511,7 @@ async fn log_sms(
     template_id: Option<&str>,
     provider: &str,
     attempt: Option<&SmsDeliveryAttempt>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let message_id = Uuid::new_v4().to_string();
     sqlx::query(
         r#"
