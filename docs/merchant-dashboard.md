@@ -14,7 +14,7 @@ This dashboard is the merchant-facing React app in `dashboard/`. It talks to the
 - `/` overview: volume, success/failure signals, settlements, links, health, and recent activity.
 - `/payments`: transaction list, search/filter, detail drawer, timelines, fees, full/partial refund action, refund status, and webhook history.
 - `/refunds`: refund list, search/filter, payment mapping, status, customer context, and detail drawer.
-- `/settlements`: balances, settlement list, reconciliation, and details.
+- `/settlements`: available, pending, hold, and reserve balances plus settlement list, reconciliation, and details.
 - `/payment-links`: create/list/copy/expire/deactivate payment links.
 - `/disputes`: dispute list/detail and evidence workflow.
 - `/developers`: API keys, docs, idempotency, webhook events, delivery logs, and go-live checks.
@@ -70,6 +70,7 @@ Every merchant-owned row must be scoped by `merchant_id`. Existing `tenant_id` c
 - Use idempotency keys for refunds and other sensitive mutations.
 - Audit sensitive actions with actor, tenant, merchant, action, target, metadata, IP/user-agent, and timestamp.
 - Keep live-mode keys/actions blocked until internal review status is `approved`, onboarding is approved, and live preflight passes.
+- Merchant users can view payout lifecycle and references but cannot create or mutate payouts; payout creation and confirmation are internal-admin only.
 - Do not log raw secrets, full bank details, PAN, KYC documents, or webhook signing secrets.
 
 ## Local Setup
@@ -90,6 +91,7 @@ Run only checks relevant to touched files during normal development. Use the ful
 - Merchant review follows `draft -> submitted -> under_review -> approved|restricted|rejected|suspended`. Provider verification alone does not approve a merchant.
 - Internal risk notes are company-admin only and are never exposed through merchant-facing APIs.
 - Live-money processing must remain disabled unless approved acquirer/payment rails already exist in the repo and are configured outside this merchant-dashboard scope.
+- Payout rows are not proof of bank transfer. A paid payout needs an explicitly recorded manual, test, or provider reference; failed and reversed payouts remain visible instead of being rewritten as success.
 - Platform reconciliation imports are internal-admin only. Merchant users can see merchant settlement views, but they cannot access reconciliation batches or source imports.
 - Some merchant modules reuse broader platform endpoints; verify internal platform scope and merchant isolation whenever adding fields or filters.
 - Sensitive-field hardening is forward-safe after `20260515000001_merchant_secret_storage_hardening.sql`: new API keys use hashed lookup rows, new webhook secrets are encrypted, and new PAN/GSTIN/KYC writes store masked display values plus encrypted payloads. Existing historical plaintext rows still require a one-time migrated-Postgres backfill before claiming legacy data is fully remediated.

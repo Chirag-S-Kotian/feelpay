@@ -44,8 +44,11 @@ Use masked or non-sensitive references only. The platform stores a redacted summ
 
 Internal admins create batches, inspect matched and mismatched items, mark items reviewed with internal notes, close batches, and export result CSV files. Upload/import, review, close, and export actions are audited.
 
+Settlement and payout hardening adds explicit reconciliation links from company settlement batches, payout batches, and payout items back to reconciliation batches/items when an internal workflow has matched them.
+
 ## Boundaries
 
 - Bank and provider APIs are still outside this foundation. No live bank/payout API was added.
+- Internal payout state is separate from bank confirmation. `paid` requires an explicit manual, test, or provider reference; fake UTRs and implied bank success are not generated.
 - Existing legacy reconciliation tables remain for older company-admin flows; the batch/item model is the canonical foundation for new work.
 - Manual matching and adjustment workflows are foundational only; they do not move money.

@@ -825,6 +825,8 @@ struct WebhookRetryRequest {
 struct SettlementActionRequest {
     note: Option<String>,
     bank_reference_number: Option<String>,
+    reference_kind: Option<String>,
+    failure_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1039,6 +1041,14 @@ struct PayoutCreateRequest {
 }
 
 #[derive(Deserialize)]
+struct PayoutActionRequest {
+    note: Option<String>,
+    failure_reason: Option<String>,
+    reference_kind: Option<String>,
+    reference_value: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ReserveActionRequest {
     business_account_id: Uuid,
     amount: i64,
@@ -1245,13 +1255,13 @@ async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
           COALESCE((SELECT SUM(amount) FROM payment_refunds WHERE status IN ('successful','initiated','processing')), 0)::bigint AS refund_amount,
           COALESCE((SELECT COUNT(*) FROM payment_refunds), 0)::bigint AS refund_count,
           COALESCE((SELECT COUNT(*) FROM payment_refunds WHERE status IN ('requested','approved','processing')), 0)::bigint AS pending_refunds,
-          COALESCE((SELECT COUNT(*) FROM settlement_batches_company WHERE status IN ('pending','processing','on_hold')), 0)::bigint AS pending_settlements,
+          COALESCE((SELECT COUNT(*) FROM settlement_batches_company WHERE status IN ('scheduled','processing','on_hold')), 0)::bigint AS pending_settlements,
           COALESCE((SELECT COUNT(*) FROM settlement_batches_company WHERE status = 'failed'), 0)::bigint AS failed_settlements,
           COALESCE((SELECT COUNT(*) FROM reconciliation_records WHERE status IN ('unmatched','mismatch')), 0)::bigint AS reconciliation_mismatches,
           COALESCE((SELECT COUNT(*) FROM payment_webhook_events WHERE processing_status IN ('failed','dead_letter')), 0)::bigint AS webhook_failures,
           COALESCE((SELECT SUM(amount) FROM chargebacks), 0)::bigint AS chargeback_amount,
           COALESCE((SELECT COUNT(*) FROM chargebacks), 0)::bigint AS chargeback_count,
-          COALESCE((SELECT SUM(net_settlement_amount) FROM settlement_batches_company WHERE status IN ('settled','reconciled')), 0)::bigint AS net_settled_amount,
+          COALESCE((SELECT SUM(net_settlement_amount) FROM settlement_batches_company WHERE status = 'paid'), 0)::bigint AS net_settled_amount,
           COALESCE((SELECT SUM(provider_fee) FROM settlement_batches_company), 0)::bigint AS provider_fee_total,
           COALESCE((SELECT SUM(company_fee_amount) FROM settlement_batches_company), 0)::bigint AS company_revenue_total
         "#,
@@ -2679,7 +2689,7 @@ async fn list_ledger(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> i
         r#"
         SELECT
           COALESCE((SELECT SUM(balance) FROM ledger_accounts WHERE owner_type = 'company'), 0)::bigint AS total_company_balance,
-          COALESCE((SELECT SUM(net_settlement_amount) FROM settlement_batches_company WHERE status IN ('pending','processing')), 0)::bigint AS pending_settlement,
+          COALESCE((SELECT SUM(net_settlement_amount) FROM settlement_batches_company WHERE status IN ('scheduled','processing','on_hold')), 0)::bigint AS pending_settlement,
           COALESCE((SELECT SUM(balance) FROM ledger_accounts WHERE owner_type = 'business_account' AND account_type IN ('payable','merchant')), 0)::bigint AS business_payable,
           COALESCE((SELECT SUM(provider_fee_amount) FROM settlement_batches_company), 0)::bigint AS provider_fees,
           COALESCE((SELECT SUM(company_fee_amount) FROM settlement_batches_company), 0)::bigint AS company_revenue,
@@ -3283,18 +3293,23 @@ async fn settlement_action(
     status: &'static str,
 ) -> impl Responder {
     let id = path.into_inner();
+    if matches!(status, "paid") && request.bank_reference_number.as_deref().unwrap_or("").trim().is_empty() {
+        return HttpResponse::BadRequest().json(json!({ "message": "Paid settlement requires a manual, test, or provider reference" }));
+    }
     let updated = sqlx::query(
-        "UPDATE settlement_batches_company SET status = $2, bank_reference_number = COALESCE($3, bank_reference_number), finance_notes = COALESCE($4, finance_notes), updated_at = NOW() WHERE id = $1",
+        "UPDATE settlement_batches_company SET status = $2, bank_reference_number = COALESCE($3, bank_reference_number), finance_notes = COALESCE($4, finance_notes), reference_kind = COALESCE($5, reference_kind), failure_reason = COALESCE($6, failure_reason), actual_settlement_date = CASE WHEN $2 = 'paid' THEN CURRENT_DATE ELSE actual_settlement_date END, updated_at = NOW() WHERE id = $1",
     )
     .bind(id)
     .bind(status)
     .bind(request.bank_reference_number.as_deref())
     .bind(request.note.as_deref())
+    .bind(request.reference_kind.as_deref())
+    .bind(request.failure_reason.as_deref())
     .execute(pool.get_ref())
     .await;
     match updated {
         Ok(result) if result.rows_affected() > 0 => {
-            if status == "settled" {
+            if status == "paid" {
                 let settlement = sqlx::query(
                     "SELECT net_settlement_amount, currency, provider_id FROM settlement_batches_company WHERE id = $1",
                 )
@@ -3359,7 +3374,7 @@ async fn mark_settlement_settled(
     path: web::Path<Uuid>,
     request: web::Json<SettlementActionRequest>,
 ) -> impl Responder {
-    settlement_action(pool, path, request, "settled").await
+    settlement_action(pool, path, request, "paid").await
 }
 
 async fn mark_settlement_failed(
@@ -8493,7 +8508,7 @@ async fn money_movement_dashboard(pool: web::Data<PgPool>) -> impl Responder {
         SELECT
             COALESCE((SELECT SUM(payable_amount) FROM payment_splits_company), 0)::bigint AS payable_balance,
             COALESCE((SELECT COUNT(*) FROM transfers_company WHERE status IN ('pending','queued')), 0)::bigint AS pending_transfers,
-            COALESCE((SELECT COUNT(*) FROM payouts_company WHERE status IN ('scheduled','processing')), 0)::bigint AS pending_payouts,
+            COALESCE((SELECT COUNT(*) FROM payouts_company WHERE status IN ('queued','approved','processing','on_hold')), 0)::bigint AS pending_payouts,
             COALESCE((SELECT SUM(amount) FROM reserve_balances WHERE status = 'held'), 0)::bigint AS reserve_balance,
             COALESCE((SELECT COUNT(*) FROM payouts_company WHERE status = 'failed'), 0)::bigint AS failed_payouts,
             COALESCE((SELECT SUM(amount) FROM transfer_reversals_company), 0)::bigint AS reversal_amount
@@ -8706,6 +8721,7 @@ async fn create_payout_company(
         SELECT (
             COALESCE(m.status, m.onboarding_status, '') = 'active'
             AND COALESCE(m.kyc_status, '') = 'verified'
+            AND COALESCE(m.review_status, '') = 'approved'
             AND COALESCE(m.risk_status, '') <> 'blocked'
             AND COALESCE(m.payout_status, '') IN ('enabled','pending_verification')
         ) AS payout_eligible
@@ -8730,7 +8746,7 @@ async fn create_payout_company(
             business_account_id, provider_id, bank_account_id, amount, currency, status,
             scheduled_at, idempotency_key
         )
-        VALUES ($1, $2, $3, $4, $5, 'scheduled', COALESCE($6, NOW()), $7)
+        VALUES ($1, $2, $3, $4, $5, 'draft', COALESCE($6, NOW()), $7)
         RETURNING id
         "#,
     )
@@ -8753,7 +8769,13 @@ async fn create_payout_company(
                 json!({ "amount": req.amount }),
             )
             .await;
-            HttpResponse::Ok().json(json!({ "id": id, "status": "scheduled" }))
+            let _ = sqlx::query(
+                "INSERT INTO payout_status_history (payout_id, from_status, to_status, reason) VALUES ($1, NULL, 'draft', 'created by internal admin')",
+            )
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "draft" }))
         }
         Err(e) => {
             tracing::error!("Create payout failed: {}", e);
@@ -8765,7 +8787,7 @@ async fn create_payout_company(
 async fn retry_payout_company(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
     let id = path.into_inner();
     let updated = sqlx::query(
-        "UPDATE payouts_company SET status = 'scheduled', failure_reason = NULL WHERE id = $1 RETURNING id",
+        "UPDATE payouts_company SET status = 'queued', failure_reason = NULL WHERE id = $1 AND status = 'failed' RETURNING id",
     )
     .bind(id)
     .fetch_optional(pool.get_ref())
@@ -8777,10 +8799,16 @@ async fn retry_payout_company(pool: web::Data<PgPool>, path: web::Path<Uuid>) ->
                 "money.payout_retried",
                 "payout_company",
                 Some(id),
-                json!({ "status": "scheduled" }),
+                json!({ "status": "queued" }),
             )
             .await;
-            HttpResponse::Ok().json(json!({ "id": id, "status": "scheduled" }))
+            let _ = sqlx::query(
+                "INSERT INTO payout_status_history (payout_id, from_status, to_status, reason) VALUES ($1, 'failed', 'queued', 'retry requested')",
+            )
+            .bind(id)
+            .execute(pool.get_ref())
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "queued" }))
         }
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Payout not found" })),
         Err(e) => {
@@ -8809,7 +8837,7 @@ async fn create_payout_batch_company(
         INSERT INTO payout_batches_company (currency, total_amount, item_count, status)
         SELECT $1, COALESCE(SUM(amount), 0)::bigint, COUNT(*), 'queued'
         FROM payouts_company
-        WHERE status IN ('scheduled','queued')
+        WHERE status = 'queued'
           AND UPPER(currency) = $1
         RETURNING id
         "#,
@@ -8824,7 +8852,7 @@ async fn create_payout_batch_company(
                 INSERT INTO payout_batch_items_company (batch_id, payout_id, business_account_id, amount, status)
                 SELECT $1, id, business_account_id, amount, 'queued'
                 FROM payouts_company
-                WHERE status IN ('scheduled','queued') AND UPPER(currency) = $2
+                WHERE status = 'queued' AND UPPER(currency) = $2
                 "#,
             )
             .bind(id)
@@ -8871,7 +8899,7 @@ async fn process_payout_batch_company(
                 let payout_id: Option<Uuid> = row.try_get("payout_id").unwrap_or(None);
                 let result = if let Some(payout_id) = payout_id {
                     sqlx::query(
-                        "UPDATE payouts_company SET status = 'processing', processed_at = NOW() WHERE id = $1 AND status IN ('scheduled','queued','retried')",
+                        "UPDATE payouts_company SET status = 'processing', processed_at = NOW() WHERE id = $1 AND status = 'queued'",
                     )
                     .bind(payout_id)
                     .execute(pool.get_ref())
@@ -8922,6 +8950,159 @@ async fn process_payout_batch_company(
             server_error("Failed to process payout batch")
         }
     }
+}
+
+async fn transition_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+    target_status: &'static str,
+) -> impl Responder {
+    let id = path.into_inner();
+    if target_status == "paid" {
+        let reference_kind = request.reference_kind.as_deref().unwrap_or("");
+        let reference_value = request.reference_value.as_deref().unwrap_or("");
+        if !matches!(reference_kind, "manual" | "test" | "provider") || reference_value.trim().is_empty() {
+            return HttpResponse::BadRequest().json(json!({ "message": "Paid payout requires a manual, test, or provider reference" }));
+        }
+    }
+    if matches!(target_status, "failed" | "reversed" | "cancelled" | "on_hold")
+        && request.failure_reason.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return HttpResponse::BadRequest().json(json!({ "message": "Failure or hold reason required" }));
+    }
+    let row = sqlx::query("SELECT status FROM payouts_company WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    let Ok(Some(row)) = row else {
+        return HttpResponse::NotFound().json(json!({ "message": "Payout not found" }));
+    };
+    let from_status: String = row.get("status");
+    let allowed = matches!(
+        (from_status.as_str(), target_status),
+        ("draft", "approved")
+            | ("approved", "queued")
+            | ("queued", "processing")
+            | ("processing", "paid")
+            | ("processing", "failed")
+            | ("paid", "reversed")
+            | ("draft", "cancelled")
+            | ("queued", "cancelled")
+            | ("approved", "cancelled")
+            | ("draft", "on_hold")
+            | ("queued", "on_hold")
+            | ("approved", "on_hold")
+            | ("on_hold", "queued")
+            | ("failed", "queued")
+    );
+    if !allowed {
+        return HttpResponse::Conflict().json(json!({ "message": format!("Invalid payout transition {from_status} -> {target_status}") }));
+    }
+    let updated = sqlx::query(
+        r#"
+        UPDATE payouts_company
+        SET status = $2,
+            failure_reason = CASE WHEN $2 IN ('failed','reversed','cancelled','on_hold') THEN $3 ELSE NULL END,
+            reference_kind = COALESCE($4, reference_kind),
+            manual_reference = COALESCE($5, manual_reference),
+            approved_at = CASE WHEN $2 = 'approved' THEN NOW() ELSE approved_at END,
+            processed_at = CASE WHEN $2 IN ('paid','failed','reversed') THEN NOW() ELSE processed_at END
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .bind(target_status)
+    .bind(request.failure_reason.as_deref())
+    .bind(request.reference_kind.as_deref())
+    .bind(request.reference_value.as_deref())
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            let _ = sqlx::query(
+                "INSERT INTO payout_status_history (payout_id, from_status, to_status, reason, reference_kind, reference_value) VALUES ($1,$2,$3,$4,$5,$6)",
+            )
+            .bind(id)
+            .bind(&from_status)
+            .bind(target_status)
+            .bind(request.failure_reason.as_deref().or(request.note.as_deref()))
+            .bind(request.reference_kind.as_deref())
+            .bind(request.reference_value.as_deref())
+            .execute(pool.get_ref())
+            .await;
+            audit(
+                &pool,
+                &format!("money.payout_{target_status}"),
+                "payout_company",
+                Some(id),
+                json!({ "from_status": from_status, "to_status": target_status }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": target_status }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Payout not found" })),
+        Err(e) => {
+            tracing::error!("Transition payout failed: {}", e);
+            server_error("Failed to update payout")
+        }
+    }
+}
+
+async fn approve_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "approved").await
+}
+
+async fn queue_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "queued").await
+}
+
+async fn start_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "processing").await
+}
+
+async fn mark_payout_paid_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "paid").await
+}
+
+async fn fail_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "failed").await
+}
+
+async fn reverse_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "reversed").await
+}
+
+async fn hold_payout_company(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    request: web::Json<PayoutActionRequest>,
+) -> impl Responder {
+    transition_payout_company(pool, path, request, "on_hold").await
 }
 
 async fn list_provider_report_imports(pool: web::Data<PgPool>) -> impl Responder {
@@ -10809,6 +10990,34 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/money-movement/payouts/{{id}}/retry"),
             web::post().to(retry_payout_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/approve"),
+            web::post().to(approve_payout_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/queue"),
+            web::post().to(queue_payout_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/start"),
+            web::post().to(start_payout_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/mark-paid"),
+            web::post().to(mark_payout_paid_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/fail"),
+            web::post().to(fail_payout_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/reverse"),
+            web::post().to(reverse_payout_company),
+        )
+        .route(
+            &format!("{prefix}/money-movement/payouts/{{id}}/hold"),
+            web::post().to(hold_payout_company),
         )
         .route(
             &format!("{prefix}/money-movement/payout-batches"),

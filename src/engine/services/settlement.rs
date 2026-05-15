@@ -103,8 +103,11 @@ impl SettlementService {
         Ok(settlement)
     }
 
-    pub async fn get_balance(&self, merchant_id: Uuid) -> Result<(i64, i64), FeelPayError> {
-        let available: (i64,) = sqlx::query_as(
+    pub async fn get_balance(
+        &self,
+        merchant_id: Uuid,
+    ) -> Result<(i64, i64, i64, i64), FeelPayError> {
+        let captured: (i64,) = sqlx::query_as(
             r#"
             SELECT COALESCE(SUM(po.amount), 0)::BIGINT
             FROM payment_orders po
@@ -118,9 +121,9 @@ impl SettlementService {
 
         let pending: (i64,) = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(po.amount), 0)::BIGINT
-            FROM payment_orders po
-            WHERE po.merchant_id = $1 AND po.status = 'authorized'
+            SELECT
+                COALESCE((SELECT SUM(po.amount) FROM payment_orders po WHERE po.merchant_id = $1 AND po.status = 'authorized'), 0)
+              + COALESCE((SELECT SUM(s.net_amount) FROM settlements s WHERE s.merchant_id = $1 AND s.status IN ('scheduled','pending','processing','on_hold')), 0)
             "#,
         )
         .bind(merchant_id)
@@ -128,6 +131,23 @@ impl SettlementService {
         .await
         .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
-        Ok((available.0 - pending.0, pending.0))
+        let deductions: (i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.merchant_id = $1 AND r.status IN ('requested','processing','processed','succeeded')), 0)::BIGINT AS refunds,
+                COALESCE((SELECT SUM(d.amount) FROM disputes d WHERE d.merchant_id = $1 AND d.status IN ('needs_response','under_review','accepted','lost')), 0)::BIGINT AS holds,
+                COALESCE((SELECT SUM(rb.amount) FROM reserve_balances rb WHERE rb.business_account_id = $1 AND rb.status = 'held'), 0)::BIGINT AS reserves,
+                COALESCE((SELECT SUM(pc.amount) FROM payouts_company pc WHERE pc.business_account_id = $1 AND pc.status IN ('queued','approved','processing','paid')), 0)::BIGINT AS payout_commitments
+            "#,
+        )
+        .bind(merchant_id)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+        let available =
+            (captured.0 - pending.0 - deductions.0 - deductions.1 - deductions.2 - deductions.3)
+                .max(0);
+        Ok((available, pending.0, deductions.1, deductions.2))
     }
 }

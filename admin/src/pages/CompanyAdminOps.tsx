@@ -739,7 +739,19 @@ export function MoneyMovementPage() {
       )}
       {tab === 'Transfer Queue' && <DataTable rows={transfers.rows} columns={['id', 'payment_split_id', 'provider_id', 'provider_transfer_id', 'business_account_id', 'amount', 'currency', 'status', 'failure_reason', 'created_at']} empty="No transfers yet" onView={row => helpers.setDrawer({ title: 'Transfer', body: row })} />}
       {tab === 'Reversals' && <DataTable rows={reversals.rows} columns={['id', 'transfer_id', 'provider_reversal_id', 'reason', 'amount', 'currency', 'status', 'created_at']} empty="No reversals yet" onView={row => helpers.setDrawer({ title: 'Transfer reversal', body: row })} />}
-      {tab === 'Payout Queue' && <DataTable rows={payouts.rows} columns={['id', 'business_account_id', 'provider_id', 'bank_account_id', 'amount', 'currency', 'status', 'scheduled_at', 'processed_at', 'provider_payout_id', 'failure_reason', 'created_at']} empty="No payouts yet" renderActions={row => <ActionButtons actions={['Retry failed payout', 'View ledger impact', 'View detail']} onClick={action => action === 'Retry failed payout' ? helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Payout', body: row })} />} />}
+      {tab === 'Payout Queue' && <DataTable rows={payouts.rows} columns={['id', 'business_account_id', 'provider_id', 'bank_account_id', 'amount', 'currency', 'status', 'scheduled_at', 'processed_at', 'reference_kind', 'manual_reference', 'failure_reason', 'created_at']} empty="No payouts yet" renderActions={row => <ActionButtons actions={['Approve', 'Queue', 'Start', 'Mark paid', 'Fail', 'Reverse', 'Hold', 'Retry failed payout', 'View ledger impact', 'View detail']} onClick={action => {
+        const id = String(row.id || '');
+        if (action === 'Retry failed payout') return helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${id}/retry`)).then(load);
+        const route = normalizeAction(action).replace('mark_', 'mark-');
+        if (['approve', 'queue', 'start'].includes(route)) return helpers.run(`Payout ${route} submitted.`, () => apiRequest('POST', `${API}/money-movement/payouts/${id}/${route}`, {})).then(load);
+        if (route === 'mark-paid') {
+          const reference = window.prompt('Enter confirmed manual/test/provider reference');
+          if (!reference?.trim()) return undefined;
+          return helpers.run('Payout marked paid.', () => apiRequest('POST', `${API}/money-movement/payouts/${id}/mark-paid`, { reference_kind: 'manual', reference_value: reference.trim() })).then(load);
+        }
+        if (['fail', 'reverse', 'hold'].includes(route)) return helpers.run(`Payout ${route} submitted.`, () => apiRequest('POST', `${API}/money-movement/payouts/${id}/${route}`, { failure_reason: `${route} from admin console` })).then(load);
+        return helpers.setDrawer({ title: 'Payout', body: row });
+      }} />} />}
       {tab === 'Reserve Releases' && <DataTable rows={reserves.rows} columns={['id', 'business_account_id', 'currency', 'reserve_type', 'amount', 'release_at', 'status', 'created_at']} empty="No reserves yet" onView={row => helpers.setDrawer({ title: 'Reserve', body: row })} />}
       {tab === 'Payout Batches' && <DataTable rows={payoutBatches.rows} columns={['id', 'currency', 'total_amount', 'item_count', 'status', 'created_at', 'processed_at']} empty="No payout batches yet" renderActions={row => <ActionButtons actions={['Process batch', 'View detail']} onClick={action => action === 'Process batch' ? helpers.run('Batch processing started.', () => apiRequest('POST', `${API}/money-movement/payout-batches/${String(row.id || '')}/process`)).then(load) : helpers.setDrawer({ title: 'Payout batch', body: row })} />} />}
       {tab === 'Failed Payouts' && <DataTable rows={payouts.rows.filter(row => String(row.status) === 'failed')} columns={['id', 'business_account_id', 'amount', 'currency', 'failure_reason', 'scheduled_at', 'processed_at']} empty="No failed payouts" renderActions={row => <ActionButtons actions={['Retry failed payout', 'View detail']} onClick={action => action === 'Retry failed payout' ? helpers.run('Payout retry queued.', () => apiRequest('POST', `${API}/money-movement/payouts/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Failed payout', body: row })} />} />}
@@ -801,9 +813,14 @@ export function SettlementsPage() {
     const id = String(row.id || '');
     const actionPath = action.replace('mark_', 'mark-');
     if (action === 'view_items' || action === 'export_csv') helpers.setDrawer({ title: 'Settlement details', body: row });
-    else helpers.setConfirm({ title: `${action.replaceAll('_', ' ')} settlement`, body: 'Settlement action affects finance ledgers and must be audit logged.', action: () => helpers.run('Settlement action submitted.', () => apiRequest('POST', `${API}/settlements/${id}/${actionPath}`)).then(load) });
+    else {
+      const body = action === 'mark_settled'
+        ? { bank_reference_number: window.prompt('Enter confirmed manual/test/provider reference') || '', reference_kind: 'manual' }
+        : {};
+      helpers.setConfirm({ title: `${action.replaceAll('_', ' ')} settlement`, body: 'Settlement action affects finance ledgers and must be audit logged.', action: () => helpers.run('Settlement action submitted.', () => apiRequest('POST', `${API}/settlements/${id}/${actionPath}`, body)).then(load) });
+    }
   };
-  return <TableRoute title="Settlements" subtitle="Settlement ledger and reconciliation status" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'status']} actions={['View items', 'Hold', 'Release', 'Mark settled', 'Mark failed', 'Export CSV']} onAction={act} onRefresh={load} helpers={helpers} />;
+  return <TableRoute title="Settlements" subtitle="Settlement ledger and reconciliation status" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'reference_kind', 'bank_reference_number', 'failure_reason', 'status']} actions={['View items', 'Hold', 'Release', 'Mark settled', 'Mark failed', 'Export CSV']} onAction={act} onRefresh={load} helpers={helpers} />;
 }
 
 export function DisputesPage() {

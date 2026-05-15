@@ -306,10 +306,12 @@ pub async fn get_settlement_stats(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let svc = SettlementService::new(state.db.clone());
-    let (available, pending) = svc.get_balance(merchant_id).await?;
+    let (available, pending, hold, reserve) = svc.get_balance(merchant_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "available": available,
-        "pending": pending
+        "pending": pending,
+        "hold": hold,
+        "reserve": reserve
     })))
 }
 

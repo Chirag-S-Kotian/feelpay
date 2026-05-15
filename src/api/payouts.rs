@@ -2,11 +2,11 @@ use crate::engine::payout;
 use crate::engine::services::bank_account::{
     mask_bank_account, AddBankAccountRequest, BankAccountService,
 };
-use crate::models::payout::{BankAccount, CreateBankAccountRequest, CreatePayoutRequest, Payout};
+use crate::models::payout::{BankAccount, CreateBankAccountRequest, CreatePayoutRequest};
 use crate::models::user::Claims;
 use crate::state::AppState;
 use actix_web::{get, post, web, HttpResponse, Responder};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -35,84 +35,8 @@ async fn request_payout(
         Some(id) => id,
         None => return HttpResponse::BadRequest().body("Bank account ID is required"),
     };
-    if req.amount < 100 {
-        return HttpResponse::BadRequest().body("Minimum payout amount is INR 1.00");
-    }
-    let purpose = req
-        .metadata
-        .as_ref()
-        .and_then(|m| m.get("purpose"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if purpose.trim().is_empty() {
-        return HttpResponse::BadRequest().body("Payout purpose is required");
-    }
-
-    // Verify bank account belongs to merchant
-    let account_exists =
-        sqlx::query("SELECT id FROM bank_accounts WHERE id = $1 AND merchant_id = $2 AND (verification_status = 'verified' OR is_verified = true)")
-            .bind(bank_account_id)
-            .bind(merchant_id)
-            .fetch_optional(pool.get_ref())
-            .await;
-
-    match account_exists {
-        Ok(Some(_)) => (),
-        Ok(None) => {
-            return HttpResponse::BadRequest()
-                .body("Add verified bank account before creating payout")
-        }
-        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
-    }
-
-    let mode = req
-        .metadata
-        .as_ref()
-        .and_then(|m| m.get("environment"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("test");
-    let onboarding_ok: bool = sqlx::query_scalar(
-        "SELECT COALESCE(onboarding_status, 'pending') IN ('approved', 'verified') FROM merchants WHERE id = $1",
-    )
-    .bind(merchant_id)
-    .fetch_one(pool.get_ref())
-    .await
-    .unwrap_or(false);
-    if mode == "live" && !onboarding_ok {
-        return HttpResponse::Forbidden()
-            .body("Live payouts unlock after onboarding approval and bank verification");
-    }
-
-    let payout = sqlx::query_as::<_, Payout>(
-        "INSERT INTO payouts (merchant_id, amount, currency, method, bank_account_id, status, metadata) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *"
-    )
-    .bind(merchant_id)
-    .bind(req.amount)
-    .bind(&req.currency)
-    .bind(&req.method)
-    .bind(bank_account_id)
-    .bind(if mode == "live" { "created" } else { "processed" })
-    .bind(serde_json::json!({
-        "purpose": purpose,
-        "environment": mode,
-        "sandbox": mode != "live"
-    }))
-    .fetch_one(pool.get_ref())
-    .await;
-
-    match payout {
-        Ok(p) => {
-            // Trigger background processing (simulation)
-            let pool_clone = pool.get_ref().clone();
-            let payout_id = p.id;
-            actix_web::rt::spawn(async move {
-                let _ = payout::process_payout(&pool_clone, payout_id).await;
-            });
-            HttpResponse::Created().json(p)
-        }
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
-    }
+    let _ = (pool, req, merchant_id, bank_account_id);
+    HttpResponse::Forbidden().body("Payout creation is internal-admin only")
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -136,15 +60,39 @@ async fn list_payouts(pool: web::Data<PgPool>, claims: Claims) -> impl Responder
         None => return HttpResponse::Forbidden().body("Merchant ID missing in token"),
     };
 
-    let payouts = sqlx::query_as::<_, Payout>(
-        "SELECT * FROM payouts WHERE merchant_id = $1 ORDER BY created_at DESC",
+    let payouts = sqlx::query(
+        r#"
+        SELECT id, amount, currency, status, bank_account_id,
+               provider_payout_id, manual_reference, failure_reason, processed_at, created_at
+        FROM payouts_company
+        WHERE business_account_id = $1
+        ORDER BY created_at DESC
+        "#,
     )
     .bind(merchant_id)
     .fetch_all(pool.get_ref())
     .await;
 
     match payouts {
-        Ok(p) => HttpResponse::Ok().json(p),
+        Ok(rows) => HttpResponse::Ok().json(
+            rows.into_iter()
+                .map(|row| {
+                    serde_json::json!({
+                        "id": row.get::<Uuid, _>("id"),
+                        "amount": row.get::<i64, _>("amount"),
+                        "currency": row.get::<String, _>("currency"),
+                        "status": row.get::<String, _>("status"),
+                        "method": "internal",
+                        "bank_account_id": row.get::<Option<Uuid>, _>("bank_account_id"),
+                        "payout_reference": row.get::<Option<String>, _>("manual_reference"),
+                        "gateway_reference": row.get::<Option<String>, _>("provider_payout_id"),
+                        "error_message": row.get::<Option<String>, _>("failure_reason"),
+                        "processed_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("processed_at"),
+                        "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                    })
+                })
+                .collect::<Vec<_>>(),
+        ),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }

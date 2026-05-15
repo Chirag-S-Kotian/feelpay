@@ -30,7 +30,7 @@ interface ReconciliationSummary {
 
 export default function Settlements() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
-  const [balance, setBalance] = useState<{ available: number; pending: number }>({ available: 0, pending: 0 });
+  const [balance, setBalance] = useState<{ available: number; pending: number; hold: number; reserve: number }>({ available: 0, pending: 0, hold: 0, reserve: 0 });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -72,7 +72,7 @@ export default function Settlements() {
               utr: string | null;
             }>;
           }>('GET', '/v1/settlements', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
-          apiRequest<{ available: number; pending: number }>('GET', '/v1/settlements/balance', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
+          apiRequest<{ available: number; pending: number; hold: number; reserve: number }>('GET', '/v1/settlements/balance', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
           apiRequest<ReconciliationSummary>('GET', '/v1/settlements/reconciliation', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
         ]);
 
@@ -251,6 +251,14 @@ export default function Settlements() {
         <div className="stat-card">
           <div className="stat-label">Pending Settlement</div>
           <div className="stat-value warning">{formatPaise(balance.pending)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">On Hold</div>
+          <div className="stat-value warning">{formatPaise(balance.hold)}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Reserve Balance</div>
+          <div className="stat-value">{formatPaise(balance.reserve)}</div>
         </div>
       </div>
 
