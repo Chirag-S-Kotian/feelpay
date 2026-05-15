@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::engine::services::bank_account::{
     mask_bank_account, AddBankAccountRequest, BankAccountService,
 };
+use crate::engine::services::kyc_provider;
 use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::state::AppState;
@@ -328,11 +329,26 @@ pub async fn submit_kyc(
         }
     }
 
-    let status = if verification_type == "pan" || verification_type == "gstin" {
-        "verified"
+    let environment = if state.config.is_live() {
+        "live"
     } else {
-        "pending"
+        "test"
     };
+    let provider_result = match verification_type.as_str() {
+        "pan" => Some(
+            kyc_provider::verify_pan(&state.db, Some(merchant_id), environment, &document_number)
+                .await?,
+        ),
+        "gstin" => Some(
+            kyc_provider::verify_gstin(&state.db, Some(merchant_id), environment, &document_number)
+                .await?,
+        ),
+        _ => None,
+    };
+    let status = provider_result
+        .as_ref()
+        .map(|result| result.status.as_str())
+        .unwrap_or("pending");
     let masked_document_number = mask_document_number(&document_number);
     let (document_number_ciphertext, document_number_nonce) =
         onboarding_crypto(state.get_ref())?.encrypt(document_number)?;
@@ -387,12 +403,7 @@ pub async fn submit_kyc(
         DispatchRequest {
             merchant_id: Some(merchant_id),
             event_type: "onboarding".to_string(),
-            environment: if state.config.is_live() {
-                "live"
-            } else {
-                "test"
-            }
-            .to_string(),
+            environment: environment.to_string(),
             recipient_email: merchant_email,
             recipient_phone: None,
             variables,
@@ -1437,7 +1448,7 @@ pub async fn get_live_preflight(
     let merchant_id = merchant_id_from_req(&req)?;
     let row = sqlx::query(
         r#"
-        SELECT onboarding_status, status, webhook_url
+        SELECT onboarding_status, COALESCE(review_status, 'draft') AS review_status, status, webhook_url
         FROM merchants
         WHERE id = $1
         "#,
@@ -1447,6 +1458,7 @@ pub async fn get_live_preflight(
     .await?;
 
     let onboarding_status: String = row.get("onboarding_status");
+    let review_status: String = row.get("review_status");
     let merchant_status: String = row.get("status");
     let webhook_url: Option<String> = row.get("webhook_url");
 
@@ -1480,6 +1492,11 @@ pub async fn get_live_preflight(
             "Onboarding status is `{onboarding_status}`; require `approved`."
         ));
     }
+    if review_status != "approved" {
+        blockers.push(format!(
+            "Review status is `{review_status}`; require `approved`."
+        ));
+    }
     if merchant_status != "active" {
         blockers.push(format!(
             "Merchant status is `{merchant_status}`; require `active`."
@@ -1494,6 +1511,7 @@ pub async fn get_live_preflight(
 
     let checks = serde_json::json!({
         "onboarding_approved": onboarding_status == "approved",
+        "review_approved": review_status == "approved",
         "merchant_active": merchant_status == "active",
         "webhook_configured": webhook_url.as_deref().unwrap_or("").trim().len() > 0,
         "verified_bank_account": bank_count > 0,

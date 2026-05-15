@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::middleware::AdminClaims;
+use feelpay::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 
 #[allow(dead_code)]
 type HmacSha256 = Hmac<Sha256>;
@@ -797,6 +798,15 @@ struct BusinessAccountPatchRequest {
     risk_status: Option<String>,
     payout_status: Option<String>,
     note: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MerchantReviewActionRequest {
+    action: String,
+    reason_code: Option<String>,
+    note: Option<String>,
+    risk_level: Option<String>,
+    reviewer_admin_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -3777,6 +3787,7 @@ async fn list_business_accounts(pool: web::Data<PgPool>) -> impl Responder {
                m.phone,
                COALESCE(m.country, 'IN') AS country,
                COALESCE(m.status, m.onboarding_status, 'draft') AS status,
+               COALESCE(m.review_status, 'draft') AS review_status,
                COALESCE(m.kyc_status, 'not_started') AS kyc_status,
                COALESCE(m.risk_status, 'low') AS risk_status,
                COALESCE(m.payout_status, 'not_configured') AS payout_status,
@@ -3814,8 +3825,17 @@ async fn get_business_account(pool: web::Data<PgPool>, path: web::Path<Uuid>) ->
     let profile = sqlx::query(
         r#"
         SELECT id, COALESCE(display_name, business_name, name) AS display_name, legal_name,
-               business_type, email, phone, country, status, kyc_status, risk_status,
-               payout_status, default_currency, created_at, updated_at
+               business_type, email, phone, country, status, onboarding_status, review_status,
+               review_assigned_admin_id, review_last_decided_at, kyc_status, risk_status,
+               payout_status, default_currency,
+               CASE WHEN pan IS NULL THEN NULL ELSE CONCAT(REPEAT('*', GREATEST(LENGTH(pan) - 4, 0)), RIGHT(pan, 4)) END AS pan_masked,
+               CASE WHEN gstin IS NULL THEN NULL ELSE CONCAT(REPEAT('*', GREATEST(LENGTH(gstin) - 4, 0)), RIGHT(gstin, 4)) END AS gstin_masked,
+               CASE WHEN registration_data->>'cin' IS NULL THEN NULL ELSE CONCAT(REPEAT('*', GREATEST(LENGTH(registration_data->>'cin') - 4, 0)), RIGHT(registration_data->>'cin', 4)) END AS cin_masked,
+               CASE WHEN registration_data->>'llpin' IS NULL THEN NULL ELSE CONCAT(REPEAT('*', GREATEST(LENGTH(registration_data->>'llpin') - 4, 0)), RIGHT(registration_data->>'llpin', 4)) END AS llpin_masked,
+               registration_data->>'website_app' AS website_app_url,
+               registration_data->>'business_category' AS business_category,
+               address, webhook_url,
+               created_at, updated_at
         FROM merchants
         WHERE id = $1
         "#,
@@ -3826,11 +3846,13 @@ async fn get_business_account(pool: web::Data<PgPool>, path: web::Path<Uuid>) ->
     let Ok(Some(profile)) = profile else {
         return HttpResponse::NotFound().json(json!({ "message": "Business account not found" }));
     };
-    let documents = fetch_json_rows(pool.get_ref(), "SELECT * FROM business_account_documents WHERE business_account_id = $1 ORDER BY uploaded_at DESC", id).await;
+    let documents = fetch_json_rows(pool.get_ref(), "SELECT id, business_account_id, document_type, status, rejection_reason, uploaded_at, reviewed_by_admin_id, reviewed_at FROM business_account_documents WHERE business_account_id = $1 ORDER BY uploaded_at DESC", id).await;
     let bank_accounts = fetch_json_rows(pool.get_ref(), "SELECT id, business_account_id, account_holder_name, bank_name, masked_account_number, ifsc_or_swift_or_routing_code, currency, verification_status, status, created_at FROM business_account_bank_accounts WHERE business_account_id = $1 ORDER BY created_at DESC", id).await;
     let provider_links = fetch_json_rows(pool.get_ref(), "SELECT * FROM business_account_provider_links WHERE business_account_id = $1 ORDER BY created_at DESC", id).await;
     let ledger = fetch_json_rows(pool.get_ref(), "SELECT le.* FROM ledger_entries le JOIN ledger_accounts la ON la.id = le.account_id WHERE la.owner_id = $1 ORDER BY le.created_at DESC LIMIT 50", id).await;
     let risk_notes = fetch_json_rows(pool.get_ref(), "SELECT * FROM business_account_risk_notes WHERE business_account_id = $1 ORDER BY created_at DESC", id).await;
+    let verification_attempts = fetch_json_rows(pool.get_ref(), "SELECT id, verification_type, environment, masked_identifier, result_status, safe_response_summary, provider_reference_present, latency_ms, error_code, error_message, created_at FROM kyc_provider_attempts WHERE merchant_id = $1 ORDER BY created_at DESC LIMIT 50", id).await;
+    let review_history = fetch_json_rows(pool.get_ref(), "SELECT id, action, from_status, to_status, risk_level, reason_code, note, actor_admin_id, created_at FROM merchant_review_events WHERE merchant_id = $1 ORDER BY created_at DESC", id).await;
     HttpResponse::Ok().json(json!({
         "profile": row_to_json(&profile),
         "kyc_documents": documents,
@@ -3838,7 +3860,8 @@ async fn get_business_account(pool: web::Data<PgPool>, path: web::Path<Uuid>) ->
         "provider_links": provider_links,
         "ledger_history": ledger,
         "risk_notes": risk_notes,
-        "audit_trail": []
+        "verification_attempts": verification_attempts,
+        "review_history": review_history
     }))
 }
 
@@ -3908,6 +3931,202 @@ async fn patch_business_account(
             server_error("Failed to update business account")
         }
     }
+}
+
+fn valid_review_action(action: &str) -> bool {
+    matches!(
+        action,
+        "mark_under_review"
+            | "request_more_information"
+            | "approve"
+            | "reject"
+            | "restrict"
+            | "suspend"
+            | "add_risk_note"
+            | "assign_reviewer"
+    )
+}
+
+fn valid_risk_level(level: &str) -> bool {
+    matches!(level, "low" | "medium" | "high" | "blocked")
+}
+
+fn valid_reason_code(code: &str) -> bool {
+    matches!(
+        code,
+        "document_mismatch"
+            | "high_risk_category"
+            | "invalid_website"
+            | "bank_mismatch"
+            | "suspicious_activity"
+            | "manual_review"
+            | "other"
+    )
+}
+
+async fn review_business_account(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<MerchantReviewActionRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let body = body.into_inner();
+    if !valid_review_action(&body.action) {
+        return HttpResponse::BadRequest().json(json!({ "message": "Unsupported review action" }));
+    }
+    if let Some(level) = body.risk_level.as_deref() {
+        if !valid_risk_level(level) {
+            return HttpResponse::BadRequest().json(json!({ "message": "Invalid risk level" }));
+        }
+    }
+    if let Some(code) = body.reason_code.as_deref() {
+        if !valid_reason_code(code) {
+            return HttpResponse::BadRequest().json(json!({ "message": "Invalid reason code" }));
+        }
+    }
+    if matches!(body.action.as_str(), "reject" | "restrict" | "suspend")
+        && body.reason_code.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return HttpResponse::BadRequest().json(json!({ "message": "Reason code is required" }));
+    }
+    if matches!(
+        body.action.as_str(),
+        "request_more_information" | "reject" | "restrict" | "suspend" | "add_risk_note"
+    ) && body.note.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return HttpResponse::BadRequest().json(json!({ "message": "Note is required" }));
+    }
+
+    let row = sqlx::query("SELECT review_status, onboarding_status FROM merchants WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    let Ok(Some(row)) = row else {
+        return HttpResponse::NotFound().json(json!({ "message": "Business account not found" }));
+    };
+    let from_status: String = row.get("review_status");
+    let existing_onboarding_status: String = row.get("onboarding_status");
+    let (to_status, onboarding_status, merchant_status) = match body.action.as_str() {
+        "mark_under_review" => ("under_review", "under_review", None),
+        "request_more_information" => ("submitted", "submitted", None),
+        "approve" => ("approved", "approved", Some("active")),
+        "reject" => ("rejected", "rejected", Some("suspended")),
+        "restrict" => ("restricted", "restricted", Some("suspended")),
+        "suspend" => ("suspended", "suspended", Some("suspended")),
+        _ => (
+            from_status.as_str(),
+            existing_onboarding_status.as_str(),
+            None,
+        ),
+    };
+    let actor_admin_id = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let note = body
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    let updated = sqlx::query(
+        r#"
+        UPDATE merchants
+        SET review_status = $2,
+            onboarding_status = $3,
+            status = COALESCE($4, status),
+            risk_status = COALESCE($5, risk_status),
+            review_assigned_admin_id = COALESCE($6, review_assigned_admin_id),
+            review_last_decided_at = CASE
+                WHEN $7 IN ('approve', 'reject', 'restrict', 'suspend') THEN NOW()
+                ELSE review_last_decided_at
+            END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+        "#,
+    )
+    .bind(id)
+    .bind(to_status)
+    .bind(onboarding_status)
+    .bind(merchant_status)
+    .bind(body.risk_level.as_deref())
+    .bind(body.reviewer_admin_id)
+    .bind(&body.action)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(_)) = updated else {
+        return HttpResponse::InternalServerError()
+            .json(json!({ "message": "Failed to update merchant review" }));
+    };
+
+    if let Some(note) = note {
+        let _ = sqlx::query("INSERT INTO business_account_risk_notes (business_account_id, note, risk_status, created_by_admin_id) VALUES ($1, $2, $3, $4)")
+            .bind(id)
+            .bind(note)
+            .bind(body.risk_level.as_deref())
+            .bind(actor_admin_id)
+            .execute(pool.get_ref())
+            .await;
+    }
+    let _ = sqlx::query(
+        "INSERT INTO merchant_review_events (merchant_id, actor_admin_id, action, from_status, to_status, risk_level, reason_code, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+    )
+    .bind(id)
+    .bind(actor_admin_id)
+    .bind(&body.action)
+    .bind(&from_status)
+    .bind(to_status)
+    .bind(body.risk_level.as_deref())
+    .bind(body.reason_code.as_deref())
+    .bind(note)
+    .execute(pool.get_ref())
+    .await;
+    audit_with_request(
+        &pool,
+        &request,
+        &format!("merchant_review.{}", body.action),
+        "business_account",
+        Some(id),
+        json!({
+            "from_status": from_status,
+            "to_status": to_status,
+            "risk_level": body.risk_level,
+            "reason_code": body.reason_code,
+            "reviewer_assigned": body.reviewer_admin_id.is_some()
+        }),
+    )
+    .await;
+    if matches!(body.action.as_str(), "approve" | "reject") {
+        if let Some(email) =
+            sqlx::query_scalar::<_, Option<String>>("SELECT email FROM merchants WHERE id = $1")
+                .bind(id)
+                .fetch_optional(pool.get_ref())
+                .await
+                .ok()
+                .flatten()
+                .flatten()
+        {
+            let mut variables = std::collections::BTreeMap::new();
+            variables.insert("status".to_string(), to_status.to_string());
+            let _ = dispatch_event(
+                pool.get_ref(),
+                DispatchRequest {
+                    merchant_id: Some(id),
+                    event_type: if body.action == "approve" {
+                        "kyc_approved".to_string()
+                    } else {
+                        "kyc_rejected".to_string()
+                    },
+                    environment: std::env::var("PAYMENT_MODE")
+                        .unwrap_or_else(|_| "test".to_string()),
+                    recipient_email: Some(email),
+                    recipient_phone: None,
+                    variables,
+                },
+            )
+            .await;
+        }
+    }
+    HttpResponse::Ok().json(json!({ "id": id, "review_status": to_status }))
 }
 
 async fn list_risk_rules(pool: web::Data<PgPool>) -> impl Responder {
@@ -10358,6 +10577,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/business-accounts/{{id}}"),
             web::patch().to(patch_business_account),
+        )
+        .route(
+            &format!("{prefix}/business-accounts/{{id}}/review"),
+            web::post().to(review_business_account),
         )
         .route(
             &format!("{prefix}/risk-rules"),

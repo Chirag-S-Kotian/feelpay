@@ -108,6 +108,12 @@ struct TemplateTestRequest {
     live_test_approved: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+struct KycTestRequest {
+    verification_type: String,
+    scenario: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct SmtpConfig {
     host: String,
@@ -207,6 +213,7 @@ fn action_allowed(provider_kind: &str, action: &str) -> bool {
         "test_sms" => provider_kind == "sms",
         "test_otp" => matches!(provider_kind, "sms" | "otp"),
         "test_bank_payout" => provider_kind == "bank_payout",
+        "test_kyc" => provider_kind == "kyc",
         _ => true,
     }
 }
@@ -238,6 +245,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             )
             .route("/providers/{id}/test-sms", web::post().to(send_test_sms))
             .route("/providers/{id}/test-otp", web::post().to(send_test_otp))
+            .route("/providers/{id}/test-kyc", web::post().to(test_kyc))
             .route(
                 "/providers/{id}/test-bank-payout",
                 web::post().to(test_bank_payout),
@@ -1576,6 +1584,108 @@ async fn test_bank_payout(
         None,
     )
     .await
+}
+
+async fn test_kyc(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<KycTestRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let provider_id = path.into_inner();
+    let provider = sqlx::query(
+        "SELECT environment, status FROM integration_providers WHERE id=$1 AND provider_kind='kyc'",
+    )
+    .bind(provider_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(provider)) = provider else {
+        return HttpResponse::NotFound().finish();
+    };
+    let environment: String = provider.get("environment");
+    if environment != "test" {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "KYC tests require a test-mode provider" }));
+    }
+    if provider.get::<String, _>("status") != "enabled" {
+        return HttpResponse::BadRequest().json(json!({ "message": "KYC provider is disabled" }));
+    }
+    if !matches!(
+        body.verification_type.as_str(),
+        "pan" | "gstin" | "business"
+    ) {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "verification_type must be pan, gstin, or business" }));
+    }
+    let status = match body.scenario.as_deref().unwrap_or("safe_test") {
+        "safe_test" => "verified",
+        "failed" => "failed",
+        "pending" => "pending",
+        "manual_review" => "manual_review_required",
+        _ => "provider_error",
+    };
+    let healthy = status != "provider_error";
+    let _ = sqlx::query(
+        r#"
+        UPDATE integration_providers
+        SET health_status = $2,
+            last_success_at = CASE WHEN $3 THEN NOW() ELSE last_success_at END,
+            last_failure_at = CASE WHEN $3 THEN last_failure_at ELSE NOW() END,
+            last_error_code = CASE WHEN $3 THEN NULL ELSE 'kyc_test_failed' END,
+            last_error_message = CASE WHEN $3 THEN NULL ELSE 'KYC test scenario failed' END,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(provider_id)
+    .bind(if healthy { "healthy" } else { "failed" })
+    .bind(healthy)
+    .execute(pool.get_ref())
+    .await;
+    write_log(
+        pool.get_ref(),
+        Some(provider_id),
+        &request,
+        "test_kyc",
+        &body.verification_type,
+        if healthy { "success" } else { "failed" },
+        1,
+        if healthy {
+            None
+        } else {
+            Some("kyc_test_failed")
+        },
+        if healthy {
+            None
+        } else {
+            Some("KYC test scenario failed")
+        },
+        json!({
+            "verification_type": body.verification_type,
+            "scenario": body.scenario,
+            "identifier": "redacted"
+        }),
+        json!({
+            "status": status,
+            "provider_reference_present": healthy
+        }),
+    )
+    .await;
+    audit(
+        pool.get_ref(),
+        &request,
+        "integration_provider.test_kyc",
+        Some(provider_id),
+        json!({
+            "verification_type": body.verification_type,
+            "identifier": "redacted"
+        }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "status": status }))
 }
 
 async fn list_provider_logs(

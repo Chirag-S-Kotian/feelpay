@@ -6,6 +6,7 @@ pub mod email;
 pub mod email_service;
 pub mod export;
 pub mod job_queue;
+pub mod kyc_provider;
 pub mod ledger;
 pub mod notification;
 pub mod notification_dispatcher;

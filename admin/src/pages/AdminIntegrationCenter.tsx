@@ -92,6 +92,7 @@ const DEFAULT_FORM = {
   sender_id: '',
   route_type: '',
   provider_code: 'generic_http',
+  base_url: '',
   account_sid: '',
   from_number: '',
   sms_base_url: '',
@@ -118,6 +119,7 @@ export default function AdminIntegrationCenter() {
   const [secretValue, setSecretValue] = useState('');
   const [testRecipient, setTestRecipient] = useState('');
   const [testPhone, setTestPhone] = useState('');
+  const [kycVerificationType, setKycVerificationType] = useState('pan');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
@@ -158,6 +160,7 @@ export default function AdminIntegrationCenter() {
     sender_id: form.sender_id || undefined,
     route_type: form.route_type || undefined,
     provider_code: form.provider_code || undefined,
+    base_url: form.base_url || undefined,
     account_sid: form.account_sid || undefined,
     from_number: form.from_number || undefined,
     sms_base_url: form.sms_base_url || undefined,
@@ -231,6 +234,7 @@ export default function AdminIntegrationCenter() {
       sender_id: String(config.sender_id || ''),
       route_type: String(config.route_type || ''),
       provider_code: String(config.provider_code || 'generic_http'),
+      base_url: String(config.base_url || ''),
       account_sid: String(config.account_sid || ''),
       from_number: String(config.from_number || ''),
       sms_base_url: String(config.sms_base_url || ''),
@@ -301,7 +305,8 @@ export default function AdminIntegrationCenter() {
               <Field label="Reply to"><input value={form.reply_to} onChange={event => setForm({ ...form, reply_to: event.target.value })} /></Field>
               <Field label="Sender ID"><input value={form.sender_id} onChange={event => setForm({ ...form, sender_id: event.target.value })} /></Field>
               <Field label="Route type"><input value={form.route_type} onChange={event => setForm({ ...form, route_type: event.target.value })} /></Field>
-              <Field label="Provider code"><Select value={form.provider_code} options={['generic_http', 'twilio']} onChange={provider_code => setForm({ ...form, provider_code })} /></Field>
+              <Field label="Provider code"><Select value={form.provider_code} options={['generic_http', 'simulator', 'twilio']} onChange={provider_code => setForm({ ...form, provider_code })} /></Field>
+              <Field label="Base URL"><input value={form.base_url} onChange={event => setForm({ ...form, base_url: event.target.value })} placeholder="https://provider.example" /></Field>
               <Field label="Twilio account SID"><input value={form.account_sid} onChange={event => setForm({ ...form, account_sid: event.target.value })} /></Field>
               <Field label="Twilio from number"><input value={form.from_number} onChange={event => setForm({ ...form, from_number: event.target.value })} /></Field>
               <Field label="SMS base URL"><input value={form.sms_base_url} onChange={event => setForm({ ...form, sms_base_url: event.target.value })} /></Field>
@@ -333,6 +338,7 @@ export default function AdminIntegrationCenter() {
             <Field label="Secret value"><input type="password" value={secretValue} onChange={event => setSecretValue(event.target.value)} /></Field>
             <Field label="Test email"><input value={testRecipient} onChange={event => setTestRecipient(event.target.value)} /></Field>
             <Field label="Test phone"><input value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>
+            <Field label="KYC test type"><Select value={kycVerificationType} options={['pan', 'gstin', 'business']} onChange={setKycVerificationType} /></Field>
           </div>
           <div className="button-row">
             <button onClick={() => selected && void run('Secret saved.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets`, { secret_name: secretName, value: secretValue }))}>Save secret</button>
@@ -342,6 +348,7 @@ export default function AdminIntegrationCenter() {
             <button onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
             <button onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
             <button onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone }))}>Test OTP</button>
+            <button onClick={() => selected && void run('KYC test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-kyc`, { verification_type: kycVerificationType }))}>Test KYC</button>
             <button onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
           </div>
           <div className="table-wrap">

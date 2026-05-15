@@ -80,7 +80,23 @@ UTR/reference tracking and reconciliation file/API settings belong in config plu
 
 ### KYC / KYB
 
-Use generic provider config for PAN, GSTIN, and business verification adapters where supported. Run only with safe test data unless a separately approved live integration exists.
+Use `provider_kind=kyc` for provider-neutral PAN, GSTIN, and business-name verification adapters.
+
+- Simulator config may use `provider_code=simulator` for safe test-only readiness checks.
+- Generic live/test adapters use `provider_code=generic_http`, `base_url`, and encrypted `auth_token`.
+- Admin **Test KYC** actions run only against test-mode providers and only with built-in safe sample data.
+- Runtime verification results are stored as `verified`, `failed`, `pending`, `provider_error`, or `manual_review_required`.
+- Provider attempts persist only masked identifiers, safe response summaries, latency, reference presence, and error metadata. Full PAN, GSTIN, bank account, document numbers, raw provider bodies, tokens, and secrets are never logged.
+- Missing or disabled providers fail closed into `manual_review_required`; this adapter does not auto-approve merchants or claim government/RBI approval.
+- Current readiness covers PAN, GSTIN, and business/legal-name verification. Bank account and document-metadata verification are intentionally readiness-only until their existing product flows expose a concrete provider contract.
+
+### Merchant Review
+
+- Company admins review merchants before live activation using the lifecycle `draft`, `submitted`, `under_review`, `approved`, `restricted`, `rejected`, or `suspended`.
+- Review detail includes masked identifiers, document metadata, bank-account summaries, KYC provider attempts, internal risk notes, and decision history. Internal notes stay admin-only.
+- Admin decisions may mark under review, request more information, approve, reject, restrict, suspend, assign a reviewer, or add a risk note. Rejection, restriction, and suspension require reason codes.
+- Live API keys and live authenticated flows remain blocked unless both onboarding and review status are `approved`.
+- Supported KYC decision notifications remain the existing `kyc_approved` and `kyc_rejected` events. There is no dedicated more-information template/event yet, so the workflow records that action without fabricating an unsupported notification.
 
 ### Notifications / Webhooks
 

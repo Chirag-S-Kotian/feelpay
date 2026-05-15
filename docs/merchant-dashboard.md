@@ -7,7 +7,7 @@ This dashboard is the merchant-facing React app in `dashboard/`. It talks to the
 - Own-brand Indian payment gateway and payment aggregator-ready merchant dashboard.
 - Internal simulator/rail abstractions only. Do not add third-party gateway connectors here.
 - Money values are INR paise as integers. UI formatting must not change stored or calculated money into floats.
-- Live mode stays blocked until onboarding/KYC preflight returns `can_go_live=true`.
+- Live mode stays blocked until onboarding/KYC preflight returns `can_go_live=true`; that now requires explicit internal review approval as well as the existing onboarding checks.
 
 ## Frontend Routes
 
@@ -69,7 +69,7 @@ Every merchant-owned row must be scoped by `merchant_id`. Existing `tenant_id` c
 - Mask API keys, webhook secrets, PAN/GSTIN, bank account numbers, and KYC document metadata in UI/logs.
 - Use idempotency keys for refunds and other sensitive mutations.
 - Audit sensitive actions with actor, tenant, merchant, action, target, metadata, IP/user-agent, and timestamp.
-- Keep live-mode keys/actions blocked until KYC/KYB approval and live preflight pass.
+- Keep live-mode keys/actions blocked until internal review status is `approved`, onboarding is approved, and live preflight passes.
 - Do not log raw secrets, full bank details, PAN, KYC documents, or webhook signing secrets.
 
 ## Local Setup
@@ -87,6 +87,8 @@ Run only checks relevant to touched files during normal development. Use the ful
 ## Known Limitations
 
 - This software does not claim RBI/legal readiness or approval.
+- Merchant review follows `draft -> submitted -> under_review -> approved|restricted|rejected|suspended`. Provider verification alone does not approve a merchant.
+- Internal risk notes are company-admin only and are never exposed through merchant-facing APIs.
 - Live-money processing must remain disabled unless approved acquirer/payment rails already exist in the repo and are configured outside this merchant-dashboard scope.
 - Some merchant modules reuse broader platform endpoints; verify internal platform scope and merchant isolation whenever adding fields or filters.
 - Sensitive-field hardening is forward-safe after `20260515000001_merchant_secret_storage_hardening.sql`: new API keys use hashed lookup rows, new webhook secrets are encrypted, and new PAN/GSTIN/KYC writes store masked display values plus encrypted payloads. Existing historical plaintext rows still require a one-time migrated-Postgres backfill before claiming legacy data is fully remediated.

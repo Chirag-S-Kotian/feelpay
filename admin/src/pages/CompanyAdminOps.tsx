@@ -1016,19 +1016,18 @@ export function BusinessAccountsPage() {
       helpers.setDrawer({ title: 'Business account detail', body: row });
     }
   };
-  const updateAccount = (row: GenericRecord, patch: GenericRecord, label: string) => {
+  const reviewAccount = (row: GenericRecord, action: string, label: string, options: GenericRecord = {}) => {
     const id = String(row.id || '');
     helpers.setConfirm({
       title: label,
-      body: 'Business account KYC, risk, or payout readiness change requires confirmation and audit logging.',
-      action: () => helpers.run('Business account updated.', () => apiRequest('PATCH', `${API}/business-accounts/${id}`, patch)).then(load),
+      body: 'Merchant review decisions are internal, audited, and may change live-mode eligibility.',
+      action: () => helpers.run('Merchant review updated.', () => apiRequest('POST', `${API}/business-accounts/${id}/review`, { action, ...options })).then(load),
     });
   };
   const actionsForAccount = (row: GenericRecord): string[] => {
-    const status = String(row.status || '').toLowerCase();
-    const actions = ['View detail', 'Review KYC', 'Review risk', 'Manage payouts'];
-    if (status !== 'suspended') actions.push('Suspend');
-    if (status === 'suspended') actions.push('Reactivate');
+    const reviewStatus = str(row.review_status).toLowerCase();
+    const actions = ['View detail', 'Mark under review', 'Request more information', 'Approve', 'Reject', 'Restrict', 'Suspend', 'Add risk note', 'Assign reviewer'];
+    if (reviewStatus === 'approved') return actions.filter(action => action !== 'Approve');
     return actions;
   };
   const payoutReason = (row: GenericRecord) => {
@@ -1041,11 +1040,28 @@ export function BusinessAccountsPage() {
   const accountRows = rows.map(row => ({ ...row, payout_readiness_reason: payoutReason(row) }));
   const act = (row: GenericRecord, action: string) => {
     if (action === 'view_detail') void openDetail(row);
-    if (action === 'review_kyc') updateAccount(row, { kyc_status: 'verified', note: 'KYC approved from company admin' }, 'Approve KYC');
-    if (action === 'review_risk') updateAccount(row, { risk_status: 'medium', note: 'Risk reviewed from company admin' }, 'Review risk');
-    if (action === 'manage_payouts') updateAccount(row, { payout_status: 'enabled', note: 'Payout readiness reviewed' }, 'Enable payouts');
-    if (action === 'suspend') updateAccount(row, { status: 'suspended', payout_status: 'disabled', note: 'Suspended by company admin' }, 'Suspend business account');
-    if (action === 'reactivate') updateAccount(row, { status: 'active', note: 'Reactivated by company admin' }, 'Reactivate business account');
+    if (action === 'mark_under_review') reviewAccount(row, action, 'Mark under review');
+    if (action === 'request_more_information') {
+      const note = window.prompt('What information is required?');
+      if (note?.trim()) reviewAccount(row, action, 'Request more information', { note });
+    }
+    if (action === 'approve') reviewAccount(row, action, 'Approve merchant');
+    if (['reject', 'restrict', 'suspend'].includes(action)) {
+      const reason_code = window.prompt('Reason code', 'manual_review');
+      const note = window.prompt('Internal note');
+      if (reason_code?.trim() && note?.trim()) {
+        reviewAccount(row, action, `${action.charAt(0).toUpperCase()}${action.slice(1)} merchant`, { reason_code, note });
+      }
+    }
+    if (action === 'add_risk_note') {
+      const risk_level = window.prompt('Risk level: low, medium, high, blocked', str(row.risk_status || 'medium'));
+      const note = window.prompt('Internal risk note');
+      if (risk_level?.trim() && note?.trim()) reviewAccount(row, action, 'Add risk note', { risk_level, note });
+    }
+    if (action === 'assign_reviewer') {
+      const reviewer_admin_id = window.prompt('Reviewer admin id');
+      if (reviewer_admin_id?.trim()) reviewAccount(row, action, 'Assign reviewer', { reviewer_admin_id });
+    }
   };
   return (
     <CrudPage title="Business Accounts" subtitle="Internal company-managed businesses and tenants only" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
@@ -1058,7 +1074,7 @@ export function BusinessAccountsPage() {
       </div>
       <DataTable
         rows={accountRows}
-        columns={['display_name', 'business_type', 'email', 'status', 'kyc_status', 'risk_status', 'payout_status', 'payout_readiness_reason', 'created_at']}
+        columns={['display_name', 'business_type', 'email', 'review_status', 'kyc_status', 'risk_status', 'payout_status', 'payout_readiness_reason', 'created_at']}
         empty={{ title: 'No business accounts yet', body: 'Internal company-managed business accounts will appear here after onboarding records are created.' }}
         renderActions={row => <ActionButtons actions={actionsForAccount(row)} onClick={action => act(row, normalizeAction(action))} dropdownOnly />}
       />

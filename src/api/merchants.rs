@@ -179,7 +179,7 @@ pub async fn create_merchant(
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let id = Uuid::new_v4();
-    let api_key = format!("fp_live_{}", Uuid::new_v4().simple());
+    let api_key = format!("fp_test_{}", Uuid::new_v4().simple());
     let api_secret = format!("fp_secret_{}", Uuid::new_v4().simple());
     let webhook_secret = format!("whsec_{}", Uuid::new_v4().simple());
     let webhook_secret_hint = format!(
@@ -265,7 +265,7 @@ pub async fn create_merchant(
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    store_active_api_key(&mut *tx, id, "live", &api_key).await?;
+    store_active_api_key(&mut *tx, id, "test", &api_key).await?;
 
     tx.commit()
         .await
@@ -1633,6 +1633,20 @@ pub async fn roll_keys(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let env = request_environment(&req);
+    if env == "live" {
+        let approved: bool = sqlx::query_scalar(
+            "SELECT onboarding_status = 'approved' AND COALESCE(review_status, 'draft') = 'approved' FROM merchants WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+        if !approved {
+            return Err(FeelPayError::Forbidden(
+                "Live API keys require explicit merchant approval".into(),
+            ));
+        }
+    }
     let api_key = if env == "live" {
         format!("fp_live_{}", Uuid::new_v4().simple())
     } else {
@@ -2434,9 +2448,9 @@ pub async fn request_activation(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = extract_merchant_id_internal(&req)?;
 
-    // Update status to 'pending' if it was 'draft' or 'resubmit_required'
+    // Move into the explicit internal-review lifecycle once the merchant submits.
     let res = sqlx::query(
-        "UPDATE merchants SET onboarding_status = 'pending' WHERE id = $1 AND onboarding_status IN ('draft', 'resubmit_required') RETURNING onboarding_status"
+        "UPDATE merchants SET onboarding_status = 'submitted', review_status = 'submitted' WHERE id = $1 AND onboarding_status IN ('draft', 'resubmit_required', 'pending') RETURNING onboarding_status"
     )
     .bind(merchant_id)
     .fetch_optional(&state.db)
@@ -2444,7 +2458,7 @@ pub async fn request_activation(
 
     match res {
         Some(_) => Ok(HttpResponse::Ok().json(
-            serde_json::json!({ "status": "pending", "message": "Activation request submitted" }),
+            serde_json::json!({ "status": "submitted", "message": "Activation request submitted" }),
         )),
         None => Err(FeelPayError::BadRequest(
             "KYC already submitted or approved".into(),

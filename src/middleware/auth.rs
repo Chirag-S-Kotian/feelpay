@@ -176,6 +176,7 @@ async fn merchant_from_hashed_api_key(
         FROM developer_api_keys k
         JOIN merchants m ON m.id = k.merchant_id
         WHERE m.status = 'active'
+          AND ($2 <> 'live' OR (m.onboarding_status = 'approved' AND COALESCE(m.review_status, 'draft') = 'approved'))
           AND k.status = 'active'
           AND k.environment = $2
           AND k.encrypted_key_hash = $1

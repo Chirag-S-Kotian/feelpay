@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::audit_support::log_audit;
+use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
 use crate::error::FeelPayError;
 use crate::models::user::Claims;
 use crate::state::AppState;
@@ -67,7 +68,7 @@ fn actor_id_from_claims(claims: &Claims) -> Result<Uuid, FeelPayError> {
 
 fn ensure_admin_role(claims: &Claims) -> Result<(), FeelPayError> {
     match claims.role.as_str() {
-        "super_admin" | "Super Admin" | "admin" | "tenant_admin" => Ok(()),
+        "super_admin" | "Super Admin" | "admin" => Ok(()),
         _ => Err(FeelPayError::Forbidden(
             "Admin role required for merchant management".into(),
         )),
@@ -250,7 +251,11 @@ async fn update_merchant_status(
     let updated: serde_json::Value = sqlx::query_scalar(
         r#"
         UPDATE merchants
-        SET onboarding_status = $3, status = $4, updated_at = NOW()
+        SET onboarding_status = $3,
+            review_status = $3,
+            status = $4,
+            review_last_decided_at = NOW(),
+            updated_at = NOW()
         WHERE id = $1
           AND ($2::uuid IS NULL OR tenant_id = $2)
         RETURNING to_jsonb(merchants.*)
@@ -262,6 +267,44 @@ async fn update_merchant_status(
     .bind(action.merchant_status())
     .fetch_one(&state.db)
     .await?;
+
+    if matches!(
+        action,
+        MerchantAdminAction::Approve | MerchantAdminAction::Reject
+    ) {
+        if let Some(email) =
+            sqlx::query_scalar::<_, Option<String>>("SELECT email FROM merchants WHERE id = $1")
+                .bind(merchant_id)
+                .fetch_optional(&state.db)
+                .await?
+                .flatten()
+        {
+            let event_type = if matches!(action, MerchantAdminAction::Approve) {
+                "kyc_approved"
+            } else {
+                "kyc_rejected"
+            };
+            let mut variables = std::collections::BTreeMap::new();
+            variables.insert("status".to_string(), action.onboarding_status().to_string());
+            let _ = dispatch_event(
+                &state.db,
+                DispatchRequest {
+                    merchant_id: Some(merchant_id),
+                    event_type: event_type.to_string(),
+                    environment: if state.config.is_live() {
+                        "live"
+                    } else {
+                        "test"
+                    }
+                    .to_string(),
+                    recipient_email: Some(email),
+                    recipient_phone: None,
+                    variables,
+                },
+            )
+            .await;
+        }
+    }
 
     log_audit(
         &state.db,
