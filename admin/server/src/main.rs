@@ -31,7 +31,9 @@ fn validate_admin_startup_env() -> Result<(), String> {
             return Err("APP_ENV=production requires PAYMENT_MODE=live".to_string());
         }
         if jwt_secret.contains("change_in_production") || jwt_secret.len() < 32 {
-            return Err("Production requires a non-default JWT_SECRET of at least 32 chars".to_string());
+            return Err(
+                "Production requires a non-default JWT_SECRET of at least 32 chars".to_string(),
+            );
         }
         if vault_key == "0".repeat(64) {
             return Err("Production requires a non-default VAULT_ENCRYPTION_KEY".to_string());
@@ -44,6 +46,31 @@ fn validate_admin_startup_env() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+async fn admin_health() -> impl Responder {
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "healthy",
+        "service": "FeelPay Admin Server",
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
+}
+
+async fn admin_readiness(pool: web::Data<PgPool>) -> impl Responder {
+    let database_ready = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool.get_ref())
+        .await
+        .is_ok();
+
+    HttpResponse::build(if database_ready {
+        actix_web::http::StatusCode::OK
+    } else {
+        actix_web::http::StatusCode::SERVICE_UNAVAILABLE
+    })
+    .json(serde_json::json!({
+        "status": if database_ready { "ready" } else { "not_ready" },
+        "database": if database_ready { "ready" } else { "unavailable" },
+    }))
 }
 
 #[derive(Serialize)]
@@ -1020,6 +1047,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(feelpay::middleware::rate_limit::RateLimiter::new(60))
             .app_data(web::Data::new(pool.clone()))
+            .route("/health", web::get().to(admin_health))
+            .route("/ready", web::get().to(admin_readiness))
             .service(
                 web::scope("/admin")
                     .route("/login", web::post().to(admin_login))
@@ -1065,8 +1094,11 @@ async fn main() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod startup_tests {
-    use super::validate_admin_startup_env;
+    use super::{admin_health, admin_readiness, validate_admin_startup_env};
+    use actix_web::{http::StatusCode, test as actix_test, web, App};
+    use sqlx::postgres::PgPoolOptions;
     use std::env;
+    use std::time::Duration;
 
     fn set_safe_production_env() {
         env::set_var("APP_ENV", "production");
@@ -1087,6 +1119,33 @@ mod startup_tests {
         set_safe_production_env();
         env::set_var("ALLOW_SECRET_REVEAL", "true");
         assert!(validate_admin_startup_env().is_err());
+    }
+
+    #[actix_web::test]
+    async fn admin_health_endpoint_is_available() {
+        let app =
+            actix_test::init_service(App::new().route("/health", web::get().to(admin_health)))
+                .await;
+        let request = actix_test::TestRequest::get().uri("/health").to_request();
+        let response = actix_test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn admin_readiness_reports_unavailable_database() {
+        let pool = PgPoolOptions::new()
+            .acquire_timeout(Duration::from_millis(50))
+            .connect_lazy("postgres://invalid:invalid@127.0.0.1:1/invalid")
+            .expect("lazy test pool should build");
+        let app = actix_test::init_service(
+            App::new()
+                .app_data(web::Data::new(pool))
+                .route("/ready", web::get().to(admin_readiness)),
+        )
+        .await;
+        let request = actix_test::TestRequest::get().uri("/ready").to_request();
+        let response = actix_test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
 
