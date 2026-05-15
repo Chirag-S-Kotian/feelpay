@@ -33,8 +33,6 @@ const emptyTenantForm = {
   emailDomain: '',
   feeBps: '200',
   settlementDelayDays: '2',
-  resellerCommissionBps: '0',
-  revenueSharePercent: '0',
 };
 
 export default function TenantManagement() {
@@ -83,8 +81,6 @@ export default function TenantManagement() {
       email_sending_domain: form.emailDomain || null,
       fee_bps: Number(form.feeBps || 0),
       settlement_delay_days: Number(form.settlementDelayDays || 0),
-      reseller_commission_bps: Number(form.resellerCommissionBps || 0),
-      revenue_share_percent: Number(form.revenueSharePercent || 0),
     },
   };
 
@@ -105,8 +101,6 @@ export default function TenantManagement() {
       emailDomain: String(config.email_sending_domain ?? ''),
       feeBps: String(config.fee_bps ?? '200'),
       settlementDelayDays: String(config.settlement_delay_days ?? '2'),
-      resellerCommissionBps: String(config.reseller_commission_bps ?? '0'),
-      revenueSharePercent: String(config.revenue_share_percent ?? '0'),
     });
   }
 
@@ -132,13 +126,13 @@ export default function TenantManagement() {
   return (
     <section className="page-shell">
       <header className="page-header">
-        <h1>Tenant Management</h1>
+        <h1>Internal Scope Management</h1>
         <button onClick={submit}>{editingId ? 'Update' : 'Create'}</button>
       </header>
       <div className="filter-grid">
         <input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <input placeholder="Slug" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} />
-        <input placeholder="Tenant domain" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} />
+        <input placeholder="Scope domain" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} />
         <input placeholder="Custom checkout domain" value={form.customDomain} onChange={e => setForm({ ...form, customDomain: e.target.value })} />
         <input placeholder="Email sending domain" value={form.emailDomain} onChange={e => setForm({ ...form, emailDomain: e.target.value })} />
         <input placeholder="Logo URL" value={form.logoUrl} onChange={e => setForm({ ...form, logoUrl: e.target.value })} />
@@ -148,8 +142,6 @@ export default function TenantManagement() {
         <input placeholder="Secondary color (#hex)" value={form.secondaryColor} onChange={e => setForm({ ...form, secondaryColor: e.target.value })} />
         <input placeholder="Fee (bps)" value={form.feeBps} onChange={e => setForm({ ...form, feeBps: e.target.value })} />
         <input placeholder="Settlement delay days" value={form.settlementDelayDays} onChange={e => setForm({ ...form, settlementDelayDays: e.target.value })} />
-        <input placeholder="Reseller commission (bps)" value={form.resellerCommissionBps} onChange={e => setForm({ ...form, resellerCommissionBps: e.target.value })} />
-        <input placeholder="Revenue share (%)" value={form.revenueSharePercent} onChange={e => setForm({ ...form, revenueSharePercent: e.target.value })} />
       </div>
       <div className="table-wrap">
         <table>
@@ -184,7 +176,7 @@ export default function TenantManagement() {
           <table>
             <thead>
               <tr>
-                <th>Tenant Business Account</th>
+                <th>Scoped Business Account</th>
                 <th>Email</th>
                 <th>Business</th>
                 <th>Status</th>

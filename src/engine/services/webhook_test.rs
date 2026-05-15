@@ -1,4 +1,5 @@
 use crate::error::FeelPayError;
+use crate::vault::crypto::VaultCrypto;
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,12 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
+
+fn webhook_crypto() -> Result<VaultCrypto, FeelPayError> {
+    let key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
+    let key_id = std::env::var("VAULT_KEY_ID").unwrap_or_else(|_| "key_v1".into());
+    VaultCrypto::new(&key, key_id)
+}
 
 /// Webhook test result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,14 +96,14 @@ impl WebhookTestService {
         // We look in both real events and test logs for convenience in sandbox
         let row = sqlx::query(
             r#"
-            SELECT event_type, raw_payload::text, webhook_url, webhook_secret
+            SELECT event_type, raw_payload::text, webhook_url, webhook_secret, webhook_secret_ciphertext, webhook_secret_nonce
             FROM (
-                SELECT pwe.event_type, pwe.raw_payload, m.webhook_url, m.webhook_secret, pwe.id, po.merchant_id
+                SELECT pwe.event_type, pwe.raw_payload, m.webhook_url, m.webhook_secret, m.webhook_secret_ciphertext, m.webhook_secret_nonce, pwe.id, po.merchant_id
                 FROM payment_webhook_events pwe
                 JOIN payment_orders po ON pwe.related_payment_id = po.id
                 JOIN merchants m ON po.merchant_id = m.id
                 UNION ALL
-                SELECT wtl.event_type, wtl.response_body::jsonb, wtl.webhook_url, m.webhook_secret, wtl.id, wtl.merchant_id
+                SELECT wtl.event_type, wtl.response_body::jsonb, wtl.webhook_url, m.webhook_secret, m.webhook_secret_ciphertext, m.webhook_secret_nonce, wtl.id, wtl.merchant_id
                 FROM webhook_test_logs wtl
                 JOIN merchants m ON wtl.merchant_id = m.id
             ) combined
@@ -119,7 +126,13 @@ impl WebhookTestService {
         let event_type: String = row.get(0);
         let payload_json: String = row.get(1);
         let webhook_url: String = row.get(2);
-        let webhook_secret: String = row.get(3);
+        let webhook_secret = match (
+            row.get::<Option<String>, _>(4),
+            row.get::<Option<String>, _>(5),
+        ) {
+            (Some(ciphertext), Some(nonce)) => webhook_crypto()?.decrypt(&ciphertext, &nonce)?,
+            _ => row.get::<String, _>(3),
+        };
 
         self.send_payload(
             merchant_id,

@@ -347,7 +347,7 @@ export default function CredentialManagement() {
 
   const saveWhiteLabel = async (event: FormEvent) => {
     event.preventDefault();
-    await showSuccess('White-label config saved.', () => apiRequest('PATCH', `${API}/white-label-config`, {
+    await showSuccess('Platform checkout config saved.', () => apiRequest('PATCH', `${API}/white-label-config`, {
       brand_name: whiteLabel.brand_name,
       checkout_logo_url: whiteLabel.checkout_logo_url,
       checkout_theme_color: whiteLabel.checkout_theme_color,
@@ -637,7 +637,7 @@ function WhiteLabelPanel({
 }) {
   return (
     <section className="card">
-      <SectionTitle icon={<SlidersHorizontal size={18} />} title="White-label Config" />
+      <SectionTitle icon={<SlidersHorizontal size={18} />} title="Platform Checkout Config" />
       <form onSubmit={onSubmit}>
         <div className="filter-grid">
           <Field label="Brand"><input value={value.brand_name} onChange={event => onChange({ ...value, brand_name: event.target.value })} /></Field>
@@ -659,7 +659,7 @@ function WhiteLabelPanel({
           <Field label="Receipt Prefix"><input value={value.receipt_prefix} onChange={event => onChange({ ...value, receipt_prefix: event.target.value })} /></Field>
         </div>
         <div className="button-row">
-          <button className="btn-primary" type="submit">Save White-label Config</button>
+          <button className="btn-primary" type="submit">Save Platform Checkout Config</button>
           <button type="button">Preview Checkout</button>
           <button type="button" onClick={onReset}>Reset to Default</button>
         </div>

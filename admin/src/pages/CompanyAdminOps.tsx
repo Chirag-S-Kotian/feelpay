@@ -1427,7 +1427,7 @@ export function WhiteLabelCheckoutPage() {
       });
       setState('ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'White-label config load failed');
+      setError(err instanceof Error ? err.message : 'Platform checkout config load failed');
       setState('error');
     }
   };
@@ -1436,7 +1436,7 @@ export function WhiteLabelCheckoutPage() {
   }, []);
   const save = (event: FormEvent) => {
     event.preventDefault();
-    helpers.setConfirm({ title: 'Save checkout config', body: 'White-label checkout defaults will change for company-managed payment flows.', action: () => helpers.run('White-label checkout saved.', () => apiRequest('PATCH', `${API}/white-label-config`, { ...form, default_payment_methods: list(form.default_payment_methods), default_provider_id: form.default_provider_id || null, fallback_provider_id: form.fallback_provider_id || null })).then(load) });
+    helpers.setConfirm({ title: 'Save checkout config', body: 'Platform checkout defaults will change for company-managed payment flows.', action: () => helpers.run('Platform checkout saved.', () => apiRequest('PATCH', `${API}/white-label-config`, { ...form, default_payment_methods: list(form.default_payment_methods), default_provider_id: form.default_provider_id || null, fallback_provider_id: form.fallback_provider_id || null })).then(load) });
   };
   const createLink = (event: FormEvent) => {
     event.preventDefault();
@@ -1485,7 +1485,7 @@ export function WhiteLabelCheckoutPage() {
   };
   const paymentLinkRows = paymentLinks.rows.map(row => ({ ...row, business_account: businessAccountName(row.business_account_id) }));
   return (
-    <CrudPage title="White-label Checkout" subtitle="Company-managed checkout brand, defaults, and descriptors" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Platform Checkout" subtitle="Company-managed checkout brand, defaults, and descriptors" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
         {['Config', 'Preview', 'Payment Links', 'Checkout Sessions', 'Receipts'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
@@ -1509,7 +1509,7 @@ export function WhiteLabelCheckoutPage() {
               <button className="btn-primary" type="submit">Create payment link</button>
             </form>
           </section>
-          <DataTable rows={paymentLinkRows} columns={['id', 'business_account', 'amount', 'currency', 'description', 'customer_email', 'customer_phone', 'status', 'expires_at', 'created_at']} empty={{ title: 'No payment links yet', body: 'Create white-label payment links for hosted checkout sessions.' }} renderActions={row => <ActionButtons actions={['Create session', 'Expire payment link', 'Copy payment link', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Payment link', body: row }) : linkAction(row, normalizeAction(action))} />} />
+          <DataTable rows={paymentLinkRows} columns={['id', 'business_account', 'amount', 'currency', 'description', 'customer_email', 'customer_phone', 'status', 'expires_at', 'created_at']} empty={{ title: 'No payment links yet', body: 'Create platform payment links for hosted checkout sessions.' }} renderActions={row => <ActionButtons actions={['Create session', 'Expire payment link', 'Copy payment link', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Payment link', body: row }) : linkAction(row, normalizeAction(action))} />} />
         </>
       )}
       {tab === 'Checkout Sessions' && <DataTable rows={sessions.rows} columns={['id', 'payment_link_id', 'payment_order_id', 'provider_id', 'selected_payment_method', 'status', 'expires_at', 'created_at']} empty={{ title: 'No checkout sessions yet', body: 'Sessions are created from active payment links and provider routing.' }} renderActions={row => <ActionButtons actions={String(row.status) === 'paid' ? ['View detail'] : ['Complete test payment', 'View detail']} onClick={action => sessionAction(row, normalizeAction(action))} />} />}
@@ -2635,7 +2635,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
     <section className="card">
       <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
-          <h2><SlidersHorizontal size={18} /> White-label configuration</h2>
+          <h2><SlidersHorizontal size={18} /> Platform checkout configuration</h2>
           <p className="muted-text">Customize the checkout experience for all hosted payment flows.</p>
         </div>
         <div className="button-row">

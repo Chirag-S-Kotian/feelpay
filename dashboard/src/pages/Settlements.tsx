@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Download } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import { SideDrawer } from '../components/SideDrawer';
+import { formatPaise } from '../utils/money';
 
 interface Settlement {
   id: string;
@@ -98,8 +99,6 @@ export default function Settlements() {
     load();
   }, []);
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
-
   const filteredSettlements = settlements.filter((s) => {
     const statusMatch = filter === 'all' || s.status === filter;
     const q = search.trim().toLowerCase();
@@ -149,7 +148,7 @@ export default function Settlements() {
               <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
                 <div style={{ flex: 1, padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12, border: '1px solid var(--fp-border)' }}>
                   <label style={{ display: 'block', fontSize: 12, color: 'var(--fp-text-muted)', marginBottom: 4 }}>Net Amount</label>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--fp-success)' }}>{formatCurrency(selectedSettlement.net)}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--fp-success)' }}>{formatPaise(selectedSettlement.net)}</div>
                 </div>
                 <div style={{ flex: 1, padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12, border: '1px solid var(--fp-border)' }}>
                   <label style={{ display: 'block', fontSize: 12, color: 'var(--fp-text-muted)', marginBottom: 4 }}>Status</label>
@@ -174,31 +173,31 @@ export default function Settlements() {
               <div className="fee-card" style={{ padding: 16, background: 'var(--fp-bg-elevated)', borderRadius: 12 }}>
                 <div className="fee-row">
                   <span>Gross Amount</span>
-                  <span>{formatCurrency(selectedSettlement.amount)}</span>
+                  <span>{formatPaise(selectedSettlement.amount)}</span>
                 </div>
                 <div className="fee-row">
                   <span>Merchant Fee</span>
-                  <span className="warning">- {formatCurrency(selectedSettlement.fee)}</span>
+                  <span className="warning">- {formatPaise(selectedSettlement.fee)}</span>
                 </div>
                 <div className="fee-row">
                   <span>Service Tax (GST)</span>
-                  <span className="warning">- {formatCurrency(selectedSettlement.tax)}</span>
+                  <span className="warning">- {formatPaise(selectedSettlement.tax)}</span>
                 </div>
                 <div className="fee-row">
                   <span>Refunds</span>
-                  <span className="warning">- {formatCurrency(settlementDetails?.refund_adjustments || 0)}</span>
+                  <span className="warning">- {formatPaise(settlementDetails?.refund_adjustments || 0)}</span>
                 </div>
                 <div className="fee-row">
                   <span>Chargebacks</span>
-                  <span className="warning">- {formatCurrency(settlementDetails?.chargeback_adjustments || 0)}</span>
+                  <span className="warning">- {formatPaise(settlementDetails?.chargeback_adjustments || 0)}</span>
                 </div>
                 <div className="fee-row">
                   <span>Adjustments</span>
-                  <span>{formatCurrency(settlementDetails?.other_adjustments || 0)}</span>
+                  <span>{formatPaise(settlementDetails?.other_adjustments || 0)}</span>
                 </div>
                 <div className="fee-row total">
                   <span>Final Payout</span>
-                  <span className="success">{formatCurrency(selectedSettlement.net)}</span>
+                  <span className="success">{formatPaise(selectedSettlement.net)}</span>
                 </div>
               </div>
             </div>
@@ -222,8 +221,8 @@ export default function Settlements() {
                         <div style={{ fontSize: 11, color: 'var(--fp-text-muted)' }}>{new Date(item.created_at).toLocaleDateString()}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{formatCurrency(item.amount)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--fp-text-muted)' }}>Fee: {formatCurrency(item.fee)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{formatPaise(item.amount)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--fp-text-muted)' }}>Fee: {formatPaise(item.fee)}</div>
                       </div>
                     </div>
                   ))}
@@ -247,11 +246,11 @@ export default function Settlements() {
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Available Balance</div>
-          <div className="stat-value success">{formatCurrency(balance.available)}</div>
+          <div className="stat-value success">{formatPaise(balance.available)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Pending Settlement</div>
-          <div className="stat-value warning">{formatCurrency(balance.pending)}</div>
+          <div className="stat-value warning">{formatPaise(balance.pending)}</div>
         </div>
       </div>
 
@@ -259,15 +258,15 @@ export default function Settlements() {
         <div className="stats-grid" style={{ marginBottom: 16 }}>
           <div className="stat-card">
             <div className="stat-label">Gross</div>
-            <div className="stat-value">{formatCurrency(reco.gross)}</div>
+            <div className="stat-value">{formatPaise(reco.gross)}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Fees + Tax</div>
-            <div className="stat-value warning">{formatCurrency(reco.fees + reco.tax)}</div>
+            <div className="stat-value warning">{formatPaise(reco.fees + reco.tax)}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Net</div>
-            <div className="stat-value success">{formatCurrency(reco.net)}</div>
+            <div className="stat-value success">{formatPaise(reco.net)}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Counts (C/P/F)</div>
@@ -315,10 +314,10 @@ export default function Settlements() {
                     {settlement.status}
                   </span>
                 </td>
-                <td>{formatCurrency(settlement.amount)}</td>
-                <td>{formatCurrency(settlement.fee)}</td>
-                <td>{formatCurrency(settlement.tax)}</td>
-                <td className="net">{formatCurrency(settlement.net)}</td>
+                <td>{formatPaise(settlement.amount)}</td>
+                <td>{formatPaise(settlement.fee)}</td>
+                <td>{formatPaise(settlement.tax)}</td>
+                <td className="net">{formatPaise(settlement.net)}</td>
                 <td className="mono">{settlement.utr || '-'}</td>
               </tr>
             ))}

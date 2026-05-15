@@ -1,4 +1,4 @@
-# FeelPay - Payment Gateway
+# FeelPay - Indian Payment Gateway
 
 ## Quick Start
 
@@ -36,6 +36,8 @@ TENANT_ISOLATION_MODE=shared_table
 - Frontend: React 19, Vite, TypeScript
 - Backend: Rust, Actix Web, sqlx
 - DB: PostgreSQL (Neon) - Mumbai (`ap-south-1`)
+
+FeelPay is our own branded Indian payment gateway and payment aggregator-ready platform. Merchants use the FeelPay dashboard, APIs, checkout, webhooks, payment links, reports, refunds, and settlements directly. This repo does not target reseller or white-label distribution.
 
 ## Commands
 

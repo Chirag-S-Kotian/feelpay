@@ -138,7 +138,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/connectors', label: 'Provider Connectors', icon: Cable, permission: 'providers.manage' },
       { path: '/bank-integrations', label: 'Bank Integrations', icon: Landmark, permission: 'bank_integrations.manage' },
       { path: '/routing-rules', label: 'Routing Rules', icon: RouteIcon, permission: 'routing.manage' },
-      { path: '/white-label-checkout', label: 'White-label Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
+      { path: '/white-label-checkout', label: 'Platform Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
       { path: '/webhook-config', label: 'Webhook Config', icon: Webhook, permission: 'webhook_config.manage' },
       { path: '/developer-tools', label: 'Developer Tools', icon: Code2, permission: 'developer_tools.view' },
     ],

@@ -237,7 +237,7 @@ pub async fn get_settlement(
         JOIN refunds r ON r.payment_order_id = si.transaction_id
         WHERE si.settlement_id = $1
           AND r.merchant_id = $2
-          AND r.status IN ('requested', 'processing', 'succeeded')
+          AND r.status IN ('requested', 'processing', 'processed', 'succeeded')
         "#,
     )
     .bind(settlement_id)

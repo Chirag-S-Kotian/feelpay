@@ -3,6 +3,8 @@
 Base URL: `http://localhost:8080` (dev), `https://api.feelpay.in` (prod)  
 Version header: `x-api-version: 2026-04-28`
 
+FeelPay is our own branded Indian payment gateway and payment aggregator-ready platform. Merchants integrate with FeelPay APIs, hosted checkout, webhooks, payment links, refunds, reports, and settlements directly.
+
 ## Authentication
 
 Use one mode per endpoint:
@@ -170,8 +172,8 @@ Sample response:
 ```json
 {
   "session_id":"cs_5f6402a5f4844884bb1e47fa8fdb1f61",
-  "checkout_url":"https://pay.clientbrand.com/checkout/cs_5f6402a5f4844884bb1e47fa8fdb1f61",
-  "embed_url":"https://pay.clientbrand.com/checkout/embed/cs_5f6402a5f4844884bb1e47fa8fdb1f61",
+  "checkout_url":"https://pay.feelpay.in/checkout/cs_5f6402a5f4844884bb1e47fa8fdb1f61",
+  "embed_url":"https://pay.feelpay.in/checkout/embed/cs_5f6402a5f4844884bb1e47fa8fdb1f61",
   "expires_at":"2026-04-28T14:55:10.266352Z"
 }
 ```

@@ -40,7 +40,7 @@ pub struct Merchant {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
-    pub api_key: String,
+    pub api_key: Option<String>,
     #[serde(skip_serializing)]
     pub api_secret_hash: String,
     pub webhook_url: Option<String>,
@@ -103,7 +103,7 @@ pub struct MerchantPublic {
     pub tenant_id: Option<Uuid>,
     pub name: String,
     pub email: String,
-    pub api_key: String,
+    pub api_key: Option<String>,
     pub webhook_url: Option<String>,
     pub status: String,
     pub business_name: Option<String>,

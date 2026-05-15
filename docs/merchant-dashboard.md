@@ -4,7 +4,7 @@ This dashboard is the merchant-facing React app in `dashboard/`. It talks to the
 
 ## Scope
 
-- White-labelled Indian payment gateway dashboard for merchants.
+- Own-brand Indian payment gateway and payment aggregator-ready merchant dashboard.
 - Internal simulator/rail abstractions only. Do not add third-party gateway connectors here.
 - Money values are INR paise as integers. UI formatting must not change stored or calculated money into floats.
 - Live mode stays blocked until onboarding/KYC preflight returns `can_go_live=true`.
@@ -58,9 +58,9 @@ Backend permission checks are required for sensitive mutations: API key changes,
 
 ## Data Model Summary
 
-Required merchant-domain tables/models include tenants, merchants, users/memberships, KYC profiles/documents, bank accounts, payment orders/attempts, ledger entries, settlements/items, refunds, disputes, payment links, developer API keys, webhook endpoints/events/deliveries, report exports, notifications, audit logs, and idempotency keys.
+Required merchant-domain tables/models include internal platform scopes, merchants, users/memberships, KYC profiles/documents, bank accounts, payment orders/attempts, ledger entries, settlements/items, refunds, disputes, payment links, developer API keys, webhook endpoints/events/deliveries, report exports, notifications, audit logs, and idempotency keys.
 
-Every merchant-owned row must be scoped by `merchant_id`; tenant-owned or white-label rows must also carry `tenant_id` where applicable. Cross-merchant reads and writes should be tested by querying or mutating with a different authenticated merchant.
+Every merchant-owned row must be scoped by `merchant_id`. Existing `tenant_id` columns are internal platform-scoping fields for backend isolation only; they are not merchant-facing white-label, reseller, or partner concepts. Cross-merchant reads and writes should be tested by querying or mutating with a different authenticated merchant.
 
 ## Security Rules
 
@@ -88,4 +88,6 @@ Run only checks relevant to touched files during normal development. Use the ful
 
 - This software does not claim RBI/legal readiness or approval.
 - Live-money processing must remain disabled unless approved acquirer/payment rails already exist in the repo and are configured outside this merchant-dashboard scope.
-- Some merchant modules reuse broader platform endpoints; verify tenant and merchant isolation whenever adding fields or filters.
+- Some merchant modules reuse broader platform endpoints; verify internal platform scope and merchant isolation whenever adding fields or filters.
+- Sensitive-field hardening is forward-safe after `20260515000001_merchant_secret_storage_hardening.sql`: new API keys use hashed lookup rows, new webhook secrets are encrypted, and new PAN/GSTIN/KYC writes store masked display values plus encrypted payloads. Existing historical plaintext rows still require a one-time migrated-Postgres backfill before claiming legacy data is fully remediated.
+- This pass added centralized merchant-route RBAC checks and focused role tests, but a complete audit-log guarantee still needs a route-by-route production audit matrix against the live schema and traffic policy. Do not claim full audit completeness until that external review is done.

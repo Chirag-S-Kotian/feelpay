@@ -13,6 +13,7 @@ use crate::engine::services::bank_account::{
 };
 use crate::error::FeelPayError;
 use crate::state::AppState;
+use crate::vault::crypto::VaultCrypto;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -42,6 +43,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/digilocker/status", web::get().to(get_digilocker_status))
             .route("/live-preflight", web::get().to(get_live_preflight)),
     );
+}
+
+fn onboarding_crypto(state: &AppState) -> Result<VaultCrypto, FeelPayError> {
+    VaultCrypto::new(
+        &state.config.vault_encryption_key,
+        state.config.vault_key_id.clone(),
+    )
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -324,17 +332,25 @@ pub async fn submit_kyc(
     } else {
         "pending"
     };
+    let masked_document_number = mask_document_number(&document_number);
+    let (document_number_ciphertext, document_number_nonce) =
+        onboarding_crypto(state.get_ref())?.encrypt(document_number)?;
 
     let id: Uuid = sqlx::query(
         r#"
-        INSERT INTO kyc_verifications (merchant_id, verification_type, document_number, document_data, status, verified_at)
-        VALUES ($1, $2, $3, $4, $5, CASE WHEN $5::text = 'verified' THEN NOW() ELSE NULL END)
+        INSERT INTO kyc_verifications (
+            merchant_id, verification_type, document_number, document_number_ciphertext,
+            document_number_nonce, document_data, status, verified_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::text = 'verified' THEN NOW() ELSE NULL END)
         RETURNING id
         "#,
     )
     .bind(merchant_id)
     .bind(verification_type.clone())
-    .bind(document_number)
+    .bind(masked_document_number)
+    .bind(document_number_ciphertext)
+    .bind(document_number_nonce)
     .bind(body.document_data.as_ref())
     .bind(status)
     .fetch_one(&state.db)
@@ -678,10 +694,14 @@ pub async fn onboarding_status(
     let verifications: Vec<serde_json::Value> = kyc_rows
         .into_iter()
         .map(|row| {
+            let verification_type = row.get::<String, _>(1);
+            let document_number = row.get::<Option<String>, _>(2);
             serde_json::json!({
                 "id": row.get::<Uuid, _>(0),
-                "verification_type": row.get::<String, _>(1),
-                "document_number": row.get::<Option<String>, _>(2),
+                "verification_type": verification_type,
+                "document_number": document_number
+                    .as_deref()
+                    .map(mask_document_number),
                 "status": row.get::<String, _>(3),
                 "verified_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>(4),
             })
@@ -695,6 +715,17 @@ pub async fn onboarding_status(
         "monthly_limit": monthly_limit,
         "verifications": verifications
     })))
+}
+
+fn mask_document_number(value: &str) -> String {
+    if value.len() <= 4 {
+        return "*".repeat(value.len());
+    }
+    format!(
+        "{}{}",
+        "*".repeat(value.len() - 4),
+        &value[value.len() - 4..]
+    )
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -859,13 +890,28 @@ pub async fn submit_business_info(
         }
     }
 
+    let pan = body.pan.to_uppercase();
+    let gstin = body.gstin.as_ref().map(|value| value.to_uppercase());
+    let (pan_ciphertext, pan_nonce) = onboarding_crypto(state.get_ref())?.encrypt(pan.clone())?;
+    let (gstin_ciphertext, gstin_nonce) = match gstin.clone() {
+        Some(value) if !value.is_empty() => {
+            let (ciphertext, nonce) = onboarding_crypto(state.get_ref())?.encrypt(value)?;
+            (Some(ciphertext), Some(nonce))
+        }
+        _ => (None, None),
+    };
+
     sqlx::query(
-        "UPDATE merchants SET business_name = $1, business_type = $2, pan = $3, gstin = $4, address = $5, registration_step = 2, updated_at = NOW() WHERE id = $6"
+        "UPDATE merchants SET business_name = $1, business_type = $2, pan = $3, gstin = $4, pan_ciphertext = $5, pan_nonce = $6, gstin_ciphertext = $7, gstin_nonce = $8, address = $9, registration_step = 2, updated_at = NOW() WHERE id = $10"
     )
     .bind(&body.business_name)
     .bind(&body.business_type)
-    .bind(body.pan.to_uppercase())
-    .bind(body.gstin.as_ref().map(|s| s.to_uppercase()))
+    .bind(mask_document_number(&pan))
+    .bind(gstin.as_deref().map(mask_document_number))
+    .bind(pan_ciphertext)
+    .bind(pan_nonce)
+    .bind(gstin_ciphertext)
+    .bind(gstin_nonce)
     .bind(&body.address)
     .bind(merchant_id)
     .execute(&state.db)

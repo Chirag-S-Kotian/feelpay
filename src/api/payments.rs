@@ -842,10 +842,15 @@ pub async fn refund_payment(
             "Payment already fully refunded".into(),
         ));
     }
-    let refund_amount = payload.amount.min(remaining);
-    if refund_amount <= 0 {
+    if payload.amount <= 0 {
         return Err(FeelPayError::BadRequest("Invalid refund amount".into()));
     }
+    if payload.amount > remaining {
+        return Err(FeelPayError::BadRequest(
+            "Refund amount exceeds remaining refundable balance".into(),
+        ));
+    }
+    let refund_amount = payload.amount;
 
     let txn_ctx = TransactionContext {
         payment_id: order.id,
@@ -1052,8 +1057,7 @@ pub async fn batch_refund(
                     continue;
                 }
 
-                let refund_amount = item.amount.min(remaining);
-                if refund_amount <= 0 {
+                if item.amount <= 0 {
                     failed += 1;
                     results.push(BatchRefundResult {
                         payment_id: item.payment_id,
@@ -1064,6 +1068,18 @@ pub async fn batch_refund(
                     });
                     continue;
                 }
+                if item.amount > remaining {
+                    failed += 1;
+                    results.push(BatchRefundResult {
+                        payment_id: item.payment_id,
+                        success: false,
+                        refund_id: None,
+                        amount: None,
+                        error: Some("Refund amount exceeds remaining refundable balance".into()),
+                    });
+                    continue;
+                }
+                let refund_amount = item.amount;
 
                 // Process refund
                 let refund_id = Uuid::new_v4();

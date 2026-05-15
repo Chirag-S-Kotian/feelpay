@@ -5,33 +5,33 @@ Date: 2026-04-28
 
 ## Context
 
-Platform supports multi-tenant white-label model. Need:
-1. Fast onboarding for new tenants.
+Platform uses shared-table internal isolation. Need:
+1. Fast onboarding for new merchants and internal platform scopes.
 2. Lower infra cost early stage.
-3. Tenant-scoped access in API and admin.
+3. Internal scope-aware access in API and platform admin.
 
 ## Decision
 
-Use shared-table model with `tenant_id` column across tenant-owned entities.
+Use shared-table model with `tenant_id` as an internal platform-scoping column across applicable entities.
 
 Controls:
-1. Auth middleware injects tenant context.
-2. Queries apply tenant scope where required.
-3. Admin endpoints support tenant-scoped management.
+1. Auth middleware injects internal scope context.
+2. Queries apply internal scope where required.
+3. Platform-admin endpoints may use internal scope management.
 
 ## Consequences
 
 Positive:
 1. Simpler operations vs DB-per-tenant.
 2. Lower cost for initial scale.
-3. Easier cross-tenant analytics (admin-only).
+3. Easier cross-scope analytics (platform-admin only).
 
 Tradeoffs:
-1. Isolation bug risk if tenant filter missed.
+1. Isolation bug risk if an internal scope filter is missed.
 2. Strong testing and code review needed.
 
 ## Future trigger to revisit
 
 Migrate to stronger isolation model when:
-1. Large enterprise tenant contractual isolation needed.
+1. Contractual isolation requirements exceed the shared-table model.
 2. Regulatory or data residency demands hard separation.

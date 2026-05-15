@@ -10,7 +10,9 @@ use crate::engine::services::auth::MfaService;
 use crate::error::FeelPayError;
 use crate::models::merchant::{CreateMerchantRequest, Merchant, MerchantLoginRequest};
 use crate::state::AppState;
+use crate::vault::crypto::VaultCrypto;
 use base64::Engine;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 
 const MERCHANT_SESSION_SECONDS: i64 = 24 * 60 * 60;
@@ -179,6 +181,13 @@ pub async fn create_merchant(
     let api_key = format!("fp_live_{}", Uuid::new_v4().simple());
     let api_secret = format!("fp_secret_{}", Uuid::new_v4().simple());
     let webhook_secret = format!("whsec_{}", Uuid::new_v4().simple());
+    let webhook_secret_hint = format!(
+        "{}...{}",
+        &webhook_secret[..6],
+        &webhook_secret[webhook_secret.len() - 4..]
+    );
+    let (webhook_secret_ciphertext, webhook_secret_nonce) =
+        encrypt_webhook_secret(state.get_ref(), webhook_secret.clone())?;
 
     let argon2 = Argon2::default();
     let salt = SaltString::generate(&mut OsRng);
@@ -195,13 +204,27 @@ pub async fn create_merchant(
 
     // 1. Insert Merchant
     sqlx::query(
-        r#"INSERT INTO merchants (id, tenant_id, name, email, password_hash, api_key, api_secret_hash, webhook_url, webhook_secret, business_name, business_type) 
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)"#
+        r#"INSERT INTO merchants (
+               id, tenant_id, name, email, password_hash, api_key, api_secret_hash, webhook_url,
+               webhook_secret, webhook_secret_ciphertext, webhook_secret_nonce, webhook_secret_hint,
+               business_name, business_type
+           )
+           VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,NULL,$8,$9,$10,$11,$12)"#,
     )
-    .bind(id).bind(body.tenant_id).bind(&body.name).bind(&body.email).bind(&password_hash)
-    .bind(&api_key).bind(&api_secret_hash).bind(&body.webhook_url)
-    .bind(&webhook_secret).bind(&body.business_name).bind(&body.business_type)
-    .execute(&mut *tx).await
+    .bind(id)
+    .bind(body.tenant_id)
+    .bind(&body.name)
+    .bind(&body.email)
+    .bind(&password_hash)
+    .bind(&api_secret_hash)
+    .bind(&body.webhook_url)
+    .bind(&webhook_secret_ciphertext)
+    .bind(&webhook_secret_nonce)
+    .bind(&webhook_secret_hint)
+    .bind(&body.business_name)
+    .bind(&body.business_type)
+    .execute(&mut *tx)
+    .await
     .map_err(|e| {
         if e.to_string().contains("duplicate key") {
             FeelPayError::Conflict("Email already registered".into())
@@ -241,6 +264,8 @@ pub async fn create_merchant(
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
+    store_active_api_key(&mut *tx, id, "live", &api_key).await?;
+
     tx.commit()
         .await
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
@@ -279,10 +304,10 @@ pub async fn get_merchant(
     match row {
         Some(row) => Ok(HttpResponse::Ok().json(serde_json::json!({
             "id": row.get::<Uuid, _>(0),
-            "tenant_id": row.get::<Option<Uuid>, _>(1),
             "name": row.get::<String, _>(2),
             "email": row.get::<String, _>(3),
-            "api_key": row.get::<String, _>(4),
+            "api_key": row.get::<Option<String>, _>(4)
+                .map(|key| masked_key(&key)["display"].clone()),
             "business_name": row.get::<Option<String>, _>(5),
             "status": row.get::<String, _>(6),
         }))),
@@ -352,6 +377,53 @@ fn masked_key(key: &str) -> serde_json::Value {
         "prefix": prefix,
         "last4": last4,
     })
+}
+
+fn hash_api_key(api_key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+async fn store_active_api_key<'e, E>(
+    executor: E,
+    merchant_id: Uuid,
+    environment: &str,
+    api_key: &str,
+) -> Result<(), FeelPayError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let key = masked_key(api_key);
+    sqlx::query(
+        r#"
+        INSERT INTO developer_api_keys (
+            merchant_id, name, environment, key_prefix, encrypted_key_hash, masked_key, scopes, status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, '["payments:write","payments:read","webhooks:write"]'::jsonb, 'active')
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(format!("merchant-{environment}-default"))
+    .bind(environment)
+    .bind(key["prefix"].as_str().unwrap_or_default())
+    .bind(hash_api_key(api_key))
+    .bind(key["display"].as_str().unwrap_or_default())
+    .execute(executor)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    Ok(())
+}
+
+fn encrypt_webhook_secret(
+    state: &AppState,
+    secret: String,
+) -> Result<(String, String), FeelPayError> {
+    VaultCrypto::new(
+        &state.config.vault_encryption_key,
+        state.config.vault_key_id.clone(),
+    )?
+    .encrypt(secret)
 }
 
 fn normalize_phone(raw: &str) -> Result<String, FeelPayError> {
@@ -573,22 +645,6 @@ async fn ensure_team_roles_exist(pool: &sqlx::PgPool) -> Result<(), FeelPayError
     Ok(())
 }
 
-async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, FeelPayError> {
-    let count: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*)
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'merchants'
-          AND column_name IN ('api_key_test', 'api_key_live')
-        "#,
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
-    Ok(count == 2)
-}
-
 async fn has_merchant_column(pool: &sqlx::PgPool, column_name: &str) -> Result<bool, FeelPayError> {
     let exists: bool = sqlx::query_scalar(
         r#"
@@ -646,10 +702,10 @@ pub async fn get_profile(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "id": row.get::<Uuid, _>(0),
-        "tenant_id": row.get::<Option<Uuid>, _>(1),
         "name": row.get::<String, _>(2),
         "email": row.get::<String, _>(3),
-        "api_key": row.get::<String, _>(4),
+        "api_key": row.get::<Option<String>, _>(4)
+            .map(|key| masked_key(&key)["display"].clone()),
         "business_name": row.get::<Option<String>, _>(5),
         "webhook_url": row.get::<Option<String>, _>(6),
         "status": row.get::<String, _>(7),
@@ -1398,7 +1454,6 @@ pub async fn list_merchant_audit_logs(
             serde_json::json!({
                 "id": row.get::<Uuid, _>("id"),
                 "merchant_id": row.get::<Uuid, _>("scoped_merchant_id"),
-                "tenant_id": row.get::<Option<Uuid>, _>("tenant_id"),
                 "action": row.get::<String, _>("action"),
                 "target": row.get::<String, _>("target"),
                 "metadata": row.get::<serde_json::Value, _>("metadata"),
@@ -1431,21 +1486,26 @@ pub async fn roll_webhook_secret(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let new_secret = format!("whsec_{}", Uuid::new_v4().simple());
-
-    sqlx::query("UPDATE merchants SET webhook_secret = $2, updated_at = NOW() WHERE id = $1")
-        .bind(merchant_id)
-        .bind(&new_secret)
-        .execute(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
-
-    let allow_secret_reveal =
-        std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
     let hint = format!(
         "{}...{}",
         &new_secret[..6],
         &new_secret[new_secret.len() - 4..]
     );
+    let (ciphertext, nonce) = encrypt_webhook_secret(state.get_ref(), new_secret.clone())?;
+
+    sqlx::query(
+        "UPDATE merchants SET webhook_secret = NULL, webhook_secret_ciphertext = $2, webhook_secret_nonce = $3, webhook_secret_hint = $4, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .bind(ciphertext)
+    .bind(nonce)
+    .bind(&hint)
+    .execute(&state.db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+    let allow_secret_reveal =
+        std::env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".into()) == "true";
 
     let mut response = serde_json::json!({
         "message": "Webhook secret rotated. Update receiver verification key.",
@@ -1486,74 +1546,33 @@ pub async fn get_keys(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let env = request_environment(&req);
-    let dual_cols = has_dual_api_key_columns(&state.db).await?;
-    let row = if dual_cols {
-        sqlx::query("SELECT api_key, api_key_test, api_key_live FROM merchants WHERE id = $1")
-            .bind(merchant_id)
-            .fetch_optional(&state.db)
-            .await
-    } else {
-        sqlx::query("SELECT api_key FROM merchants WHERE id = $1")
-            .bind(merchant_id)
-            .fetch_optional(&state.db)
-            .await
-    }
+    let row = sqlx::query(
+        r#"
+        SELECT masked_key, created_at, last_used_at
+        FROM developer_api_keys
+        WHERE merchant_id = $1
+          AND environment = $2
+          AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(merchant_id)
+    .bind(env)
+    .fetch_optional(&state.db)
+    .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let Some(row) = row else {
         return Err(FeelPayError::NotFound("Merchant not found".into()));
     };
 
-    let selected = if dual_cols {
-        let api_key_legacy = row.get::<String, _>(0);
-        let api_key_test = row.get::<Option<String>, _>(1);
-        let api_key_live = row.get::<Option<String>, _>(2);
-        let mut selected = if env == "live" {
-            api_key_live.unwrap_or_else(|| api_key_legacy.clone())
-        } else {
-            api_key_test.unwrap_or_else(|| api_key_legacy.clone())
-        };
-
-        // Self-heal legacy backfill mismatch: keep env-prefixed keys consistent.
-        let expected_prefix = if env == "live" {
-            "fp_live_"
-        } else {
-            "fp_test_"
-        };
-        if !selected.starts_with(expected_prefix) {
-            let regenerated = if env == "live" {
-                format!("fp_live_{}", Uuid::new_v4().simple())
-            } else {
-                format!("fp_test_{}", Uuid::new_v4().simple())
-            };
-
-            let sql = if env == "live" {
-                "UPDATE merchants SET api_key_live = $2, updated_at = NOW() WHERE id = $1"
-            } else {
-                "UPDATE merchants SET api_key_test = $2, updated_at = NOW() WHERE id = $1"
-            };
-
-            sqlx::query(sql)
-                .bind(merchant_id)
-                .bind(&regenerated)
-                .execute(&state.db)
-                .await
-                .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
-
-            selected = regenerated;
-        }
-
-        selected
-    } else {
-        row.get::<String, _>(0)
-    };
-
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "api_key": masked_key(&selected)["display"].as_str().unwrap_or_default(),
-        "key": masked_key(&selected),
+        "api_key": row.get::<String, _>("masked_key"),
+        "key": { "display": row.get::<String, _>("masked_key") },
         "environment": env,
-        "created_at": chrono::Utc::now().to_rfc3339(),
-        "last_used_at": serde_json::Value::Null,
+        "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at").to_rfc3339(),
+        "last_used_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("last_used_at"),
         "scopes": ["payments:write", "payments:read", "webhooks:write"],
         "status": "active"
     })))
@@ -1576,7 +1595,6 @@ pub async fn roll_keys(
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
     let env = request_environment(&req);
-    let dual_cols = has_dual_api_key_columns(&state.db).await?;
     let api_key = if env == "live" {
         format!("fp_live_{}", Uuid::new_v4().simple())
     } else {
@@ -1591,37 +1609,29 @@ pub async fn roll_keys(
         .map_err(|e| FeelPayError::Internal(format!("Hash: {}", e)))?
         .to_string();
 
-    if dual_cols && env == "live" {
-        sqlx::query(
-            "UPDATE merchants SET api_key_live = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
-        )
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    sqlx::query("UPDATE merchants SET api_secret_hash = $2, updated_at = NOW() WHERE id = $1")
         .bind(merchant_id)
-        .bind(&api_key)
         .bind(&api_secret_hash)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
-    } else if dual_cols {
-        sqlx::query(
-            "UPDATE merchants SET api_key_test = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(merchant_id)
-        .bind(&api_key)
-        .bind(&api_secret_hash)
-        .execute(&state.db)
+    sqlx::query(
+        "UPDATE developer_api_keys SET status = 'revoked', updated_at = NOW() WHERE merchant_id = $1 AND environment = $2 AND status = 'active'",
+    )
+    .bind(merchant_id)
+    .bind(env)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    store_active_api_key(&mut *tx, merchant_id, env, &api_key).await?;
+    tx.commit()
         .await
-        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
-    } else {
-        sqlx::query(
-            "UPDATE merchants SET api_key = $2, api_secret_hash = $3, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(merchant_id)
-        .bind(&api_key)
-        .bind(&api_secret_hash)
-        .execute(&state.db)
-        .await
-        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
-    }
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let resp = serde_json::json!({
         "api_key": masked_key(&api_key)["display"].as_str().unwrap_or_default(),
@@ -1673,7 +1683,7 @@ pub async fn login_merchant(
     let name: String = m.get("name");
     let email: String = m.get("email");
     let password_hash: String = m.get("password_hash");
-    let api_key: String = m.get("api_key");
+    let api_key: Option<String> = m.get("api_key");
 
     let argon2 = Argon2::default();
     let parsed_hash = PasswordHash::new(&password_hash)
@@ -1717,7 +1727,7 @@ pub async fn login_merchant(
         "role": role,
         "name": name,
         "email": email,
-        "api_key": api_key,
+        "api_key": api_key.map(|key| masked_key(&key)["display"].clone()),
         "expires_in": MERCHANT_SESSION_SECONDS,
         "expires_at": expires_at.to_rfc3339()
     })))
@@ -1817,7 +1827,7 @@ pub async fn verify_mfa_merchant(
                     "role": role,
                     "name": m.name,
                     "email": m.email,
-                    "api_key": m.api_key,
+                    "api_key": m.api_key.map(|key| masked_key(&key)["display"].clone()),
                     "expires_in": MERCHANT_SESSION_SECONDS,
                     "expires_at": expires_at.to_rfc3339()
                 })))

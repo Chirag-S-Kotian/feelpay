@@ -1,6 +1,7 @@
 use crate::engine::services::webhook_test::WebhookTestService;
 use crate::error::FeelPayError;
 use crate::middleware::auth::JwtClaims;
+use crate::vault::crypto::VaultCrypto;
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -30,6 +31,12 @@ pub struct TestWebhookResponse {
     pub error_message: Option<String>,
     pub created_at: String,
     pub last_attempt_at: String,
+}
+
+fn webhook_crypto() -> Result<VaultCrypto, FeelPayError> {
+    let key = std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_else(|_| "0".repeat(64));
+    let key_id = std::env::var("VAULT_KEY_ID").unwrap_or_else(|_| "key_v1".into());
+    VaultCrypto::new(&key, key_id)
 }
 
 /// Send test webhook endpoint
@@ -67,7 +74,9 @@ pub async fn send_test_webhook(
         return Err(FeelPayError::BadRequest("event_type is required".into()));
     }
 
-    let row = sqlx::query("SELECT webhook_url, webhook_secret FROM merchants WHERE id = $1")
+    let row = sqlx::query(
+        "SELECT webhook_url, webhook_secret, webhook_secret_ciphertext, webhook_secret_nonce FROM merchants WHERE id = $1",
+    )
         .bind(merchant_id)
         .fetch_optional(db.get_ref())
         .await
@@ -85,7 +94,13 @@ pub async fn send_test_webhook(
     let webhook_url = payload_webhook_url
         .clone()
         .or_else(|| row.get::<Option<String>, _>(0));
-    let mut webhook_secret = row.get::<Option<String>, _>(1);
+    let mut webhook_secret = match (
+        row.get::<Option<String>, _>(2),
+        row.get::<Option<String>, _>(3),
+    ) {
+        (Some(ciphertext), Some(nonce)) => Some(webhook_crypto()?.decrypt(&ciphertext, &nonce)?),
+        _ => row.get::<Option<String>, _>(1),
+    };
 
     let env = match http_req
         .headers()
@@ -121,9 +136,19 @@ pub async fn send_test_webhook(
 
     if webhook_secret.is_none() {
         let new_secret = format!("whsec_{}", Uuid::new_v4().simple());
-        sqlx::query("UPDATE merchants SET webhook_secret = $2, updated_at = NOW() WHERE id = $1")
+        let hint = format!(
+            "{}...{}",
+            &new_secret[..6],
+            &new_secret[new_secret.len() - 4..]
+        );
+        let (ciphertext, nonce) = webhook_crypto()?.encrypt(new_secret.clone())?;
+        sqlx::query(
+            "UPDATE merchants SET webhook_secret = NULL, webhook_secret_ciphertext = $2, webhook_secret_nonce = $3, webhook_secret_hint = $4, updated_at = NOW() WHERE id = $1",
+        )
             .bind(merchant_id)
-            .bind(&new_secret)
+            .bind(ciphertext)
+            .bind(nonce)
+            .bind(hint)
             .execute(db.get_ref())
             .await
             .map_err(|e| FeelPayError::Database(e.to_string()))?;

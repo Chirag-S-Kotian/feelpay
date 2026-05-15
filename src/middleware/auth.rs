@@ -53,6 +53,12 @@ fn bearer_token_hash(token: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+fn hash_api_key(api_key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 fn bearer_token_from_header(value: &str) -> Option<String> {
     value
         .trim()
@@ -61,6 +67,59 @@ fn bearer_token_from_header(value: &str) -> Option<String> {
         .map(str::trim)
         .filter(|token| !token.is_empty())
         .map(str::to_string)
+}
+
+fn is_safe_method(method: &actix_web::http::Method) -> bool {
+    matches!(
+        *method,
+        actix_web::http::Method::GET
+            | actix_web::http::Method::HEAD
+            | actix_web::http::Method::OPTIONS
+    )
+}
+
+fn merchant_role_allows_request(role: &str, method: &actix_web::http::Method, path: &str) -> bool {
+    if !role.starts_with("merchant_") {
+        return true;
+    }
+    if matches!(role, "merchant_owner" | "merchant_admin") {
+        return true;
+    }
+    if path == "/v1/merchants/logout" {
+        return true;
+    }
+
+    let safe = is_safe_method(method);
+    match role {
+        "merchant_read_only" | "merchant_viewer" => safe,
+        "merchant_developer" => {
+            path.starts_with("/v1/developers")
+                || path.starts_with("/v1/merchants/keys")
+                || path.starts_with("/v1/merchants/webhook-secret")
+                || path.contains("/webhooks/")
+                || (safe && path.starts_with("/v1/merchants/settings/security"))
+        }
+        "merchant_finance" => {
+            path.starts_with("/v1/payments")
+                || path.starts_with("/v1/refunds")
+                || path.starts_with("/v1/settlements")
+                || path.starts_with("/v1/reports")
+                || path.starts_with("/v1/payouts")
+                || path.contains("/exports")
+                || (safe && path.starts_with("/v1/analytics"))
+        }
+        "merchant_support" | "merchant_staff" => {
+            if !safe {
+                return path.starts_with("/v1/disputes/");
+            }
+            path.starts_with("/v1/payments")
+                || path.starts_with("/v1/refunds")
+                || path.starts_with("/v1/customers")
+                || path.starts_with("/v1/disputes")
+                || path.starts_with("/v1/notifications")
+        }
+        _ => false,
+    }
 }
 
 pub fn bearer_token_from_request(req: &HttpRequest) -> Option<String> {
@@ -102,20 +161,42 @@ pub fn revoke_bearer_token(
         .is_ok()
 }
 
-async fn has_dual_api_key_columns(pool: &sqlx::PgPool) -> Result<bool, actix_web::Error> {
-    let count: i64 = sqlx::query_scalar(
+async fn merchant_from_hashed_api_key(
+    pool: &sqlx::PgPool,
+    api_key: &str,
+    env_mode: EnvironmentMode,
+) -> Result<Option<(Uuid, Option<Uuid>)>, actix_web::Error> {
+    let environment = match env_mode {
+        EnvironmentMode::Live => "live",
+        EnvironmentMode::Test => "test",
+    };
+    let row = sqlx::query_as::<_, (Uuid, Option<Uuid>, Uuid)>(
         r#"
-        SELECT COUNT(*)
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'merchants'
-          AND column_name IN ('api_key_test', 'api_key_live')
+        SELECT m.id, m.tenant_id, k.id
+        FROM developer_api_keys k
+        JOIN merchants m ON m.id = k.merchant_id
+        WHERE m.status = 'active'
+          AND k.status = 'active'
+          AND k.environment = $2
+          AND k.encrypted_key_hash = $1
+          AND (k.expires_at IS NULL OR k.expires_at > NOW())
+        LIMIT 1
         "#,
     )
-    .fetch_one(pool)
+    .bind(hash_api_key(api_key))
+    .bind(environment)
+    .fetch_optional(pool)
     .await
-    .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to inspect schema"))?;
-    Ok(count == 2)
+    .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to validate api key"))?;
+
+    if let Some((merchant_id, tenant_id, key_id)) = row {
+        let _ = sqlx::query("UPDATE developer_api_keys SET last_used_at = NOW() WHERE id = $1")
+            .bind(key_id)
+            .execute(pool)
+            .await;
+        return Ok(Some((merchant_id, tenant_id)));
+    }
+    Ok(None)
 }
 
 impl FromRequest for Claims {
@@ -229,38 +310,7 @@ where
                 ));
             };
 
-            let dual_cols = has_dual_api_key_columns(pool.get_ref()).await?;
-            let merchant = if dual_cols {
-                let env_name = match env_mode {
-                    EnvironmentMode::Live => "live",
-                    EnvironmentMode::Test => "test",
-                };
-                sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
-                    r#"
-                    SELECT id, tenant_id
-                    FROM merchants
-                    WHERE status = 'active'
-                      AND (
-                        ($2 = 'live' AND COALESCE(api_key_live, api_key) = $1)
-                        OR
-                        ($2 = 'test' AND COALESCE(api_key_test, api_key) = $1)
-                      )
-                    LIMIT 1
-                    "#,
-                )
-                .bind(api_key)
-                .bind(env_name)
-                .fetch_optional(pool.get_ref())
-                .await
-            } else {
-                sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
-                    "SELECT id, tenant_id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
-                )
-                .bind(api_key)
-                .fetch_optional(pool.get_ref())
-                .await
-            }
-            .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to validate api key"))?;
+            let merchant = merchant_from_hashed_api_key(pool.get_ref(), api_key, env_mode).await?;
 
             let Some((merchant_id, tenant_id)) = merchant else {
                 return Err(actix_web::error::ErrorUnauthorized("Invalid API key"));
@@ -376,6 +426,12 @@ where
             }
             req.extensions_mut().insert(UserRole(claims.role.clone()));
 
+            if !merchant_role_allows_request(&claims.role, req.method(), req.path()) {
+                return Err(actix_web::error::ErrorForbidden(
+                    "Merchant role cannot access this operation",
+                ));
+            }
+
             service.call(req).await
         })
     }
@@ -439,38 +495,8 @@ where
 
             if let Some(key) = api_key {
                 if let Some(pool) = req.app_data::<web::Data<sqlx::PgPool>>() {
-                    let dual_cols = has_dual_api_key_columns(pool.get_ref()).await?;
-                    let merchant = if dual_cols {
-                        let env_name = match env_mode {
-                            EnvironmentMode::Live => "live",
-                            EnvironmentMode::Test => "test",
-                        };
-                        sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
-                            r#"
-                            SELECT id, tenant_id
-                            FROM merchants
-                            WHERE status = 'active'
-                              AND (
-                                ($2 = 'live' AND COALESCE(api_key_live, api_key) = $1)
-                                OR
-                                ($2 = 'test' AND COALESCE(api_key_test, api_key) = $1)
-                              )
-                            LIMIT 1
-                            "#,
-                        )
-                        .bind(key)
-                        .bind(env_name)
-                        .fetch_optional(pool.get_ref())
-                        .await
-                    } else {
-                        sqlx::query_as::<_, (Uuid, Option<Uuid>)>(
-                            "SELECT id, tenant_id FROM merchants WHERE api_key = $1 AND status = 'active' LIMIT 1",
-                        )
-                        .bind(key)
-                        .fetch_optional(pool.get_ref())
-                        .await
-                    }
-                    .map_err(|_| actix_web::error::ErrorInternalServerError("Auth validation failed"))?;
+                    let merchant =
+                        merchant_from_hashed_api_key(pool.get_ref(), key, env_mode).await?;
 
                     if let Some((mid, tid)) = merchant {
                         req.extensions_mut().insert(MerchantId(mid));
@@ -514,7 +540,13 @@ where
                         if let Some(mid) = claims.merchant_id {
                             req.extensions_mut().insert(MerchantId(mid));
                         }
-                        req.extensions_mut().insert(UserRole(claims.role));
+                        let role = claims.role;
+                        req.extensions_mut().insert(UserRole(role.clone()));
+                        if !merchant_role_allows_request(&role, req.method(), req.path()) {
+                            return Err(actix_web::error::ErrorForbidden(
+                                "Merchant role cannot access this operation",
+                            ));
+                        }
                         return service.call(req).await;
                     }
                 }
@@ -524,6 +556,55 @@ where
                 "Authentication required: Provide a valid x-api-key or Bearer token",
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merchant_role_allows_request;
+    use actix_web::http::Method;
+
+    #[test]
+    fn merchant_role_matrix_blocks_sensitive_mutations() {
+        assert!(!merchant_role_allows_request(
+            "merchant_read_only",
+            &Method::POST,
+            "/v1/payments/abc/refund"
+        ));
+        assert!(!merchant_role_allows_request(
+            "merchant_support",
+            &Method::POST,
+            "/v1/merchants/keys/roll"
+        ));
+        assert!(!merchant_role_allows_request(
+            "merchant_finance",
+            &Method::POST,
+            "/v1/merchants/team/invite"
+        ));
+    }
+
+    #[test]
+    fn merchant_role_matrix_allows_expected_workflows() {
+        assert!(merchant_role_allows_request(
+            "merchant_developer",
+            &Method::POST,
+            "/v1/merchants/keys/roll"
+        ));
+        assert!(merchant_role_allows_request(
+            "merchant_finance",
+            &Method::POST,
+            "/v1/payments/abc/refund"
+        ));
+        assert!(merchant_role_allows_request(
+            "merchant_support",
+            &Method::POST,
+            "/v1/disputes/abc/evidence"
+        ));
+        assert!(merchant_role_allows_request(
+            "merchant_read_only",
+            &Method::GET,
+            "/v1/settlements"
+        ));
     }
 }
 
