@@ -82,6 +82,32 @@ struct StatusRequest {
     live_enable_approved: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+struct UpsertNotificationTemplateRequest {
+    event_type: String,
+    channel: String,
+    environment: String,
+    subject: Option<String>,
+    body: String,
+    sms_body: Option<String>,
+    enabled: bool,
+    default_email_provider_id: Option<Uuid>,
+    default_sms_provider_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TemplatePreviewRequest {
+    sample_data: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct TemplateTestRequest {
+    recipient: Option<String>,
+    phone: Option<String>,
+    sample_data: Value,
+    live_test_approved: Option<bool>,
+}
+
 #[derive(Debug, Clone)]
 struct SmtpConfig {
     host: String,
@@ -96,6 +122,7 @@ struct SmtpConfig {
 
 #[derive(Debug, Clone)]
 struct GenericSmsConfig {
+    provider_code: String,
     base_url: String,
     method: String,
     headers_template: serde_json::Map<String, Value>,
@@ -104,6 +131,8 @@ struct GenericSmsConfig {
     route_type: Option<String>,
     template_mapping: serde_json::Map<String, Value>,
     auth_token: String,
+    account_sid: Option<String>,
+    from_number: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -139,6 +168,24 @@ const KINDS: &[&str] = &[
     "notification",
     "reconciliation",
 ];
+const TEMPLATE_TYPES: &[&str] = &[
+    "onboarding",
+    "otp",
+    "kyc_approved",
+    "kyc_rejected",
+    "payout_processed",
+    "payout_failed",
+    "refund_created",
+    "refund_succeeded",
+    "refund_failed",
+    "dispute_opened",
+    "dispute_deadline",
+    "api_key_created",
+    "api_key_revoked",
+    "webhook_failure",
+    "settlement_processed",
+    "settlement_failed",
+];
 
 fn adapter_for_kind(kind: &str) -> Option<Box<dyn IntegrationAdapter>> {
     let kind = match kind {
@@ -152,6 +199,16 @@ fn adapter_for_kind(kind: &str) -> Option<Box<dyn IntegrationAdapter>> {
         _ => return None,
     };
     Some(Box::new(GenericAdapter { kind }))
+}
+
+fn action_allowed(provider_kind: &str, action: &str) -> bool {
+    match action {
+        "test_email" => matches!(provider_kind, "email" | "notification"),
+        "test_sms" => provider_kind == "sms",
+        "test_otp" => matches!(provider_kind, "sms" | "otp"),
+        "test_bank_payout" => provider_kind == "bank_payout",
+        _ => true,
+    }
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -186,7 +243,25 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::post().to(test_bank_payout),
             )
             .route("/providers/{id}/logs", web::get().to(list_provider_logs))
-            .route("/logs", web::get().to(list_logs)),
+            .route("/logs", web::get().to(list_logs))
+            .route("/templates", web::get().to(list_notification_templates))
+            .route("/templates", web::post().to(create_notification_template))
+            .route(
+                "/templates/{id}",
+                web::put().to(update_notification_template),
+            )
+            .route(
+                "/templates/{id}/status",
+                web::post().to(set_notification_template_status),
+            )
+            .route(
+                "/templates/{id}/preview",
+                web::post().to(preview_notification_template),
+            )
+            .route(
+                "/templates/{id}/test",
+                web::post().to(test_notification_template),
+            ),
     );
 }
 
@@ -342,6 +417,48 @@ fn mask_phone(value: &str) -> String {
     format!("******{}", &digits[digits.len() - 4..])
 }
 
+fn extract_template_variables(values: &[Option<&str>]) -> Vec<String> {
+    let regex = regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}").expect("template regex");
+    let mut variables = values
+        .iter()
+        .flatten()
+        .flat_map(|value| regex.captures_iter(value))
+        .filter_map(|captures| captures.get(1).map(|value| value.as_str().to_string()))
+        .collect::<Vec<_>>();
+    variables.sort();
+    variables.dedup();
+    variables
+}
+
+fn render_notification_text(
+    template: &str,
+    allowed_variables: &[String],
+    sample_data: &Value,
+) -> Result<String, String> {
+    let variables = extract_template_variables(&[Some(template)]);
+    let unknown = variables
+        .iter()
+        .filter(|variable| !allowed_variables.contains(variable))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unknown.is_empty() {
+        return Err(format!("Unknown variables: {}", unknown.join(", ")));
+    }
+    let mut rendered = template.to_string();
+    for variable in allowed_variables {
+        let value = sample_data
+            .get(variable)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("Missing variable: {variable}"))?;
+        rendered = rendered.replace(&format!("{{{{{variable}}}}}"), value);
+        rendered = rendered.replace(&format!("{{{{ {variable} }}}}"), value);
+    }
+    if rendered.contains("{{") || rendered.contains("}}") {
+        return Err("Template contains unresolved variables".to_string());
+    }
+    Ok(rendered)
+}
+
 fn validate_sms_url(environment: &str, value: &str) -> Result<(), String> {
     if value.starts_with("https://") {
         return Ok(());
@@ -421,35 +538,66 @@ async fn generic_sms_config(
     environment: &str,
     config: &Value,
 ) -> Result<GenericSmsConfig, String> {
-    let base_url = required_string(config, "sms_base_url")?;
-    validate_sms_url(environment, &base_url)?;
-    let method = required_string(config, "sms_http_method")?.to_uppercase();
+    let provider_code = config
+        .get("provider_code")
+        .and_then(Value::as_str)
+        .unwrap_or("generic_http")
+        .to_lowercase();
+    let base_url = if provider_code == "twilio" {
+        String::new()
+    } else {
+        let value = required_string(config, "sms_base_url")?;
+        validate_sms_url(environment, &value)?;
+        value
+    };
+    let method = if provider_code == "twilio" {
+        "POST".to_string()
+    } else {
+        required_string(config, "sms_http_method")?.to_uppercase()
+    };
     if !matches!(method.as_str(), "POST" | "PUT") {
         return Err("sms_http_method must be POST or PUT".to_string());
     }
-    let headers_template = config
-        .get("sms_headers_template")
-        .and_then(Value::as_object)
-        .cloned()
-        .ok_or_else(|| "Missing required SMS config: sms_headers_template".to_string())?;
+    let headers_template = if provider_code == "twilio" {
+        serde_json::Map::new()
+    } else {
+        config
+            .get("sms_headers_template")
+            .and_then(Value::as_object)
+            .cloned()
+            .ok_or_else(|| "Missing required SMS config: sms_headers_template".to_string())?
+    };
     for value in headers_template.values() {
         if !value.is_string() {
             return Err("sms_headers_template values must be strings".to_string());
         }
     }
-    let body_template = config
-        .get("sms_body_template")
-        .cloned()
-        .ok_or_else(|| "Missing required SMS config: sms_body_template".to_string())?;
+    let body_template = if provider_code == "twilio" {
+        json!({})
+    } else {
+        config
+            .get("sms_body_template")
+            .cloned()
+            .ok_or_else(|| "Missing required SMS config: sms_body_template".to_string())?
+    };
     if !body_template.is_object() {
         return Err("sms_body_template must be a JSON object".to_string());
     }
     Ok(GenericSmsConfig {
+        provider_code: provider_code.clone(),
         base_url,
         method,
         headers_template,
         body_template,
-        sender_id: required_string(config, "sender_id")?,
+        sender_id: if provider_code == "twilio" {
+            config
+                .get("sender_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        } else {
+            required_string(config, "sender_id")?
+        },
         route_type: config
             .get("route_type")
             .and_then(Value::as_str)
@@ -460,7 +608,21 @@ async fn generic_sms_config(
             .cloned()
             .unwrap_or_default(),
         auth_token: load_secret(pool, provider_id, "auth_token").await?,
+        account_sid: config
+            .get("account_sid")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        from_number: config
+            .get("from_number")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
+}
+
+#[derive(Debug, Clone)]
+struct SmsDeliveryResult {
+    provider_message_id: Option<String>,
+    provider_status: Option<String>,
 }
 
 async fn send_generic_sms(
@@ -468,7 +630,10 @@ async fn send_generic_sms(
     phone: &str,
     message: &str,
     template_key: &str,
-) -> Result<(), String> {
+) -> Result<SmsDeliveryResult, String> {
+    if config.provider_code == "twilio" {
+        return send_twilio_sms(config, phone, message).await;
+    }
     let template_id = config
         .template_mapping
         .get(template_key)
@@ -511,10 +676,61 @@ async fn send_generic_sms(
         .await
         .map_err(|_| "SMS provider request failed".to_string())?;
     if response.status().is_success() {
-        Ok(())
+        Ok(SmsDeliveryResult {
+            provider_message_id: None,
+            provider_status: Some("accepted".to_string()),
+        })
     } else {
         Err(format!("SMS provider returned {}", response.status()))
     }
+}
+
+async fn send_twilio_sms(
+    config: &GenericSmsConfig,
+    phone: &str,
+    message: &str,
+) -> Result<SmsDeliveryResult, String> {
+    let account_sid = config
+        .account_sid
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Missing required config: account_sid".to_string())?;
+    let from_number = config
+        .from_number
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Missing required config: from_number".to_string())?;
+    let url = format!("https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json");
+    let response = reqwest::Client::new()
+        .post(url)
+        .basic_auth(account_sid, Some(&config.auth_token))
+        .form(&[("To", phone), ("From", from_number), ("Body", message)])
+        .send()
+        .await
+        .map_err(|_| "Twilio request failed".to_string())?;
+    let status = response.status();
+    let payload = response
+        .json::<Value>()
+        .await
+        .map_err(|_| "Twilio response was not valid JSON".to_string())?;
+    if !status.is_success() {
+        let code = payload
+            .get("code")
+            .and_then(Value::as_i64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        return Err(format!("Twilio returned {status} (code {code})"));
+    }
+    Ok(SmsDeliveryResult {
+        provider_message_id: payload
+            .get("sid")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        provider_status: payload
+            .get("status")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
 }
 
 async fn ensure_internal_admin(
@@ -1064,13 +1280,7 @@ async fn provider_action(
     let provider_kind: String = provider.get("provider_kind");
     let environment: String = provider.get("environment");
     let status: String = provider.get("status");
-    let allowed = match action {
-        "test_email" => matches!(provider_kind.as_str(), "email" | "notification"),
-        "test_sms" => provider_kind == "sms",
-        "test_otp" => matches!(provider_kind.as_str(), "sms" | "otp"),
-        "test_bank_payout" => provider_kind == "bank_payout",
-        _ => true,
-    };
+    let allowed = action_allowed(&provider_kind, action);
     if !allowed {
         return HttpResponse::BadRequest().json(json!({
             "message": "Action is not supported for this provider kind"
@@ -1107,6 +1317,7 @@ async fn provider_action(
     } else {
         Some("Provider is disabled".to_string())
     };
+    let mut response_summary = json!({ "ok": success });
     if success && action == "test_email" {
         let recipient = match body.as_ref().and_then(|value| value.recipient.as_deref()) {
             Some(value) if !value.trim().is_empty() => value.trim(),
@@ -1166,10 +1377,21 @@ async fn provider_action(
             .await
         }
         .await;
-        if let Err(message) = send_result {
-            success = false;
-            error_code = Some("sms_delivery_failed");
-            error_message = Some(message);
+        let delivery_result = match send_result {
+            Ok(result) => Some(result),
+            Err(message) => {
+                success = false;
+                error_code = Some("sms_delivery_failed");
+                error_message = Some(message);
+                None
+            }
+        };
+        if let Some(result) = delivery_result {
+            response_summary = json!({
+                "ok": true,
+                "provider_message_id": result.provider_message_id,
+                "provider_status": result.provider_status,
+            });
         }
     }
     let _ = sqlx::query(
@@ -1211,7 +1433,7 @@ async fn provider_action(
         error_code,
         error_message.as_deref(),
         summary.clone(),
-        json!({ "ok": success }),
+        response_summary,
     )
     .await;
     audit(
@@ -1366,6 +1588,461 @@ async fn list_logs(pool: web::Data<PgPool>, request: HttpRequest) -> impl Respon
     list_logs_for(pool, None).await
 }
 
+async fn list_notification_templates(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT id, event_type, channel, environment, subject, body, sms_body, variables, is_active,
+               default_email_provider_id, default_sms_provider_id, created_at, updated_at
+        FROM notification_templates
+        ORDER BY event_type, environment, channel
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+    let items = rows.into_iter().map(|row| json!({
+        "id": row.get::<Uuid, _>("id"),
+        "event_type": row.get::<String, _>("event_type"),
+        "channel": row.get::<String, _>("channel"),
+        "environment": row.get::<String, _>("environment"),
+        "subject": row.get::<Option<String>, _>("subject"),
+        "body": row.get::<String, _>("body"),
+        "sms_body": row.get::<Option<String>, _>("sms_body"),
+        "allowed_variables": row.get::<Vec<String>, _>("variables"),
+        "enabled": row.get::<bool, _>("is_active"),
+        "default_email_provider_id": row.get::<Option<Uuid>, _>("default_email_provider_id"),
+        "default_sms_provider_id": row.get::<Option<Uuid>, _>("default_sms_provider_id"),
+        "created_at": row.get::<DateTime<Utc>, _>("created_at"),
+        "updated_at": row.get::<DateTime<Utc>, _>("updated_at"),
+    })).collect::<Vec<_>>();
+    HttpResponse::Ok().json(json!({ "items": items, "template_types": TEMPLATE_TYPES }))
+}
+
+fn validate_template_request(
+    body: &UpsertNotificationTemplateRequest,
+) -> Result<Vec<String>, String> {
+    if !TEMPLATE_TYPES.contains(&body.event_type.as_str()) {
+        return Err("Unsupported template type".to_string());
+    }
+    if !matches!(body.channel.as_str(), "email" | "sms" | "both") {
+        return Err("channel must be email, sms, or both".to_string());
+    }
+    if !matches!(body.environment.as_str(), "test" | "live") {
+        return Err("environment must be test or live".to_string());
+    }
+    if matches!(body.channel.as_str(), "email" | "both")
+        && body.subject.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return Err("subject is required for email templates".to_string());
+    }
+    if matches!(body.channel.as_str(), "sms" | "both")
+        && body.sms_body.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return Err("sms_body is required for sms templates".to_string());
+    }
+    Ok(extract_template_variables(&[
+        body.subject.as_deref(),
+        Some(body.body.as_str()),
+        body.sms_body.as_deref(),
+    ]))
+}
+
+async fn create_notification_template(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    body: web::Json<UpsertNotificationTemplateRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let variables = match validate_template_request(&body) {
+        Ok(value) => value,
+        Err(message) => return HttpResponse::BadRequest().json(json!({ "message": message })),
+    };
+    let created = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO notification_templates (
+            event_type, channel, environment, subject, body, sms_body, variables, is_active,
+            default_email_provider_id, default_sms_provider_id
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id
+        "#,
+    )
+    .bind(&body.event_type)
+    .bind(&body.channel)
+    .bind(&body.environment)
+    .bind(&body.subject)
+    .bind(&body.body)
+    .bind(&body.sms_body)
+    .bind(&variables)
+    .bind(body.enabled)
+    .bind(body.default_email_provider_id)
+    .bind(body.default_sms_provider_id)
+    .fetch_one(pool.get_ref())
+    .await;
+    match created {
+        Ok(id) => {
+            audit(
+                pool.get_ref(),
+                &request,
+                "notification_template.created",
+                Some(id),
+                json!({
+                    "event_type": body.event_type,
+                    "channel": body.channel,
+                    "environment": body.environment,
+                    "allowed_variables": variables,
+                }),
+            )
+            .await;
+            HttpResponse::Created().json(json!({ "id": id }))
+        }
+        Err(error) => HttpResponse::BadRequest().json(json!({ "message": error.to_string() })),
+    }
+}
+
+async fn update_notification_template(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<UpsertNotificationTemplateRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let variables = match validate_template_request(&body) {
+        Ok(value) => value,
+        Err(message) => return HttpResponse::BadRequest().json(json!({ "message": message })),
+    };
+    let id = path.into_inner();
+    let result = sqlx::query(
+        r#"
+        UPDATE notification_templates
+        SET event_type=$2, channel=$3, environment=$4, subject=$5, body=$6, sms_body=$7,
+            variables=$8, is_active=$9, default_email_provider_id=$10,
+            default_sms_provider_id=$11, updated_at=NOW()
+        WHERE id=$1
+        "#,
+    )
+    .bind(id)
+    .bind(&body.event_type)
+    .bind(&body.channel)
+    .bind(&body.environment)
+    .bind(&body.subject)
+    .bind(&body.body)
+    .bind(&body.sms_body)
+    .bind(&variables)
+    .bind(body.enabled)
+    .bind(body.default_email_provider_id)
+    .bind(body.default_sms_provider_id)
+    .execute(pool.get_ref())
+    .await;
+    match result {
+        Ok(done) if done.rows_affected() > 0 => {
+            audit(
+                pool.get_ref(),
+                &request,
+                "notification_template.updated",
+                Some(id),
+                json!({
+                    "event_type": body.event_type,
+                    "channel": body.channel,
+                    "environment": body.environment,
+                    "allowed_variables": variables,
+                }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Ok(_) => HttpResponse::NotFound().finish(),
+        Err(error) => HttpResponse::BadRequest().json(json!({ "message": error.to_string() })),
+    }
+}
+
+async fn set_notification_template_status(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<StatusRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let id = path.into_inner();
+    let result =
+        sqlx::query("UPDATE notification_templates SET is_active=$2, updated_at=NOW() WHERE id=$1")
+            .bind(id)
+            .bind(body.enabled)
+            .execute(pool.get_ref())
+            .await;
+    match result {
+        Ok(done) if done.rows_affected() > 0 => {
+            audit(
+                pool.get_ref(),
+                &request,
+                if body.enabled {
+                    "notification_template.enabled"
+                } else {
+                    "notification_template.disabled"
+                },
+                Some(id),
+                json!({ "enabled": body.enabled }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "enabled": body.enabled }))
+        }
+        Ok(_) => HttpResponse::NotFound().finish(),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
+
+async fn notification_template_row(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<
+    Option<(
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Vec<String>,
+        bool,
+        Option<Uuid>,
+        Option<Uuid>,
+    )>,
+    sqlx::Error,
+> {
+    sqlx::query_as(
+        r#"
+        SELECT event_type, channel, environment, subject, body, sms_body, variables, is_active,
+               default_email_provider_id, default_sms_provider_id
+        FROM notification_templates
+        WHERE id=$1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn preview_notification_template(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<TemplatePreviewRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let Some((_, _, _, subject, template_body, sms_body, variables, _, _, _)) =
+        notification_template_row(pool.get_ref(), path.into_inner())
+            .await
+            .ok()
+            .flatten()
+    else {
+        return HttpResponse::NotFound().finish();
+    };
+    let subject = subject
+        .as_deref()
+        .map(|value| render_notification_text(value, &variables, &body.sample_data))
+        .transpose();
+    let body_text = render_notification_text(&template_body, &variables, &body.sample_data);
+    let sms = sms_body
+        .as_deref()
+        .map(|value| render_notification_text(value, &variables, &body.sample_data))
+        .transpose();
+    match (subject, body_text, sms) {
+        (Ok(subject), Ok(body_text), Ok(sms)) => HttpResponse::Ok()
+            .json(json!({ "subject": subject, "body": body_text, "sms_body": sms })),
+        (Err(message), _, _) | (_, Err(message), _) | (_, _, Err(message)) => {
+            HttpResponse::BadRequest().json(json!({ "message": message }))
+        }
+    }
+}
+
+async fn test_notification_template(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<TemplateTestRequest>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let id = path.into_inner();
+    let Some((
+        event_type,
+        channel,
+        environment,
+        subject,
+        template_body,
+        sms_body,
+        variables,
+        enabled,
+        email_provider_id,
+        sms_provider_id,
+    )) = notification_template_row(pool.get_ref(), id)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return HttpResponse::NotFound().finish();
+    };
+    if !enabled {
+        return HttpResponse::BadRequest().json(json!({ "message": "Template is disabled" }));
+    }
+    if environment == "live" && body.live_test_approved != Some(true) {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Live template tests require explicit internal approval" }));
+    }
+    let rendered_subject = subject
+        .as_deref()
+        .map(|value| render_notification_text(value, &variables, &body.sample_data))
+        .transpose();
+    let rendered_body = render_notification_text(&template_body, &variables, &body.sample_data);
+    let rendered_sms = sms_body
+        .as_deref()
+        .map(|value| render_notification_text(value, &variables, &body.sample_data))
+        .transpose();
+    let (Ok(rendered_subject), Ok(rendered_body), Ok(rendered_sms)) =
+        (rendered_subject, rendered_body, rendered_sms)
+    else {
+        return HttpResponse::BadRequest()
+            .json(json!({ "message": "Template variables are incomplete or invalid" }));
+    };
+    let mut sent = Vec::new();
+    if matches!(channel.as_str(), "email" | "both") {
+        let Some(provider_id) = email_provider_id else {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "Missing default email provider" }));
+        };
+        let Some(recipient) = body.recipient.as_deref() else {
+            return HttpResponse::BadRequest().json(json!({ "message": "recipient is required" }));
+        };
+        let provider = sqlx::query(
+            "SELECT environment, status, config FROM integration_providers WHERE id=$1",
+        )
+        .bind(provider_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten();
+        let Some(provider) = provider else {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "Email provider not found" }));
+        };
+        let provider_environment: String = provider.get("environment");
+        if provider_environment != "test"
+            && !(environment == "live" && body.live_test_approved == Some(true))
+        {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "Template tests require a test-mode email provider" }));
+        }
+        if provider.get::<String, _>("status") != "enabled" {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "Email provider is disabled" }));
+        }
+        let config: Value = provider.get("config");
+        let send = async {
+            let smtp = smtp_config(pool.get_ref(), provider_id, &config).await?;
+            let from = parse_mailbox(&format!("{} <{}>", smtp.from_name, smtp.from_email))?;
+            let to = parse_mailbox(recipient)?;
+            let message = Message::builder()
+                .from(from)
+                .to(to)
+                .subject(rendered_subject.clone().unwrap_or_default())
+                .body(rendered_body.clone())
+                .map_err(|_| "Failed to build test email".to_string())?;
+            smtp_transport(&smtp)?
+                .send(message)
+                .await
+                .map_err(|_| "SMTP delivery failed".to_string())
+        }
+        .await;
+        if let Err(message) = send {
+            return HttpResponse::BadRequest().json(json!({ "message": message }));
+        }
+        sent.push("email");
+    }
+    if matches!(channel.as_str(), "sms" | "both") {
+        let Some(provider_id) = sms_provider_id else {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "Missing default SMS provider" }));
+        };
+        let Some(phone) = body.phone.as_deref() else {
+            return HttpResponse::BadRequest().json(json!({ "message": "phone is required" }));
+        };
+        let provider = sqlx::query(
+            "SELECT environment, status, config FROM integration_providers WHERE id=$1",
+        )
+        .bind(provider_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten();
+        let Some(provider) = provider else {
+            return HttpResponse::BadRequest().json(json!({ "message": "SMS provider not found" }));
+        };
+        let provider_environment: String = provider.get("environment");
+        if provider_environment != "test"
+            && !(environment == "live" && body.live_test_approved == Some(true))
+        {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "Template tests require a test-mode SMS provider" }));
+        }
+        if provider.get::<String, _>("status") != "enabled" {
+            return HttpResponse::BadRequest()
+                .json(json!({ "message": "SMS provider is disabled" }));
+        }
+        let config: Value = provider.get("config");
+        let sms = match generic_sms_config(
+            pool.get_ref(),
+            provider_id,
+            &provider.get::<String, _>("environment"),
+            &config,
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(message) => return HttpResponse::BadRequest().json(json!({ "message": message })),
+        };
+        if let Err(message) = send_generic_sms(
+            &sms,
+            phone,
+            rendered_sms.as_deref().unwrap_or(&rendered_body),
+            &event_type,
+        )
+        .await
+        {
+            return HttpResponse::BadRequest().json(json!({ "message": message }));
+        }
+        sent.push("sms");
+    }
+    audit(
+        pool.get_ref(),
+        &request,
+        "notification_template.tested",
+        Some(id),
+        json!({
+            "event_type": event_type,
+            "channels": sent,
+            "recipient": body.recipient.as_ref().map(|_| "redacted"),
+            "phone": body.phone.as_deref().map(mask_phone),
+        }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "status": "success", "channels": sent }))
+}
+
 async fn list_logs_for(pool: web::Data<PgPool>, provider_id: Option<Uuid>) -> HttpResponse {
     let rows = sqlx::query(
         r#"
@@ -1446,5 +2123,29 @@ mod tests {
             "secret",
         )
         .is_err());
+    }
+
+    #[test]
+    fn sms_provider_supports_sms_and_otp_tests() {
+        assert!(action_allowed("sms", "test_sms"));
+        assert!(action_allowed("sms", "test_otp"));
+        assert!(action_allowed("otp", "test_otp"));
+        assert!(!action_allowed("email", "test_sms"));
+    }
+
+    #[test]
+    fn notification_renderer_rejects_missing_and_unknown_variables() {
+        let allowed = vec!["customer_name".to_string()];
+        assert_eq!(
+            render_notification_text(
+                "Hi {{customer_name}}",
+                &allowed,
+                &json!({ "customer_name": "Asha" }),
+            )
+            .expect("render"),
+            "Hi Asha"
+        );
+        assert!(render_notification_text("Hi {{amount}}", &allowed, &json!({})).is_err());
+        assert!(render_notification_text("Hi {{customer_name}}", &allowed, &json!({})).is_err());
     }
 }

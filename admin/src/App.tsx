@@ -28,10 +28,12 @@ import {
   Code2,
   Banknote,
   Boxes,
+  MessageSquareText,
 } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
 import AdminIntegrationCenter from './pages/AdminIntegrationCenter';
+import AdminNotificationTemplates from './pages/AdminNotificationTemplates';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminBulkExport from './pages/AdminBulkExport';
 import Revenue from './pages/Revenue';
@@ -139,6 +141,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { path: '/connectors', label: 'Provider Connectors', icon: Cable, permission: 'providers.manage' },
       { path: '/integration-center', label: 'Integration Center', icon: Boxes, permission: 'providers.manage' },
+      { path: '/notification-templates', label: 'Notification Templates', icon: MessageSquareText, permission: 'providers.manage' },
       { path: '/bank-integrations', label: 'Bank Integrations', icon: Landmark, permission: 'bank_integrations.manage' },
       { path: '/routing-rules', label: 'Routing Rules', icon: RouteIcon, permission: 'routing.manage' },
       { path: '/white-label-checkout', label: 'Platform Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
@@ -269,6 +272,7 @@ function Layout() {
           <Route path="/reconciliation" element={<RequirePermission permission="reconciliation.manage"><ReconciliationPage /></RequirePermission>} />
           <Route path="/connectors" element={<RequirePermission permission="providers.manage"><ProviderConnectorsPage /></RequirePermission>} />
           <Route path="/integration-center" element={<RequirePermission permission="providers.manage"><AdminIntegrationCenter /></RequirePermission>} />
+          <Route path="/notification-templates" element={<RequirePermission permission="providers.manage"><AdminNotificationTemplates /></RequirePermission>} />
           <Route path="/bank-integrations" element={<RequirePermission permission="bank_integrations.manage"><BankIntegrationsPage /></RequirePermission>} />
           <Route path="/routing-rules" element={<RequirePermission permission="routing.manage"><RoutingRulesPage /></RequirePermission>} />
           <Route path="/white-label-checkout" element={<RequirePermission permission="webhook_config.manage"><WhiteLabelCheckoutPage /></RequirePermission>} />

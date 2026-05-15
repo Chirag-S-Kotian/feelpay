@@ -23,6 +23,9 @@ cd .. && cargo run
 ```bash
 # .env
 DATABASE_URL=postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@YOUR_DB_HOST/neondb?sslmode=require
+TEST_DATABASE_URL=postgresql://YOUR_TEST_DB_USER:YOUR_TEST_DB_PASSWORD@YOUR_TEST_DB_HOST/neondb?sslmode=require
+# optional alias
+NEON_TEST_DATABASE_URL=postgresql://YOUR_TEST_DB_USER:YOUR_TEST_DB_PASSWORD@YOUR_TEST_DB_HOST/neondb?sslmode=require
 JWT_SECRET=your_secure_secret_256_bits_minimum
 WEBHOOK_SIGNING_SECRET=whsec_placeholder_example_only
 VAULT_ENCRYPTION_KEY=64_hex_chars_required_for_aes256
@@ -55,6 +58,14 @@ cargo build --release
 pnpm lint         # tsc --noEmit
 cargo check      # rustc
 ```
+
+## Neon Test Database
+
+- Keep `DATABASE_URL` for normal development only.
+- Create a separate Neon dev/test branch and set `TEST_DATABASE_URL` or `NEON_TEST_DATABASE_URL` to that branch URL. Include `sslmode=require` when Neon requires it.
+- Never use a Neon production database for tests or migration validation, and never commit credentials.
+- Run online validation with `./scripts/validate_test_db.sh`; it prefers `TEST_DATABASE_URL`, then `NEON_TEST_DATABASE_URL`, refuses URLs that look production-like or equal `DATABASE_URL`, runs migrations, then runs `cargo test`.
+- Use `SQLX_OFFLINE=true cargo test` only when no reachable test database exists.
 
 ## API Smoke Routes
 

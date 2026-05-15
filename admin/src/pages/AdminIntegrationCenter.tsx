@@ -91,6 +91,9 @@ const DEFAULT_FORM = {
   reply_to: '',
   sender_id: '',
   route_type: '',
+  provider_code: 'generic_http',
+  account_sid: '',
+  from_number: '',
   sms_base_url: '',
   sms_http_method: 'POST',
   sms_headers_template: '{"Authorization":"Bearer {{token}}"}',
@@ -154,6 +157,9 @@ export default function AdminIntegrationCenter() {
     reply_to: form.reply_to || undefined,
     sender_id: form.sender_id || undefined,
     route_type: form.route_type || undefined,
+    provider_code: form.provider_code || undefined,
+    account_sid: form.account_sid || undefined,
+    from_number: form.from_number || undefined,
     sms_base_url: form.sms_base_url || undefined,
     sms_http_method: form.sms_http_method || undefined,
     sms_headers_template: form.sms_headers_template ? JSON.parse(form.sms_headers_template) : undefined,
@@ -224,6 +230,9 @@ export default function AdminIntegrationCenter() {
       reply_to: String(config.reply_to || ''),
       sender_id: String(config.sender_id || ''),
       route_type: String(config.route_type || ''),
+      provider_code: String(config.provider_code || 'generic_http'),
+      account_sid: String(config.account_sid || ''),
+      from_number: String(config.from_number || ''),
       sms_base_url: String(config.sms_base_url || ''),
       sms_http_method: String(config.sms_http_method || 'POST'),
       sms_headers_template: JSON.stringify(config.sms_headers_template || { Authorization: 'Bearer {{token}}' }),
@@ -292,6 +301,9 @@ export default function AdminIntegrationCenter() {
               <Field label="Reply to"><input value={form.reply_to} onChange={event => setForm({ ...form, reply_to: event.target.value })} /></Field>
               <Field label="Sender ID"><input value={form.sender_id} onChange={event => setForm({ ...form, sender_id: event.target.value })} /></Field>
               <Field label="Route type"><input value={form.route_type} onChange={event => setForm({ ...form, route_type: event.target.value })} /></Field>
+              <Field label="Provider code"><Select value={form.provider_code} options={['generic_http', 'twilio']} onChange={provider_code => setForm({ ...form, provider_code })} /></Field>
+              <Field label="Twilio account SID"><input value={form.account_sid} onChange={event => setForm({ ...form, account_sid: event.target.value })} /></Field>
+              <Field label="Twilio from number"><input value={form.from_number} onChange={event => setForm({ ...form, from_number: event.target.value })} /></Field>
               <Field label="SMS base URL"><input value={form.sms_base_url} onChange={event => setForm({ ...form, sms_base_url: event.target.value })} /></Field>
               <Field label="SMS method"><Select value={form.sms_http_method} options={['POST', 'PUT']} onChange={sms_http_method => setForm({ ...form, sms_http_method })} /></Field>
               <Field label="SMS headers JSON"><input value={form.sms_headers_template} onChange={event => setForm({ ...form, sms_headers_template: event.target.value })} /></Field>
