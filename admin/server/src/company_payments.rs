@@ -843,6 +843,37 @@ struct ReconciliationUploadRequest {
 }
 
 #[derive(Deserialize)]
+struct ReconciliationCreateBatchRequest {
+    source_type: String,
+    environment: String,
+    file_name: Option<String>,
+    file_hash: Option<String>,
+    content_type: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    rows: Vec<ReconciliationImportRow>,
+}
+
+#[derive(Deserialize)]
+struct ReconciliationImportRow {
+    transaction_id: Option<Uuid>,
+    refund_id: Option<Uuid>,
+    settlement_id: Option<Uuid>,
+    payout_id: Option<Uuid>,
+    amount_paise: i64,
+    currency: Option<String>,
+    utr_reference: Option<String>,
+    provider_reference: Option<String>,
+    order_reference: Option<String>,
+    status: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ReconciliationReviewItemRequest {
+    note: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ApiKeyRequest {
     name: String,
     environment: String,
@@ -3655,6 +3686,475 @@ async fn export_reconciliation_finance_summary(pool: web::Data<PgPool>) -> impl 
     )
     .await;
     HttpResponse::Ok().json(json!({ "download_url": "pending-finance-summary-export" }))
+}
+
+fn valid_reconciliation_source(source: &str) -> bool {
+    matches!(
+        source,
+        "internal_ledger"
+            | "settlement_report"
+            | "payout_report"
+            | "bank_statement"
+            | "provider_report"
+            | "manual_csv"
+    )
+}
+
+async fn list_reconciliation_batches(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM reconciliation_batches ORDER BY created_at DESC LIMIT 100",
+        "Failed to load reconciliation batches",
+    )
+    .await
+}
+
+async fn get_reconciliation_batch(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let batch = sqlx::query("SELECT * FROM reconciliation_batches WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    let Ok(Some(batch)) = batch else {
+        return HttpResponse::NotFound().json(json!({ "message": "Batch not found" }));
+    };
+    let items = fetch_json_rows(
+        pool.get_ref(),
+        "SELECT * FROM reconciliation_items WHERE batch_id = $1 ORDER BY created_at DESC",
+        id,
+    )
+    .await;
+    let mismatches = fetch_json_rows(
+        pool.get_ref(),
+        "SELECT * FROM reconciliation_mismatches WHERE batch_id = $1 ORDER BY created_at DESC",
+        id,
+    )
+    .await;
+    HttpResponse::Ok().json(json!({
+        "batch": row_to_json(&batch),
+        "items": items,
+        "mismatches": mismatches
+    }))
+}
+
+async fn create_reconciliation_batch(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    body: web::Json<ReconciliationCreateBatchRequest>,
+) -> impl Responder {
+    let body = body.into_inner();
+    if !valid_reconciliation_source(&body.source_type) {
+        return HttpResponse::BadRequest().json(json!({ "message": "Invalid source type" }));
+    }
+    if !matches!(body.environment.as_str(), "test" | "live") {
+        return HttpResponse::BadRequest().json(json!({ "message": "Invalid environment" }));
+    }
+    let actor_admin_id = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let file_metadata = json!({
+        "file_name": body.file_name,
+        "file_hash_present": body.file_hash.as_ref().is_some_and(|value| !value.trim().is_empty()),
+        "content_type": body.content_type,
+        "row_count": body.rows.len()
+    });
+    let batch_id = match sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO reconciliation_batches (
+            source_type, environment, status, uploaded_by_admin_id, file_metadata,
+            date_from, date_to
+        )
+        VALUES ($1, $2, 'parsing', $3, $4, $5::date, $6::date)
+        RETURNING id
+        "#,
+    )
+    .bind(&body.source_type)
+    .bind(&body.environment)
+    .bind(actor_admin_id)
+    .bind(file_metadata)
+    .bind(body.date_from.as_deref())
+    .bind(body.date_to.as_deref())
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(id) => id,
+        Err(error) => {
+            tracing::error!("Create reconciliation batch failed: {}", error);
+            return server_error("Failed to create reconciliation batch");
+        }
+    };
+    let source_import_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO reconciliation_source_imports (
+            batch_id, file_name, file_hash, content_type, row_count
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(batch_id)
+    .bind(body.file_name.as_deref())
+    .bind(body.file_hash.as_deref())
+    .bind(body.content_type.as_deref())
+    .bind(body.rows.len() as i32)
+    .fetch_one(pool.get_ref())
+    .await
+    .ok();
+
+    for row in &body.rows {
+        let currency = row.currency.as_deref().unwrap_or("INR").to_uppercase();
+        let payment = sqlx::query(
+            r#"
+            SELECT id, amount, currency, status::text AS status, created_at
+            FROM payment_orders
+            WHERE ($1::uuid IS NOT NULL AND id = $1)
+               OR ($2::text IS NOT NULL AND order_id::text = $2)
+               OR ($3::text IS NOT NULL AND gateway_reference = $3)
+            LIMIT 1
+            "#,
+        )
+        .bind(row.transaction_id)
+        .bind(row.order_reference.as_deref())
+        .bind(row.provider_reference.as_deref())
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten();
+        let mut mismatch_reason = None::<String>;
+        let mut transaction_id = row.transaction_id;
+        let mut refund_id = row.refund_id;
+        let mut settlement_id = row.settlement_id;
+        let mut payout_id = row.payout_id;
+        let mut matched = false;
+        if let Some(payment) = payment {
+            transaction_id = Some(payment.get("id"));
+            matched = true;
+            if payment.get::<i64, _>("amount") != row.amount_paise {
+                mismatch_reason = Some("amount_mismatch".to_string());
+                matched = false;
+            } else if payment.get::<String, _>("currency") != currency {
+                mismatch_reason = Some("currency_mismatch".to_string());
+                matched = false;
+            } else if let Some(status) = row.status.as_deref() {
+                if payment.get::<String, _>("status") != status {
+                    mismatch_reason = Some("status_mismatch".to_string());
+                    matched = false;
+                }
+            }
+            if let (Some(date_from), Some(date_to)) =
+                (body.date_from.as_deref(), body.date_to.as_deref())
+            {
+                let created_at: DateTime<Utc> = payment.get("created_at");
+                let day = created_at.date_naive().to_string();
+                if day.as_str() < date_from || day.as_str() > date_to {
+                    mismatch_reason = Some("date_window_mismatch".to_string());
+                    matched = false;
+                }
+            }
+        } else {
+            mismatch_reason = Some("missing_internal_record".to_string());
+        }
+        if refund_id.is_none() && row.provider_reference.is_some() {
+            refund_id = sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM payment_refunds WHERE provider_refund_id = $1 OR id::text = $1 LIMIT 1",
+            )
+            .bind(row.provider_reference.as_deref())
+            .fetch_optional(pool.get_ref())
+            .await
+            .ok()
+            .flatten();
+        }
+        if settlement_id.is_none() && row.utr_reference.is_some() {
+            settlement_id = sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM settlements WHERE utr_number = $1 OR utr = $1 LIMIT 1",
+            )
+            .bind(row.utr_reference.as_deref())
+            .fetch_optional(pool.get_ref())
+            .await
+            .ok()
+            .flatten();
+            if settlement_id.is_none() && mismatch_reason.is_none() {
+                mismatch_reason = Some("missing_internal_record".to_string());
+                matched = false;
+            }
+        }
+        if payout_id.is_none()
+            && row.provider_reference.is_some()
+            && body.source_type == "payout_report"
+        {
+            payout_id = sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM payouts WHERE payout_reference = $1 OR gateway_reference = $1 LIMIT 1",
+            )
+            .bind(row.provider_reference.as_deref())
+            .fetch_optional(pool.get_ref())
+            .await
+            .ok()
+            .flatten();
+            if payout_id.is_none() && mismatch_reason.is_none() {
+                mismatch_reason = Some("missing_internal_record".to_string());
+                matched = false;
+            }
+        }
+        if mismatch_reason.is_none()
+            && (transaction_id.is_some()
+                || refund_id.is_some()
+                || settlement_id.is_some()
+                || payout_id.is_some())
+        {
+            matched = true;
+        }
+        if currency != "INR" && mismatch_reason.is_none() {
+            mismatch_reason = Some("currency_mismatch".to_string());
+            matched = false;
+        }
+        let duplicate = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM reconciliation_items WHERE batch_id = $1 AND COALESCE(provider_reference, utr_reference) = COALESCE($2, $3)",
+        )
+        .bind(batch_id)
+        .bind(row.provider_reference.as_deref())
+        .bind(row.utr_reference.as_deref())
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or(0);
+        if duplicate > 0 {
+            mismatch_reason = Some("duplicate_reference".to_string());
+            matched = false;
+        }
+        let item_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO reconciliation_items (
+                batch_id, source_import_id, transaction_id, refund_id, settlement_id, payout_id,
+                amount_paise, currency, utr_reference, provider_reference, order_reference,
+                external_status, matched, mismatch_reason, raw_summary_redacted
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            RETURNING id
+            "#,
+        )
+        .bind(batch_id)
+        .bind(source_import_id)
+        .bind(transaction_id)
+        .bind(refund_id)
+        .bind(settlement_id)
+        .bind(payout_id)
+        .bind(row.amount_paise)
+        .bind(&currency)
+        .bind(row.utr_reference.as_deref())
+        .bind(row.provider_reference.as_deref())
+        .bind(row.order_reference.as_deref())
+        .bind(row.status.as_deref())
+        .bind(matched)
+        .bind(mismatch_reason.as_deref())
+        .bind(json!({
+            "reference_present": row.provider_reference.is_some() || row.utr_reference.is_some(),
+            "order_reference_present": row.order_reference.is_some()
+        }))
+        .fetch_one(pool.get_ref())
+        .await
+        .ok();
+        if let (Some(item_id), Some(reason)) = (item_id, mismatch_reason) {
+            let _ = sqlx::query(
+                "INSERT INTO reconciliation_mismatches (batch_id, item_id, mismatch_type, detail_summary) VALUES ($1,$2,$3,$4)",
+            )
+            .bind(batch_id)
+            .bind(item_id)
+            .bind(reason)
+            .bind(json!({ "source_type": body.source_type }))
+            .execute(pool.get_ref())
+            .await;
+        }
+    }
+    if body.source_type == "internal_ledger" {
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO reconciliation_items (
+                batch_id, amount_paise, currency, order_reference, matched, mismatch_reason, raw_summary_redacted
+            )
+            SELECT $1, po.amount, po.currency, po.order_id::text, false, 'missing_external_record',
+                   jsonb_build_object('source', 'internal_ledger')
+            FROM payment_orders po
+            WHERE ($2::date IS NULL OR po.created_at::date >= $2::date)
+              AND ($3::date IS NULL OR po.created_at::date <= $3::date)
+              AND NOT EXISTS (
+                  SELECT 1 FROM reconciliation_items ri
+                  WHERE ri.batch_id = $1 AND ri.transaction_id = po.id
+              )
+            "#,
+        )
+        .bind(batch_id)
+        .bind(body.date_from.as_deref())
+        .bind(body.date_to.as_deref())
+        .execute(pool.get_ref())
+        .await;
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO reconciliation_mismatches (batch_id, item_id, mismatch_type, detail_summary)
+            SELECT $1, ri.id, 'missing_external_record', jsonb_build_object('source_type', 'internal_ledger')
+            FROM reconciliation_items ri
+            WHERE ri.batch_id = $1 AND ri.mismatch_reason = 'missing_external_record'
+              AND NOT EXISTS (SELECT 1 FROM reconciliation_mismatches rm WHERE rm.item_id = ri.id)
+            "#,
+        )
+        .bind(batch_id)
+        .execute(pool.get_ref())
+        .await;
+    }
+    let _ = sqlx::query(
+        r#"
+        UPDATE reconciliation_batches
+        SET status = CASE WHEN EXISTS (
+                SELECT 1 FROM reconciliation_items WHERE batch_id = $1 AND matched = false
+            ) THEN 'mismatch_found' ELSE 'matched' END,
+            total_items = (SELECT COUNT(*) FROM reconciliation_items WHERE batch_id = $1),
+            matched_items = (SELECT COUNT(*) FROM reconciliation_items WHERE batch_id = $1 AND matched = true),
+            mismatched_items = (SELECT COUNT(*) FROM reconciliation_items WHERE batch_id = $1 AND matched = false),
+            total_amount_paise = COALESCE((SELECT SUM(amount_paise) FROM reconciliation_items WHERE batch_id = $1), 0),
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(batch_id)
+    .execute(pool.get_ref())
+    .await;
+    audit_with_request(
+        &pool,
+        &request,
+        "reconciliation.batch_imported",
+        "reconciliation_batch",
+        Some(batch_id),
+        json!({
+            "source_type": body.source_type,
+            "environment": body.environment,
+            "row_count": body.rows.len()
+        }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "id": batch_id }))
+}
+
+async fn review_reconciliation_item(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<ReconciliationReviewItemRequest>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let actor_admin_id = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let updated = sqlx::query(
+        "UPDATE reconciliation_items SET reviewed_at = NOW(), review_note = $2, reviewed_by_admin_id = $3 WHERE id = $1 RETURNING batch_id",
+    )
+    .bind(id)
+    .bind(body.note.as_deref())
+    .bind(actor_admin_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+    let Ok(Some(row)) = updated else {
+        return HttpResponse::NotFound().json(json!({ "message": "Item not found" }));
+    };
+    let batch_id: Uuid = row.get("batch_id");
+    let _ = sqlx::query(
+        "UPDATE reconciliation_mismatches SET status = 'reviewed', note = $2, reviewed_at = NOW() WHERE item_id = $1",
+    )
+    .bind(id)
+    .bind(body.note.as_deref())
+    .execute(pool.get_ref())
+    .await;
+    audit_with_request(
+        &pool,
+        &request,
+        "reconciliation.item_reviewed",
+        "reconciliation_item",
+        Some(id),
+        json!({ "batch_id": batch_id }),
+    )
+    .await;
+    HttpResponse::Ok().json(json!({ "id": id, "status": "reviewed" }))
+}
+
+async fn close_reconciliation_batch(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let updated = sqlx::query(
+        "UPDATE reconciliation_batches SET status = 'closed', closed_at = NOW(), updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit_with_request(
+                &pool,
+                &request,
+                "reconciliation.batch_closed",
+                "reconciliation_batch",
+                Some(id),
+                json!({}),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "closed" }))
+        }
+        _ => HttpResponse::NotFound().json(json!({ "message": "Batch not found" })),
+    }
+}
+
+async fn export_reconciliation_batch_csv(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let rows = sqlx::query(
+        "SELECT amount_paise, currency, provider_reference, utr_reference, matched, mismatch_reason FROM reconciliation_items WHERE batch_id = $1 ORDER BY created_at",
+    )
+    .bind(id)
+    .fetch_all(pool.get_ref())
+    .await;
+    let Ok(rows) = rows else {
+        return server_error("Failed to export reconciliation batch");
+    };
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    let _ = writer.write_record([
+        "amount_paise",
+        "currency",
+        "provider_reference",
+        "utr_reference",
+        "matched",
+        "mismatch_reason",
+    ]);
+    for row in rows {
+        let _ = writer.write_record([
+            row.get::<i64, _>("amount_paise").to_string(),
+            row.get::<String, _>("currency"),
+            row.get::<Option<String>, _>("provider_reference")
+                .unwrap_or_default(),
+            row.get::<Option<String>, _>("utr_reference")
+                .unwrap_or_default(),
+            row.get::<bool, _>("matched").to_string(),
+            row.get::<Option<String>, _>("mismatch_reason")
+                .unwrap_or_default(),
+        ]);
+    }
+    let csv = writer.into_inner().unwrap_or_default();
+    audit_with_request(
+        &pool,
+        &request,
+        "reconciliation.batch_exported",
+        "reconciliation_batch",
+        Some(id),
+        json!({}),
+    )
+    .await;
+    HttpResponse::Ok()
+        .content_type("text/csv")
+        .append_header((
+            "content-disposition",
+            "attachment; filename=\"reconciliation.csv\"",
+        ))
+        .body(csv)
 }
 
 async fn list_disputes(pool: web::Data<PgPool>) -> impl Responder {
@@ -10528,6 +11028,30 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/reconciliation/export-finance-summary"),
             web::get().to(export_reconciliation_finance_summary),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/batches"),
+            web::get().to(list_reconciliation_batches),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/batches"),
+            web::post().to(create_reconciliation_batch),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/batches/{{id}}"),
+            web::get().to(get_reconciliation_batch),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/batches/{{id}}/close"),
+            web::post().to(close_reconciliation_batch),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/batches/{{id}}/export.csv"),
+            web::get().to(export_reconciliation_batch_csv),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/items/{{id}}/review"),
+            web::post().to(review_reconciliation_item),
         )
         .route(
             &format!("{prefix}/reconciliation/provider-imports"),

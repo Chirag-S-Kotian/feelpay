@@ -90,6 +90,7 @@ Run only checks relevant to touched files during normal development. Use the ful
 - Merchant review follows `draft -> submitted -> under_review -> approved|restricted|rejected|suspended`. Provider verification alone does not approve a merchant.
 - Internal risk notes are company-admin only and are never exposed through merchant-facing APIs.
 - Live-money processing must remain disabled unless approved acquirer/payment rails already exist in the repo and are configured outside this merchant-dashboard scope.
+- Platform reconciliation imports are internal-admin only. Merchant users can see merchant settlement views, but they cannot access reconciliation batches or source imports.
 - Some merchant modules reuse broader platform endpoints; verify internal platform scope and merchant isolation whenever adding fields or filters.
 - Sensitive-field hardening is forward-safe after `20260515000001_merchant_secret_storage_hardening.sql`: new API keys use hashed lookup rows, new webhook secrets are encrypted, and new PAN/GSTIN/KYC writes store masked display values plus encrypted payloads. Existing historical plaintext rows still require a one-time migrated-Postgres backfill before claiming legacy data is fully remediated.
 - This pass added centralized merchant-route RBAC checks and focused role tests, but a complete audit-log guarantee still needs a route-by-route production audit matrix against the live schema and traffic policy. Do not claim full audit completeness until that external review is done.

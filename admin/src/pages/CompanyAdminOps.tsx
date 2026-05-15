@@ -923,8 +923,14 @@ export function ReconciliationPage() {
   const [queue, setQueue] = useState<GenericRecord[]>([]);
   const providerImports = useRows(`${API}/reconciliation/provider-imports`);
   const parserConfigs = useRows(`${API}/reconciliation/parser-configs`);
+  const batches = useRows(`${API}/reconciliation/batches`);
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
+  const [batchItems, setBatchItems] = useState<GenericRecord[]>([]);
+  const [batchMismatches, setBatchMismatches] = useState<GenericRecord[]>([]);
+  const [mismatchType, setMismatchType] = useState('');
+  const [mismatchStatus, setMismatchStatus] = useState('');
+  const [mismatchDate, setMismatchDate] = useState('');
   const helpers = useDrawerConfirm();
   const load = async () => {
     setState('loading');
@@ -961,6 +967,37 @@ export function ReconciliationPage() {
       })).then(load),
     });
   };
+  const createSampleBatch = () => {
+    helpers.setConfirm({
+      title: 'Create safe sample batch',
+      body: 'Creates metadata plus safe sample reconciliation rows only. No raw bank file is stored.',
+      action: () => helpers.run('Sample batch created.', () => apiRequest('POST', `${API}/reconciliation/batches`, {
+        source_type: 'manual_csv',
+        environment: 'test',
+        file_name: 'safe-sample.csv',
+        file_hash: `safe-sample-${Date.now()}`,
+        content_type: 'text/csv',
+        rows: [{
+          amount_paise: 10000,
+          currency: 'INR',
+          provider_reference: `sample-${Date.now()}`,
+          status: 'captured',
+        }],
+      })).then(batches.load),
+    });
+  };
+  const openBatch = async (row: GenericRecord) => {
+    const detail = await apiRequest<{ items?: GenericRecord[]; mismatches?: GenericRecord[] }>('GET', `${API}/reconciliation/batches/${String(row.id)}`);
+    setBatchItems(detail.items || []);
+    setBatchMismatches(detail.mismatches || []);
+    helpers.setDrawer({ title: 'Reconciliation batch', body: row });
+  };
+  const filteredBatchMismatches = batchMismatches.filter(row => {
+    if (mismatchType && str(row.mismatch_type) !== mismatchType) return false;
+    if (mismatchStatus && str(row.status) !== mismatchStatus) return false;
+    if (mismatchDate && !str(row.created_at).startsWith(mismatchDate)) return false;
+    return true;
+  });
   const act = (action: string, row?: GenericRecord) => {
     const id = String(row?.id || rows[0]?.id || '');
     if (action === 'upload_provider_report') upload('provider_report');
@@ -972,6 +1009,20 @@ export function ReconciliationPage() {
     else if (action === 'ignore') helpers.setConfirm({ title: 'Ignore mismatch', body: 'Ignored reconciliation record remains audited.', action: () => helpers.run('Record ignored.', () => apiRequest('POST', `${API}/reconciliation/records/${id}/ignore`)).then(load) });
     else if (action === 'export_discrepancy_report') helpers.setConfirm({ title: 'Export discrepancy report', body: 'Discrepancy export creates audit trail.', action: () => helpers.run('Export queued.', () => apiRequest('GET', `${API}/reconciliation/${id}/export-discrepancies`)) });
     else if (action === 'export_finance_summary') helpers.setConfirm({ title: 'Export finance summary', body: 'Finance summary export creates audit trail.', action: () => helpers.run('Finance summary export queued.', () => apiRequest('GET', `${API}/reconciliation/export-finance-summary`)) });
+    else if (action === 'create_sample_batch') createSampleBatch();
+    else if (action === 'view_detail' && row && row.source_type) void openBatch(row);
+    else if (action === 'close_batch' && row) helpers.setConfirm({ title: 'Close batch', body: 'Closed batches remain auditable.', action: () => helpers.run('Batch closed.', () => apiRequest('POST', `${API}/reconciliation/batches/${String(row.id)}/close`)).then(batches.load) });
+    else if (action === 'export_batch_csv' && row) {
+      void apiDownload(`${API}/reconciliation/batches/${String(row.id)}/export.csv`).then(({ blob, fileName }) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+    else if (action === 'mark_reviewed' && row) helpers.setConfirm({ title: 'Mark reviewed', body: 'Marks the reconciliation item reviewed with an internal note.', action: () => helpers.run('Item reviewed.', () => apiRequest('POST', `${API}/reconciliation/items/${String(row.id)}/review`, { note: 'Reviewed from company admin' })).then(load) });
     else helpers.setDrawer({ title: 'Reconciliation', body: row || rows[0] || {} });
   };
   return (
@@ -987,19 +1038,37 @@ export function ReconciliationPage() {
         <Metric label="Tax variance" value={money(taxVariance)} icon={Landmark} />
       </div>
       <div className="button-row">
-        {['Overview', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports', 'Provider Imports', 'Parser Configs'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Overview', 'Batches', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports', 'Provider Imports', 'Parser Configs'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="button-row">
-        {['Upload provider report', 'Upload bank statement', 'Upload payout report', 'Upload fee report', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
+        {['Create sample batch', 'Upload provider report', 'Upload bank statement', 'Upload payout report', 'Upload fee report', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
       </div>
       {tab === 'Overview' && <DataTable rows={queue.slice(0, 12)} columns={['row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty={{ title: 'Upload provider or bank files to start matching.', body: 'Provider reports, bank statements, payout reports, fee reports, and ledger exports create queue records here.' }} renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
+      {tab === 'Batches' && <DataTable rows={batches.rows} columns={['id', 'source_type', 'environment', 'status', 'total_items', 'matched_items', 'mismatched_items', 'total_amount_paise', 'created_at', 'closed_at']} empty="No reconciliation batches" renderActions={row => <ActionButtons actions={['Close batch', 'Export batch csv', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
       {tab === 'Uploads' && <DataTable rows={rows} columns={['id', 'source', 'provider_id', 'file_name', 'file_hash', 'row_count', 'matched_count', 'mismatch_count', 'duplicate_count', 'status', 'created_at', 'processed_at']} empty={{ title: 'Upload provider or bank files to start matching.', body: 'Upload provider reports, bank statements, payout reports, or fee reports to start reconciliation.' }} onView={row => helpers.setDrawer({ title: 'Reconciliation details', body: row })} />}
       {tab === 'Matching Queue' && <DataTable rows={queue} columns={['id', 'file_id', 'row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'confidence_score', 'suggested_match']} empty="No matching queue records" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
-      {tab === 'Mismatches' && <DataTable rows={queue.filter(row => String(row.match_status).includes('mismatch') || row.mismatch_reason)} columns={['id', 'external_reference', 'amount', 'currency', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty="No mismatches" renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
+      {tab === 'Mismatches' && <DataTable rows={queue.filter(row => String(row.match_status).includes('mismatch') || row.mismatch_reason)} columns={['id', 'external_reference', 'amount', 'currency', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty="No mismatches" renderActions={row => <ActionButtons actions={['Mark reviewed', 'Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
       {tab === 'Resolved' && <DataTable rows={queue.filter(row => row.resolution_status === 'resolved')} columns={['id', 'external_reference', 'matched_entity_type', 'matched_entity_id', 'resolution_status', 'resolution_note', 'resolved_at']} empty="No resolved records" />}
       {tab === 'Reports' && <DataTable rows={rows} columns={['file_name', 'source', 'amount_variance', 'matched_count', 'mismatch_count', 'duplicate_count', 'created_at']} empty="No reconciliation reports" />}
       {tab === 'Provider Imports' && <DataTable rows={providerImports.rows} columns={['id', 'provider_id', 'report_type', 'file_name', 'file_hash', 'status', 'row_count', 'imported_count', 'skipped_count', 'error_count', 'created_at', 'processed_at']} empty="No provider imports yet" renderActions={row => <ActionButtons actions={['View detail']} onClick={() => helpers.setDrawer({ title: 'Provider import', body: row })} />} />}
       {tab === 'Parser Configs' && <DataTable rows={parserConfigs.rows} columns={['id', 'provider_id', 'report_type', 'column_mapping_json', 'date_format', 'amount_format', 'currency_column', 'status', 'created_at']} empty="No parser configs yet" onView={row => helpers.setDrawer({ title: 'Parser config', body: row })} />}
+      {batchItems.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 18, marginTop: 24 }}>Selected Batch Items</h2>
+          <DataTable rows={batchItems} columns={['id', 'amount_paise', 'currency', 'provider_reference', 'utr_reference', 'matched', 'mismatch_reason', 'reviewed_at']} empty="No batch items" renderActions={row => <ActionButtons actions={['Mark reviewed']} onClick={action => act(normalizeAction(action), row)} />} />
+        </>
+      )}
+      {batchMismatches.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 18, marginTop: 24 }}>Selected Batch Mismatches</h2>
+          <div className="filter-grid">
+            <Field label="Mismatch type"><input value={mismatchType} onChange={event => setMismatchType(event.target.value)} /></Field>
+            <Field label="Status"><input value={mismatchStatus} onChange={event => setMismatchStatus(event.target.value)} /></Field>
+            <Field label="Date"><input type="date" value={mismatchDate} onChange={event => setMismatchDate(event.target.value)} /></Field>
+          </div>
+          <DataTable rows={filteredBatchMismatches} columns={['id', 'mismatch_type', 'status', 'note', 'created_at', 'reviewed_at']} empty="No matching mismatches" />
+        </>
+      )}
       <Modals helpers={helpers} />
     </CrudPage>
   );

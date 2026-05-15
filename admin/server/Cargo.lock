@@ -1212,6 +1212,7 @@ dependencies = [
  "base64",
  "bcrypt",
  "chrono",
+ "csv",
  "dotenvy",
  "feelpay",
  "futures-util",

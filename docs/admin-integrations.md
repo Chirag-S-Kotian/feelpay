@@ -98,6 +98,13 @@ Use `provider_kind=kyc` for provider-neutral PAN, GSTIN, and business-name verif
 - Live API keys and live authenticated flows remain blocked unless both onboarding and review status are `approved`.
 - Supported KYC decision notifications remain the existing `kyc_approved` and `kyc_rejected` events. There is no dedicated more-information template/event yet, so the workflow records that action without fabricating an unsupported notification.
 
+### Reconciliation
+
+- New reconciliation work should use the canonical batch/item model documented in `docs/reconciliation.md`.
+- Supported source types are internal ledger, settlement report, payout report, bank statement, provider report, and manual CSV.
+- Imports store file metadata plus redacted row summaries only; raw bank files and sensitive payloads stay out of the database unless a future secure file-storage design is added.
+- This layer identifies mismatches and records review decisions. It does not add live bank or payout APIs.
+
 ### Notifications / Webhooks
 
 Use notification providers for outbound delivery and callback/webhook metadata. Store signing tokens as secrets, keep URLs and event mappings in config, and use integration logs for failure inspection.
