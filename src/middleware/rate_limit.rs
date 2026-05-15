@@ -98,7 +98,7 @@ where
             }
         };
 
-        let max = self.max_per_minute;
+        let (bucket, max) = classify_limit(&path, req.method().as_str(), self.max_per_minute);
         let counters = self.counters.clone();
 
         // Check rate limit
@@ -128,7 +128,7 @@ where
                 !timestamps.is_empty()
             });
 
-            let entry = map.entry(ip.clone()).or_insert_with(Vec::new);
+            let entry = map.entry(format!("{bucket}:{ip}")).or_insert_with(Vec::new);
             if entry.len() >= max as usize {
                 false
             } else {
@@ -138,6 +138,12 @@ where
         };
 
         if !allowed {
+            tracing::warn!(
+                rate_limit_bucket = bucket,
+                path = %path,
+                method = %req.method(),
+                "Request rate limited"
+            );
             let response = HttpResponse::TooManyRequests()
                 .json(serde_json::json!({
                     "error": {
@@ -150,5 +156,59 @@ where
 
         let fut = self.service.call(req);
         Box::pin(async move { fut.await.map(|res| res.map_into_left_body()) })
+    }
+}
+
+fn classify_limit(path: &str, method: &str, default_limit: u32) -> (&'static str, u32) {
+    if path.ends_with("/login") {
+        ("login", 10)
+    } else if path.contains("/otp/send") || path.ends_with("/aadhaar/initiate") {
+        ("otp_request", 5)
+    } else if path.contains("/otp/verify") || path.ends_with("/aadhaar/verify") {
+        ("otp_verify", 10)
+    } else if path.contains("/webhooks/replay") {
+        ("webhook_retry", 10)
+    } else if method != "GET" && path.contains("/payout") {
+        ("payout_mutation", 10)
+    } else if path.contains("/exports") || path.contains("/reports") {
+        ("report_export", 20)
+    } else if path.starts_with("/admin") || path.starts_with("/v1/admin") {
+        ("admin_sensitive", 30)
+    } else {
+        ("default", default_limit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_limit;
+
+    #[test]
+    fn sensitive_routes_use_stricter_rate_limit_buckets() {
+        assert_eq!(classify_limit("/v1/auth/login", "POST", 60), ("login", 10));
+        assert_eq!(
+            classify_limit("/v1/documents/otp/send", "POST", 60),
+            ("otp_request", 5)
+        );
+        assert_eq!(
+            classify_limit("/v1/documents/otp/verify", "POST", 60),
+            ("otp_verify", 10)
+        );
+        assert_eq!(
+            classify_limit("/v1/webhooks/replay/1", "POST", 60),
+            ("webhook_retry", 10)
+        );
+        assert_eq!(
+            classify_limit("/v1/payouts", "POST", 60),
+            ("payout_mutation", 10)
+        );
+        assert_eq!(
+            classify_limit("/v1/exports/transactions", "POST", 60),
+            ("report_export", 20)
+        );
+        assert_eq!(
+            classify_limit("/v1/admin/users", "POST", 60),
+            ("admin_sensitive", 30)
+        );
     }
 }

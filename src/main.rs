@@ -34,12 +34,109 @@ fn validate_startup_config(config: &AppConfig) -> Result<(), String> {
         return Err("VAULT_ENCRYPTION_KEY must be 64 hex chars (32-byte key)".into());
     }
 
-    if config.is_live() && key == "0000000000000000000000000000000000000000000000000000000000000000"
-    {
-        return Err("Live mode requires non-default VAULT_ENCRYPTION_KEY".into());
+    if config.is_live() {
+        if config.app_env != "production" {
+            return Err("PAYMENT_MODE=live requires APP_ENV=production".into());
+        }
+        if key == "0000000000000000000000000000000000000000000000000000000000000000" {
+            return Err("Live mode requires non-default VAULT_ENCRYPTION_KEY".into());
+        }
+        if config.jwt_secret.contains("change_in_production") || config.jwt_secret.len() < 32 {
+            return Err("Live mode requires a non-default JWT_SECRET of at least 32 chars".into());
+        }
+        if config.master_api_key == "fp_master_key" {
+            return Err("Live mode requires non-default MASTER_API_KEY".into());
+        }
+        if config.webhook_signing_secret == "dev_feelpay_webhook_secret"
+            || config.webhook_signing_secret == "whsec_placeholder_example_only"
+        {
+            return Err("Live mode requires non-default WEBHOOK_SIGNING_SECRET".into());
+        }
+        if config.cors_allowed_origins.iter().any(|origin| {
+            origin == "*" || origin.contains("localhost") || origin.contains("127.0.0.1")
+        }) {
+            return Err("Live mode requires explicit non-local CORS_ALLOWED_ORIGINS".into());
+        }
+    } else if config.app_env == "production" {
+        return Err("APP_ENV=production requires PAYMENT_MODE=live".into());
     }
 
     Ok(())
+}
+
+fn redacted_redis_target(redis_url: &str) -> String {
+    redis_url
+        .split_once('@')
+        .map(|(_, host)| format!("redis://***@{host}"))
+        .unwrap_or_else(|| redis_url.to_string())
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::{redacted_redis_target, validate_startup_config};
+    use crate::config::AppConfig;
+
+    fn base_config() -> AppConfig {
+        AppConfig {
+            host: "127.0.0.1".into(),
+            port: 8080,
+            database_url: "postgres://db".into(),
+            redis_url: "redis://:secret@localhost:6379".into(),
+            jwt_secret: "a".repeat(32),
+            jwt_expiry_hours: 24,
+            master_api_key: "fp_live_safe".into(),
+            vault_encryption_key: "1".repeat(64),
+            vault_key_id: "key_v1".into(),
+            upi_psp_id: "FEELPAY".into(),
+            upi_merchant_vpa: "merchant@feelpay".into(),
+            webhook_max_retries: 8,
+            webhook_initial_delay_secs: 1,
+            webhook_signing_secret: "whsec_live_safe".into(),
+            settlement_cycle_days: 2,
+            platform_fee_percentage: 2.0,
+            rate_limit_per_minute: 60,
+            tenant_isolation_mode: "shared_table".into(),
+            cors_allowed_origins: vec!["https://merchant.example".into()],
+            app_env: "production".into(),
+            payment_mode: "live".into(),
+            database_provider: "auto".into(),
+            database_url_docker: None,
+            database_url_neon: None,
+            digilocker_enabled: false,
+            digilocker_client_id: None,
+            digilocker_client_secret: None,
+            digilocker_redirect_uri: None,
+            digilocker_auth_base_url: "https://example.test/auth".into(),
+            digilocker_token_url: "https://example.test/token".into(),
+            digilocker_docs_url: "https://example.test/docs".into(),
+            digilocker_timeout_secs: 12,
+        }
+    }
+
+    #[test]
+    fn live_mode_rejects_unsafe_defaults_and_mode_mismatch() {
+        let mut config = base_config();
+        assert!(validate_startup_config(&config).is_ok());
+
+        config.app_env = "development".into();
+        assert!(validate_startup_config(&config).is_err());
+
+        config = base_config();
+        config.jwt_secret = "change_in_production".into();
+        assert!(validate_startup_config(&config).is_err());
+
+        config = base_config();
+        config.cors_allowed_origins = vec!["http://localhost:5173".into()];
+        assert!(validate_startup_config(&config).is_err());
+    }
+
+    #[test]
+    fn redis_log_target_redacts_credentials() {
+        assert_eq!(
+            redacted_redis_target("redis://:secret@cache.example:6379"),
+            "redis://***@cache.example:6379"
+        );
+    }
 }
 
 async fn run_startup_preflight(
@@ -100,7 +197,7 @@ async fn main() -> std::io::Result<()> {
         .map_err(|e| io_other(format!("Failed to connect to PostgreSQL: {e}")))?;
 
     // Initialize Redis
-    tracing::info!("Connecting to Redis at {}", config.redis_url);
+    tracing::info!(target = %redacted_redis_target(&config.redis_url), "Connecting to Redis");
     let redis_client = redis::Client::open(config.redis_url.clone())
         .map_err(|e| io_other(format!("Failed to connect to Redis: {e}")))?;
 
@@ -220,10 +317,13 @@ async fn main() -> std::io::Result<()> {
                     )),
             )
             .wrap(cors)
+            .wrap(crate::middleware::request_id::RequestId)
             .wrap(rate_limiter.clone())
             // Healthcheck
             .route("/health", web::get().to(api::health::health_check))
             .route("/v1/health", web::get().to(api::health::health_check))
+            .route("/ready", web::get().to(api::health::readiness_check))
+            .route("/v1/ready", web::get().to(api::health::readiness_check))
             .route(
                 "/v1/public/landing-page",
                 web::get().to(api::public_config::get_landing_page_config),

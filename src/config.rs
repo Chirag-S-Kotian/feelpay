@@ -33,6 +33,7 @@ pub struct AppConfig {
     pub cors_allowed_origins: Vec<String>,
 
     // Mode
+    pub app_env: String,
     pub payment_mode: String,
     pub database_provider: String,
     pub database_url_docker: Option<String>,
@@ -106,6 +107,7 @@ impl AppConfig {
                 .map(ToOwned::to_owned)
                 .collect(),
 
+            app_env: std::env::var("APP_ENV").unwrap_or_else(|_| "development".into()),
             payment_mode: std::env::var("PAYMENT_MODE").unwrap_or_else(|_| "test".into()),
             database_provider: std::env::var("DATABASE_PROVIDER").unwrap_or_else(|_| "auto".into()),
             database_url_docker: std::env::var("DATABASE_URL_DOCKER").ok(),

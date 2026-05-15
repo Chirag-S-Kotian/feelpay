@@ -11,6 +11,41 @@ use sqlx::PgPool;
 use std::env;
 use uuid::Uuid;
 
+fn validate_admin_startup_env() -> Result<(), String> {
+    let app_env = env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
+    let payment_mode = env::var("PAYMENT_MODE").unwrap_or_else(|_| "test".to_string());
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| "JWT_SECRET must be set".to_string())?;
+    let vault_key = env::var("VAULT_ENCRYPTION_KEY")
+        .map_err(|_| "VAULT_ENCRYPTION_KEY must be set".to_string())?;
+    let allow_secret_reveal =
+        env::var("ALLOW_SECRET_REVEAL").unwrap_or_else(|_| "false".to_string());
+
+    let valid_vault_key =
+        vault_key.len() == 64 && vault_key.chars().all(|value| value.is_ascii_hexdigit());
+    if !valid_vault_key {
+        return Err("VAULT_ENCRYPTION_KEY must be 64 hex chars".to_string());
+    }
+
+    if app_env == "production" {
+        if payment_mode != "live" {
+            return Err("APP_ENV=production requires PAYMENT_MODE=live".to_string());
+        }
+        if jwt_secret.contains("change_in_production") || jwt_secret.len() < 32 {
+            return Err("Production requires a non-default JWT_SECRET of at least 32 chars".to_string());
+        }
+        if vault_key == "0".repeat(64) {
+            return Err("Production requires a non-default VAULT_ENCRYPTION_KEY".to_string());
+        }
+        if allow_secret_reveal.eq_ignore_ascii_case("true") {
+            return Err("ALLOW_SECRET_REVEAL must stay false in production".to_string());
+        }
+    } else if payment_mode == "live" {
+        return Err("PAYMENT_MODE=live requires APP_ENV=production".to_string());
+    }
+
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct PlatformStats {
     pub total_volume: i64,
@@ -967,6 +1002,7 @@ async fn admin_login(pool: web::Data<PgPool>, req: web::Json<AdminLoginRequest>)
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
+    validate_admin_startup_env().map_err(std::io::Error::other)?;
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url)
@@ -982,6 +1018,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .wrap(cors)
+            .wrap(feelpay::middleware::rate_limit::RateLimiter::new(60))
             .app_data(web::Data::new(pool.clone()))
             .service(
                 web::scope("/admin")
@@ -1024,6 +1061,33 @@ async fn main() -> std::io::Result<()> {
     .bind(bind_addr)?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::validate_admin_startup_env;
+    use std::env;
+
+    fn set_safe_production_env() {
+        env::set_var("APP_ENV", "production");
+        env::set_var("PAYMENT_MODE", "live");
+        env::set_var("JWT_SECRET", "a".repeat(32));
+        env::set_var("VAULT_ENCRYPTION_KEY", "1".repeat(64));
+        env::set_var("ALLOW_SECRET_REVEAL", "false");
+    }
+
+    #[test]
+    fn admin_startup_blocks_unsafe_production_configuration() {
+        set_safe_production_env();
+        assert!(validate_admin_startup_env().is_ok());
+
+        env::set_var("PAYMENT_MODE", "test");
+        assert!(validate_admin_startup_env().is_err());
+
+        set_safe_production_env();
+        env::set_var("ALLOW_SECRET_REVEAL", "true");
+        assert!(validate_admin_startup_env().is_err());
+    }
 }
 
 fn admin_bind_addr() -> String {

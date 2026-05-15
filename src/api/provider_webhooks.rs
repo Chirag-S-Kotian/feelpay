@@ -62,29 +62,37 @@ async fn handle_provider_webhook(
         "Provider webhook received and verified"
     );
 
-    // Store the normalized event in webhook_events table (best effort)
-    let _ = sqlx::query(
-        r#"
-        INSERT INTO webhook_events (
-            id, provider, event_type, provider_event_id, provider_reference,
-            normalized_status, amount, currency, raw_payload, created_at
-        ) VALUES (
-            gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()
-        )
-        "#,
+    let provider_id = sqlx::query_scalar::<_, uuid::Uuid>(
+        "SELECT id FROM payment_providers WHERE lower(COALESCE(code, name)) = lower($1) LIMIT 1",
     )
-    .bind(&event.provider)
-    .bind(&event.event_type)
-    .bind(&event.provider_event_id)
-    .bind(&event.provider_reference)
-    .bind(&event.status.to_string())
-    .bind(event.amount)
-    .bind(&event.currency)
-    .bind(redact_metadata(
-        &serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default(),
-    ))
-    .execute(&state.db)
-    .await;
+    .bind(&provider_code)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| FeelPayError::Internal("Provider lookup failed for webhook".into()))?;
+
+    // Persist provider callbacks idempotently once the provider is known.
+    if let (Some(provider_id), Some(provider_event_id)) =
+        (provider_id, event.provider_event_id.as_deref())
+    {
+        let _ = sqlx::query(
+            r#"
+        INSERT INTO payment_webhook_events (
+            provider_id, event_id, provider_event_id, event_type, raw_payload,
+            signature_verification_status, processing_status, processed_at
+        ) VALUES ($1, $2, $3, $4, $5, 'verified', 'processed', NOW())
+        ON CONFLICT (provider_id, event_id) DO NOTHING
+        "#,
+        )
+        .bind(provider_id)
+        .bind(provider_event_id)
+        .bind(provider_event_id)
+        .bind(&event.event_type)
+        .bind(redact_metadata(
+            &serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default(),
+        ))
+        .execute(&state.db)
+        .await;
+    }
 
     let _ = update_checkout_from_provider_event(
         state.get_ref(),
