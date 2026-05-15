@@ -458,6 +458,7 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
         || path.contains("/providers")
         || path.contains("/credentials")
         || path.contains("/connectors")
+        || path.contains("/integrations")
     {
         return Some(if method == "GET" {
             "providers.view"

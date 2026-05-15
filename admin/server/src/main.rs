@@ -849,6 +849,7 @@ async fn get_export_download(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> 
 }
 
 mod company_payments;
+mod integrations;
 mod middleware;
 use middleware::AdminAuthMiddleware;
 
@@ -881,7 +882,8 @@ fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
         .route("/revenue/summary", web::get().to(revenue_summary))
         .route("/operations/summary", web::get().to(operations_summary))
         .configure(company_payments::configure)
-        .configure(company_payments::configure_company_admin_routes);
+        .configure(company_payments::configure_company_admin_routes)
+        .configure(integrations::configure);
 }
 
 async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder {

@@ -429,7 +429,7 @@ Use this block as source of truth before marking more `[x]`.
 - [x] Circuit breaker status + manual override ✅ IMPLEMENTED
 - [x] Provider credential management (masked display) ✅ IMPLEMENTED
 
-### Tenant / White-label Management
+### Internal Scope Management
 - [x] Tenant CRUD ✅ IMPLEMENTED
 - [x] Branding + custom domain config per tenant ✅ IMPLEMENTED
 - [x] Per-tenant fee + settlement config ✅ IMPLEMENTED
@@ -591,16 +591,15 @@ Use this block as source of truth before marking more `[x]`.
 
 ---
 
-## ⬜ PHASE 14 — White-Label
+## ⬜ PHASE 14 — Internal Platform Scope
 
 - [x] Tenant CRUD in admin ✅ IMPLEMENTED (admin page + admin API create/list/update/deactivate)
 - [x] Per-tenant branding: logo, colors, font, favicon ✅ IMPLEMENTED (`tenants.branding` + admin controls)
-- [x] Custom domain per tenant (`pay.clientbrand.com` via CNAME + wildcard SSL) ✅ IMPLEMENTED (`tenants.domain` / `config.custom_domain` resolved in checkout URLs)
+- [x] Platform checkout domain per internal scope (`pay.feelpay.in` via CNAME + wildcard SSL) ✅ IMPLEMENTED (`tenants.domain` / `config.custom_domain` resolved in checkout URLs)
 - [x] Per-tenant email sending domain ✅ IMPLEMENTED (`tenants.config.email_sending_domain`)
 - [x] Hosted checkout themed per tenant ✅ IMPLEMENTED (tenant branding/config persisted for checkout session theme payload)
 - [x] Tenant admin manages their own merchants independently ✅ IMPLEMENTED (`tenant_admin` role restricted to own `tenant_id` in admin merchant list/action endpoints; UI already wired in `admin/src/pages/Merchants.tsx`)
 - [x] Per-tenant fee + settlement configuration ✅ IMPLEMENTED (`tenants.config.fee_bps`, `settlement_delay_days`)
-- [x] Reseller commission / revenue share model ✅ IMPLEMENTED (`tenants.config.reseller_commission_bps`, `revenue_share_percent`)
 
 ---
 
