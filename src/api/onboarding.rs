@@ -528,11 +528,9 @@ pub async fn initiate_aadhaar_ekyc(
         crate::engine::services::sms::send_otp_sms(&state.db, &body.phone, &otp, "Aadhaar eKYC")
             .await;
 
-    // For simulation, we return the OTP in the response
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "OTP sent to your registered mobile number",
-        "phone_masked": format!("******{}", &body.phone[body.phone.len().saturating_sub(4)..]),
-        "otp_simulated": otp // Only for dev/testing
+        "phone_masked": format!("******{}", &body.phone[body.phone.len().saturating_sub(4)..])
     })))
 }
 

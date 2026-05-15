@@ -94,6 +94,18 @@ struct SmtpConfig {
     security: String,
 }
 
+#[derive(Debug, Clone)]
+struct GenericSmsConfig {
+    base_url: String,
+    method: String,
+    headers_template: serde_json::Map<String, Value>,
+    body_template: Value,
+    sender_id: String,
+    route_type: Option<String>,
+    template_mapping: serde_json::Map<String, Value>,
+    auth_token: String,
+}
+
 #[derive(Debug, Serialize)]
 struct ProviderResponse {
     id: Uuid,
@@ -256,7 +268,7 @@ fn required_string(config: &Value, key: &str) -> Result<String, String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .ok_or_else(|| format!("Missing required SMTP config: {key}"))
+        .ok_or_else(|| format!("Missing required config: {key}"))
 }
 
 async fn smtp_config(
@@ -317,6 +329,192 @@ fn parse_mailbox(value: &str) -> Result<Mailbox, String> {
     value
         .parse::<Mailbox>()
         .map_err(|_| "Invalid email address".to_string())
+}
+
+fn mask_phone(value: &str) -> String {
+    let digits = value
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if digits.len() <= 4 {
+        return "****".to_string();
+    }
+    format!("******{}", &digits[digits.len() - 4..])
+}
+
+fn validate_sms_url(environment: &str, value: &str) -> Result<(), String> {
+    if value.starts_with("https://") {
+        return Ok(());
+    }
+    if environment == "test"
+        && (value.starts_with("http://localhost") || value.starts_with("http://127.0.0.1"))
+    {
+        return Ok(());
+    }
+    Err("sms_base_url must use https, except localhost in test mode".to_string())
+}
+
+fn render_sms_value(
+    value: &Value,
+    phone: &str,
+    message: &str,
+    sender_id: &str,
+    route_type: Option<&str>,
+    template_id: Option<&str>,
+    auth_token: &str,
+) -> Result<Value, String> {
+    match value {
+        Value::String(input) => {
+            let rendered = input
+                .replace("{{phone}}", phone)
+                .replace("{{message}}", message)
+                .replace("{{sender_id}}", sender_id)
+                .replace("{{route_type}}", route_type.unwrap_or_default())
+                .replace("{{template_id}}", template_id.unwrap_or_default())
+                .replace("{{token}}", auth_token);
+            if rendered.contains("{{") || rendered.contains("}}") {
+                return Err("Unsupported SMS template placeholder".to_string());
+            }
+            Ok(Value::String(rendered))
+        }
+        Value::Array(items) => Ok(Value::Array(
+            items
+                .iter()
+                .map(|item| {
+                    render_sms_value(
+                        item,
+                        phone,
+                        message,
+                        sender_id,
+                        route_type,
+                        template_id,
+                        auth_token,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+        Value::Object(map) => Ok(Value::Object(
+            map.iter()
+                .map(|(key, value)| {
+                    Ok((
+                        key.clone(),
+                        render_sms_value(
+                            value,
+                            phone,
+                            message,
+                            sender_id,
+                            route_type,
+                            template_id,
+                            auth_token,
+                        )?,
+                    ))
+                })
+                .collect::<Result<serde_json::Map<_, _>, String>>()?,
+        )),
+        _ => Ok(value.clone()),
+    }
+}
+
+async fn generic_sms_config(
+    pool: &PgPool,
+    provider_id: Uuid,
+    environment: &str,
+    config: &Value,
+) -> Result<GenericSmsConfig, String> {
+    let base_url = required_string(config, "sms_base_url")?;
+    validate_sms_url(environment, &base_url)?;
+    let method = required_string(config, "sms_http_method")?.to_uppercase();
+    if !matches!(method.as_str(), "POST" | "PUT") {
+        return Err("sms_http_method must be POST or PUT".to_string());
+    }
+    let headers_template = config
+        .get("sms_headers_template")
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(|| "Missing required SMS config: sms_headers_template".to_string())?;
+    for value in headers_template.values() {
+        if !value.is_string() {
+            return Err("sms_headers_template values must be strings".to_string());
+        }
+    }
+    let body_template = config
+        .get("sms_body_template")
+        .cloned()
+        .ok_or_else(|| "Missing required SMS config: sms_body_template".to_string())?;
+    if !body_template.is_object() {
+        return Err("sms_body_template must be a JSON object".to_string());
+    }
+    Ok(GenericSmsConfig {
+        base_url,
+        method,
+        headers_template,
+        body_template,
+        sender_id: required_string(config, "sender_id")?,
+        route_type: config
+            .get("route_type")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        template_mapping: config
+            .get("template_mapping")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default(),
+        auth_token: load_secret(pool, provider_id, "auth_token").await?,
+    })
+}
+
+async fn send_generic_sms(
+    config: &GenericSmsConfig,
+    phone: &str,
+    message: &str,
+    template_key: &str,
+) -> Result<(), String> {
+    let template_id = config
+        .template_mapping
+        .get(template_key)
+        .and_then(Value::as_str);
+    let rendered_body = render_sms_value(
+        &config.body_template,
+        phone,
+        message,
+        &config.sender_id,
+        config.route_type.as_deref(),
+        template_id,
+        &config.auth_token,
+    )?;
+    let client = reqwest::Client::new();
+    let mut request = match config.method.as_str() {
+        "POST" => client.post(&config.base_url),
+        "PUT" => client.put(&config.base_url),
+        _ => unreachable!(),
+    };
+    for (name, value) in &config.headers_template {
+        let rendered = render_sms_value(
+            value,
+            phone,
+            message,
+            &config.sender_id,
+            config.route_type.as_deref(),
+            template_id,
+            &config.auth_token,
+        )?;
+        request = request.header(
+            name,
+            rendered
+                .as_str()
+                .ok_or_else(|| "Rendered SMS header must be a string".to_string())?,
+        );
+    }
+    let response = request
+        .json(&rendered_body)
+        .send()
+        .await
+        .map_err(|_| "SMS provider request failed".to_string())?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("SMS provider returned {}", response.status()))
+    }
 }
 
 async fn ensure_internal_admin(
@@ -869,7 +1067,7 @@ async fn provider_action(
     let allowed = match action {
         "test_email" => matches!(provider_kind.as_str(), "email" | "notification"),
         "test_sms" => provider_kind == "sms",
-        "test_otp" => provider_kind == "otp",
+        "test_otp" => matches!(provider_kind.as_str(), "sms" | "otp"),
         "test_bank_payout" => provider_kind == "bank_payout",
         _ => true,
     };
@@ -945,9 +1143,34 @@ async fn provider_action(
         }
     }
     if success && matches!(action, "test_sms" | "test_otp") {
-        success = false;
-        error_code = Some("generic_sms_not_configured");
-        error_message = Some("No safe generic HTTP SMS adapter schema exists yet".to_string());
+        let phone = match body.as_ref().and_then(|value| value.phone.as_deref()) {
+            Some(value) if !value.trim().is_empty() => value.trim(),
+            _ => {
+                return HttpResponse::BadRequest().json(json!({ "message": "phone is required" }));
+            }
+        };
+        let message = if action == "test_otp" {
+            "Your FeelPay test OTP is 000000. Do not share."
+        } else {
+            "FeelPay SMS provider test message."
+        };
+        let send_result = async {
+            let sms =
+                generic_sms_config(pool.get_ref(), provider_id, &environment, &config).await?;
+            send_generic_sms(
+                &sms,
+                phone,
+                message,
+                if action == "test_otp" { "otp" } else { "test" },
+            )
+            .await
+        }
+        .await;
+        if let Err(message) = send_result {
+            success = false;
+            error_code = Some("sms_delivery_failed");
+            error_message = Some(message);
+        }
     }
     let _ = sqlx::query(
         r#"
@@ -974,7 +1197,7 @@ async fn provider_action(
         "adapter_supports_live_mode": adapter.as_ref().map(|item| item.supports_live_mode()),
         "environment": environment,
         "recipient": body.as_ref().and_then(|value| value.recipient.as_ref()).map(|_| "redacted"),
-        "phone": body.as_ref().and_then(|value| value.phone.as_ref()).map(|_| "redacted"),
+        "phone": body.as_ref().and_then(|value| value.phone.as_deref()).map(mask_phone),
         "otp": body.as_ref().and_then(|value| value.otp.as_ref()).map(|_| "redacted"),
     });
     write_log(
@@ -1196,5 +1419,32 @@ mod tests {
             IntegrationKind::BankPayoutProvider
         ));
         assert!(!adapter.supports_live_mode());
+    }
+
+    #[test]
+    fn sms_templates_mask_phone_and_render_only_known_placeholders() {
+        assert_eq!(mask_phone("+919876543210"), "******3210");
+        let rendered = render_sms_value(
+            &json!({"to": "{{phone}}", "token": "{{token}}"}),
+            "+919876543210",
+            "hello",
+            "FEELPY",
+            Some("transactional"),
+            Some("OTP01"),
+            "secret",
+        )
+        .expect("template");
+        assert_eq!(rendered["to"], "+919876543210");
+        assert_eq!(rendered["token"], "secret");
+        assert!(render_sms_value(
+            &json!({"bad": "{{unsafe}}"}),
+            "+919876543210",
+            "hello",
+            "FEELPY",
+            None,
+            None,
+            "secret",
+        )
+        .is_err());
     }
 }

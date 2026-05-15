@@ -91,6 +91,10 @@ const DEFAULT_FORM = {
   reply_to: '',
   sender_id: '',
   route_type: '',
+  sms_base_url: '',
+  sms_http_method: 'POST',
+  sms_headers_template: '{"Authorization":"Bearer {{token}}"}',
+  sms_body_template: '{"to":"{{phone}}","message":"{{message}}","sender":"{{sender_id}}","template_id":"{{template_id}}"}',
   callback_url: '',
   client_id: '',
   settlement_account_mapping: '',
@@ -150,6 +154,10 @@ export default function AdminIntegrationCenter() {
     reply_to: form.reply_to || undefined,
     sender_id: form.sender_id || undefined,
     route_type: form.route_type || undefined,
+    sms_base_url: form.sms_base_url || undefined,
+    sms_http_method: form.sms_http_method || undefined,
+    sms_headers_template: form.sms_headers_template ? JSON.parse(form.sms_headers_template) : undefined,
+    sms_body_template: form.sms_body_template ? JSON.parse(form.sms_body_template) : undefined,
     callback_url: form.callback_url || undefined,
     client_id: form.client_id || undefined,
     settlement_account_mapping: form.settlement_account_mapping || undefined,
@@ -216,6 +224,10 @@ export default function AdminIntegrationCenter() {
       reply_to: String(config.reply_to || ''),
       sender_id: String(config.sender_id || ''),
       route_type: String(config.route_type || ''),
+      sms_base_url: String(config.sms_base_url || ''),
+      sms_http_method: String(config.sms_http_method || 'POST'),
+      sms_headers_template: JSON.stringify(config.sms_headers_template || { Authorization: 'Bearer {{token}}' }),
+      sms_body_template: JSON.stringify(config.sms_body_template || { to: '{{phone}}', message: '{{message}}', sender: '{{sender_id}}', template_id: '{{template_id}}' }),
       callback_url: String(config.callback_url || ''),
       client_id: String(config.client_id || ''),
       settlement_account_mapping: String(config.settlement_account_mapping || ''),
@@ -280,6 +292,10 @@ export default function AdminIntegrationCenter() {
               <Field label="Reply to"><input value={form.reply_to} onChange={event => setForm({ ...form, reply_to: event.target.value })} /></Field>
               <Field label="Sender ID"><input value={form.sender_id} onChange={event => setForm({ ...form, sender_id: event.target.value })} /></Field>
               <Field label="Route type"><input value={form.route_type} onChange={event => setForm({ ...form, route_type: event.target.value })} /></Field>
+              <Field label="SMS base URL"><input value={form.sms_base_url} onChange={event => setForm({ ...form, sms_base_url: event.target.value })} /></Field>
+              <Field label="SMS method"><Select value={form.sms_http_method} options={['POST', 'PUT']} onChange={sms_http_method => setForm({ ...form, sms_http_method })} /></Field>
+              <Field label="SMS headers JSON"><input value={form.sms_headers_template} onChange={event => setForm({ ...form, sms_headers_template: event.target.value })} /></Field>
+              <Field label="SMS body JSON"><input value={form.sms_body_template} onChange={event => setForm({ ...form, sms_body_template: event.target.value })} /></Field>
               <Field label="Callback URL"><input value={form.callback_url} onChange={event => setForm({ ...form, callback_url: event.target.value })} /></Field>
               <Field label="Client ID"><input value={form.client_id} onChange={event => setForm({ ...form, client_id: event.target.value })} /></Field>
               <Field label="Settlement mapping"><input value={form.settlement_account_mapping} onChange={event => setForm({ ...form, settlement_account_mapping: event.target.value })} /></Field>
@@ -312,11 +328,10 @@ export default function AdminIntegrationCenter() {
             <button onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
             <button onClick={() => selected && void run('Test email sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-email`, { recipient: testRecipient }))}><Mail size={14} /> Test email</button>
             <button onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
-            <button disabled title="No safe generic SMS adapter schema exists yet"><Smartphone size={14} /> Test SMS</button>
-            <button disabled title="No safe generic OTP adapter schema exists yet">Test OTP</button>
+            <button onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
+            <button onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone }))}>Test OTP</button>
             <button onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
           </div>
-          <p className="muted-copy">Generic SMS/OTP delivery remains disabled until a safe provider request schema is added.</p>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Secret</th><th>Masked value</th><th>Rotated</th></tr></thead>

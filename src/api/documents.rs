@@ -88,6 +88,30 @@ async fn log_kyc_action(
     .await;
 }
 
+async fn log_otp_action(
+    state: &AppState,
+    otp_id: Option<Uuid>,
+    action: &str,
+    otp_type: &str,
+    channel: &str,
+) {
+    let entity_id = otp_id.unwrap_or_else(Uuid::nil);
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO audit_logs (entity_type, entity_id, action, new_state, actor_type, actor_id)
+        VALUES ('otp_verification', $1, $2, $3::jsonb, 'system', 'otp_service')
+        "#,
+    )
+    .bind(entity_id)
+    .bind(action)
+    .bind(serde_json::json!({
+        "otp_type": otp_type,
+        "channel": channel
+    }))
+    .execute(&state.db)
+    .await;
+}
+
 /// Generate a presigned upload URL for document upload
 pub async fn generate_upload_url(
     req: HttpRequest,
@@ -493,6 +517,36 @@ pub async fn send_otp(
         ));
     }
 
+    let recent_pending = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM otp_verifications
+        WHERE (email = $1 OR phone = $2)
+          AND otp_type = $3
+          AND status = 'pending'
+          AND created_at > NOW() - INTERVAL '60 seconds'
+        "#,
+    )
+    .bind(&body.email)
+    .bind(&body.phone)
+    .bind(&body.otp_type)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    if recent_pending > 0 {
+        log_otp_action(
+            &state,
+            None,
+            "otp.resend_blocked",
+            &body.otp_type,
+            if body.phone.is_some() { "sms" } else { "email" },
+        )
+        .await;
+        return Err(FeelPayError::BadRequest(
+            "Please wait before requesting another OTP.".into(),
+        ));
+    }
+
     // Generate 6-digit OTP
     let otp = format!("{:06}", rand::random::<u32>() % 1_000_000);
 
@@ -504,10 +558,11 @@ pub async fn send_otp(
     let expires_at = chrono::Utc::now() + chrono::Duration::minutes(10);
 
     // Store OTP
-    sqlx::query(
+    let otp_id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO otp_verifications (email, phone, otp_hash, otp_type, expires_at)
         VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
         "#,
     )
     .bind(&body.email)
@@ -515,18 +570,29 @@ pub async fn send_otp(
     .bind(&otp_hash)
     .bind(&body.otp_type)
     .bind(expires_at)
-    .execute(&state.db)
+    .fetch_one(&state.db)
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    // In production, send OTP via email/SMS service
-    // For now, return the OTP in response (remove in production)
+    if let Some(phone) = body.phone.as_deref() {
+        crate::engine::services::sms::send_otp_sms(&state.db, phone, &otp, &body.otp_type)
+            .await
+            .map_err(|e| FeelPayError::Internal(e.to_string()))?;
+    }
     tracing::info!(
-        "OTP generated: {} for {:?} {:?}",
-        otp,
-        body.email,
-        body.phone
+        email = ?body.email.as_ref().map(|_| "redacted"),
+        phone = ?body.phone.as_ref().map(|_| "redacted"),
+        otp_type = %body.otp_type,
+        "OTP sent"
     );
+    log_otp_action(
+        &state,
+        Some(otp_id),
+        "otp.sent",
+        &body.otp_type,
+        if body.phone.is_some() { "sms" } else { "email" },
+    )
+    .await;
 
     Ok(HttpResponse::Ok().json(OtpResponse {
         message: "OTP sent successfully".to_string(),
@@ -589,6 +655,14 @@ pub async fn verify_otp(
                 .execute(&state.db)
                 .await
                 .map_err(|e| FeelPayError::Database(e.to_string()))?;
+                log_otp_action(
+                    &state,
+                    Some(otp_record.id),
+                    "otp.verified",
+                    &body.otp_type,
+                    if body.phone.is_some() { "sms" } else { "email" },
+                )
+                .await;
 
                 Ok(HttpResponse::Ok().json(serde_json::json!({
                     "verified": true,
@@ -601,6 +675,14 @@ pub async fn verify_otp(
                     .execute(&state.db)
                     .await
                     .ok();
+                log_otp_action(
+                    &state,
+                    Some(otp_record.id),
+                    "otp.verify_failed",
+                    &body.otp_type,
+                    if body.phone.is_some() { "sms" } else { "email" },
+                )
+                .await;
 
                 Err(FeelPayError::BadRequest("Invalid OTP".into()))
             }

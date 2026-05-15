@@ -44,7 +44,19 @@ Template keys should cover onboarding, OTP, payout, refund, dispute, API key, an
 
 Store sender ID, route type, callback URL, and template mapping in config. Store API keys or tokens as secrets.
 
-The current admin model does not yet define a safe generic HTTP SMS request schema for URL, headers, and body substitution, so real generic SMS/OTP dispatch is intentionally not enabled in this pass. Delivery callbacks can be recorded through the notification provider when available once a concrete adapter exists.
+Generic HTTP SMS providers use:
+
+- `sms_base_url`
+- `sms_http_method` (`POST` or `PUT`)
+- `sms_headers_template`
+- `sms_body_template`
+- `sender_id`
+- `route_type`
+- `template_mapping`
+
+Supported placeholders are only `{{phone}}`, `{{message}}`, `{{sender_id}}`, `{{route_type}}`, `{{template_id}}`, and `{{token}}`. The admin test path masks phone numbers in logs and never logs tokens or OTP values.
+
+OTP delivery now prefers the default enabled Integration Center SMS provider when present. The existing OTP store already keeps only hashes, expiries, and attempt counts; send endpoints now also enforce a 60 second resend cooldown and no longer log or return OTP values.
 
 ### Bank / Payout
 
@@ -66,10 +78,15 @@ Use notification providers for outbound delivery and callback/webhook metadata. 
 
 - SMTP test email uses the configured encrypted credential and performs a real provider delivery attempt.
 - `Test default email` resolves the configured default email provider for the selected environment before sending.
-- Generic SMS/OTP dispatch is still disabled because the current model does not yet define a safe request schema.
 - Live bank payout mode remains intentionally gated.
 - Operational platform notifications are not yet rewired to select the default Integration Center provider automatically; that remains a separate integration step beyond the admin test path.
 
-## Validation Note
+## Local Postgres Validation
 
-Real migrated local Postgres validation was not available in this workspace because `pg_isready` reported `/run/postgresql:5432 - no response`. The required fallback is `SQLX_OFFLINE=true cargo test` until a reachable migrated local database is provided.
+1. Start local Postgres: `docker compose -f docker-compose.local.yml up -d`
+2. Use `DATABASE_URL=postgresql://feelpay:feelpay@localhost:5432/feelpay_test`
+3. Run migrations: `sqlx migrate run`
+4. Refresh SQLx metadata when query macros change: `cargo sqlx prepare --check`
+5. Run normal tests: `cargo test`
+
+If no local database is running, `pg_isready` returns `/run/postgresql:5432 - no response`. In this workspace, `docker compose -f docker-compose.local.yml up -d` also failed because the Docker socket was not accessible, so use `SQLX_OFFLINE=true cargo test` until a reachable migrated local database is available.
