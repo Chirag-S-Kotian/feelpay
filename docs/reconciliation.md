@@ -46,6 +46,8 @@ Internal admins create batches, inspect matched and mismatched items, mark items
 
 Settlement and payout hardening adds explicit reconciliation links from company settlement batches, payout batches, and payout items back to reconciliation batches/items when an internal workflow has matched them.
 
+Reconciliation mismatch creation also emits internal risk evaluations so admins can review repeated mismatch patterns without exposing those risk internals to merchants.
+
 ## Boundaries
 
 - Bank and provider APIs are still outside this foundation. No live bank/payout API was added.

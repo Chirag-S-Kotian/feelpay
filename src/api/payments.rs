@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::api::pagination::{build_cursor, PaginatedResponse, PaginationParams};
 use crate::engine::processor::{MethodData, TransactionContext};
 use crate::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
+use crate::engine::services::risk_engine::{evaluate_and_record, RiskDisposition, RiskEvent};
 use crate::error::FeelPayError;
 use crate::models::payment_order::{PaymentOrder, PaymentStatus};
 use crate::state::AppState;
@@ -309,6 +310,61 @@ pub async fn create_payment(
     if req_data.amount <= 0 {
         return Err(FeelPayError::BadRequest(
             "Amount must be greater than 0".into(),
+        ));
+    }
+    let duplicate_reference: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM payment_orders WHERE merchant_id = $1 AND order_id = $2)",
+    )
+    .bind(merchant_id)
+    .bind(&req_data.order_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(false);
+    let daily_volume_paise: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(amount), 0)::bigint FROM payment_orders WHERE merchant_id = $1 AND created_at::date = CURRENT_DATE",
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+    let failure_rate_bps: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(
+            (COUNT(*) FILTER (WHERE status = 'failed') * 10000 / NULLIF(COUNT(*), 0)),
+            0
+        )::bigint
+        FROM payment_orders
+        WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '1 day'
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+    let risk = evaluate_and_record(
+        &state.db,
+        RiskEvent {
+            scope: "payment",
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            },
+            entity_type: "payment",
+            entity_id: None,
+            merchant_id: Some(merchant_id),
+            context: json!({
+                "amount_paise": req_data.amount,
+                "daily_volume_paise": daily_volume_paise + req_data.amount,
+                "failure_rate_bps": failure_rate_bps,
+                "duplicate_reference": duplicate_reference
+            }),
+        },
+    )
+    .await?;
+    if state.config.is_live() && risk.disposition == RiskDisposition::Block {
+        return Err(FeelPayError::Forbidden(
+            "Payment blocked by risk rules".into(),
         ));
     }
 
@@ -696,6 +752,22 @@ pub async fn capture_payment(
     };
 
     let connector = capture_connector(order.connector.as_deref());
+    let _ = evaluate_and_record(
+        &state.db,
+        RiskEvent {
+            scope: "payment",
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            },
+            entity_type: "payment",
+            entity_id: Some(order.id),
+            merchant_id: Some(merchant_id),
+            context: json!({ "amount_paise": order.amount }),
+        },
+    )
+    .await;
     let engine = state.payment_engine.read().await;
     let proc_result = engine.capture(&txn_ctx, payload.amount, connector).await?;
 
@@ -890,6 +962,44 @@ pub async fn refund_payment(
     .execute(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    let refunded_total: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '30 days'",
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+    let captured_total: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(amount), 0)::bigint FROM payment_orders WHERE merchant_id = $1 AND status IN ('captured','settled','partially_refunded','refunded') AND created_at > NOW() - INTERVAL '30 days'",
+    )
+    .bind(merchant_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+    let refund_rate_bps = if captured_total > 0 {
+        refunded_total.saturating_mul(10_000) / captured_total
+    } else {
+        0
+    };
+    let _ = evaluate_and_record(
+        &state.db,
+        RiskEvent {
+            scope: "refund",
+            environment: if state.config.is_live() {
+                "live"
+            } else {
+                "test"
+            },
+            entity_type: "refund",
+            entity_id: Some(refund_id),
+            merchant_id: Some(merchant_id),
+            context: json!({
+                "amount_paise": refund_amount,
+                "refund_rate_bps": refund_rate_bps
+            }),
+        },
+    )
+    .await;
 
     // Record refund in ledger (reverse transaction)
     // For refund, we debit merchant and credit escrow. Fee is usually not refunded by platform.

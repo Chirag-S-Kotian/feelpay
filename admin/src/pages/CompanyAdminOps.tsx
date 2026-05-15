@@ -849,6 +849,8 @@ export function DisputesPage() {
 export function RiskRulesPage() {
   const rules = useRows(`${API}/risk-rules`);
   const reviews = useRows(`${API}/risk-reviews`);
+  const evaluations = useRows(`${API}/risk-evaluations`);
+  const cases = useRows(`${API}/risk-cases`);
   const signals = useRows(`${API}/risk-signals`);
   const decisions = useRows(`${API}/risk-decisions`);
   const lists = useRows(`${API}/risk-lists`);
@@ -856,9 +858,10 @@ export function RiskRulesPage() {
   const [simForm, setSimForm] = useState({ amount: 5000, currency: 'INR', country: 'IN', payment_method: 'upi', email: '', phone: '', ip: '', business_account_id: '' });
   const [simResult, setSimResult] = useState<GenericRecord | null>(null);
   const [listForm, setListForm] = useState({ list_type: 'blocklist', entity_type: 'email', value: '', reason: '' });
-  const state = [rules.state, reviews.state, signals.state, decisions.state, lists.state].includes('error') ? 'error' : [rules.state, reviews.state, signals.state, decisions.state, lists.state].includes('loading') ? 'loading' : 'ready';
-  const error = rules.error || reviews.error || signals.error || decisions.error || lists.error;
-  const load = () => void Promise.all([rules.load(), reviews.load(), signals.load(), decisions.load(), lists.load()]);
+  const [ruleForm, setRuleForm] = useState({ name: '', description: '', rule_type: 'high_payment_amount', scope: 'payment', environment: 'test', severity: 'medium', action: 'review', condition_json: '{"threshold_paise":100000}', enabled: true });
+  const state = [rules.state, reviews.state, evaluations.state, cases.state, signals.state, decisions.state, lists.state].includes('error') ? 'error' : [rules.state, reviews.state, evaluations.state, cases.state, signals.state, decisions.state, lists.state].includes('loading') ? 'loading' : 'ready';
+  const error = rules.error || reviews.error || evaluations.error || cases.error || signals.error || decisions.error || lists.error;
+  const load = () => void Promise.all([rules.load(), reviews.load(), evaluations.load(), cases.load(), signals.load(), decisions.load(), lists.load()]);
   const helpers = useDrawerConfirm();
   const createListItem = (event: FormEvent) => {
     event.preventDefault();
@@ -880,15 +883,56 @@ export function RiskRulesPage() {
   };
   const act = (row: GenericRecord, action: string) => {
     if (action === 'disable') helpers.setConfirm({ title: 'Disable risk rule', body: 'Risk decisioning may change immediately.', action: () => helpers.run('Risk rule disabled.', () => apiRequest('POST', `${API}/risk-rules/${String(row.id || '')}/disable`)).then(load) });
+    else if (action === 'enable') helpers.setConfirm({ title: 'Enable risk rule', body: 'Risk decisioning may change immediately.', action: () => helpers.run('Risk rule enabled.', () => apiRequest('POST', `${API}/risk-rules/${String(row.id || '')}/enable`)).then(load) });
     else if (action === 'approve_payment' || action === 'reject_payment' || action === 'escalate' || action === 'assign_review') helpers.run('Risk review updated.', () => apiRequest('PATCH', `${API}/risk-reviews/${String(row.id || '')}`, { status: action === 'approve_payment' ? 'approved' : action === 'reject_payment' ? 'rejected' : action === 'escalate' ? 'escalated' : 'pending', decision_note: `Updated from ${action}` })).then(load);
+    else if (['assign_case', 'mark_reviewed', 'resolve_case', 'add_note'].includes(action)) {
+      const route = action === 'assign_case' ? 'assign' : action === 'mark_reviewed' ? 'review' : action === 'resolve_case' ? 'resolve' : 'notes';
+      helpers.run('Risk case updated.', () => apiRequest('POST', `${API}/risk-cases/${String(row.id || '')}/${route}`, { note: `${action} from admin console` })).then(load);
+    }
     else helpers.setDrawer({ title: 'Risk detail', body: row });
+  };
+  const createRule = (event: FormEvent) => {
+    event.preventDefault();
+    let conditionConfig: GenericRecord;
+    try {
+      conditionConfig = JSON.parse(ruleForm.condition_json) as GenericRecord;
+    } catch {
+      helpers.setDrawer({ title: 'Invalid rule JSON', body: { message: 'Condition config must be valid JSON.' } });
+      return;
+    }
+    helpers.run('Risk rule saved.', () => apiRequest('POST', `${API}/risk-rules`, {
+      ...ruleForm,
+      condition_config: conditionConfig,
+    })).then(load);
   };
   return (
     <CrudPage title="Risk Rules" subtitle="Velocity rules, block/allow lists, review queue, decisions, signals, and simulator" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['Rules', 'Review Queue', 'Blocklists', 'Allowlists', 'Decisions', 'Signals', 'Simulator'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Rules', 'Evaluations', 'Cases', 'Review Queue', 'Blocklists', 'Allowlists', 'Decisions', 'Signals', 'Simulator'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
-      {tab === 'Rules' && <DataTable rows={rules.rows} columns={['name', 'rule_type', 'condition', 'action', 'priority', 'last_triggered_at', 'trigger_count', 'status']} empty={{ title: 'No risk rules configured.', body: 'Create amount, velocity, country, provider, and payment method rules.' }} renderActions={row => <ActionButtons actions={['Edit rule', 'Disable', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Risk rule', body: row }) : act(row, normalizeAction(action))} />} />}
+      {tab === 'Rules' && (
+        <>
+          <section className="card">
+            <h2><ShieldCheck size={18} /> Create rule</h2>
+            <form onSubmit={createRule}>
+              <div className="filter-grid">
+                <Field label="Name"><input value={ruleForm.name} onChange={event => setRuleForm({ ...ruleForm, name: event.target.value })} /></Field>
+                <Field label="Description"><input value={ruleForm.description} onChange={event => setRuleForm({ ...ruleForm, description: event.target.value })} /></Field>
+                <Field label="Rule type"><Select value={ruleForm.rule_type} options={['high_payment_amount', 'high_daily_volume', 'high_failure_rate', 'high_refund_rate', 'risky_business_category', 'kyc_mismatch_manual_review', 'payout_amount_above_threshold', 'payout_to_unverified_bank', 'duplicate_reference', 'dispute_count_threshold', 'reconciliation_mismatch_threshold', 'newly_approved_merchant_large_payout']} onChange={rule_type => setRuleForm({ ...ruleForm, rule_type })} /></Field>
+                <Field label="Scope"><Select value={ruleForm.scope} options={['merchant', 'payment', 'refund', 'dispute', 'payout', 'settlement']} onChange={scope => setRuleForm({ ...ruleForm, scope })} /></Field>
+                <Field label="Environment"><Select value={ruleForm.environment} options={['test', 'live']} onChange={environment => setRuleForm({ ...ruleForm, environment })} /></Field>
+                <Field label="Severity"><Select value={ruleForm.severity} options={['low', 'medium', 'high', 'critical']} onChange={severity => setRuleForm({ ...ruleForm, severity })} /></Field>
+                <Field label="Action"><Select value={ruleForm.action} options={['allow', 'review', 'block', 'hold_payout', 'restrict_merchant']} onChange={action => setRuleForm({ ...ruleForm, action })} /></Field>
+                <Field label="Condition JSON"><input value={ruleForm.condition_json} onChange={event => setRuleForm({ ...ruleForm, condition_json: event.target.value })} /></Field>
+              </div>
+              <button className="btn-primary" type="submit">Create rule</button>
+            </form>
+          </section>
+          <DataTable rows={rules.rows} columns={['name', 'rule_type', 'scope', 'environment', 'severity', 'condition_config', 'action', 'priority', 'last_triggered_at', 'trigger_count', 'enabled']} empty={{ title: 'No risk rules configured.', body: 'Create safe JSON rules for internal event scopes.' }} renderActions={row => <ActionButtons actions={['Enable', 'Disable', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Risk rule', body: row }) : act(row, normalizeAction(action))} />} />
+        </>
+      )}
+      {tab === 'Evaluations' && <DataTable rows={evaluations.rows} columns={['id', 'scope', 'environment', 'entity_type', 'entity_id', 'matched', 'action', 'severity', 'reason', 'created_at']} empty="No risk evaluations yet" onView={row => helpers.setDrawer({ title: 'Risk evaluation', body: row })} />}
+      {tab === 'Cases' && <DataTable rows={cases.rows} columns={['id', 'merchant_id', 'scope', 'entity_type', 'entity_id', 'status', 'severity', 'action', 'reason', 'assigned_to_admin_id', 'reviewed_at', 'resolved_at', 'created_at']} empty="No risk cases yet" renderActions={row => <ActionButtons actions={['Assign case', 'Mark reviewed', 'Resolve case', 'Add note', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Risk case', body: row }) : act(row, normalizeAction(action))} />} />}
       {tab === 'Review Queue' && <DataTable rows={reviews.rows} columns={['id', 'payment_order_id', 'business_account_id', 'status', 'assigned_to_admin_id', 'decision_note', 'created_at', 'resolved_at']} empty={{ title: 'No manual reviews', body: 'Risk reviews appear when decisions route payments to manual review.' }} renderActions={row => <ActionButtons actions={['Approve payment', 'Reject payment', 'Escalate', 'Assign review', 'View detail']} onClick={action => action === 'View detail' ? helpers.setDrawer({ title: 'Risk review', body: row }) : act(row, normalizeAction(action))} />} />}
       {tab === 'Blocklists' && (
         <>

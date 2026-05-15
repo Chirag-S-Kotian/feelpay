@@ -400,6 +400,8 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     }
     if path.contains("/risk-rules")
         || path.contains("/risk-reviews")
+        || path.contains("/risk-evaluations")
+        || path.contains("/risk-cases")
         || path.contains("/risk-signals")
         || path.contains("/risk-decisions")
         || path.contains("/risk-lists")

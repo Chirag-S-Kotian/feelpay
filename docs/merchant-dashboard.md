@@ -90,6 +90,7 @@ Run only checks relevant to touched files during normal development. Use the ful
 - This software does not claim RBI/legal readiness or approval.
 - Merchant review follows `draft -> submitted -> under_review -> approved|restricted|rejected|suspended`. Provider verification alone does not approve a merchant.
 - Internal risk notes are company-admin only and are never exposed through merchant-facing APIs.
+- Internal risk rules, evaluations, cases, and case notes are company-admin only and are never exposed through merchant-facing APIs.
 - Live-money processing must remain disabled unless approved acquirer/payment rails already exist in the repo and are configured outside this merchant-dashboard scope.
 - Payout rows are not proof of bank transfer. A paid payout needs an explicitly recorded manual, test, or provider reference; failed and reversed payouts remain visible instead of being rewritten as success.
 - Platform reconciliation imports are internal-admin only. Merchant users can see merchant settlement views, but they cannot access reconciliation batches or source imports.

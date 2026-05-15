@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use crate::middleware::AdminClaims;
 use feelpay::engine::services::notification_dispatcher::{dispatch_event, DispatchRequest};
+use feelpay::engine::services::risk_engine::{evaluate_and_record, RiskDisposition, RiskEvent};
 
 #[allow(dead_code)]
 type HmacSha256 = Hmac<Sha256>;
@@ -58,6 +59,8 @@ pub enum RiskAction {
     Allow,
     Review,
     Block,
+    HoldPayout,
+    RestrictMerchant,
 }
 
 #[allow(dead_code)]
@@ -903,11 +906,15 @@ struct AccessReviewDecisionRequest {
 #[derive(Deserialize)]
 struct RiskRuleRequest {
     name: String,
+    description: Option<String>,
     rule_type: String,
-    condition: Value,
+    scope: String,
+    environment: String,
+    severity: String,
+    condition_config: Value,
     action: RiskAction,
     priority: Option<i32>,
-    status: Option<String>,
+    enabled: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -1069,6 +1076,12 @@ struct RiskListRequest {
 struct RiskReviewActionRequest {
     status: String,
     decision_note: Option<String>,
+    assigned_to_admin_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+struct RiskCaseActionRequest {
+    note: Option<String>,
     assigned_to_admin_id: Option<Uuid>,
 }
 
@@ -2907,6 +2920,13 @@ async fn insert_refund(pool: web::Data<PgPool>, request: RefundRequest) -> HttpR
 
     match result {
         Ok(id) => {
+            evaluate_refund_risk(
+                pool.get_ref(),
+                id,
+                request.business_account_id,
+                request.amount,
+            )
+            .await;
             audit(
                 &pool,
                 "refund.requested",
@@ -3343,6 +3363,7 @@ async fn settlement_action(
                 json!({ "status": status }),
             )
             .await;
+            evaluate_settlement_risk(pool.get_ref(), id).await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Settlement not found" })),
@@ -4032,6 +4053,7 @@ async fn create_reconciliation_batch(
     .bind(batch_id)
     .execute(pool.get_ref())
     .await;
+    evaluate_reconciliation_risk(pool.get_ref(), batch_id).await;
     audit_with_request(
         &pool,
         &request,
@@ -4256,6 +4278,16 @@ async fn dispute_action(
                 json!({ "status": status }),
             )
             .await;
+            let dispute_merchant = sqlx::query_scalar::<_, Option<Uuid>>(
+                "SELECT business_account_id FROM disputes_company WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_optional(pool.get_ref())
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+            evaluate_dispute_risk(pool.get_ref(), id, dispute_merchant).await;
             HttpResponse::Ok().json(json!({ "id": id, "status": status }))
         }
         Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Dispute not found" })),
@@ -4479,6 +4511,163 @@ fn valid_reason_code(code: &str) -> bool {
     )
 }
 
+async fn evaluate_merchant_risk(
+    pool: &PgPool,
+    merchant_id: Uuid,
+    business_category: Option<String>,
+    kyc_mismatch: bool,
+) {
+    let _ = evaluate_and_record(
+        pool,
+        RiskEvent {
+            scope: "merchant",
+            environment: payment_environment(),
+            entity_type: "merchant",
+            entity_id: Some(merchant_id),
+            merchant_id: Some(merchant_id),
+            context: json!({
+                "business_category": business_category,
+                "kyc_mismatch": kyc_mismatch
+            }),
+        },
+    )
+    .await;
+}
+
+async fn evaluate_payout_risk(pool: &PgPool, payout_id: Uuid) -> Option<RiskDisposition> {
+    let row = sqlx::query(
+        r#"
+        SELECT p.business_account_id, p.amount,
+               COALESCE(ba.verification_status = 'verified', false) AS bank_verified,
+               COALESCE(EXTRACT(DAY FROM NOW() - m.review_last_decided_at)::bigint, 9999) AS days_since_approval
+        FROM payouts_company p
+        LEFT JOIN business_account_bank_accounts ba ON ba.id = p.bank_account_id
+        LEFT JOIN merchants m ON m.id = p.business_account_id
+        WHERE p.id = $1
+        "#,
+    )
+    .bind(payout_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+    let merchant_id: Option<Uuid> = row.get("business_account_id");
+    let outcome = evaluate_and_record(
+        pool,
+        RiskEvent {
+            scope: "payout",
+            environment: payment_environment(),
+            entity_type: "payout",
+            entity_id: Some(payout_id),
+            merchant_id,
+            context: json!({
+                "amount_paise": row.get::<i64, _>("amount"),
+                "bank_verified": row.get::<bool, _>("bank_verified"),
+                "days_since_approval": row.get::<i64, _>("days_since_approval")
+            }),
+        },
+    )
+    .await
+    .ok()?;
+    Some(outcome.disposition)
+}
+
+async fn evaluate_refund_risk(pool: &PgPool, refund_id: Uuid, merchant_id: Option<Uuid>, amount: i64) {
+    let _ = evaluate_and_record(
+        pool,
+        RiskEvent {
+            scope: "refund",
+            environment: payment_environment(),
+            entity_type: "refund",
+            entity_id: Some(refund_id),
+            merchant_id,
+            context: json!({ "amount_paise": amount }),
+        },
+    )
+    .await;
+}
+
+async fn evaluate_dispute_risk(pool: &PgPool, dispute_id: Uuid, merchant_id: Option<Uuid>) {
+    let dispute_count: i64 = if let Some(merchant_id) = merchant_id {
+        sqlx::query_scalar(
+            "SELECT COUNT(*)::bigint FROM disputes_company WHERE business_account_id = $1 AND status NOT IN ('won')",
+        )
+        .bind(merchant_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0)
+    } else {
+        0
+    };
+    let _ = evaluate_and_record(
+        pool,
+        RiskEvent {
+            scope: "dispute",
+            environment: payment_environment(),
+            entity_type: "dispute",
+            entity_id: Some(dispute_id),
+            merchant_id,
+            context: json!({ "dispute_count": dispute_count }),
+        },
+    )
+    .await;
+}
+
+async fn evaluate_settlement_risk(pool: &PgPool, settlement_id: Uuid) {
+    let row = sqlx::query(
+        "SELECT net_settlement_amount FROM settlement_batches_company WHERE id = $1",
+    )
+    .bind(settlement_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    if let Some(row) = row {
+        let _ = evaluate_and_record(
+            pool,
+            RiskEvent {
+                scope: "settlement",
+                environment: payment_environment(),
+                entity_type: "settlement",
+                entity_id: Some(settlement_id),
+                merchant_id: None,
+                context: json!({ "amount_paise": row.get::<i64, _>("net_settlement_amount") }),
+            },
+        )
+        .await;
+    }
+}
+
+async fn evaluate_reconciliation_risk(pool: &PgPool, batch_id: Uuid) {
+    let mismatch_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM reconciliation_mismatches WHERE batch_id = $1",
+    )
+    .bind(batch_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    let _ = evaluate_and_record(
+        pool,
+        RiskEvent {
+            scope: "settlement",
+            environment: payment_environment(),
+            entity_type: "reconciliation_batch",
+            entity_id: Some(batch_id),
+            merchant_id: None,
+            context: json!({ "mismatch_count": mismatch_count }),
+        },
+    )
+    .await;
+}
+
+fn payment_environment() -> &'static str {
+    if std::env::var("PAYMENT_MODE").ok().as_deref() == Some("live") {
+        "live"
+    } else {
+        "test"
+    }
+}
+
 async fn review_business_account(
     pool: web::Data<PgPool>,
     request: HttpRequest,
@@ -4595,6 +4784,30 @@ async fn review_business_account(
     .bind(note)
     .execute(pool.get_ref())
     .await;
+    if matches!(
+        body.action.as_str(),
+        "mark_under_review" | "approve" | "reject" | "restrict" | "suspend"
+    ) {
+        let business_category = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT registration_data->>'business_category' FROM merchants WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten()
+        .flatten();
+        evaluate_merchant_risk(
+            pool.get_ref(),
+            id,
+            business_category,
+            matches!(
+                body.reason_code.as_deref(),
+                Some("document_mismatch" | "bank_mismatch")
+            ),
+        )
+        .await;
+    }
     audit_with_request(
         &pool,
         &request,
@@ -4655,24 +4868,34 @@ async fn list_risk_rules(pool: web::Data<PgPool>) -> impl Responder {
 
 async fn create_risk_rule(
     pool: web::Data<PgPool>,
+    http_request: HttpRequest,
     request: web::Json<RiskRuleRequest>,
 ) -> impl Responder {
-    save_risk_rule(pool, None, request.into_inner()).await
+    let actor = admin_user_id_from_request(pool.get_ref(), &http_request).await;
+    save_risk_rule(pool, None, actor, request.into_inner()).await
 }
 
 async fn update_risk_rule(
     pool: web::Data<PgPool>,
+    http_request: HttpRequest,
     path: web::Path<Uuid>,
     request: web::Json<RiskRuleRequest>,
 ) -> impl Responder {
-    save_risk_rule(pool, Some(path.into_inner()), request.into_inner()).await
+    let actor = admin_user_id_from_request(pool.get_ref(), &http_request).await;
+    save_risk_rule(pool, Some(path.into_inner()), actor, request.into_inner()).await
 }
 
-async fn disable_risk_rule(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+async fn disable_risk_rule(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
     let id = path.into_inner();
+    let actor = admin_user_id_from_request(pool.get_ref(), &request).await;
     let updated =
-        sqlx::query("UPDATE risk_rules SET status = 'disabled', updated_at = NOW() WHERE id = $1")
+        sqlx::query("UPDATE risk_rules SET status = 'disabled', enabled = false, updated_by_admin_id = $2, updated_at = NOW() WHERE id = $1")
             .bind(id)
+            .bind(actor)
             .execute(pool.get_ref())
             .await;
     match updated {
@@ -4695,38 +4918,91 @@ async fn disable_risk_rule(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> im
     }
 }
 
+async fn enable_risk_rule(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let actor = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let updated =
+        sqlx::query("UPDATE risk_rules SET status = 'active', enabled = true, updated_by_admin_id = $2, updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .bind(actor)
+            .execute(pool.get_ref())
+            .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            audit(
+                &pool,
+                "risk_rule.enabled",
+                "risk_rule",
+                Some(id),
+                json!({ "status": "active" }),
+            )
+            .await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": "active" }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Risk rule not found" })),
+        Err(e) => {
+            tracing::error!("Enable risk rule failed: {}", e);
+            server_error("Failed to enable risk rule")
+        }
+    }
+}
+
 async fn save_risk_rule(
     pool: web::Data<PgPool>,
     rule_id: Option<Uuid>,
+    actor: Option<Uuid>,
     request: RiskRuleRequest,
 ) -> HttpResponse {
     let action = serde_json::to_string(&request.action)
         .unwrap_or_else(|_| "\"review\"".to_string())
         .trim_matches('"')
         .to_string();
+    if !matches!(
+        request.scope.as_str(),
+        "merchant" | "payment" | "refund" | "dispute" | "payout" | "settlement"
+    ) || !matches!(request.environment.as_str(), "test" | "live")
+        || !matches!(request.severity.as_str(), "low" | "medium" | "high" | "critical")
+        || !request.condition_config.is_object()
+    {
+        return HttpResponse::BadRequest().json(json!({ "message": "Invalid safe risk rule config" }));
+    }
     let result = if let Some(id) = rule_id {
         sqlx::query_scalar::<_, Uuid>(
-            "UPDATE risk_rules SET name = $2, rule_type = $3, condition = $4::jsonb, action = $5, priority = $6, status = $7, updated_at = NOW() WHERE id = $1 RETURNING id",
+            "UPDATE risk_rules SET name = $2, description = $3, rule_type = $4, scope = $5, environment = $6, severity = $7, condition = $8::jsonb, condition_config = $8::jsonb, action = $9, priority = $10, status = CASE WHEN $11 THEN 'active' ELSE 'disabled' END, enabled = $11, updated_by_admin_id = $12, updated_at = NOW() WHERE id = $1 RETURNING id",
         )
         .bind(id)
         .bind(request.name.trim())
+        .bind(request.description.as_deref())
         .bind(request.rule_type.trim())
-        .bind(request.condition.clone())
+        .bind(request.scope.trim())
+        .bind(request.environment.trim())
+        .bind(request.severity.trim())
+        .bind(request.condition_config.clone())
         .bind(&action)
         .bind(request.priority.unwrap_or(100))
-        .bind(request.status.as_deref().unwrap_or("active"))
+        .bind(request.enabled.unwrap_or(true))
+        .bind(actor)
         .fetch_optional(pool.get_ref())
         .await
     } else {
         sqlx::query_scalar::<_, Uuid>(
-            "INSERT INTO risk_rules (name, rule_type, condition, action, priority, status) VALUES ($1, $2, $3::jsonb, $4, $5, $6) RETURNING id",
+            "INSERT INTO risk_rules (name, description, rule_type, scope, environment, severity, condition, condition_config, action, priority, status, enabled, created_by_admin_id, updated_by_admin_id) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$7::jsonb,$8,$9,CASE WHEN $10 THEN 'active' ELSE 'disabled' END,$10,$11,$11) RETURNING id",
         )
         .bind(request.name.trim())
+        .bind(request.description.as_deref())
         .bind(request.rule_type.trim())
-        .bind(request.condition.clone())
+        .bind(request.scope.trim())
+        .bind(request.environment.trim())
+        .bind(request.severity.trim())
+        .bind(request.condition_config.clone())
         .bind(&action)
         .bind(request.priority.unwrap_or(100))
-        .bind(request.status.as_deref().unwrap_or("active"))
+        .bind(request.enabled.unwrap_or(true))
+        .bind(actor)
         .fetch_optional(pool.get_ref())
         .await
     };
@@ -4758,6 +5034,146 @@ async fn list_risk_reviews(pool: web::Data<PgPool>) -> impl Responder {
         "Failed to load risk reviews",
     )
     .await
+}
+
+async fn list_risk_evaluations(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM risk_evaluations ORDER BY created_at DESC LIMIT 200",
+        "Failed to load risk evaluations",
+    )
+    .await
+}
+
+async fn list_risk_cases(pool: web::Data<PgPool>) -> impl Responder {
+    query_items(
+        pool,
+        "SELECT * FROM risk_cases ORDER BY created_at DESC LIMIT 200",
+        "Failed to load risk cases",
+    )
+    .await
+}
+
+async fn list_risk_case_notes(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl Responder {
+    let id = path.into_inner();
+    let rows = sqlx::query("SELECT * FROM risk_case_notes WHERE case_id = $1 ORDER BY created_at DESC")
+        .bind(id)
+        .fetch_all(pool.get_ref())
+        .await;
+    match rows {
+        Ok(rows) => HttpResponse::Ok().json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Err(e) => {
+            tracing::error!("List risk case notes failed: {}", e);
+            server_error("Failed to load risk case notes")
+        }
+    }
+}
+
+async fn add_risk_case_note(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<RiskCaseActionRequest>,
+) -> impl Responder {
+    let case_id = path.into_inner();
+    let Some(note) = body.note.as_deref().map(str::trim).filter(|note| !note.is_empty()) else {
+        return HttpResponse::BadRequest().json(json!({ "message": "Note is required" }));
+    };
+    let actor = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO risk_case_notes (case_id, note, created_by_admin_id) VALUES ($1,$2,$3) RETURNING id",
+    )
+    .bind(case_id)
+    .bind(note)
+    .bind(actor)
+    .fetch_optional(pool.get_ref())
+    .await;
+    match id {
+        Ok(Some(id)) => {
+            audit_with_request(&pool, &request, "risk_case.note_added", "risk_case", Some(case_id), json!({ "note_id": id })).await;
+            HttpResponse::Ok().json(json!({ "id": id }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(json!({ "message": "Risk case not found" })),
+        Err(e) => {
+            tracing::error!("Add risk case note failed: {}", e);
+            server_error("Failed to add risk case note")
+        }
+    }
+}
+
+async fn transition_risk_case(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<RiskCaseActionRequest>,
+    next_status: &'static str,
+) -> impl Responder {
+    let id = path.into_inner();
+    let row = sqlx::query("SELECT status FROM risk_cases WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    let Ok(Some(row)) = row else {
+        return HttpResponse::NotFound().json(json!({ "message": "Risk case not found" }));
+    };
+    let from_status: String = row.get("status");
+    let actor = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let updated = sqlx::query(
+        "UPDATE risk_cases SET status = $2, assigned_to_admin_id = COALESCE($3, CASE WHEN $2 = 'assigned' THEN $4 ELSE assigned_to_admin_id END), reviewed_at = CASE WHEN $2 = 'reviewed' THEN NOW() ELSE reviewed_at END, resolved_at = CASE WHEN $2 = 'resolved' THEN NOW() ELSE resolved_at END, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(next_status)
+    .bind(body.assigned_to_admin_id)
+    .bind(actor)
+    .execute(pool.get_ref())
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() > 0 => {
+            let _ = sqlx::query("INSERT INTO risk_action_history (case_id, action, from_status, to_status, note, actor_admin_id) VALUES ($1,$2,$3,$4,$5,$6)")
+                .bind(id)
+                .bind(next_status)
+                .bind(&from_status)
+                .bind(next_status)
+                .bind(body.note.as_deref())
+                .bind(actor)
+                .execute(pool.get_ref())
+                .await;
+            audit_with_request(&pool, &request, &format!("risk_case.{next_status}"), "risk_case", Some(id), json!({ "from_status": from_status, "to_status": next_status })).await;
+            HttpResponse::Ok().json(json!({ "id": id, "status": next_status }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(json!({ "message": "Risk case not found" })),
+        Err(e) => {
+            tracing::error!("Transition risk case failed: {}", e);
+            server_error("Failed to update risk case")
+        }
+    }
+}
+
+async fn assign_risk_case(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<RiskCaseActionRequest>,
+) -> impl Responder {
+    transition_risk_case(pool, request, path, body, "assigned").await
+}
+
+async fn review_risk_case(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<RiskCaseActionRequest>,
+) -> impl Responder {
+    transition_risk_case(pool, request, path, body, "reviewed").await
+}
+
+async fn resolve_risk_case(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    path: web::Path<Uuid>,
+    body: web::Json<RiskCaseActionRequest>,
+) -> impl Responder {
+    transition_risk_case(pool, request, path, body, "resolved").await
 }
 
 async fn list_audit_logs(pool: web::Data<PgPool>) -> impl Responder {
@@ -8959,6 +9375,29 @@ async fn transition_payout_company(
     target_status: &'static str,
 ) -> impl Responder {
     let id = path.into_inner();
+    if matches!(target_status, "approved" | "processing") {
+        if let Some(disposition) = evaluate_payout_risk(pool.get_ref(), id).await {
+            match disposition {
+                RiskDisposition::Block => {
+                    return HttpResponse::Conflict()
+                        .json(json!({ "message": "Payout blocked by risk rules" }));
+                }
+                RiskDisposition::HoldPayout | RiskDisposition::Review => {
+                    if target_status == "approved" {
+                        let _ = sqlx::query(
+                            "UPDATE payouts_company SET status = 'on_hold', failure_reason = 'risk review required' WHERE id = $1",
+                        )
+                        .bind(id)
+                        .execute(pool.get_ref())
+                        .await;
+                        return HttpResponse::Conflict()
+                            .json(json!({ "message": "Payout held for risk review" }));
+                    }
+                }
+                RiskDisposition::RestrictMerchant | RiskDisposition::Allow => {}
+            }
+        }
+    }
     if target_status == "paid" {
         let reference_kind = request.reference_kind.as_deref().unwrap_or("");
         let reference_value = request.reference_value.as_deref().unwrap_or("");
@@ -11332,6 +11771,10 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(disable_risk_rule),
         )
         .route(
+            &format!("{prefix}/risk-rules/{{id}}/enable"),
+            web::post().to(enable_risk_rule),
+        )
+        .route(
             &format!("{prefix}/risk-reviews"),
             web::get().to(list_risk_reviews),
         )
@@ -11342,6 +11785,34 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
         .route(
             &format!("{prefix}/risk-signals"),
             web::get().to(list_risk_signals),
+        )
+        .route(
+            &format!("{prefix}/risk-evaluations"),
+            web::get().to(list_risk_evaluations),
+        )
+        .route(
+            &format!("{prefix}/risk-cases"),
+            web::get().to(list_risk_cases),
+        )
+        .route(
+            &format!("{prefix}/risk-cases/{{id}}/notes"),
+            web::get().to(list_risk_case_notes),
+        )
+        .route(
+            &format!("{prefix}/risk-cases/{{id}}/notes"),
+            web::post().to(add_risk_case_note),
+        )
+        .route(
+            &format!("{prefix}/risk-cases/{{id}}/assign"),
+            web::post().to(assign_risk_case),
+        )
+        .route(
+            &format!("{prefix}/risk-cases/{{id}}/review"),
+            web::post().to(review_risk_case),
+        )
+        .route(
+            &format!("{prefix}/risk-cases/{{id}}/resolve"),
+            web::post().to(resolve_risk_case),
         )
         .route(
             &format!("{prefix}/risk-decisions"),

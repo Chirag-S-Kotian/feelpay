@@ -13,6 +13,7 @@ pub mod notification_dispatcher;
 pub mod notification_templates;
 pub mod report;
 pub mod report_generator;
+pub mod risk_engine;
 pub mod settlement;
 pub mod settlement_advanced;
 pub mod sms;
