@@ -4,9 +4,36 @@
 
 Use staging to validate the exact build, migration, auth, integration, and safety behavior intended for production without touching the production Neon branch or enabling fake live payout behavior.
 
+Actual deployed staging validation is out of scope until a staging environment exists. This document prepares the repo for the first staging deployment only.
+
+## Current Deployment Decision State
+
+No provider-specific staging manifest is committed in this repo. The only committed runtime helper is local `docker-compose.local.yml`.
+
+Choices still required before the first deploy:
+- hosting provider for the two Rust services
+- static hosting or edge provider for the two Vite frontends
+- reverse proxy / ingress product
+- canonical staging domains
+- TLS certificate issuer and renewal owner
+- secret manager used by the chosen platform
+
+Until those decisions are made, keep deployment artifacts provider-neutral and do not add fake platform files that imply a selected host.
+
+## Target Staging Topology
+
+| Surface | Suggested public origin | Upstream target |
+| --- | --- | --- |
+| Merchant dashboard | `https://dashboard-staging.example.com` | static frontend |
+| Admin frontend | `https://admin-staging.example.com` | static frontend |
+| Gateway API | `https://api-staging.example.com` | gateway service on `HOST:PORT` |
+| Admin API | `https://admin-api-staging.example.com` | admin service on `ADMIN_HOST:ADMIN_PORT` |
+
+Use real project domains once selected; these placeholders are only a shape for routing and CORS planning.
+
 ## Required Environment
 
-Gateway:
+Gateway required:
 - `APP_ENV=staging`
 - `PAYMENT_MODE=test`
 - `DATABASE_URL`
@@ -17,7 +44,24 @@ Gateway:
 - `WEBHOOK_SIGNING_SECRET`
 - `CORS_ALLOWED_ORIGINS`
 
-Admin server:
+Gateway runtime settings already supported by code:
+- `HOST`
+- `PORT`
+- `JWT_EXPIRY_HOURS`
+- `VAULT_KEY_ID`
+- `UPI_PSP_ID`
+- `UPI_MERCHANT_VPA`
+- `WEBHOOK_MAX_RETRIES`
+- `WEBHOOK_INITIAL_DELAY_SECS`
+- `SETTLEMENT_CYCLE_DAYS`
+- `PLATFORM_FEE_PERCENTAGE`
+- `RATE_LIMIT_PER_MINUTE`
+- `TENANT_ISOLATION_MODE`
+- `DATABASE_PROVIDER`
+- `DATABASE_URL_NEON`
+- `DATABASE_URL_DOCKER`
+
+Admin server required:
 - `APP_ENV=staging`
 - `PAYMENT_MODE=test`
 - `DATABASE_URL`
@@ -28,9 +72,34 @@ Admin server:
 - `ADMIN_HOST`
 - `ADMIN_PORT`
 
-Frontend:
+Optional service integrations already supported by code:
+- `EMAIL_PROVIDER`
+- `EMAIL_FROM_ADDRESS`
+- `SENDGRID_API_KEY`
+- `POSTMARK_API_KEY`
+- `SMS_PROVIDER`
+- `MSG91_API_KEY`
+- `MSG91_SENDER_ID`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_FROM_NUMBER`
+- `PAYMENT_LINK_BASE_URL`
+- `CHECKOUT_LINK_SIGNING_SECRET`
+- `STORAGE_SIGNER_URL`
+- `EXPORT_ARTIFACTS_DIR`
+- `REPORT_EXPORT_DIR`
+- `REPORT_STORAGE_DIR`
+- DigiLocker variables already listed in `.env.example`
+
+Merchant dashboard build-time variables:
 - `VITE_API_BASE_URL` for merchant dashboard when deployed outside the default local origin
-- `VITE_ADMIN_API_BASE_URL` for admin UI
+- `VITE_SANDBOX_API_BASE_URL`
+- `VITE_LIVE_API_BASE_URL`
+
+Admin frontend build-time variables:
+- `VITE_ADMIN_API_BASE_URL`
+- `VITE_DASHBOARD_BASE_URL`
+- `VITE_ADMIN_DEBUG_TOOLS=false`
 
 Rules:
 - do not commit real staging values
@@ -45,6 +114,7 @@ Rules:
 3. Store a separate validation branch URL as `TEST_DATABASE_URL` or `NEON_TEST_DATABASE_URL` for `./scripts/validate_test_db.sh`.
 4. Record the branch name, parent branch, migration head, and restore point before each deployment.
 5. Never point staging validation scripts at production, `main`, or `live` URLs.
+6. Use separate staging and validation branch credentials even when both descend from the same parent.
 
 ## Migration Order
 
@@ -54,31 +124,20 @@ Rules:
 4. Start the backend only after migrations succeed.
 5. Run health/readiness checks, then the smoke checklist below.
 
-## Build And Deploy
+## Build And Start
 
-Backend gateway:
+| Surface | Build command | Start / serve command |
+| --- | --- | --- |
+| Gateway API | `cargo build --release` | `./target/release/feelpay` |
+| Admin server | `cd admin/server && cargo build --release` | `cd admin/server && ./target/release/feelpay-admin-server` |
+| Merchant dashboard | `cd dashboard && pnpm install --frozen-lockfile && pnpm build` | serve `dashboard/dist/` with the chosen static host or reverse proxy |
+| Admin frontend | `cd admin && pnpm install --frozen-lockfile && pnpm build` | serve `admin/dist/` with the chosen static host or reverse proxy |
+
+Development-only commands remain useful locally, but they are not the staging artifact commands:
 ```bash
 cargo run
-```
-
-Company-admin server:
-```bash
 cd admin/server
 cargo run
-```
-
-Admin frontend:
-```bash
-cd admin
-pnpm install
-pnpm build
-```
-
-Merchant dashboard:
-```bash
-cd dashboard
-pnpm install
-pnpm build
 ```
 
 Current repo deploy evidence:
@@ -89,14 +148,14 @@ Current repo deploy evidence:
 ## Health Checks
 
 Gateway:
-- `GET /health`
-- `GET /v1/health`
-- `GET /ready`
-- `GET /v1/ready`
+- `GET https://api-staging.example.com/health`
+- `GET https://api-staging.example.com/v1/health`
+- `GET https://api-staging.example.com/ready`
+- `GET https://api-staging.example.com/v1/ready`
 
 Admin server:
-- `GET /health`
-- `GET /ready`
+- `GET https://admin-api-staging.example.com/health`
+- `GET https://admin-api-staging.example.com/ready`
 - confirm configured admin base URL responds before opening the UI
 - confirm authenticated admin API traffic returns `x-request-id`
 
@@ -104,6 +163,40 @@ Expected:
 - liveness endpoints return success when the process is up
 - readiness fails if required backing services are unavailable
 - no secret material appears in startup logs
+
+## CORS And Origin Configuration
+
+Use exact origins, not wildcard production-style shortcuts:
+- gateway `CORS_ALLOWED_ORIGINS=https://dashboard-staging.example.com`
+- admin server `ADMIN_CORS_ALLOWED_ORIGINS=https://admin-staging.example.com`
+- admin frontend `VITE_DASHBOARD_BASE_URL=https://dashboard-staging.example.com`
+- merchant dashboard `VITE_API_BASE_URL=https://api-staging.example.com`
+- admin frontend `VITE_ADMIN_API_BASE_URL=https://admin-api-staging.example.com`
+
+If a single apex domain is chosen instead, update the four origins together and verify browser preflight behavior before opening traffic.
+
+## Reverse Proxy / Domain Mapping
+
+Provider-neutral routing contract:
+- `dashboard-staging.example.com/*` -> merchant static site
+- `admin-staging.example.com/*` -> admin static site
+- `api-staging.example.com/*` -> gateway upstream `HOST:PORT`
+- `admin-api-staging.example.com/*` -> admin upstream `ADMIN_HOST:ADMIN_PORT`
+
+Ingress requirements:
+- preserve `Host`, `X-Forwarded-For`, and `X-Forwarded-Proto`
+- forward websocket upgrades only if the chosen platform later needs them
+- keep frontend history fallback enabled for both Vite SPAs
+- do not mount admin API behind the merchant API origin unless CORS and auth behavior are re-reviewed
+
+## TLS / HTTPS
+
+- terminate HTTPS at the chosen ingress or edge provider
+- redirect HTTP to HTTPS
+- use valid certificates for every staging origin before browser validation
+- enable HSTS only after HTTPS is stable on all chosen staging hosts
+- keep internal upstreams private where the platform allows it
+- do not claim deployed TLS readiness until the real domains and certificates exist
 
 ## Automated Smoke Coverage Already Present
 
@@ -167,9 +260,10 @@ Abuse and webhook safety:
 
 1. Stop new write traffic or enable maintenance mode if money correctness is at risk.
 2. Restore the staging Neon branch from the recorded restore point or apply a reviewed reverse migration.
-3. Redeploy the previous known-good artifact.
-4. Re-run health/readiness checks and the smoke checklist.
-5. Record the failed migration head, app version, incident notes, and rollback owner.
+3. Redeploy the previous known-good gateway, admin server, and frontend artifacts together unless the incident is clearly isolated.
+4. Re-run migrations only when the rollback plan requires it; do not improvise destructive DDL during incident response.
+5. Re-run health/readiness checks and the smoke checklist.
+6. Record the failed migration head, app version, incident notes, and rollback owner.
 
 ## Remaining Manual Checks
 
