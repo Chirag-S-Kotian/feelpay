@@ -35,13 +35,21 @@ unknown=graphify-out/GRAPH_REPORT.md
 - max file read: 300 lines
 - max concurrent files: 5
 
+## Memory
+- before nontrivial work: use `memory_smart_search` for repo/task/file memory
+- after durable learning: use `memory_save` for verified decisions, fixes, commands, pitfalls
+- memory < repo truth; verify drift-prone facts live
+- never save secrets, keys, or raw sensitive data
+
 ## Execution
 1.restate task
-2.load relevant agent
-3.read minimal files
-4.patch
-5.verify touched areas
-6.report concise result
+2.recall relevant memory
+3.load relevant agent
+4.read minimal files
+5.patch
+6.verify touched areas
+7.save durable memory
+8.report concise result
 
 ## Verification Matrix
 rust:

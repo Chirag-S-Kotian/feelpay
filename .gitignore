@@ -41,3 +41,7 @@ dashboard/dist/assets/*
 
 admin/target
 admin/server/uploads
+data/state_store.db/mem%3Ahealth.bin
+data/state_store.db/mem%3Aindex%3Abm25.bin
+data/state_store.db/mem%3Aaccess.bin
+data/state_store.db/mem%3Amemories.bin
