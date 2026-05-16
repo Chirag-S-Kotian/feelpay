@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+!.env.example
+admin/.env
+admin/server/.env
+**/node_modules
+**/dist
+**/target
+graphify-out
+test-results
+playwright-report
+uploads

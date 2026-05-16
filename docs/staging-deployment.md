@@ -8,7 +8,15 @@ Actual deployed staging validation is out of scope until a staging environment e
 
 ## Current Deployment Decision State
 
-No provider-specific staging manifest is committed in this repo. The only committed runtime helper is local `docker-compose.local.yml`.
+No provider-specific staging manifest is committed in this repo. Provider-neutral staging files now exist for first deployment rehearsal:
+- `docker-compose.staging.yml`
+- `deploy/staging/gateway.Dockerfile`
+- `deploy/staging/admin-server.Dockerfile`
+- `deploy/staging/dashboard.Dockerfile`
+- `deploy/staging/admin-frontend.Dockerfile`
+- `deploy/staging/nginx.conf`
+- `deploy/staging/spa-nginx.conf`
+- `deploy/staging/.env.example`
 
 Choices still required before the first deploy:
 - hosting provider for the two Rust services
@@ -19,6 +27,20 @@ Choices still required before the first deploy:
 - secret manager used by the chosen platform
 
 Until those decisions are made, keep deployment artifacts provider-neutral and do not add fake platform files that imply a selected host.
+
+## Concrete Provider-Neutral Files
+
+Use the committed OCI/Compose baseline when the selected host accepts containers:
+- gateway image: `deploy/staging/gateway.Dockerfile`
+- admin API image: `deploy/staging/admin-server.Dockerfile`
+- merchant SPA image: `deploy/staging/dashboard.Dockerfile`
+- admin SPA image: `deploy/staging/admin-frontend.Dockerfile`
+- local/reference orchestration: `docker-compose.staging.yml`
+- host-based routing reference: `deploy/staging/nginx.conf`
+- frontend history fallback: `deploy/staging/spa-nginx.conf`
+- env checklist: `deploy/staging/.env.example`
+
+Equivalent managed-service deployments must preserve the same build commands, runtime variables, origins, health checks, and route mapping even if they do not run Compose.
 
 ## Target Staging Topology
 
@@ -142,8 +164,18 @@ cargo run
 
 Current repo deploy evidence:
 - local infra helper exists at `docker-compose.local.yml`
+- provider-neutral staging runtime baseline exists at `docker-compose.staging.yml` plus `deploy/staging/*`
 - frontend build config exists in `admin/package.json` and `dashboard/package.json`
-- no production/staging platform manifest is committed in this repo, so the hosting-specific deploy step remains environment-owned
+- no provider-specific platform manifest is committed in this repo, so host-specific secrets, DNS, and TLS remain environment-owned
+
+Reference container flow:
+```bash
+docker compose --env-file deploy/staging/.env.example -f docker-compose.staging.yml config
+docker compose --env-file /secure/path/staging.env -f docker-compose.staging.yml build
+docker compose --env-file /secure/path/staging.env -f docker-compose.staging.yml up -d
+```
+
+The first command is safe for syntax validation only. The second and third commands require a real secret-managed staging env source, not the committed example file.
 
 ## Health Checks
 
