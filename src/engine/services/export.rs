@@ -871,7 +871,7 @@ impl ExportService {
                 po.status,
                 po.created_at,
                 po.settled_at,
-                COALESCE(SUM(r.amount), 0) as refund_amount,
+                COALESCE(SUM(r.amount), 0)::BIGINT as refund_amount,
                 CASE WHEN COUNT(r.id) > 0 THEN MAX(r.status) ELSE NULL END as refund_status
             FROM payment_orders po
             LEFT JOIN refunds r ON po.id = r.payment_order_id

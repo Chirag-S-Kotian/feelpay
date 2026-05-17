@@ -200,7 +200,7 @@ async fn get_analytics(
         SELECT 
             COALESCE(connector, 'unknown') as provider,
             COUNT(*) as transaction_count,
-            COALESCE(SUM(amount), 0) as volume,
+            COALESCE(SUM(amount), 0)::BIGINT as volume,
             COUNT(*)::FLOAT / NULLIF(SUM(COUNT(*)) OVER (), 0) * 100 as percentage
         FROM payment_orders
         WHERE created_at BETWEEN $1 AND $2

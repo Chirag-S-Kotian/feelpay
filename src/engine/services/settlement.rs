@@ -19,7 +19,7 @@ impl SettlementService {
     ) -> Result<Settlement, FeelPayError> {
         let total_amount: (i64,) = sqlx::query_as(
             r#"
-            SELECT COALESCE(SUM(po.amount), 0)
+            SELECT COALESCE(SUM(po.amount), 0)::BIGINT
             FROM payment_orders po
             WHERE po.merchant_id = $1 
             AND po.status = 'captured'
@@ -122,8 +122,8 @@ impl SettlementService {
         let pending: (i64,) = sqlx::query_as(
             r#"
             SELECT
-                COALESCE((SELECT SUM(po.amount) FROM payment_orders po WHERE po.merchant_id = $1 AND po.status = 'authorized'), 0)
-              + COALESCE((SELECT SUM(s.net_amount) FROM settlements s WHERE s.merchant_id = $1 AND s.status IN ('scheduled','pending','processing','on_hold')), 0)
+                (COALESCE((SELECT SUM(po.amount) FROM payment_orders po WHERE po.merchant_id = $1 AND po.status = 'authorized'), 0)
+              + COALESCE((SELECT SUM(s.net_amount) FROM settlements s WHERE s.merchant_id = $1 AND s.status IN ('scheduled','pending','processing','on_hold')), 0))::BIGINT
             "#,
         )
         .bind(merchant_id)
