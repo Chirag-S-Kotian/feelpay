@@ -21,6 +21,7 @@ export default function Disputes() {
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidenceTemplate, setEvidenceTemplate] = useState('delivery');
   const [submittingEvidence, setSubmittingEvidence] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const actionableDisputes = disputes.filter(d =>
     ['open', 'needs_response', 'under_review'].includes(d.status)
@@ -51,6 +52,19 @@ export default function Disputes() {
   useEffect(() => {
     void load();
   }, []);
+
+  const triggerTestDispute = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      await apiRequest('POST', '/v1/disputes/test-generator', {});
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate test dispute');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const acceptDispute = async (id: string) => {
     try {
@@ -164,14 +178,19 @@ export default function Disputes() {
               </strong>
             </div>
             <div className="dispute-card__actions">
-              <button className="btn btn-secondary" onClick={() => void acceptDispute(d.id)}>Accept</button>
-              <button
-                className="btn btn-primary"
-                onClick={() => openEvidenceModal(d.id)}
-                disabled={!['open', 'needs_response', 'under_review'].includes(d.status)}
-              >
-                Respond
-              </button>
+              {['open', 'needs_response', 'under_review'].includes(d.status) ? (
+                <>
+                  <button className="btn btn-secondary" onClick={() => void acceptDispute(d.id)}>Accept</button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => openEvidenceModal(d.id)}
+                  >
+                    Respond
+                  </button>
+                </>
+              ) : (
+                <span className="badge accepted" style={{ fontSize: 12, padding: '4px 12px' }}>Resolved</span>
+              )}
             </div>
           </div>
         ))}
@@ -179,8 +198,13 @@ export default function Disputes() {
           <div className="card dispute-empty-state">
             <h3>No disputes yet.</h3>
             <p>Create a test failed/dispute scenario from sandbox tools. Evidence upload becomes available only after an open dispute exists.</p>
-            <button className="btn btn-secondary" type="button" disabled>
-              Test dispute generator pending
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={triggerTestDispute}
+              disabled={generating}
+            >
+              {generating ? 'Generating Dispute...' : 'Generate Test Dispute'}
             </button>
           </div>
         )}
@@ -262,13 +286,6 @@ export default function Disputes() {
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowEvidenceModal(false)}>
                 Cancel
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => void submitEvidence()}
-                disabled={submittingEvidence || actionableDisputes.length === 0 || !targetDisputeId}
-              >
-                Retry Upload
               </button>
               <button
                 className="btn btn-primary"

@@ -449,6 +449,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/v1/disputes")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .route("", web::get().to(api::disputes::list_disputes))
+                    .route("/test-generator", web::post().to(api::disputes::create_test_dispute))
                     .route("/{id}", web::get().to(api::disputes::get_dispute))
                     .route(
                         "/{id}/evidence",
