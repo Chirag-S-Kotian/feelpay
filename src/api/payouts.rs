@@ -60,6 +60,20 @@ async fn list_payouts(pool: web::Data<PgPool>, claims: Claims) -> impl Responder
         None => return HttpResponse::Forbidden().body("Merchant ID missing in token"),
     };
 
+    let onboarding_status = sqlx::query("SELECT onboarding_status FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_one(pool.get_ref())
+        .await;
+
+    let onboarding_status: String = match onboarding_status {
+        Ok(row) => row.get(0),
+        Err(_) => return HttpResponse::NotFound().body("Merchant not found"),
+    };
+
+    if onboarding_status != "approved" {
+        return HttpResponse::Ok().json(Vec::<serde_json::Value>::new());
+    }
+
     let payouts = sqlx::query(
         r#"
         SELECT id, amount, currency, status, bank_account_id,

@@ -195,7 +195,7 @@ export async function apiRequest<T = unknown>(
     }
 
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
         notifyInvalidSession('unauthorized');
         throw new MerchantAuthError(messageFromBody(data, 'Session expired. Please sign in again.'), res.status);
       }
