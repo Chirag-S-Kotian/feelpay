@@ -1199,15 +1199,15 @@ table tr:hover td {
   min-height: 250px;
   color: var(--fp-text-muted);
   border-radius: var(--fp-radius);
-  background: rgba(24, 36, 61, 0.15);
-  border: 1px dashed var(--fp-border);
+  background: rgba(245, 158, 11, 0.04);
+  border: 1px dashed rgba(245, 158, 11, 0.25);
   margin: 16px 0;
   transition: border-color var(--fp-transition), background-color var(--fp-transition);
 }
 
 .empty-state:hover {
-  border-color: var(--fp-text-dim);
-  background: rgba(24, 36, 61, 0.25);
+  border-color: rgba(235, 0, 27, 0.4);
+  background: rgba(245, 158, 11, 0.07);
 }
 
 .empty-state svg {

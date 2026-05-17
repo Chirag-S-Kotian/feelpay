@@ -417,18 +417,20 @@ export default function SettlementReports() {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          border: 1px solid rgba(102, 172, 255, 0.35);
-          color: #bcdfff;
-          background: linear-gradient(135deg, rgba(26, 58, 103, 0.85), rgba(22, 41, 79, 0.85));
+          border: 1px solid var(--fp-border);
+          color: var(--fp-text);
+          background: var(--fp-bg-elevated);
           border-radius: 10px;
           padding: 8px 12px;
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 600;
           cursor: pointer;
+          transition: all var(--fp-transition);
         }
         .refresh-btn:hover {
-          border-color: rgba(102, 172, 255, 0.6);
-          color: #d7ebff;
+          background: var(--fp-bg-hover);
+          border-color: var(--fp-text-dim);
+          color: var(--fp-primary);
         }
         .grid-2 {
           display: grid;
