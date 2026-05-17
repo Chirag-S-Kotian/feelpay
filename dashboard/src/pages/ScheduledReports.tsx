@@ -221,20 +221,6 @@ export default function ScheduledReports() {
           flex-wrap: wrap;
           gap: 4px;
         }
-        .empty-state {
-          min-height: 220px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: flex-start;
-          gap: 10px;
-          padding: 10px 2px;
-        }
-        .empty-sub {
-          color: #9eb9df;
-          font-size: 13px;
-          max-width: 480px;
-        }
         .recipient-badge {
           display: inline-block;
           padding: 2px 8px;

@@ -123,7 +123,7 @@ export default function AuditLogs() {
               </button>
             ))}
           </div>
-          <label className="audit-search">
+          <label className="search-box">
             <Search size={16} aria-hidden={true} />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search action, target, actor" />
           </label>
@@ -173,24 +173,6 @@ export default function AuditLogs() {
           margin-bottom: 24px;
           flex-wrap: wrap;
         }
-        .audit-search {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          border: 1px solid var(--fp-border);
-          background: var(--fp-bg-elevated);
-          color: var(--fp-text-muted);
-          border-radius: 8px;
-          padding: 0 12px;
-          min-height: 38px;
-        }
-        .audit-search input {
-          border: 0;
-          outline: 0;
-          background: transparent;
-          color: var(--fp-text);
-          width: 240px;
-        }
         .audit-table-card {
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
@@ -209,8 +191,7 @@ export default function AuditLogs() {
         @media (max-width: 760px) {
           .audit-toolbar,
           .audit-toolbar .pill-tabs,
-          .audit-search,
-          .audit-search input {
+          .search-box {
             width: 100%;
           }
         }

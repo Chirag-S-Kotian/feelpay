@@ -316,26 +316,21 @@ export default function Customers() {
         </div>
       )}
 
-      <div className="card customers-search-card">
-        <div className="customers-search-wrap">
-          <Search size={18} className="customers-search-icon" />
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Search customers by reference, name, email, phone"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-      </div>
+      <label className="search-box" style={{ marginBottom: 24 }}>
+        <Search size={16} aria-hidden={true} />
+        <input
+          type="text"
+          placeholder="Search customers by reference, name, email, phone"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </label>
 
       {loading ? (
         <div className="card">Loading...</div>
       ) : filteredCustomers.length === 0 ? (
-        <div className="card customers-empty-state">
-          <div className="customers-empty-icon">
-            <Users size={42} style={{ color: 'var(--fp-primary-soft)' }} />
-          </div>
+        <div className="card empty-state">
+          <Users size={40} />
           <h3>No Customers Yet</h3>
           <p>Add your first customer to start tracking payment methods and repeat payments.</p>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
@@ -521,8 +516,7 @@ export default function Customers() {
         }
 
         .customers-field .form-input,
-        .customers-toolbar-select,
-        .customers-search-wrap .form-input {
+        .customers-toolbar-select {
           height: 42px;
           width: 100%;
           min-width: 0;
@@ -534,14 +528,12 @@ export default function Customers() {
           color: var(--fp-text);
         }
 
-        .customers-field .form-input::placeholder,
-        .customers-search-wrap .form-input::placeholder {
+        .customers-field .form-input::placeholder {
           color: color-mix(in srgb, var(--fp-text-muted) 88%, #ffffff 12%);
         }
 
         .customers-field .form-input:focus,
-        .customers-toolbar-select:focus,
-        .customers-search-wrap .form-input:focus {
+        .customers-toolbar-select:focus {
           border-color: var(--fp-cta);
           box-shadow: 0 0 0 3px rgba(235, 0, 27, 0.14);
         }
@@ -568,54 +560,6 @@ export default function Customers() {
           display: flex;
           gap: 12px;
           margin-top: 20px;
-        }
-
-        .customers-search-card {
-          margin-bottom: 24px;
-          padding: 14px;
-        }
-
-        .customers-search-wrap {
-          position: relative;
-        }
-
-        .customers-search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--fp-text-dim);
-          pointer-events: none;
-        }
-
-        .customers-search-wrap .form-input {
-          padding-left: 40px;
-        }
-
-        .customers-empty-state {
-          text-align: center;
-          padding: 56px 20px;
-          background: #fff9ec;
-        }
-
-        .customers-empty-icon {
-          width: 74px;
-          height: 74px;
-          margin: 0 auto 16px;
-          border-radius: 20px;
-          display: grid;
-          place-items: center;
-          border: 1px solid var(--fp-border);
-          background: #f2ead8;
-        }
-
-        .customers-empty-state h3 {
-          margin-bottom: 8px;
-        }
-
-        .customers-empty-state p {
-          color: var(--fp-text-muted);
-          margin-bottom: 22px;
         }
 
         .customers-list-card {

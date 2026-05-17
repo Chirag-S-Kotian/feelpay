@@ -136,7 +136,7 @@ export default function Refunds() {
               </button>
             ))}
           </div>
-          <label className="refund-search">
+          <label className="search-box">
             <Search size={16} aria-hidden={true} />
             <input
               value={search}
@@ -158,19 +158,31 @@ export default function Refunds() {
                   <th>Amount</th>
                   <th>Status</th>
                   <th>Payment Status</th>
-                  <th>Created</th>
+                  <th>Created At</th>
                 </tr>
               </thead>
               <tbody>
                 {refunds.map((refund) => (
-                  <tr key={refund.id} onClick={() => setSelectedRefund(refund)} style={{ cursor: 'pointer' }}>
-                    <td className="mono">{refund.id}</td>
-                    <td>{refund.order_id}</td>
-                    <td>{refund.customer_email || '-'}</td>
-                    <td>₹{formatPaise(refund.amount)}</td>
-                    <td><span className={`badge ${statusTone(refund.status)}`}>{refund.status}</span></td>
-                    <td><span className={`badge ${statusTone(refund.payment_status)}`}>{refund.payment_status}</span></td>
-                    <td>{new Date(refund.created_at).toLocaleString('en-IN')}</td>
+                  <tr
+                    key={refund.id}
+                    className="clickable-row"
+                    onClick={() => setSelectedRefund(refund)}
+                  >
+                    <td className="mono">{refund.id.slice(0, 12)}...</td>
+                    <td className="mono">{refund.order_id}</td>
+                    <td>{refund.customer_email || 'N/A'}</td>
+                    <td>{formatPaise(refund.amount)}</td>
+                    <td>
+                      <span className={`badge badge-${refund.status}`}>
+                        {refund.status}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge-${refund.payment_status}`}>
+                        {refund.payment_status}
+                      </span>
+                    </td>
+                    <td>{new Date(refund.created_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -194,24 +206,6 @@ export default function Refunds() {
           margin-bottom: 24px;
           flex-wrap: wrap;
         }
-        .refund-search {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          border: 1px solid var(--fp-border);
-          background: var(--fp-bg-elevated);
-          color: var(--fp-text-muted);
-          border-radius: 8px;
-          padding: 0 12px;
-          min-height: 38px;
-        }
-        .refund-search input {
-          border: 0;
-          outline: 0;
-          background: transparent;
-          color: var(--fp-text);
-          width: 240px;
-        }
         .refunds-table-card {
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
@@ -219,8 +213,7 @@ export default function Refunds() {
         @media (max-width: 760px) {
           .refunds-toolbar,
           .refunds-toolbar .pill-tabs,
-          .refund-search,
-          .refund-search input {
+          .search-box {
             width: 100%;
           }
         }

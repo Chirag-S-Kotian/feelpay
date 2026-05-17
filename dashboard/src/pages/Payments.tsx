@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Search } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import { SideDrawer } from '../components/SideDrawer';
 import { formatPaise, parseInrToPaise } from '../utils/money';
@@ -401,15 +402,15 @@ export default function Payments() {
               </button>
             ))}
           </div>
-          <input
-            type="text" placeholder="Search by ID, order, or email..."
-            value={search} onChange={e => setSearch(e.target.value)}
-            style={{
-              padding: '8px 16px', borderRadius: 8, border: '1px solid var(--fp-border)',
-              background: 'var(--fp-bg-elevated)', color: 'var(--fp-text)',
-              fontSize: 13, width: 280, fontFamily: 'var(--fp-font)',
-            }}
-          />
+          <label className="search-box">
+            <Search size={16} aria-hidden={true} />
+            <input
+              type="text"
+              placeholder="Search by ID, order, or email..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </label>
         </div>
 
         {/* Table */}
@@ -549,7 +550,7 @@ export default function Payments() {
         @media (max-width: 760px) {
           .payments-toolbar,
           .payments-toolbar .pill-tabs,
-          .payments-toolbar input {
+          .search-box {
             width: 100% !important;
           }
 
