@@ -6,7 +6,7 @@ use crate::middleware::auth::JwtClaims;
 use crate::state::AppState;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 /// Bank account response (with masked account number)
@@ -85,6 +85,22 @@ pub async fn add_bank_account(
     if claims.merchant_id != Some(merchant_id) {
         return Err(FeelPayError::Forbidden(
             "You do not have permission to access this merchant".into(),
+        ));
+    }
+
+    // Block bank account creation unless KYC approved
+    let onboarding_row = sqlx::query("SELECT onboarding_status FROM merchants WHERE id = $1")
+        .bind(merchant_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    let onboarding_status: String = match onboarding_row {
+        Some(r) => r.get("onboarding_status"),
+        None => return Err(FeelPayError::NotFound("Merchant not found".into())),
+    };
+    if onboarding_status != "approved" {
+        return Err(FeelPayError::Forbidden(
+            "KYC verification must be completed before adding bank accounts. Please complete your onboarding profile first.".into(),
         ));
     }
     if req.account_holder_name.trim().is_empty() {

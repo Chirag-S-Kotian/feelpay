@@ -25,6 +25,7 @@ export default function BankAccounts() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [verifyingAccountId, setVerifyingAccountId] = useState<string | null>(null);
   const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null);
+  const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
 
   const merchantId = useMemo(() => {
     const raw = localStorage.getItem('feelpay_merchant');
@@ -37,8 +38,19 @@ export default function BankAccounts() {
   }, []);
 
   useEffect(() => {
+    fetchOnboardingStatus();
     fetchBankAccounts();
   }, []);
+
+  const fetchOnboardingStatus = async () => {
+    if (!merchantId) return;
+    try {
+      const data = await apiRequest<{ onboarding_status?: string }>('GET', '/v1/onboarding/status');
+      setOnboardingStatus(data.onboarding_status || 'pending');
+    } catch {
+      setOnboardingStatus('pending');
+    }
+  };
 
   const fetchBankAccounts = async () => {
     if (!merchantId) {
@@ -91,6 +103,55 @@ export default function BankAccounts() {
     return (
       <div className="page-container">
         <div className="loading">Loading bank accounts...</div>
+      </div>
+    );
+  }
+
+  if (onboardingStatus !== 'approved') {
+    return (
+      <div className="page-container">
+        <div className="page-header">
+          <h1>Bank Account Management</h1>
+          <p>Manage settlement bank accounts and verification</p>
+        </div>
+        <div style={{
+          background: 'linear-gradient(145deg, rgba(127, 29, 29, 0.95), rgba(80, 10, 10, 0.98))',
+          border: '1px solid rgba(239, 68, 68, 0.35)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 60px rgba(239,68,68,0.1)',
+          borderRadius: '20px',
+          padding: '48px 32px',
+          textAlign: 'center',
+          maxWidth: '720px',
+          margin: '40px auto',
+        }}>
+          <div style={{
+            width: 76, height: 76, borderRadius: '50%',
+            background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 16px',
+          }}>
+            <AlertCircle size={36} style={{ color: '#ef4444' }} />
+          </div>
+          <h2 style={{ color: '#fff', fontSize: 24, fontWeight: 700, margin: '0 0 12px' }}>KYC Verification Required</h2>
+          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, margin: '0 0 8px' }}>
+            Your account is in the <strong style={{
+              color: '#fca5a5', background: 'rgba(239,68,68,0.15)',
+              padding: '3px 8px', borderRadius: 4, fontSize: 13,
+              border: '1px solid rgba(239,68,68,0.25)', textTransform: 'uppercase',
+            }}>{onboardingStatus || 'pending'}</strong> state.
+          </p>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, lineHeight: 1.6, maxWidth: 500, margin: '0 auto 24px' }}>
+            Bank account management is disabled until your KYC profile is fully approved. Complete your onboarding to unlock this feature.
+          </p>
+          <a href="/onboarding" style={{
+            display: 'inline-block', background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+            color: '#fff', fontWeight: 600, padding: '12px 24px', borderRadius: 10,
+            fontSize: 14, textDecoration: 'none',
+            boxShadow: '0 4px 15px rgba(239,68,68,0.35)',
+          }}>
+            Complete Onboarding Profile
+          </a>
+        </div>
       </div>
     );
   }

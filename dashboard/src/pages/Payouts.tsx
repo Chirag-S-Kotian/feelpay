@@ -137,14 +137,11 @@ export default function Payouts() {
               Your FeelPay merchant account is in the <strong>{onboardingStatus}</strong> verification state.
             </p>
             <p className="kyc-warning-description">
-              To comply with financial regulations and secure our merchant ecosystem, payouts are strictly disabled until your KYC profile is fully approved by our onboarding team. You can continue to link and configure your bank accounts securely in the meantime.
+              To comply with financial regulations and secure our merchant ecosystem, payouts and bank account management are strictly disabled until your KYC profile is fully approved by our onboarding team.
             </p>
             <div className="kyc-actions">
               <a href="/onboarding" className="btn btn-kyc-action">
                 Complete Onboarding Profile
-              </a>
-              <a href="/bank-accounts" className="btn btn-kyc-secondary">
-                <Landmark size={16} /> Manage Bank Accounts
               </a>
             </div>
           </div>
