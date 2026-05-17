@@ -32,12 +32,19 @@ function getApiKey() {
       api_key_test?: string;
       api_key_live?: string;
     };
-    if (mode === 'live') return parsed.api_key_live || parsed.api_key || null;
-    return parsed.api_key_test || parsed.api_key || null;
+    const key = mode === 'live'
+      ? parsed.api_key_live || parsed.api_key || null
+      : parsed.api_key_test || parsed.api_key || null;
+
+    if (key && key.includes('...')) {
+      return null;
+    }
+    return key;
   } catch {
     return null;
   }
 }
+
 
 export type EnvironmentMode = 'test' | 'live';
 

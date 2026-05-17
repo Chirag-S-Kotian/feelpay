@@ -5,7 +5,7 @@ use utoipa::{IntoParams, ToSchema};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/emi-bnpl")
+        web::scope("")
             .route("/emi-plans", web::get().to(get_emi_plans))
             .route("/bnpl-providers", web::get().to(get_bnpl_providers)),
     );

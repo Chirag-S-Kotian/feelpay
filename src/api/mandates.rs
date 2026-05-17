@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/mandates")
+        web::scope("")
             .route("", web::post().to(initiate_mandate))
             .route("", web::get().to(list_mandates))
             .route("/{id}", web::get().to(get_mandate))

@@ -440,7 +440,7 @@ async fn main() -> std::io::Result<()> {
             )
             // Providers & Routing API
             .service(
-                web::scope("/v1")
+                web::scope("/v1/providers")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::providers::configure),
             )
@@ -722,7 +722,7 @@ async fn main() -> std::io::Result<()> {
             )
             // EMI & BNPL API
             .service(
-                web::scope("/v1")
+                web::scope("/v1/emi-bnpl")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::emi_bnpl::configure),
             )
@@ -753,13 +753,13 @@ async fn main() -> std::io::Result<()> {
             )
             // Payouts API (keep after specific /v1 routes so public merchant auth is not shadowed)
             .service(
-                web::scope("/v1")
+                web::scope("/v1/payouts")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::payouts::configure),
             )
             // Fee Plans API
             .service(
-                web::scope("/v1")
+                web::scope("/v1/fee-plans")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::fee_plans::configure),
             )
@@ -771,13 +771,13 @@ async fn main() -> std::io::Result<()> {
             )
             // Virtual Accounts API
             .service(
-                web::scope("/v1")
+                web::scope("/v1/virtual-accounts")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::virtual_accounts::configure),
             )
             // Mandates API
             .service(
-                web::scope("/v1")
+                web::scope("/v1/mandates")
                     .wrap(crate::middleware::auth::UnifiedAuth)
                     .configure(api::mandates::configure),
             )

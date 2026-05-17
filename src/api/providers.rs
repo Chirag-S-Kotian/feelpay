@@ -212,7 +212,7 @@ pub async fn get_provider_stats(
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/providers")
+        web::scope("")
             .route("", web::get().to(list_providers))
             .route("/{id}", web::get().to(get_provider))
             .route("/{id}/stats", web::get().to(get_provider_stats))

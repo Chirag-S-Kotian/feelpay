@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/payouts")
+        web::scope("")
             .service(request_payout)
             .service(list_payouts)
             .service(get_bank_accounts)

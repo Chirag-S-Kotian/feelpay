@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/virtual-accounts")
+        web::scope("")
             .route("", web::post().to(create_virtual_account))
             .route("", web::get().to(list_virtual_accounts))
             .route("/{id}", web::get().to(get_virtual_account)),

@@ -12,7 +12,7 @@ use crate::state::AppState;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/fee-plans")
+        web::scope("")
             .route("", web::post().to(create_fee_plan))
             .route("", web::get().to(list_fee_plans))
             .route("/{id}", web::get().to(get_fee_plan))
