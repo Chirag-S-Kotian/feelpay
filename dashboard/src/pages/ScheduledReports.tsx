@@ -96,8 +96,10 @@ export default function ScheduledReports() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Scheduled Reports</h1>
-        <p>Manage recurring report generation and delivery</p>
+        <div>
+          <h1>Scheduled Reports</h1>
+          <p>Manage recurring report generation and delivery</p>
+        </div>
       </div>
       {error && <div className="error-banner">{error}</div>}
 
@@ -111,23 +113,7 @@ export default function ScheduledReports() {
       <div className="card">
         <div className="card-header">
           <h2>Active Schedules</h2>
-          <button
-            className="btn-primary"
-            onClick={() => {
-              setEditingReport(null);
-              setShowForm(true);
-            }}
-          >
-            <Plus size={16} />
-            Schedule Report
-          </button>
-        </div>
-
-        {reports.length === 0 ? (
-          <div className="empty-state">
-            <Clock size={32} />
-            <p>No scheduled reports yet</p>
-            <span className="empty-sub">Create recurring report for finance, settlement, GST.</span>
+          {reports.length > 0 && (
             <button
               className="btn-primary"
               onClick={() => {
@@ -135,6 +121,27 @@ export default function ScheduledReports() {
                 setShowForm(true);
               }}
             >
+              <Plus size={16} />
+              Schedule Report
+            </button>
+          )}
+        </div>
+
+        {reports.length === 0 ? (
+          <div className="empty-state-container">
+            <Clock size={40} className="empty-icon" />
+            <h3 className="empty-title">No Scheduled Reports</h3>
+            <p className="empty-description">
+              Create recurring reports for finance, settlement, GST, or other metrics to be delivered directly to your inbox.
+            </p>
+            <button
+              className="btn-primary empty-btn"
+              onClick={() => {
+                setEditingReport(null);
+                setShowForm(true);
+              }}
+            >
+              <Plus size={16} />
               Create First Schedule
             </button>
           </div>
@@ -206,6 +213,74 @@ export default function ScheduledReports() {
       </div>
 
       <style>{`
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+          border-bottom: 1px solid var(--fp-border);
+          padding-bottom: 16px;
+        }
+        .card-header h2 {
+          font-size: 1.35rem;
+          font-weight: 700;
+          color: var(--fp-text);
+          margin: 0;
+        }
+        .card-header button {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .empty-state-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 60px 40px;
+          background: rgba(235, 0, 27, 0.02);
+          border: 1px dashed rgba(235, 0, 27, 0.15);
+          border-radius: 16px;
+          margin: 20px 0;
+          transition: all 0.3s ease;
+        }
+        .empty-state-container:hover {
+          background: rgba(235, 0, 27, 0.04);
+          border-color: rgba(235, 0, 27, 0.3);
+        }
+        .empty-icon {
+          color: var(--fp-text-muted);
+          margin-bottom: 18px;
+          opacity: 0.85;
+          animation: pulse 3s infinite ease-in-out;
+        }
+        .empty-title {
+          font-size: 1.2rem;
+          font-weight: 600;
+          color: var(--fp-text);
+          margin: 0 0 8px 0;
+        }
+        .empty-description {
+          font-size: 0.9rem;
+          color: var(--fp-text-muted);
+          max-width: 480px;
+          line-height: 1.5;
+          margin: 0 0 20px 0;
+        }
+        .empty-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          border-radius: 9999px;
+          font-weight: 600;
+          transition: all 0.2s ease;
+        }
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); opacity: 0.85; }
+          50% { transform: scale(1.05); opacity: 1; }
+        }
         .error-banner {
           margin-bottom: 16px;
           border: 1px solid rgba(247, 83, 96, 0.45);
