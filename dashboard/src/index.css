@@ -3448,3 +3448,82 @@ pre,
     grid-template-columns: 1fr;
   }
 }
+
+/* Card Layout & Premium Date Range Picker Styles */
+.card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.card-title-row svg {
+  color: var(--fp-text-muted);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.date-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff9ec;
+  border: 1px solid var(--fp-border);
+  padding: 10px 20px;
+  border-radius: 999px;
+  transition: border-color var(--fp-transition), box-shadow var(--fp-transition), background-color var(--fp-transition);
+}
+
+.date-range:hover {
+  border-color: var(--fp-text-dim);
+  background: var(--fp-bg-hover);
+}
+
+.date-range-icon {
+  color: var(--fp-text-dim);
+  flex-shrink: 0;
+}
+
+.date-range:focus-within {
+  border-color: #eb001b !important;
+  box-shadow: 0 0 0 3px rgba(235, 0, 27, 0.16) !important;
+  background: var(--fp-bg-hover) !important;
+}
+
+.date-range:focus-within .date-range-icon {
+  color: #eb001b;
+}
+
+.date-range input[type="date"] {
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  font-family: 'Space Grotesk', 'Outfit', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fp-primary);
+  padding: 0 !important;
+  border-radius: 0 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  height: auto !important;
+}
+
+.date-range .date-separator {
+  color: var(--fp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  user-select: none;
+}
+
+/* Hide native calendar picker indicator in Chrome/Safari/Edge/Firefox */
+.date-range input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
+
+.date-range input[type="date"]::-moz-calendar-picker-indicator {
+  display: none !important;
+}

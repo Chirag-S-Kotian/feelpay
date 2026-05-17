@@ -60,9 +60,20 @@ export default function Reports() {
           <FileText size={22} />
         </div>
         <div className="date-range" style={{ marginTop: 16 }}>
-          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-          <span>to</span>
-          <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+          <Calendar size={16} className="date-range-icon" />
+          <input 
+            type="date" 
+            value={startDate} 
+            onChange={(event) => setStartDate(event.target.value)} 
+            onClick={(e) => (e.target as any).showPicker?.()}
+          />
+          <span className="date-separator">to</span>
+          <input 
+            type="date" 
+            value={endDate} 
+            onChange={(event) => setEndDate(event.target.value)} 
+            onClick={(e) => (e.target as any).showPicker?.()}
+          />
         </div>
       </div>
 
