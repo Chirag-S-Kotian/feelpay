@@ -121,13 +121,15 @@ export default function BankAccounts() {
       <div className="card">
         <div className="card-header">
           <h2>Bank Accounts</h2>
-          <button
-            className="btn-primary"
-            onClick={() => setShowAddForm(true)}
-          >
-            <Plus size={16} />
-            Add Bank Account
-          </button>
+          {accounts.length > 0 && (
+            <button
+              className="btn-primary"
+              onClick={() => setShowAddForm(true)}
+            >
+              <Plus size={16} />
+              Add Bank Account
+            </button>
+          )}
         </div>
 
         {accounts.length === 0 ? (
