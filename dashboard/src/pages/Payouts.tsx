@@ -241,11 +241,11 @@ export default function Payouts() {
         
         .kyc-warning-card {
           position: relative;
-          background: rgba(255, 255, 255, 0.02);
+          background: linear-gradient(145deg, rgba(127, 29, 29, 0.95), rgba(80, 10, 10, 0.98));
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(245, 158, 11, 0.25);
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+          border: 1px solid rgba(239, 68, 68, 0.35);
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(239, 68, 68, 0.1);
           border-radius: 20px;
           padding: 48px 32px;
           text-align: center;
@@ -264,7 +264,7 @@ export default function Payouts() {
           left: -50%;
           width: 200%;
           height: 200%;
-          background: radial-gradient(circle, rgba(245, 158, 11, 0.07) 0%, transparent 60%);
+          background: radial-gradient(circle at 60% 30%, rgba(239, 68, 68, 0.12) 0%, transparent 55%);
           z-index: 1;
           pointer-events: none;
         }
@@ -280,16 +280,16 @@ export default function Payouts() {
           width: 76px;
           height: 76px;
           border-radius: 50%;
-          background: rgba(245, 158, 11, 0.1);
+          background: rgba(239, 68, 68, 0.12);
           display: flex;
           align-items: center;
           justify-content: center;
-          border: 1px solid rgba(245, 158, 11, 0.25);
-          box-shadow: 0 0 30px rgba(245, 158, 11, 0.12);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          box-shadow: 0 0 30px rgba(239, 68, 68, 0.15);
           margin-bottom: 8px;
         }
         .kyc-warning-icon {
-          color: #f59e0b;
+          color: #ef4444;
           animation: pulse 2s infinite ease-in-out;
         }
         @keyframes pulse {
@@ -309,14 +309,14 @@ export default function Payouts() {
           margin: 0;
         }
         .kyc-warning-subtitle strong {
-          color: #f59e0b;
+          color: #fca5a5;
           text-transform: uppercase;
-          background: rgba(245, 158, 11, 0.1);
+          background: rgba(239, 68, 68, 0.15);
           padding: 3px 8px;
           border-radius: 4px;
           font-size: 13px;
           letter-spacing: 0.05em;
-          border: 1px solid rgba(245, 158, 11, 0.2);
+          border: 1px solid rgba(239, 68, 68, 0.25);
         }
         .kyc-warning-description {
           font-size: 14px;
@@ -331,8 +331,8 @@ export default function Payouts() {
           margin-top: 16px;
         }
         .btn-kyc-action {
-          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-          color: #000 !important;
+          background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+          color: #fff !important;
           font-weight: 600;
           padding: 12px 24px;
           border-radius: 10px;
@@ -340,13 +340,13 @@ export default function Payouts() {
           border: none;
           cursor: pointer;
           transition: all 0.2s ease;
-          box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+          box-shadow: 0 4px 15px rgba(239, 68, 68, 0.35);
           text-decoration: none;
         }
         .btn-kyc-action:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(245, 158, 11, 0.45);
-          background: linear-gradient(135deg, #fbbf24 0%, #ea580c 100%);
+          box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+          background: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
         }
         .btn-kyc-secondary {
           background: rgba(255, 255, 255, 0.05);
