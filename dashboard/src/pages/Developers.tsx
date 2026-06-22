@@ -89,7 +89,7 @@ export default function Developers() {
   const sampleIdempotencyKey = 'pay_01HV7M5YVQX2S2AZ8WMK6QF7SZ';
 
   const loadKeys = async () => {
-    const data = await apiRequest<{ api_key: string }>('GET', '/v1/merchants/keys');
+    const data = await apiRequest<{ api_key: string }>('GET', '/v1/developers/keys');
     setApiKey(data.api_key);
   };
 
@@ -161,7 +161,7 @@ export default function Developers() {
   };
 
   const regenerateKeys = async () => {
-    const data = await apiRequest<{ api_key: string; api_secret?: string }>('POST', '/v1/merchants/keys/roll', {});
+    const data = await apiRequest<{ api_key: string; api_secret?: string }>('POST', '/v1/developers/keys/roll', {});
     setCreatedSecret(data.api_secret || null);
     await loadKeys();
   };

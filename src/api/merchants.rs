@@ -1602,7 +1602,15 @@ pub async fn get_keys(
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let Some(row) = row else {
-        return Err(FeelPayError::NotFound("Merchant not found".into()));
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "api_key": null,
+            "key": null,
+            "environment": env,
+            "created_at": null,
+            "last_used_at": null,
+            "scopes": [],
+            "status": "none"
+        })));
     };
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
