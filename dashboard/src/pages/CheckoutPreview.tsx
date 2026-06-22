@@ -706,112 +706,200 @@ export default function CheckoutPreview() {
             <span></span><span></span><span></span>
             <strong>checkout.feelpay.in</strong>
           </div>
-          <div className="checkout-card">
-            <div className="test-mode-ribbon">
-              <span>TEST MODE</span>
-              <strong>{simulationAction === 'success' ? 'Approve payment' : simulationAction === 'fail' ? 'Decline payment' : 'Keep pending'}</strong>
-            </div>
-            <div className="checkout-brand">
-              <img src={settings.styling?.logo_url || '/feelpay.png'} alt="FeelPay" />
-              <div>
-                <strong>{merchantName}</strong>
-                <span>{merchantTagline}</span>
-              </div>
-            </div>
-
-            {settings.features?.show_message_banner && (
-              <div className="checkout-banner">
-                {settings.features?.banner_text || 'Secure checkout is ready.'}
-              </div>
-            )}
-
-            <div className="simulation-switcher">
-              {(['success', 'fail', 'processing'] as SimulationAction[]).map((action) => (
-                <button
-                  key={action}
-                  type="button"
-                  className={simulationAction === action ? 'active' : ''}
-                  onClick={() => {
-                    setSimulationAction(action);
-                    setPaymentResult(null);
-                    setPaymentState('idle');
-                  }}
-                >
-                  {action === 'success' ? 'Success' : action === 'fail' ? 'Fail' : 'Pending'}
-                </button>
-              ))}
-            </div>
-
-            <div className="checkout-amount">
-              <span>Amount payable</span>
-              <strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
-              <small>
-                {settings.features?.collect_email ? customer : 'Email collection off'}
-                {settings.features?.readonly_email ? ' • locked' : ''}
-              </small>
-              {settings.features?.collect_contact && <small>+91 99999 99999{settings.features?.readonly_contact ? ' • locked' : ''}</small>}
-            </div>
-
-            {settings.features?.show_mandate_summary && (
-              <div className="checkout-summary-strip">
-                <span>Order summary required</span>
-                <strong>Preview order • INR • {settings.features?.default_language || 'English'}</strong>
-              </div>
-            )}
-
-            {settings.features?.show_saved_methods && (
-              <div className="saved-methods-strip">
-                <span>Saved</span>
-                <button type="button">HDFC Visa • 1111</button>
-                <button type="button">buyer@upi</button>
-              </div>
-            )}
-
-            <div className="checkout-methods">
-              {visibleMethods.map((method) => {
-                const Icon = ICONS[method.method_type];
-                const active = selectedMethod?.method_type === method.method_type;
-                return (
-                  <button key={method.method_type} className={active ? 'active' : ''} onClick={() => selectMethod(method.method_type)}>
-                    <Icon size={18} />
-                    <span>
-                      {method.config?.display_name || LABELS[method.method_type]}
-                      {promotedMethods.includes(method.method_type) && <b>Promoted</b>}
-                    </span>
-                    <small>{method.config?.checkout_note}</small>
-                  </button>
-                );
-              })}
-            </div>
-
-            {renderMethodExperience()}
-
-            <div className="simulation-timeline" aria-label="Payment simulation timeline">
-              {simulationSteps.map((step) => (
-                <div key={step.label}>
-                  <span>{step.label}</span>
-                  <strong>{step.value}</strong>
+          
+          <div className="checkout-viewport-content">
+            {settings.styling?.layout === 'standard' && (
+              <div className="simulated-merchant-bg">
+                <div className="merchant-bg-header">
+                  <span className="logo-placeholder">🛍️</span>
+                  <strong>Awesome Shop</strong>
                 </div>
-              ))}
-            </div>
-
-            {settings.features?.show_fee_breakup && (
-              <div className="fee-breakup">
-                <span>Amount</span><strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
-                <span>Gateway fee</span><strong>₹0.00</strong>
-                <span>Total</span><strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
+                <div className="merchant-bg-body">
+                  <div className="bg-summary-card">
+                    <div className="bg-line-short"></div>
+                    <div className="bg-line-long"></div>
+                  </div>
+                  <div className="bg-line-medium"></div>
+                  <div className="bg-line-long"></div>
+                </div>
               </div>
             )}
 
-            {isPromoted && <div className="recommended-method">Recommended for better success rate</div>}
+            <div className="checkout-card-wrapper">
+              <div className="checkout-card" style={{ borderRadius: settings.styling?.border_style === 'sharp' ? '0' : `${cornerRadius}px`, fontFamily: `${settings.styling?.font_family || 'IBM Plex Sans'}, sans-serif` }}>
+                <div className="test-mode-ribbon">
+                  <span>TEST MODE</span>
+                  <strong>{simulationAction === 'success' ? 'Approve payment' : simulationAction === 'fail' ? 'Decline payment' : 'Keep pending'}</strong>
+                </div>
 
-            <button className="checkout-pay-button" onClick={() => void runPreviewPayment()} disabled={paymentState === 'processing'}>
-              {paymentState === 'processing' ? 'Processing...' : `${settings.styling?.button_text || 'Pay securely'} with ${selectedLabel}`}
-            </button>
-            {settings.features?.retry_enabled && paymentResult?.error && <button className="retry-button" type="button" onClick={() => void runPreviewPayment()}>Retry with suggested method</button>}
-            <div className="checkout-secure">
-              <ShieldCheck size={14} />
-              {settings.styling?.show_trusted_badge === false ? 'Test checkout preview' : 'PCI-ready vault, signed webhooks, live/test isolation'}
+                {paymentState === 'success' ? (
+                  <div className="success-screen-overlay animate-fade-in">
+                    <div className="success-icon-container">
+                      <div className="success-ripple"></div>
+                      <div className="success-circle-glow">
+                        <CheckCircle2 className="success-checkmark-icon" size={68} />
+                      </div>
+                    </div>
+                    <h2>Payment Successful</h2>
+                    <p className="success-subtitle">Your transaction has been processed securely.</p>
+                    <div className="success-amount-paid" style={{ color: themeColor }}>
+                      {formatPaise(parseInrToPaise(amount || '0') || 0)}
+                    </div>
+                    <div className="success-receipt-details">
+                      <div className="receipt-row">
+                        <span>Payment ID</span>
+                        <strong>{paymentResult?.payment_id || `pay_${Math.random().toString(36).substring(2, 9)}`}</strong>
+                      </div>
+                      <div className="receipt-row">
+                        <span>Method</span>
+                        <strong>{selectedLabel} ({paymentResult?.mode_badge || 'TEST'})</strong>
+                      </div>
+                      <div className="receipt-row">
+                        <span>Connector</span>
+                        <strong>{paymentResult?.connector || 'simulator'}</strong>
+                      </div>
+                    </div>
+                    <button className="success-done-btn animate-bounce-subtle" style={{ background: themeColor }} onClick={() => { setPaymentState('idle'); setPaymentResult(null); }}>
+                      Back to Demo Store
+                    </button>
+                  </div>
+                ) : (
+                  <div className="checkout-content-grid">
+                    {/* Left/Top Column: Branding & Info */}
+                    <div className="checkout-brand-section">
+                      <div className="checkout-brand">
+                        <img src={settings.styling?.logo_url || '/feelpay.png'} alt="FeelPay" />
+                        <div>
+                          <strong>{merchantName}</strong>
+                          <span>{merchantTagline}</span>
+                        </div>
+                      </div>
+
+                      <div className="checkout-amount" style={{ background: `color-mix(in srgb, ${themeColor} 4%, #f8fafc)` }}>
+                        <span className="label">Amount payable</span>
+                        <strong className="amount">{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
+                        <div className="customer-details">
+                          {settings.features?.collect_email && (
+                            <small className="detail-item">
+                              <span>Email:</span> {customer} {settings.features?.readonly_email ? '🔒' : ''}
+                            </small>
+                          )}
+                          {settings.features?.collect_contact && (
+                            <small className="detail-item">
+                              <span>Phone:</span> +91 99999 99999 {settings.features?.readonly_contact ? '🔒' : ''}
+                            </small>
+                          )}
+                        </div>
+                      </div>
+
+                      {settings.features?.show_mandate_summary && (
+                        <div className="checkout-summary-strip">
+                          <span>Order Details</span>
+                          <strong>INR • {settings.features?.default_language || 'English'}</strong>
+                        </div>
+                      )}
+                      
+                      <div className="checkout-left-footer">
+                        <div className="checkout-secure">
+                          <ShieldCheck size={14} style={{ color: accentColor }} />
+                          {settings.styling?.show_trusted_badge === false ? 'Test checkout preview' : 'PCI-ready vault, signed webhooks, live/test isolation'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right/Bottom Column: Payment Processing */}
+                    <div className="checkout-payment-section">
+                      {settings.features?.show_message_banner && (
+                        <div className="checkout-banner" style={{ borderColor: themeColor, background: `color-mix(in srgb, ${themeColor} 6%, #ffffff)` }}>
+                          {settings.features?.banner_text || 'Secure checkout is ready.'}
+                        </div>
+                      )}
+
+                      <div className="simulation-switcher">
+                        {(['success', 'fail', 'processing'] as SimulationAction[]).map((action) => (
+                          <button
+                            key={action}
+                            type="button"
+                            className={simulationAction === action ? 'active' : ''}
+                            style={{ borderColor: simulationAction === action ? themeColor : '#d9e2ef', color: simulationAction === action ? themeColor : '#64748b' }}
+                            onClick={() => {
+                              setSimulationAction(action);
+                              setPaymentResult(null);
+                              setPaymentState('idle');
+                            }}
+                          >
+                            {action === 'success' ? 'Success' : action === 'fail' ? 'Fail' : 'Pending'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {settings.features?.show_saved_methods && (
+                        <div className="saved-methods-strip">
+                          <span className="strip-title">Saved</span>
+                          <div className="strip-buttons">
+                            <button type="button" onClick={() => selectMethod('card')}>💳 HDFC Visa • 1111</button>
+                            <button type="button" onClick={() => selectMethod('upi')}>📱 buyer@upi</button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="checkout-methods-container">
+                        <span className="section-title">Select Payment Method</span>
+                        <div className="checkout-methods">
+                          {visibleMethods.map((method) => {
+                            const Icon = ICONS[method.method_type];
+                            const active = selectedMethod?.method_type === method.method_type;
+                            return (
+                              <button key={method.method_type} className={`method-btn ${active ? 'active' : ''}`} style={{ borderColor: active ? themeColor : '#d9e2ef' }} onClick={() => selectMethod(method.method_type)}>
+                                <div className="method-btn-title">
+                                  <Icon size={16} style={{ color: active ? themeColor : '#64748b' }} />
+                                  <span>{method.config?.display_name || LABELS[method.method_type]}</span>
+                                  {promotedMethods.includes(method.method_type) && <b className="promo-badge" style={{ color: accentColor, borderColor: accentColor }}>PROMOTED</b>}
+                                </div>
+                                {method.config?.checkout_note && <span className="method-note">{method.config?.checkout_note}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="active-experience-container">
+                        {renderMethodExperience()}
+                      </div>
+
+                      {isPromoted && <div className="recommended-method" style={{ color: accentColor, borderColor: accentColor, background: `color-mix(in srgb, ${accentColor} 12%, #ffffff)` }}>Recommended for better success rate</div>}
+
+                      <div className="checkout-actions">
+                        <button className="checkout-pay-button" style={{ background: themeColor }} onClick={() => void runPreviewPayment()} disabled={paymentState === 'processing'}>
+                          {paymentState === 'processing' ? 'Processing...' : `${settings.styling?.button_text || 'Pay securely'} with ${selectedLabel}`}
+                        </button>
+                        {settings.features?.retry_enabled && paymentResult?.error && (
+                          <button className="retry-button" style={{ color: themeColor, borderColor: themeColor }} type="button" onClick={() => void runPreviewPayment()}>
+                            Retry with suggested method
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="simulation-timeline" aria-label="Payment simulation timeline">
+                        {simulationSteps.map((step) => (
+                          <div key={step.label} className="timeline-step">
+                            <span>{step.label}</span>
+                            <strong>{step.value}</strong>
+                          </div>
+                        ))}
+                      </div>
+
+                      {settings.features?.show_fee_breakup && (
+                        <div className="fee-breakup">
+                          <span>Amount</span><strong>{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
+                          <span>Gateway fee</span><strong>₹0.00</strong>
+                          <span className="total-label">Total</span><strong className="total-val">{formatPaise(parseInrToPaise(amount || '0') || 0)}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -840,118 +928,207 @@ export default function CheckoutPreview() {
           background: #ffffff;
           padding: 24px;
         }
-        .preview-shell { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 16px; }
-        .preview-controls { display: grid; gap: 14px; position: sticky; top: 20px; background: #ffffff !important; border-radius: 18px !important; }
-        .preview-controls h3 { margin: 0; font-size: 22px; }
+        .preview-shell { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 20px; }
+        .preview-controls { display: grid; gap: 14px; position: sticky; top: 20px; background: #ffffff !important; border-radius: 20px !important; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
+        .preview-controls h3 { margin: 0; font-size: 20px; font-weight: 800; color: #0f172a; }
         .checkout-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-        .checkout-settings-tabs button { border: 1px solid #d9e2ef; background: #ffffff; border-radius: 999px; padding: 8px 10px; font-size: 12px; font-weight: 700; color: #64748b; cursor: pointer; }
-        .checkout-settings-tabs button.active { border-color: ${themeColor}; color: #0f172a; background: #eef6ff; }
-        .checkout-settings-grid { display: grid; gap: 10px; }
-        .checkout-settings-grid label { display: grid; gap: 6px; font-size: 13px; color: #4f4a43; font-weight: 700; }
-        .checkout-settings-grid label:has(input[type='checkbox']) { min-height: 44px; display: flex; flex-direction: row; align-items: center; gap: 10px; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 16px; padding: 10px 12px; color: #172033; }
-        .checkout-settings-grid input[type='checkbox'] { width: 22px; height: 22px; margin: 0; accent-color: #eb001b; flex: 0 0 auto; }
-        .checkout-audit { display: grid; gap: 6px; border-top: 1px dashed #d9e2ef; padding-top: 10px; }
+        .checkout-settings-tabs button { border: 1px solid #d9e2ef; background: #ffffff; border-radius: 999px; padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; cursor: pointer; transition: all 0.2s ease; }
+        .checkout-settings-tabs button.active { border-color: ${themeColor}; color: #0b72e7; background: #eef6ff; }
+        .checkout-settings-grid { display: grid; gap: 12px; }
+        .checkout-settings-grid label { display: grid; gap: 6px; font-size: 13px; color: #475569; font-weight: 700; }
+        .checkout-settings-grid label:has(input[type='checkbox']) { min-height: 44px; display: flex; flex-direction: row; align-items: center; gap: 10px; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 16px; padding: 10px 12px; color: #1e293b; cursor: pointer; }
+        .checkout-settings-grid input[type='checkbox'] { width: 18px; height: 18px; margin: 0; accent-color: ${themeColor}; flex: 0 0 auto; }
+        .checkout-audit { display: grid; gap: 6px; border-top: 1px dashed #d9e2ef; padding-top: 12px; }
         .checkout-audit > span { font-size: 12px; color: #64748b; font-weight: 700; }
-        .checkout-audit-item { font-size: 12px; color: #0f172a; background: #f6f8fb; border: 1px solid #d9e2ef; border-radius: 10px; padding: 6px 8px; }
-        .preview-merchant-name { color: #172033; background: #f6f8fb; border: 1px solid #d9e2ef; border-radius: 999px; padding: 12px 14px; font-weight: 800; font-size: 18px; }
-        .preview-controls label { display: flex; flex-direction: column; gap: 6px; color: var(--fp-text-muted); font-size: 13px; }
+        .checkout-audit-item { font-size: 12px; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 6px 10px; }
+        .preview-merchant-name { color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 10px 14px; font-weight: 800; font-size: 16px; text-align: center; }
+        .preview-controls label { display: flex; flex-direction: column; gap: 6px; color: #475569; font-size: 13px; }
         .preview-controls input,
-        .preview-controls select { background: #ffffff; border: 1px solid #d9e2ef; color: #0f172a; border-radius: 999px; padding: 10px 12px; min-width: 0; min-height: 42px; font-size: 14px; }
-        .preview-method-list { display: grid; gap: 8px; }
-        .preview-method-list span { color: var(--fp-text-muted); font-size: 13px; }
-        .preview-method-list button { text-align: left; background: #ffffff; border: 1px solid #d9e2ef; color: #64748b; border-radius: 999px; padding: 9px 12px; cursor: pointer; }
-        .preview-method-list button.selected { border-color: ${themeColor}; color: #0f172a; background: #eef6ff; }
+        .preview-controls select { background: #ffffff; border: 1px solid #d9e2ef; color: #0f172a; border-radius: 999px; padding: 10px 14px; min-width: 0; min-height: 42px; font-size: 14px; outline: none; transition: border 0.2s; }
+        .preview-controls input:focus, .preview-controls select:focus { border-color: ${themeColor}; }
+        .preview-method-list { display: grid; gap: 6px; }
+        .preview-method-list span { color: #64748b; font-size: 12px; font-weight: 700; }
+        .preview-method-list button { text-align: left; background: #ffffff; border: 1px solid #d9e2ef; color: #64748b; border-radius: 999px; padding: 8px 14px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .preview-method-list button.selected { border-color: ${themeColor}; color: #0b72e7; background: #eef6ff; font-weight: 700; }
         .method-config-builder { display: grid; gap: 8px; }
-        .method-config-builder > span { color: #6b6862; font-size: 12px; font-weight: 800; }
-        .method-config-row { display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px minmax(78px, auto); gap: 7px; align-items: center; border: 1px solid #d9e2ef; background: #ffffff; border-radius: 18px; padding: 9px; }
-        .method-config-row label { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; color: #172033; }
-        .method-config-row button { border: 1px solid #d9e2ef; background: #f6f8fb; color: #172033; border-radius: 999px; min-height: 38px; cursor: pointer; font-weight: 800; }
-        .method-config-row button.active { border-color: ${themeColor}; color: ${themeColor}; background: #fff; }
-        .chip-field { display: grid; gap: 8px; }
-        .chip-field > span { color: #4f4a43; font-size: 13px; font-weight: 800; }
-        .settings-chip-list { display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 18px; padding: 10px; }
-        .settings-chip-list button { border: 1px solid #d9e2ef; background: #ffffff; color: #172033; border-radius: 999px; min-height: 40px; padding: 8px 12px; cursor: pointer; font-weight: 800; }
-        .settings-chip-list button.active { border-color: ${themeColor}; color: ${themeColor}; background: #eef6ff; box-shadow: inset 0 0 0 1px ${themeColor}; }
-        .checkout-stage { min-height: 720px; border: 1px solid #d9e2ef; border-radius: 34px; background: #f6f8fb; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        .method-config-builder > span { color: #475569; font-size: 12px; font-weight: 800; }
+        .method-config-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px minmax(78px, auto); gap: 6px; align-items: center; border: 1px solid #d9e2ef; background: #ffffff; border-radius: 14px; padding: 8px; }
+        .method-config-row label { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; color: #1e293b; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .method-config-row button { border: 1px solid #d9e2ef; background: #f8fafc; color: #0f172a; border-radius: 999px; min-height: 32px; cursor: pointer; font-weight: 800; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .method-config-row button.active { border-color: ${themeColor}; color: ${themeColor}; background: #ffffff; }
+        .chip-field { display: grid; gap: 6px; }
+        .chip-field > span { color: #475569; font-size: 13px; font-weight: 800; }
+        .settings-chip-list { display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 16px; padding: 8px; }
+        .settings-chip-list button { border: 1px solid #d9e2ef; background: #ffffff; color: #0f172a; border-radius: 999px; min-height: 34px; padding: 6px 12px; cursor: pointer; font-weight: 700; font-size: 12px; transition: all 0.2s; }
+        .settings-chip-list button.active { border-color: ${themeColor}; color: ${themeColor}; background: #eef6ff; }
+        
+        /* Checkout stage viewport container */
+        .checkout-stage { min-height: 780px; border: 1px solid #d9e2ef; border-radius: 34px; background: #f8fafc; padding: 24px; display: flex; flex-direction: column; align-items: center; overflow: hidden; justify-content: start; transition: all 0.3s ease; }
         .checkout-stage.browser { width: 100%; }
-        .checkout-stage.laptop { width: min(100%, 980px); margin: 0 auto; padding: 18px 18px 54px; border-radius: 26px; background: #172033; position: relative; }
-        .checkout-stage.laptop::after { content: ''; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 58%; height: 10px; border-radius: 0 0 999px 999px; background: #1f1c19; }
-        .laptop-lid-dot { width: 8px; height: 8px; border-radius: 999px; background: #6b6862; margin-bottom: 10px; }
-        .checkout-stage.mobile { width: 390px; min-height: 812px; margin: 0 auto; padding: 14px; border-radius: 42px; box-shadow: inset 0 0 0 8px #172033; background: #172033; }
-        .browser-bar { width: 100%; max-width: 820px; height: 38px; border-radius: 28px 28px 0 0; background: #ffffff; display: flex; align-items: center; gap: 7px; padding: 0 12px; color: #0f172a; }
-        .browser-bar span { width: 9px; height: 9px; border-radius: 99px; background: #6b6862; }
-        .browser-bar strong { margin-left: 10px; font-size: 12px; font-weight: 600; }
-        .checkout-stage.laptop .browser-bar, .checkout-stage.laptop .checkout-card { max-width: 880px; }
-        .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-card { max-width: 344px; }
-        .checkout-stage.mobile .browser-bar { margin-top: 18px; }
-        .checkout-card { width: 100%; max-width: 820px; min-height: 600px; background: ${checkoutBg}; color: #0f172a; border: 1px solid #d9e2ef; border-top: none; border-radius: ${settings.styling?.border_style === 'sharp' ? '0 0 8px 8px' : `0 0 ${cornerRadius}px ${cornerRadius}px`}; padding: 28px; display: grid; gap: 16px; align-content: start; box-shadow: 0 20px 55px rgba(15, 23, 42, 0.08); font-family: ${settings.styling?.font_family || 'IBM Plex Sans'}, sans-serif; }
-        .checkout-stage.laptop .checkout-card { min-height: 530px; }
-        .checkout-stage.mobile .checkout-card { min-height: 660px; padding: 18px; gap: 14px; }
-        .checkout-stage.template-compact .checkout-card { max-width: 470px; }
-        .checkout-stage.template-standard .checkout-card { max-width: 620px; }
-        .test-mode-ribbon { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; border-radius: 18px; padding: 10px 12px; }
-        .test-mode-ribbon span { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; }
-        .test-mode-ribbon strong { font-size: 13px; }
-        .checkout-brand { display: flex; align-items: center; gap: 14px; }
-        .checkout-brand img { width: 62px; height: 62px; border-radius: 20px; object-fit: contain; border: 1px solid #d9e2ef; background: #fff; padding: 4px; }
-        .checkout-stage.mobile .checkout-brand img { width: 54px; height: 54px; border-radius: 18px; }
-        .checkout-brand div { display: flex; flex-direction: column; line-height: 1.2; }
-        .checkout-brand strong { font-size: 20px; color: #172033; }
-        .checkout-stage.mobile .checkout-brand strong { font-size: 17px; }
-        .checkout-brand span { color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-        .checkout-banner { border: 1px solid ${themeColor}; color: ${themeColor}; background: color-mix(in srgb, ${themeColor} 8%, #ffffff); border-radius: 999px; padding: 10px 14px; font-size: 13px; font-weight: 800; }
-        .simulation-switcher { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-        .simulation-switcher button { border: 1px solid #d9e2ef; background: #ffffff; color: #64748b; border-radius: 999px; min-height: 36px; cursor: pointer; font-weight: 800; }
-        .simulation-switcher button.active { border-color: ${themeColor}; background: #eef6ff; color: ${themeColor}; }
-        .checkout-amount { border: 1px solid #d9e2ef; border-radius: 22px; padding: 16px; display: grid; gap: 2px; background: #f6f8fb; }
-        .checkout-amount span, .checkout-amount small { color: #64748b; }
-        .checkout-amount strong { font-size: 34px; line-height: 1.1; }
-        .checkout-summary-strip { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px dashed #d9e2ef; border-radius: 18px; padding: 10px 12px; color: #64748b; font-size: 12px; }
-        .checkout-summary-strip strong { color: #172033; }
-        .saved-methods-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-        .saved-methods-strip span { color: #64748b; font-size: 12px; font-weight: 800; }
-        .saved-methods-strip button { border: 1px solid #d9e2ef; background: #f6f8fb; color: #172033; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; }
-        .checkout-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-        .checkout-stage.mobile .checkout-methods { grid-template-columns: 1fr; }
-        .checkout-methods button { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 10px; text-align: left; border: 1px solid #d9e2ef; background: #ffffff; color: #0f172a; border-radius: 18px; padding: 14px; cursor: pointer; min-height: 70px; }
-        .checkout-methods button.active { border-color: ${themeColor}; background: #eef6ff; box-shadow: inset 0 0 0 1px ${themeColor}; }
-        .checkout-methods b { margin-left: 6px; border: 1px solid ${accentColor}; color: ${accentColor}; border-radius: 999px; padding: 1px 6px; font-size: 10px; }
-        .checkout-methods small { grid-column: 2; color: #64748b; line-height: 1.35; }
-        .checkout-method-panel { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: center; border: 1px solid #d9e2ef; background: #f6f8fb; border-radius: 20px; padding: 14px; color: #172033; }
-        .checkout-method-panel strong { display: block; font-size: 15px; margin-bottom: 3px; }
-        .checkout-method-panel span { color: #64748b; font-size: 12px; line-height: 1.4; }
-        .checkout-method-panel.success { border-color: rgba(35, 110, 62, 0.36); background: #eef8ef; color: #236e3e; }
-        .checkout-method-panel.success b { display: inline-flex; border: 1px solid rgba(35, 110, 62, 0.32); border-radius: 999px; padding: 1px 7px; background: #fff9ec; color: #236e3e; font-size: 11px; }
-        .checkout-method-panel.processing { border-color: rgba(235, 0, 27, 0.28); }
-        .checkout-method-panel.failed { border-color: rgba(200, 31, 47, 0.34); background: #fff0f0; color: #9f1728; }
-        .upi-qr { width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center; background: #ffffff; border: 1px solid #d9e2ef; }
-        .upi-panel { grid-template-columns: 72px minmax(0, 1fr); }
-        .mini-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .mini-actions button { border: 1px solid #d9e2ef; background: #ffffff; color: #172033; border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 800; }
-        .checkout-stage.mobile .checkout-method-panel { grid-template-columns: 34px minmax(0, 1fr); padding: 12px; }
-        .checkout-stage.mobile .upi-panel { grid-template-columns: 58px minmax(0, 1fr); }
-        .checkout-stage.mobile .upi-qr { width: 58px; height: 58px; }
-        .simulation-timeline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-        .simulation-timeline div { border: 1px solid #d9e2ef; background: #ffffff; border-radius: 16px; padding: 9px; display: grid; gap: 2px; min-width: 0; }
-        .simulation-timeline span { color: #64748b; font-size: 11px; font-weight: 800; }
-        .simulation-timeline strong { color: #172033; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .fee-breakup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; border: 1px solid #d9e2ef; border-radius: 18px; padding: 12px; background: #ffffff; font-size: 12px; }
+        .checkout-stage.laptop { width: min(100%, 980px); margin: 0 auto; padding: 18px 18px 54px; border-radius: 26px; background: #0f172a; position: relative; }
+        .checkout-stage.laptop::after { content: ''; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 30%; height: 6px; border-radius: 999px; background: #334155; }
+        .laptop-lid-dot { width: 6px; height: 6px; border-radius: 999px; background: #475569; margin-bottom: 10px; }
+        .checkout-stage.mobile { width: 380px; min-height: 760px; margin: 0 auto; padding: 16px; border-radius: 40px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: #0f172a; border: 8px solid #1e293b; }
+        .browser-bar { width: 100%; max-width: 820px; height: 38px; border-radius: 20px 20px 0 0; background: #ffffff; display: flex; align-items: center; gap: 7px; padding: 0 16px; color: #475569; border: 1px solid #e2e8f0; border-bottom: none; }
+        .browser-bar span { width: 8px; height: 8px; border-radius: 99px; background: #cbd5e1; display: inline-block; }
+        .browser-bar span:nth-child(1) { background: #f87171; }
+        .browser-bar span:nth-child(2) { background: #fbbf24; }
+        .browser-bar span:nth-child(3) { background: #34d399; }
+        .browser-bar strong { margin-left: auto; margin-right: auto; font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: 0.05em; }
+        .checkout-stage.laptop .browser-bar, .checkout-stage.laptop .checkout-viewport-content { max-width: 880px; }
+        .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-viewport-content { max-width: 326px; }
+        .checkout-stage.mobile .browser-bar { display: none; }
+        
+        .checkout-viewport-content { width: 100%; display: flex; flex-direction: column; position: relative; }
+        .checkout-stage.mobile .checkout-card-wrapper { border-radius: 20px; overflow: hidden; }
+        
+        /* Simulated backdrop for Standard Modal Layout */
+        .simulated-merchant-bg { width: 100%; height: 500px; background: #ffffff; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; gap: 16px; filter: blur(2px); opacity: 0.35; user-select: none; pointer-events: none; }
+        .merchant-bg-header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; }
+        .logo-placeholder { font-size: 24px; }
+        .merchant-bg-body { display: grid; gap: 12px; margin-top: 10px; }
+        .bg-summary-card { background: #f8fafc; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; }
+        .bg-line-short { height: 10px; width: 80px; background: #e2e8f0; border-radius: 4px; margin-bottom: 8px; }
+        .bg-line-medium { height: 10px; width: 180px; background: #e2e8f0; border-radius: 4px; margin-bottom: 8px; }
+        .bg-line-long { height: 10px; width: 100%; background: #e2e8f0; border-radius: 4px; }
+        
+        /* Modal centering wrapper for Standard template */
+        .template-standard .checkout-card-wrapper { position: absolute; top: 5%; left: 50%; transform: translateX(-50%); width: 90%; max-width: 520px; z-index: 10; box-shadow: 0 20px 40px -15px rgba(0,0,0,0.3); border-radius: 24px; overflow: hidden; }
+        .template-compact .checkout-card-wrapper { max-width: 420px; margin: 0 auto; width: 100%; }
+        .template-split .checkout-card-wrapper { width: 100%; }
+
+        /* The actual checkout card styling */
+        .checkout-card { background: ${checkoutBg}; color: #0f172a; border: 1px solid #d9e2ef; padding: 24px; position: relative; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); transition: all 0.3s ease; }
+        .test-mode-ribbon { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; border-radius: 12px; padding: 8px 12px; font-size: 11px; margin-bottom: 16px; }
+        .test-mode-ribbon span { font-weight: 900; letter-spacing: 0.08em; }
+        
+        /* Grid Layout */
+        .checkout-content-grid { display: grid; gap: 24px; }
+        .template-split:not(.mobile) .checkout-content-grid { grid-template-columns: 280px 1fr; }
+        
+        .checkout-brand-section { display: flex; flex-direction: column; gap: 16px; border-right: 1px solid rgba(0, 0, 0, 0.06); padding-right: 16px; }
+        .template-standard .checkout-brand-section, .template-compact .checkout-brand-section, .checkout-stage.mobile .checkout-brand-section { border-right: none; padding-right: 0; }
+        
+        .checkout-brand { display: flex; align-items: center; gap: 12px; }
+        .checkout-brand img { width: 48px; height: 48px; border-radius: 14px; object-fit: contain; border: 1px solid #e2e8f0; background: #fff; padding: 2px; }
+        .checkout-brand strong { font-size: 16px; color: #0f172a; font-weight: 800; display: block; }
+        .checkout-brand span { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+        
+        .checkout-amount { border-radius: 16px; padding: 16px; display: grid; gap: 4px; }
+        .checkout-amount .label { color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+        .checkout-amount .amount { font-size: 28px; font-weight: 800; color: #0f172a; }
+        .customer-details { display: grid; gap: 2px; margin-top: 4px; border-top: 1px solid rgba(0, 0, 0, 0.05); padding-top: 6px; }
+        .detail-item { color: #475569; font-size: 11px; display: block; }
+        .detail-item span { color: #94a3b8; font-weight: 600; }
+        
+        .checkout-summary-strip { display: flex; align-items: center; justify-content: space-between; border: 1px dashed #d9e2ef; border-radius: 12px; padding: 8px 12px; color: #64748b; font-size: 11px; }
+        .checkout-summary-strip strong { color: #0f172a; }
+        
+        .checkout-left-footer { margin-top: auto; padding-top: 10px; }
+        .checkout-secure { display: flex; gap: 6px; align-items: center; color: #64748b; font-size: 10px; font-weight: 600; line-height: 1.3; }
+        
+        .checkout-payment-section { display: flex; flex-direction: column; gap: 16px; }
+        .checkout-banner { border: 1px solid #d9e2ef; border-radius: 12px; padding: 10px 12px; font-size: 12px; font-weight: 700; text-align: center; }
+        .simulation-switcher { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+        .simulation-switcher button { border: 1px solid #d9e2ef; background: #ffffff; color: #64748b; border-radius: 10px; min-height: 32px; cursor: pointer; font-weight: 700; font-size: 12px; transition: all 0.2s; }
+        .simulation-switcher button.active { background: #eef6ff; font-weight: 800; }
+        
+        .saved-methods-strip { display: flex; flex-direction: column; gap: 6px; }
+        .saved-methods-strip .strip-title { color: #94a3b8; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        .strip-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+        .strip-buttons button { border: 1px solid #e2e8f0; background: #ffffff; color: #334155; border-radius: 10px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .strip-buttons button:hover { background: #f8fafc; border-color: #cbd5e1; }
+        
+        .checkout-methods-container { display: flex; flex-direction: column; gap: 8px; }
+        .checkout-methods-container .section-title { color: #94a3b8; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        .checkout-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .template-compact .checkout-methods, .checkout-stage.mobile .checkout-methods { grid-template-columns: 1fr; }
+        
+        .method-btn { display: flex; flex-direction: column; text-align: left; border: 1px solid #d9e2ef; background: #ffffff; color: #0f172a; border-radius: 14px; padding: 10px 12px; cursor: pointer; transition: all 0.2s; }
+        .method-btn.active { background: #eef6ff; box-shadow: inset 0 0 0 1px ${themeColor}; }
+        .method-btn-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; width: 100%; }
+        .promo-badge { font-size: 8px; border: 1px solid; border-radius: 4px; padding: 1px 4px; margin-left: auto; letter-spacing: 0.05em; }
+        .method-note { color: #64748b; font-size: 10px; margin-top: 2px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        .active-experience-container { margin-top: 2px; }
+        .checkout-method-panel { display: flex; gap: 12px; align-items: center; border: 1px solid #d9e2ef; background: #f8fafc; border-radius: 14px; padding: 12px; color: #1e293b; }
+        .checkout-method-panel strong { display: block; font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+        .checkout-method-panel span { color: #64748b; font-size: 11px; line-height: 1.4; }
+        .checkout-method-panel.processing { border-color: #ffedd5; background: #fffbeb; color: #d97706; }
+        .checkout-method-panel.failed { border-color: #fee2e2; background: #fef2f2; color: #9f1728; }
+        .upi-qr { width: 50px; height: 50px; border-radius: 10px; display: grid; place-items: center; background: #ffffff; border: 1px solid #e2e8f0; flex-shrink: 0; }
+        .upi-panel { display: flex; gap: 12px; align-items: center; }
+        .mini-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .mini-actions button { border: 1px solid #d9e2ef; background: #ffffff; color: #0f172a; border-radius: 6px; padding: 3px 6px; font-size: 10px; font-weight: 700; cursor: pointer; }
+        
+        .checkout-actions { display: grid; gap: 8px; margin-top: 8px; }
+        .checkout-pay-button { border: none; border-radius: 999px; padding: 12px 18px; font-weight: 800; color: #ffffff; cursor: pointer; min-height: 44px; font-size: 14px; transition: opacity 0.2s; }
+        .checkout-pay-button:disabled { opacity: 0.6; cursor: progress; }
+        .retry-button { border: 1px solid #cbd5e1; background: #ffffff; border-radius: 999px; min-height: 40px; font-weight: 800; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .recommended-method { border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 11px; text-align: center; border: 1px solid; }
+        
+        .simulation-timeline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+        .timeline-step { border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 10px; padding: 6px; display: grid; gap: 1px; min-width: 0; }
+        .timeline-step span { color: #94a3b8; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+        .timeline-step strong { color: #334155; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        .fee-breakup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; background: #ffffff; font-size: 11px; margin-top: 8px; }
         .fee-breakup span { color: #64748b; }
-        .recommended-method { border-radius: 999px; background: color-mix(in srgb, ${accentColor} 12%, #ffffff); color: ${accentColor}; border: 1px solid ${accentColor}; padding: 8px 12px; font-weight: 800; font-size: 12px; }
-        .checkout-pay-button { border: none; border-radius: 999px; padding: 14px 18px; font-weight: 800; background: ${themeColor}; color: #fff; cursor: pointer; min-height: 50px; }
-        .checkout-pay-button:disabled { opacity: 0.74; cursor: progress; }
-        .retry-button { border: 1px solid ${themeColor}; color: ${themeColor}; background: #ffffff; border-radius: 999px; min-height: 44px; font-weight: 800; cursor: pointer; }
-        .checkout-secure { display: inline-flex; gap: 7px; align-items: center; justify-content: center; color: #64748b; font-size: 12px; }
-        .payment-flow-panel { margin-top: 18px; }
-        .payment-flow-panel h3 { margin-bottom: 14px; }
-        .payment-flow-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-        .payment-flow-grid article { border: 1px solid #d5c9af; background: #fff9ec; color: #141413; border-radius: 28px; padding: 14px; display: grid; gap: 10px; }
-        .payment-flow-grid article > strong { color: #eb001b; font-size: 13px; }
-        .payment-flow-grid h4 { margin: 0 0 4px; font-size: 14px; }
-        .payment-flow-grid p { margin: 0; color: #6b6862; font-size: 12px; line-height: 1.45; }
-        .payment-flow-grid span { display: inline-flex; margin-top: 10px; border: 1px solid #d5c9af; border-radius: 999px; padding: 3px 8px; color: #6b6862; font-size: 11px; }
-        @media (max-width: 980px) { .preview-shell { grid-template-columns: 1fr; } .preview-controls { position: static; max-width: none; } .checkout-stage { min-height: auto; } .checkout-settings-tabs { grid-template-columns: 1fr; } }
-        @media (max-width: 520px) { .checkout-preview-page .page-header { border-radius: 22px; padding: 18px; } .preview-controls { padding: 16px !important; border-radius: 18px !important; } .method-config-row { grid-template-columns: 1fr 40px 40px; } .method-config-row button:last-child { grid-column: 1 / -1; } .checkout-stage { padding: 10px; } .checkout-stage.mobile { width: 100%; box-shadow: inset 0 0 0 6px #312d28; } .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-card { max-width: 100%; } .checkout-card { padding: 16px; } .simulation-timeline { grid-template-columns: 1fr; } }
+        .fee-breakup .total-label { font-weight: 800; color: #0f172a; }
+        .fee-breakup .total-val { font-weight: 800; color: #0b72e7; }
+        
+        /* Success Screen Animation & Design */
+        .success-screen-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 10px; text-align: center; animation: fadeIn 0.4s ease-out; }
+        .success-icon-container { position: relative; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+        .success-circle-glow { width: 84px; height: 84px; border-radius: 50%; background: #e6fcf5; display: flex; align-items: center; justify-content: center; z-index: 2; box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.2); }
+        .success-checkmark-icon { color: #10b981; animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+        .success-ripple { position: absolute; width: 100px; height: 100px; border-radius: 50%; border: 3px solid #10b981; animation: successRipple 1.4s cubic-bezier(0.1, 0.8, 0.3, 1) infinite; opacity: 0; }
+        
+        .success-screen-overlay h2 { font-size: 22px; font-weight: 800; color: #1e293b; margin: 0 0 4px; }
+        .success-subtitle { color: #64748b; font-size: 13px; margin: 0 0 16px; }
+        .success-amount-paid { font-size: 32px; font-weight: 900; margin-bottom: 20px; }
+        .success-receipt-details { width: 100%; max-width: 320px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 14px; display: grid; gap: 8px; margin-bottom: 24px; text-align: left; }
+        .receipt-row { display: flex; justify-content: space-between; font-size: 12px; }
+        .receipt-row span { color: #64748b; }
+        .receipt-row strong { color: #0f172a; }
+        .success-done-btn { border: none; border-radius: 999px; padding: 12px 30px; font-weight: 800; color: #ffffff; cursor: pointer; font-size: 14px; min-width: 160px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1); }
+        
+        @keyframes scaleIn {
+          0% { transform: scale(0); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes successRipple {
+          0% { transform: scale(0.85); opacity: 0.6; }
+          100% { transform: scale(1.4); opacity: 0; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        
+        @keyframes bounceSubtle {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+        .animate-bounce-subtle { animation: bounceSubtle 2s infinite ease-in-out; }
+
+        @media (max-width: 980px) { 
+          .preview-shell { grid-template-columns: 1fr; } 
+          .preview-controls { position: static; max-width: none; } 
+          .checkout-stage { min-height: auto; } 
+          .checkout-settings-tabs { grid-template-columns: 1fr; } 
+        }
+        @media (max-width: 520px) { 
+          .checkout-preview-page .page-header { border-radius: 22px; padding: 18px; } 
+          .preview-controls { padding: 16px !important; border-radius: 18px !important; } 
+          .method-config-row { grid-template-columns: 1fr 36px 36px; } 
+          .method-config-row button:last-child { grid-column: 1 / -1; } 
+          .checkout-stage { padding: 10px; } 
+          .checkout-stage.mobile { width: 100%; border: 4px solid #1e293b; } 
+          .checkout-card { padding: 16px; } 
+          .simulation-timeline { grid-template-columns: 1fr; } 
+        }
         @media (max-width: 980px) { .payment-flow-grid { grid-template-columns: 1fr; } }
       `}</style>
     </div>
