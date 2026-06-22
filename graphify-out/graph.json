@@ -37404,8 +37404,8 @@
       "source_file": "/home/chiragskotian/Desktop/clg project/payment/scratch/generate_docx.py",
       "source_location": "L42",
       "weight": 1.0,
-      "_src": "generate_docx_build_synopsis",
-      "_tgt": "document_document",
+      "_src": "document_document",
+      "_tgt": "generate_docx_build_synopsis",
       "source": "document_document",
       "target": "generate_docx_build_synopsis"
     },
@@ -84516,8 +84516,8 @@
       "source_file": "/home/chiragskotian/Desktop/clg project/payment/scratch/generate_docx.py",
       "source_location": "L18",
       "weight": 1.0,
-      "_src": "generate_docx_set_cell_margins",
-      "_tgt": "companyadminops_str",
+      "_src": "companyadminops_str",
+      "_tgt": "generate_docx_set_cell_margins",
       "source": "companyadminops_str",
       "target": "generate_docx_set_cell_margins"
     },
@@ -84924,8 +84924,8 @@
       "source_file": "/home/chiragskotian/Desktop/clg project/payment/scratch/generate_docx.py",
       "source_location": "L900",
       "weight": 1.0,
-      "_src": "generate_docx_build_synopsis",
-      "_tgt": "adminnotificationtemplates_save",
+      "_src": "adminnotificationtemplates_save",
+      "_tgt": "generate_docx_build_synopsis",
       "source": "adminnotificationtemplates_save",
       "target": "generate_docx_build_synopsis"
     },
