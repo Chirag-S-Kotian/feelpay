@@ -914,7 +914,7 @@ export default function CheckoutPreview() {
               <div>
                 <h4>{step.label}</h4>
                 <p>{step.detail}</p>
-                <span>{step.status}</span>
+                <span className={`status-badge ${step.status.toLowerCase()}`}>{step.status}</span>
               </div>
             </article>
           ))}
@@ -1118,6 +1118,49 @@ export default function CheckoutPreview() {
         .receipt-row span { color: #64748b; }
         .receipt-row strong { color: #0f172a; }
         .success-done-btn { border: none; border-radius: 999px; padding: 12px 30px; font-weight: 800; color: #ffffff; cursor: pointer; font-size: 14px; min-width: 160px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1); }
+        
+        /* Payment flow timeline cards */
+        .payment-flow-panel { margin-top: 32px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 24px; padding: 24px; }
+        .payment-flow-panel h3 { margin: 0 0 20px; font-size: 18px; font-weight: 800; color: #0f172a; }
+        .payment-flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .payment-flow-grid article { position: relative; display: flex; flex-direction: column; gap: 12px; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 16px; padding: 20px; transition: all 0.2s ease; }
+        .payment-flow-grid article:hover { transform: translateY(-2px); border-color: ${themeColor}; box-shadow: 0 10px 20px -10px rgba(0,0,0,0.05); }
+        .payment-flow-grid article > strong { font-size: 28px; font-weight: 900; color: ${themeColor}; line-height: 1; }
+        .payment-flow-grid h4 { margin: 0; font-size: 14px; font-weight: 700; color: #0f172a; }
+        .payment-flow-grid p { margin: 0; color: #475569; font-size: 12px; line-height: 1.5; }
+        .payment-flow-grid .status-badge { 
+          display: inline-flex; 
+          align-self: flex-start;
+          margin-top: auto; 
+          border-radius: 999px; 
+          padding: 3px 10px; 
+          font-size: 10px; 
+          font-weight: 800; 
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border: 1px solid #e2e8f0;
+          background: #f1f5f9;
+          color: #475569;
+        }
+        .payment-flow-grid .status-badge.captured,
+        .payment-flow-grid .status-badge.authorized,
+        .payment-flow-grid .status-badge.success {
+          background: #e6fcf5;
+          color: #0c8558;
+          border-color: #c3fae8;
+        }
+        .payment-flow-grid .status-badge.processing,
+        .payment-flow-grid .status-badge.pending {
+          background: #fff9db;
+          color: #d97706;
+          border-color: #fff3bf;
+        }
+        .payment-flow-grid .status-badge.failed,
+        .payment-flow-grid .status-badge.error {
+          background: #fff5f5;
+          color: #e03131;
+          border-color: #ffc9c9;
+        }
         
         @keyframes scaleIn {
           0% { transform: scale(0); opacity: 0; }
