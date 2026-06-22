@@ -217,7 +217,7 @@ export default function CheckoutPreview() {
         setMethods(ordered);
         setMerchantName(data.merchant?.business_name || data.merchant?.name || 'FeelPay Merchant');
         setMerchantTagline('Payments that build trust');
-        if (data.sample_order?.amount) setAmount(formatPaise(data.sample_order.amount, { symbol: false }));
+        if (data.sample_order?.amount) setAmount((data.sample_order.amount / 100).toFixed(2));
         if (data.sample_order?.customer_email) setCustomer(data.sample_order.customer_email);
         setEventFlow(data.event_flow || []);
         setSettings((prev) => ({
@@ -528,7 +528,7 @@ export default function CheckoutPreview() {
           <div className="preview-merchant-name">{merchantName}</div>
           <label>
             Amount
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="1" />
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="0.01" step="0.01" />
           </label>
           <label>
             Customer
@@ -968,7 +968,8 @@ export default function CheckoutPreview() {
         .checkout-stage.laptop { width: min(100%, 980px); margin: 0 auto; padding: 18px 18px 54px; border-radius: 26px; background: #0f172a; position: relative; }
         .checkout-stage.laptop::after { content: ''; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 30%; height: 6px; border-radius: 999px; background: #334155; }
         .laptop-lid-dot { width: 6px; height: 6px; border-radius: 999px; background: #475569; margin-bottom: 10px; }
-        .checkout-stage.mobile { width: 380px; min-height: 760px; margin: 0 auto; padding: 16px; border-radius: 40px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: #0f172a; border: 8px solid #1e293b; }
+        .checkout-stage.mobile { width: 320px; min-height: 640px; margin: 0 auto; padding: 24px 10px 10px; border-radius: 36px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: #0f172a; border: 10px solid #1e293b; position: relative; }
+        .checkout-stage.mobile::before { content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 80px; height: 12px; border-radius: 999px; background: #1e293b; z-index: 10; }
         .browser-bar { width: 100%; max-width: 820px; height: 38px; border-radius: 20px 20px 0 0; background: #ffffff; display: flex; align-items: center; gap: 7px; padding: 0 16px; color: #475569; border: 1px solid #e2e8f0; border-bottom: none; }
         .browser-bar span { width: 8px; height: 8px; border-radius: 99px; background: #cbd5e1; display: inline-block; }
         .browser-bar span:nth-child(1) { background: #f87171; }
@@ -976,11 +977,36 @@ export default function CheckoutPreview() {
         .browser-bar span:nth-child(3) { background: #34d399; }
         .browser-bar strong { margin-left: auto; margin-right: auto; font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: 0.05em; }
         .checkout-stage.laptop .browser-bar, .checkout-stage.laptop .checkout-viewport-content { max-width: 880px; }
-        .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-viewport-content { max-width: 326px; }
+        .checkout-stage.mobile .browser-bar, .checkout-stage.mobile .checkout-viewport-content { max-width: 280px; }
         .checkout-stage.mobile .browser-bar { display: none; }
         
         .checkout-viewport-content { width: 100%; display: flex; flex-direction: column; position: relative; }
-        .checkout-stage.mobile .checkout-card-wrapper { border-radius: 20px; overflow: hidden; }
+        .checkout-stage.mobile .checkout-card-wrapper { border-radius: 18px; overflow: hidden; }
+        
+        /* Mobile Specific Overrides */
+        .checkout-stage.mobile .checkout-card { padding: 12px 10px; gap: 10px; font-size: 12px; min-height: 560px; }
+        .checkout-stage.mobile .test-mode-ribbon { padding: 6px 10px; font-size: 9px; margin-bottom: 10px; }
+        .checkout-stage.mobile .checkout-brand img { width: 36px; height: 36px; border-radius: 10px; }
+        .checkout-stage.mobile .checkout-brand strong { font-size: 14px; }
+        .checkout-stage.mobile .checkout-brand span { font-size: 8px; }
+        .checkout-stage.mobile .checkout-amount { padding: 10px; }
+        .checkout-stage.mobile .checkout-amount .label { font-size: 9px; }
+        .checkout-stage.mobile .checkout-amount .amount { font-size: 20px; }
+        .checkout-stage.mobile .checkout-methods { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px; }
+        .checkout-stage.mobile .method-btn { position: relative; padding: 6px 4px; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 58px; border-radius: 12px; }
+        .checkout-stage.mobile .method-btn-title { flex-direction: column; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; width: 100%; text-align: center; }
+        .checkout-stage.mobile .method-btn-title span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block; }
+        .checkout-stage.mobile .method-btn-title svg { margin: 0; }
+        .checkout-stage.mobile .method-note { display: none; }
+        .checkout-stage.mobile .promo-badge { position: absolute; top: 2px; right: 2px; font-size: 6px; padding: 0.5px 2px; margin-left: 0; }
+        .checkout-stage.mobile .checkout-pay-button { min-height: 38px; padding: 10px; font-size: 13px; }
+        .checkout-stage.mobile .checkout-secure { font-size: 9px; }
+        .checkout-stage.mobile .success-screen-overlay { padding: 16px 8px; }
+        .checkout-stage.mobile .success-circle-glow { width: 60px; height: 60px; }
+        .checkout-stage.mobile .success-checkmark-icon { width: 40px; height: 40px; }
+        .checkout-stage.mobile .success-amount-paid { font-size: 22px; margin-bottom: 12px; }
+        .checkout-stage.mobile .success-receipt-details { padding: 8px; margin-bottom: 16px; font-size: 11px; }
+        .checkout-stage.mobile .simulation-timeline { display: none; }
         
         /* Simulated backdrop for Standard Modal Layout */
         .simulated-merchant-bg { width: 100%; height: 500px; background: #ffffff; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; gap: 16px; filter: blur(2px); opacity: 0.35; user-select: none; pointer-events: none; }
