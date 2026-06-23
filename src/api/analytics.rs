@@ -17,6 +17,17 @@ fn extract_merchant_id(req: &HttpRequest) -> Result<Uuid, HttpResponse> {
         })
 }
 
+fn extract_environment(req: &HttpRequest) -> &str {
+    let env_mode = req.extensions()
+        .get::<crate::middleware::auth::RequestEnvironment>()
+        .map(|env| env.0)
+        .unwrap_or(crate::middleware::auth::EnvironmentMode::Test);
+    match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    }
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/analytics")
@@ -114,6 +125,7 @@ pub async fn get_dashboard_stats(req: HttpRequest, pool: web::Data<PgPool>) -> H
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    let environment = extract_environment(&req);
 
     let stats = sqlx::query_as::<_, AnalyticsSummaryRow>(
         r#"
@@ -127,9 +139,11 @@ pub async fn get_dashboard_stats(req: HttpRequest, pool: web::Data<PgPool>) -> H
                  ELSE 0 END                                      AS success_rate
         FROM payment_orders
         WHERE merchant_id = $1
+          AND COALESCE(metadata->>'environment', 'test') = $2::TEXT
         "#,
     )
     .bind(merchant_id)
+    .bind(environment)
     .fetch_one(pool.get_ref())
     .await;
 
@@ -185,6 +199,7 @@ pub async fn get_volume_chart(req: HttpRequest, pool: web::Data<PgPool>) -> Http
         Ok(id) => id,
         Err(resp) => return resp,
     };
+    let environment = extract_environment(&req);
 
     let rows = sqlx::query_as::<_, DayVolumeRow>(
         r#"
@@ -193,12 +208,13 @@ pub async fn get_volume_chart(req: HttpRequest, pool: web::Data<PgPool>) -> Http
             COALESCE(COUNT(p.id)::BIGINT, 0)                             AS count,
             COALESCE(SUM(p.amount)::BIGINT, 0)                           AS volume
         FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') AS d(day)
-        LEFT JOIN payment_orders p ON p.merchant_id = $1 AND DATE(p.created_at) = d.day
+        LEFT JOIN payment_orders p ON p.merchant_id = $1 AND DATE(p.created_at) = d.day AND COALESCE(p.metadata->>'environment', 'test') = $2::TEXT
         GROUP BY d.day
         ORDER BY d.day
         "#,
     )
     .bind(merchant_id)
+    .bind(environment)
     .fetch_all(pool.get_ref())
     .await;
 
@@ -259,6 +275,8 @@ pub async fn get_volume_trends(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
         Err(resp) => return resp,
     };
 
+    let environment = extract_environment(&req);
+
     let rows = sqlx::query_as::<_, VolumeTrendRow>(
         r#"
         SELECT 
@@ -266,12 +284,13 @@ pub async fn get_volume_trends(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
             COUNT(*)::BIGINT as count,
             SUM(amount)::BIGINT as volume
         FROM payment_orders
-        WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '7 days'
+        WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '7 days' AND COALESCE(metadata->>'environment', 'test') = $2::TEXT
         GROUP BY 1
         ORDER BY 1 ASC
         "#,
     )
     .bind(merchant_id)
+    .bind(environment)
     .fetch_all(pool.get_ref())
     .await;
 
@@ -315,6 +334,8 @@ pub async fn get_top_customers(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
         Err(resp) => return resp,
     };
 
+    let environment = extract_environment(&req);
+
     let rows = sqlx::query_as::<_, TopCustomerRow>(
         r#"
         SELECT 
@@ -322,13 +343,14 @@ pub async fn get_top_customers(req: HttpRequest, pool: web::Data<PgPool>) -> Htt
             COUNT(*)::BIGINT as count,
             SUM(amount)::BIGINT as volume
         FROM payment_orders
-        WHERE merchant_id = $1 AND customer_email IS NOT NULL
+        WHERE merchant_id = $1 AND customer_email IS NOT NULL AND COALESCE(metadata->>'environment', 'test') = $2::TEXT
         GROUP BY 1
         ORDER BY volume DESC
         LIMIT 5
         "#,
     )
     .bind(merchant_id)
+    .bind(environment)
     .fetch_all(pool.get_ref())
     .await;
 

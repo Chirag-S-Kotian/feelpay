@@ -16,6 +16,7 @@ pub struct Settlement {
     pub transaction_count: Option<i32>,
     pub processed_at: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
+    pub environment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

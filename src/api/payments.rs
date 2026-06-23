@@ -125,6 +125,13 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant ID context".into()))
 }
 
+fn environment_from_req(req: &HttpRequest) -> crate::middleware::auth::EnvironmentMode {
+    req.extensions()
+        .get::<crate::middleware::auth::RequestEnvironment>()
+        .map(|env| env.0)
+        .unwrap_or(crate::middleware::auth::EnvironmentMode::Test)
+}
+
 fn tenant_id_from_req(req: &HttpRequest) -> Option<Uuid> {
     req.extensions()
         .get::<crate::middleware::auth::TenantId>()
@@ -286,6 +293,13 @@ pub async fn create_payment(
     payload: web::Json<CreatePaymentRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
+    let is_live_mode = env_mode == crate::middleware::auth::EnvironmentMode::Live;
+
     let idempotency_key = req
         .headers()
         .get("idempotency-key")
@@ -313,17 +327,19 @@ pub async fn create_payment(
         ));
     }
     let duplicate_reference: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM payment_orders WHERE merchant_id = $1 AND order_id = $2)",
+        "SELECT EXISTS(SELECT 1 FROM payment_orders WHERE merchant_id = $1 AND order_id = $2 AND COALESCE(metadata->>'environment', 'test') = $3::TEXT)",
     )
     .bind(merchant_id)
     .bind(&req_data.order_id)
+    .bind(environment_str)
     .fetch_one(&state.db)
     .await
     .unwrap_or(false);
     let daily_volume_paise: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0)::bigint FROM payment_orders WHERE merchant_id = $1 AND created_at::date = CURRENT_DATE",
+        "SELECT COALESCE(SUM(amount), 0)::bigint FROM payment_orders WHERE merchant_id = $1 AND created_at::date = CURRENT_DATE AND COALESCE(metadata->>'environment', 'test') = $2::TEXT",
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
@@ -334,10 +350,11 @@ pub async fn create_payment(
             0
         )::bigint
         FROM payment_orders
-        WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '1 day'
+        WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '1 day' AND COALESCE(metadata->>'environment', 'test') = $2::TEXT
         "#,
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
@@ -345,11 +362,7 @@ pub async fn create_payment(
         &state.db,
         RiskEvent {
             scope: "payment",
-            environment: if state.config.is_live() {
-                "live"
-            } else {
-                "test"
-            },
+            environment: environment_str,
             entity_type: "payment",
             entity_id: None,
             merchant_id: Some(merchant_id),
@@ -362,7 +375,7 @@ pub async fn create_payment(
         },
     )
     .await?;
-    if state.config.is_live() && risk.disposition == RiskDisposition::Block {
+    if is_live_mode && risk.disposition == RiskDisposition::Block {
         return Err(FeelPayError::Forbidden(
             "Payment blocked by risk rules".into(),
         ));
@@ -455,13 +468,9 @@ pub async fn create_payment(
     let connector = connector_for_payment(
         &final_method_data,
         req_data.processor_override.as_deref(),
-        state.config.is_live(),
+        is_live_mode,
     );
-    let environment = if state.config.is_live() {
-        "live"
-    } else {
-        "test"
-    };
+    let environment = environment_str;
 
     // 3. Process Payment via Engine
     let engine = state.payment_engine.read().await;
@@ -579,6 +588,11 @@ pub async fn list_payments(
     query: web::Query<ListPaymentsQuery>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
 
     // Use cursor-based pagination if cursor provided, otherwise use legacy
     let pagination = PaginationParams {
@@ -600,13 +614,15 @@ pub async fn list_payments(
             SELECT id, merchant_id, order_id, amount, currency, status, payment_method, payment_method_data, connector, customer_id, customer_email, customer_phone, description, notes, return_url, idempotency_key, gateway_reference, gateway_response, error_code, error_message, metadata, refunded_amount, created_at, updated_at, authorized_at, captured_at, settled_at
             FROM payment_orders
             WHERE merchant_id = $1
-              AND ($2::TEXT IS NULL OR status = $2::TEXT)
-              AND (created_at, id) < ($3::TIMESTAMP, $4::UUID)
+              AND COALESCE(metadata->>'environment', 'test') = $2::TEXT
+              AND ($3::TEXT IS NULL OR status = $3::TEXT)
+              AND (created_at, id) < ($4::TIMESTAMP, $5::UUID)
             ORDER BY created_at DESC, id DESC
-            LIMIT $5
+            LIMIT $6
             "#,
         )
         .bind(merchant_id)
+        .bind(environment_str)
         .bind(&query.status)
         .bind(&cursor.sort_key)
         .bind(&cursor.last_id)
@@ -625,12 +641,14 @@ pub async fn list_payments(
             SELECT id, merchant_id, order_id, amount, currency, status, payment_method, payment_method_data, connector, customer_id, customer_email, customer_phone, description, notes, return_url, idempotency_key, gateway_reference, gateway_response, error_code, error_message, metadata, refunded_amount, created_at, updated_at, authorized_at, captured_at, settled_at
             FROM payment_orders
             WHERE merchant_id = $1
-              AND ($2::TEXT IS NULL OR status = $2::TEXT)
+              AND COALESCE(metadata->>'environment', 'test') = $2::TEXT
+              AND ($3::TEXT IS NULL OR status = $3::TEXT)
             ORDER BY created_at DESC
-            LIMIT $3 OFFSET $4
+            LIMIT $4 OFFSET $5
             "#,
         )
         .bind(merchant_id)
+        .bind(environment_str)
         .bind(&query.status)
         .bind(per_page)
         .bind(offset)
@@ -863,6 +881,11 @@ pub async fn refund_payment(
     payload: web::Json<RefundPaymentRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
     let idempotency_key = req
         .headers()
         .get("idempotency-key")
@@ -963,16 +986,18 @@ pub async fn refund_payment(
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
     let refunded_total: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds WHERE merchant_id = $1 AND created_at > NOW() - INTERVAL '30 days'",
+        "SELECT COALESCE(SUM(r.amount), 0)::bigint FROM refunds r JOIN payment_orders po ON po.id = r.payment_order_id WHERE r.merchant_id = $1 AND r.created_at > NOW() - INTERVAL '30 days' AND COALESCE(po.metadata->>'environment', 'test') = $2::TEXT",
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
     let captured_total: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0)::bigint FROM payment_orders WHERE merchant_id = $1 AND status IN ('captured','settled','partially_refunded','refunded') AND created_at > NOW() - INTERVAL '30 days'",
+        "SELECT COALESCE(SUM(amount), 0)::bigint FROM payment_orders WHERE merchant_id = $1 AND status IN ('captured','settled','partially_refunded','refunded') AND created_at > NOW() - INTERVAL '30 days' AND COALESCE(metadata->>'environment', 'test') = $2::TEXT",
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
@@ -985,11 +1010,7 @@ pub async fn refund_payment(
         &state.db,
         RiskEvent {
             scope: "refund",
-            environment: if state.config.is_live() {
-                "live"
-            } else {
-                "test"
-            },
+            environment: environment_str,
             entity_type: "refund",
             entity_id: Some(refund_id),
             merchant_id: Some(merchant_id),
@@ -1337,6 +1358,11 @@ pub async fn list_refunds(
     query: web::Query<ListRefundsQuery>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let status = query
         .status
@@ -1368,18 +1394,20 @@ pub async fn list_refunds(
         FROM refunds r
         JOIN payment_orders po ON po.id = r.payment_order_id AND po.merchant_id = r.merchant_id
         WHERE r.merchant_id = $1
-          AND ($2::TEXT IS NULL OR r.status = $2)
+          AND COALESCE(po.metadata->>'environment', 'test') = $2::TEXT
+          AND ($3::TEXT IS NULL OR r.status = $3)
           AND (
-            $3::TEXT IS NULL
-            OR r.id::TEXT ILIKE $3
-            OR po.order_id ILIKE $3
-            OR COALESCE(po.customer_email, '') ILIKE $3
+            $4::TEXT IS NULL
+            OR r.id::TEXT ILIKE $4
+            OR po.order_id ILIKE $4
+            OR COALESCE(po.customer_email, '') ILIKE $4
           )
         ORDER BY r.created_at DESC
-        LIMIT $4
+        LIMIT $5
         "#,
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .bind(status)
     .bind(search)
     .bind(limit)

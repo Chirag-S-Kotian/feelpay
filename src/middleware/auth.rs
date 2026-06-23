@@ -438,6 +438,7 @@ where
                 req.extensions_mut().insert(MerchantId(mid));
             }
             req.extensions_mut().insert(UserRole(claims.role.clone()));
+            req.extensions_mut().insert(RequestEnvironment(request_environment(&req)));
 
             if !merchant_role_allows_request(&claims.role, req.method(), req.path()) {
                 return Err(actix_web::error::ErrorForbidden(
@@ -567,6 +568,7 @@ where
                             ));
                         }
                         req.extensions_mut().insert(UserRole(role.clone()));
+                        req.extensions_mut().insert(RequestEnvironment(env_mode));
                         if !merchant_role_allows_request(&role, req.method(), req.path()) {
                             return Err(actix_web::error::ErrorForbidden(
                                 "Merchant role cannot access this operation",

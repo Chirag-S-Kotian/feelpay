@@ -39,6 +39,13 @@ fn merchant_id_from_req(req: &HttpRequest) -> Result<Uuid, FeelPayError> {
         .ok_or_else(|| FeelPayError::Unauthorized("Missing merchant context".into()))
 }
 
+fn environment_from_req(req: &HttpRequest) -> crate::middleware::auth::EnvironmentMode {
+    req.extensions()
+        .get::<crate::middleware::auth::RequestEnvironment>()
+        .map(|env| env.0)
+        .unwrap_or(crate::middleware::auth::EnvironmentMode::Test)
+}
+
 #[utoipa::path(
     get,
     path = "/v1/settlements",
@@ -59,6 +66,11 @@ pub async fn list_settlements(
     query: web::Query<SettlementQuery>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * per_page;
@@ -78,14 +90,16 @@ pub async fn list_settlements(
         SELECT id, settlement_date, status, amount, fee_amount, net_amount, utr_number, processed_at, created_at
         FROM settlements
         WHERE merchant_id = $1
-          AND ($2::TEXT IS NULL OR status = $2::TEXT)
-          AND ($3::DATE IS NULL OR settlement_date >= $3::DATE)
-          AND ($4::DATE IS NULL OR settlement_date <= $4::DATE)
+          AND environment = $2::TEXT
+          AND ($3::TEXT IS NULL OR status = $3::TEXT)
+          AND ($4::DATE IS NULL OR settlement_date >= $4::DATE)
+          AND ($5::DATE IS NULL OR settlement_date <= $5::DATE)
         ORDER BY created_at DESC
-        LIMIT $5 OFFSET $6
+        LIMIT $6 OFFSET $7
         "#,
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .bind(&query.status)
     .bind(&query.from_date)
     .bind(&query.to_date)
@@ -100,12 +114,14 @@ pub async fn list_settlements(
         SELECT COUNT(*)::BIGINT
         FROM settlements
         WHERE merchant_id = $1
-          AND ($2::TEXT IS NULL OR status = $2::TEXT)
-          AND ($3::DATE IS NULL OR settlement_date >= $3::DATE)
-          AND ($4::DATE IS NULL OR settlement_date <= $4::DATE)
+          AND environment = $2::TEXT
+          AND ($3::TEXT IS NULL OR status = $3::TEXT)
+          AND ($4::DATE IS NULL OR settlement_date >= $4::DATE)
+          AND ($5::DATE IS NULL OR settlement_date <= $5::DATE)
         "#,
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .bind(&query.status)
     .bind(&query.from_date)
     .bind(&query.to_date)
@@ -305,8 +321,13 @@ pub async fn get_settlement_stats(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
     let svc = SettlementService::new(state.db.clone());
-    let (available, pending, hold, reserve) = svc.get_balance(merchant_id).await?;
+    let (available, pending, hold, reserve) = svc.get_balance(merchant_id, environment_str).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "available": available,
         "pending": pending,
@@ -330,6 +351,11 @@ pub async fn get_reconciliation_summary(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, FeelPayError> {
     let merchant_id = merchant_id_from_req(&req)?;
+    let env_mode = environment_from_req(&req);
+    let environment_str = match env_mode {
+        crate::middleware::auth::EnvironmentMode::Live => "live",
+        crate::middleware::auth::EnvironmentMode::Test => "test",
+    };
 
     let row = sqlx::query(
         r#"
@@ -342,9 +368,11 @@ pub async fn get_reconciliation_summary(
             COUNT(*) FILTER (WHERE status = 'failed')::BIGINT AS failed_count
         FROM settlements
         WHERE merchant_id = $1
+          AND environment = $2::TEXT
         "#,
     )
     .bind(merchant_id)
+    .bind(environment_str)
     .fetch_one(&state.db)
     .await
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;

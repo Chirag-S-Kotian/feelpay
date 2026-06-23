@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   CreditCard,
@@ -252,6 +252,37 @@ function Layout() {
     new_password: '',
   });
 
+  const parseBlockers = (warning: string) => {
+    if (!warning.startsWith('Live mode blocked: ')) {
+      return null;
+    }
+    const rawList = warning.replace('Live mode blocked: ', '').split(' | ');
+    return rawList.map((item) => {
+      let cleanText = item;
+      let path = '';
+      let linkLabel = '';
+      
+      if (item.toLowerCase().includes('onboarding') || item.toLowerCase().includes('review')) {
+        cleanText = item.replace(/`in_progress`/g, 'In Progress')
+                        .replace(/`under_review`/g, 'Under Review')
+                        .replace(/require `approved`/g, 'requires Admin Approval')
+                        .replace(/;/g, ' -');
+        path = '/onboarding';
+        linkLabel = 'Complete Onboarding';
+      } else if (item.toLowerCase().includes('webhook')) {
+        cleanText = 'Webhook URL is missing. You need to configure a webhook endpoint to receive real-time event updates.';
+        path = '/webhooks';
+        linkLabel = 'Configure Webhook';
+      } else if (item.toLowerCase().includes('bank account')) {
+        cleanText = 'No verified bank account linked. You must add and verify a bank account to receive payouts.';
+        path = '/bank-accounts';
+        linkLabel = 'Manage Bank Accounts';
+      }
+      
+      return { text: cleanText, path, linkLabel };
+    });
+  };
+
   const handleLogout = async () => {
     try {
       await apiRequest('POST', '/v1/merchants/logout', {});
@@ -446,9 +477,100 @@ function Layout() {
       <main className="main-content">
         <ErrorBoundary>
           {modeWarning && (
-            <div className="card" style={{ marginBottom: 12, borderColor: 'rgba(245,158,11,0.45)', color: '#f5b96b' }}>
-              {modeWarning}
-            </div>
+            (() => {
+              const blockers = parseBlockers(modeWarning);
+              if (!blockers) {
+                return (
+                  <div className="card" style={{ marginBottom: 12, borderColor: 'rgba(245,158,11,0.45)', color: '#f5b96b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{modeWarning}</span>
+                    <button onClick={() => setModeWarning('')} style={{ background: 'none', border: 'none', color: '#f5b96b', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  </div>
+                );
+              }
+              return (
+                <div className="card" style={{ 
+                  marginBottom: 16, 
+                  borderLeft: '4px solid #ef4444', 
+                  backgroundColor: '#fef2f2', 
+                  color: '#991b1b',
+                  padding: '16px 20px',
+                  borderRadius: '12px',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: '#ef4444' }}>⚠️</span>
+                      <strong style={{ fontSize: '16px', color: '#7f1d1d' }}>Live Mode Setup Incomplete</strong>
+                    </div>
+                    <button 
+                      onClick={() => setModeWarning('')} 
+                      aria-label="Dismiss warning"
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: '#991b1b', 
+                        cursor: 'pointer', 
+                        fontSize: '20px', 
+                        lineHeight: 1,
+                        padding: '0 4px'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#b91c1c' }}>
+                    To enable live transaction processing, please resolve the following requirements:
+                  </p>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {blockers.map((blocker, idx) => (
+                      <div key={idx} style={{ 
+                        display: 'flex', 
+                        flexDirection: 'row',
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        padding: '10px 14px', 
+                        backgroundColor: '#fff', 
+                        borderRadius: '8px',
+                        border: '1px solid #fee2e2',
+                        gap: 12,
+                        flexWrap: 'wrap'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: '240px' }}>
+                          <span style={{ color: '#f97316' }}>•</span>
+                          <span style={{ fontSize: '13.5px', color: '#374151', lineHeight: 1.4 }}>{blocker.text}</span>
+                        </div>
+                        {blocker.path && (
+                          <Link 
+                            to={blocker.path} 
+                            style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: 4, 
+                              fontSize: '13px', 
+                              fontWeight: '600',
+                              color: '#2563eb', 
+                              textDecoration: 'none',
+                              padding: '6px 12px',
+                              backgroundColor: '#eff6ff',
+                              borderRadius: '6px',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLElement).style.backgroundColor = '#dbeafe';
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLElement).style.backgroundColor = '#eff6ff';
+                            }}
+                          >
+                            {blocker.linkLabel} &rarr;
+                          </Link>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
           )}
           <header className="top-header">
             <button
