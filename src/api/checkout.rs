@@ -853,7 +853,7 @@ pub async fn get_public_checkout_link(
         return Ok(HttpResponse::Ok().json(serde_json::json!({
             "token": token,
             "link_id": row.try_get::<Uuid, _>("id").ok(),
-            "amount": row.try_get::<i64,_>("amount").unwrap_or(0),
+            "amount": row.try_get::<i32,_>("amount").map(|v| v as i64).unwrap_or(0),
             "currency": row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
             "description": row.try_get::<Option<String>,_>("description").unwrap_or(None),
             "business_account_name": row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
@@ -967,7 +967,7 @@ pub async fn create_public_checkout_session(
             return Err(FeelPayError::BadRequest("Payment link expired".into()));
         }
 
-        let amount: i64 = link.get("amount");
+        let amount: i64 = link.try_get::<i32, _>("amount").map(|v| v as i64).unwrap_or(0);
         let currency: String = link.get("currency");
         let merchant_id: Uuid = link.get("merchant_id");
         let description: Option<String> = link.try_get("description").unwrap_or(None);
