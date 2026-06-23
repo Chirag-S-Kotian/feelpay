@@ -81,6 +81,18 @@ fn decode_checkout_token(token: &str) -> Result<SignedCheckoutToken, FeelPayErro
         .map_err(|_| FeelPayError::Unauthorized("Invalid checkout token payload".into()))
 }
 
+fn hex_to_rgb(hex: &str) -> String {
+    let cleaned = hex.trim_start_matches('#');
+    if cleaned.len() == 6 {
+        let r = u8::from_str_radix(&cleaned[0..2], 16).unwrap_or(11);
+        let g = u8::from_str_radix(&cleaned[2..4], 16).unwrap_or(114);
+        let b = u8::from_str_radix(&cleaned[4..6], 16).unwrap_or(231);
+        format!("{}, {}, {}", r, g, b)
+    } else {
+        "11, 114, 231".to_string()
+    }
+}
+
 fn is_merchant_link_id(token: &str) -> bool {
     token.len() == 14 && token.chars().all(|c| c.is_ascii_alphanumeric())
 }
@@ -787,32 +799,31 @@ pub async fn get_embed_script() -> Result<HttpResponse, FeelPayError> {
 }
 
 pub async fn get_public_checkout_link(
+    req: HttpRequest,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, FeelPayError> {
     let token = path.into_inner();
 
-    if is_merchant_link_id(&token) {
+    let accepts_html = req.headers()
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/html"))
+        .unwrap_or(false);
+
+    let (link_id_uuid, amount, currency, description, business_account_name, theme_color, logo_url) = if is_merchant_link_id(&token) {
         let mut conn = state
             .db
             .acquire()
             .await
             .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-        let _ = sqlx::query(
-            "UPDATE payment_links SET view_count = view_count + 1 WHERE link_id = $1 AND deleted_at IS NULL"
-        )
-        .bind(&token)
-        .execute(&mut *conn)
-        .await;
-
         let row = sqlx::query(
             r#"
             SELECT pl.id, pl.amount, pl.currency, pl.description, pl.status, pl.expires_at,
                    COALESCE(m.business_name, m.name) AS business_account_name,
-                   wl.brand_name, wl.checkout_logo_url, wl.checkout_theme_color,
-                   wl.terms_url, wl.privacy_url, wl.refund_policy_url
-                        FROM payment_links pl
+                   wl.checkout_logo_url, wl.checkout_theme_color
+            FROM payment_links pl
             LEFT JOIN merchants m ON m.id = pl.merchant_id
             LEFT JOIN white_label_payment_config wl ON TRUE
             WHERE pl.link_id = $1 AND pl.deleted_at IS NULL
@@ -833,68 +844,494 @@ pub async fn get_public_checkout_link(
             return Err(FeelPayError::BadRequest("Payment link expired".into()));
         }
 
-        let methods = sqlx::query(
+        (
+            row.try_get::<Uuid, _>("id").ok(),
+            row.try_get::<i32,_>("amount").map(|v| v as i64).unwrap_or(0),
+            row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
+            row.try_get::<Option<String>,_>("description").unwrap_or(None),
+            row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
+            row.try_get::<Option<String>,_>("checkout_theme_color").unwrap_or(Some("#1DB954".to_string())),
+            row.try_get::<Option<String>,_>("checkout_logo_url").unwrap_or(None),
+        )
+    } else {
+        let parsed = verify_checkout_token(&state, &token)?;
+
+        let row = sqlx::query(
             r#"
-            SELECT capability, enabled, status
-            FROM payment_provider_capabilities
-            WHERE enabled = true AND status = 'active'
-            ORDER BY capability ASC
+            SELECT pl.id, pl.amount, pl.currency, pl.description, pl.status, pl.expires_at,
+                   ba.display_name AS business_account_name,
+                   wl.checkout_logo_url, wl.checkout_theme_color
+            FROM payment_links_company pl
+            LEFT JOIN business_accounts_company ba ON ba.id = pl.business_account_id
+            LEFT JOIN white_label_payment_config wl ON TRUE
+            WHERE pl.id = $1
             "#,
         )
-        .fetch_all(&state.db)
+        .bind(parsed.link_id)
+        .fetch_optional(&state.db)
         .await
-        .unwrap_or_default()
-        .iter()
-        .map(|r| serde_json::json!({
-            "capability": r.try_get::<String,_>("capability").unwrap_or_else(|_| "payments".to_string()),
-        }))
-        .collect::<Vec<_>>();
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
-        return Ok(HttpResponse::Ok().json(serde_json::json!({
-            "token": token,
-            "link_id": row.try_get::<Uuid, _>("id").ok(),
-            "amount": row.try_get::<i32,_>("amount").map(|v| v as i64).unwrap_or(0),
-            "currency": row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
-            "description": row.try_get::<Option<String>,_>("description").unwrap_or(None),
-            "business_account_name": row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
-            "brand_name": row.try_get::<Option<String>,_>("brand_name").unwrap_or(Some("FeelPay".to_string())),
-            "logo_url": row.try_get::<Option<String>,_>("checkout_logo_url").unwrap_or(None),
-            "theme_color": row.try_get::<Option<String>,_>("checkout_theme_color").unwrap_or(None),
-            "terms_url": row.try_get::<Option<String>,_>("terms_url").unwrap_or(None),
-            "privacy_url": row.try_get::<Option<String>,_>("privacy_url").unwrap_or(None),
-            "refund_policy_url": row.try_get::<Option<String>,_>("refund_policy_url").unwrap_or(None),
-            "payment_methods": methods,
-            "status": "pending"
-        })));
-    }
+        let row = row.ok_or_else(|| FeelPayError::NotFound("Payment link not found".into()))?;
+        let status: String = row.get("status");
+        if status != "active" {
+            return Err(FeelPayError::BadRequest("Payment link not active".into()));
+        }
+        let link_exp: Option<DateTime<Utc>> = row.try_get("expires_at").unwrap_or(None);
+        if link_exp.map(|v| v <= Utc::now()).unwrap_or(false) {
+            return Err(FeelPayError::BadRequest("Payment link expired".into()));
+        }
 
-    let parsed = verify_checkout_token(&state, &token)?;
+        (
+            Some(parsed.link_id),
+            row.try_get::<i64,_>("amount").unwrap_or(0),
+            row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
+            row.try_get::<Option<String>,_>("description").unwrap_or(None),
+            row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
+            row.try_get::<Option<String>,_>("checkout_theme_color").unwrap_or(Some("#1DB954".to_string())),
+            row.try_get::<Option<String>,_>("checkout_logo_url").unwrap_or(None),
+        )
+    };
 
-    let row = sqlx::query(
-        r#"
-        SELECT pl.id, pl.amount, pl.currency, pl.description, pl.status, pl.expires_at,
-               ba.display_name AS business_account_name,
-               wl.brand_name, wl.checkout_logo_url, wl.checkout_theme_color,
-               wl.terms_url, wl.privacy_url, wl.refund_policy_url
-        FROM payment_links_company pl
-        LEFT JOIN business_accounts_company ba ON ba.id = pl.business_account_id
-        LEFT JOIN white_label_payment_config wl ON TRUE
-        WHERE pl.id = $1
-        "#,
-    )
-    .bind(parsed.link_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+    if accepts_html {
+        let formatted_amount = format!("₹{:.2}", (amount as f64) / 100.0);
+        let theme_color_str = theme_color.unwrap_or_else(|| "#1DB954".to_string());
+        let theme_rgb = hex_to_rgb(&theme_color_str);
+        let bus_name = business_account_name.clone().unwrap_or_else(|| "FeelPay Store".to_string());
+        let logo_initial = bus_name.chars().next().unwrap_or('F').to_string().to_uppercase();
+        let desc = description.clone().unwrap_or_else(|| "Payment".to_string());
 
-    let row = row.ok_or_else(|| FeelPayError::NotFound("Payment link not found".into()))?;
-    let status: String = row.get("status");
-    if status != "active" {
-        return Err(FeelPayError::BadRequest("Payment link not active".into()));
-    }
-    let link_exp: Option<DateTime<Utc>> = row.try_get("expires_at").unwrap_or(None);
-    if link_exp.map(|v| v <= Utc::now()).unwrap_or(false) {
-        return Err(FeelPayError::BadRequest("Payment link expired".into()));
+        let html = format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout | {}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {{
+            --theme-color: {};
+            --theme-rgb: {};
+            --accent-color: #10b981;
+            --background: #fff9ec;
+            --text-primary: #141413;
+            --text-secondary: #8a857d;
+            --border-color: #d5c9af;
+        }}
+        * {{
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }}
+        body {{
+            background-color: var(--background);
+            color: var(--text-primary);
+            display: grid;
+            place-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .checkout-container {{
+            background: #fff9ec;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 24px 80px rgba(20, 20, 19, 0.15);
+            border-radius: 34px;
+            width: 100%;
+            max-width: 440px;
+            padding: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            position: relative;
+            overflow: hidden;
+        }}
+        .merchant-header {{
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }}
+        .merchant-logo {{
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--theme-color);
+            color: white;
+            display: grid;
+            place-items: center;
+            font-size: 20px;
+            font-weight: 700;
+        }}
+        .merchant-info h2 {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+        .merchant-info p {{
+            font-size: 13px;
+            color: var(--text-secondary);
+        }}
+        .order-details {{
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .order-desc h4 {{
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }}
+        .order-desc p {{
+            font-size: 15px;
+            font-weight: 600;
+            margin-top: 4px;
+        }}
+        .order-amount {{
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--theme-color);
+        }}
+        .payment-methods-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }}
+        .method-card {{
+            border: 1.5px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            background: white;
+        }}
+        .method-card:hover {{
+            border-color: var(--theme-color);
+            transform: translateY(-2px);
+        }}
+        .method-card.selected {{
+            border-color: var(--theme-color);
+            background: rgba(var(--theme-rgb), 0.05);
+            box-shadow: 0 0 0 3px rgba(var(--theme-rgb), 0.15);
+        }}
+        .method-icon {{
+            font-size: 24px;
+        }}
+        .method-label {{
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        .form-section {{
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }}
+        .form-section.active {{
+            display: flex;
+        }}
+        .input-group {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }}
+        .input-group label {{
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }}
+        .input-group input, .input-group select {{
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1.5px solid var(--border-color);
+            font-size: 14px;
+            outline: none;
+            background: white;
+            transition: border-color 0.2s;
+        }}
+        .input-group input:focus, .input-group select:focus {{
+            border-color: var(--theme-color);
+        }}
+        .pay-btn {{
+            background: var(--theme-color);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }}
+        .pay-btn:hover {{
+            opacity: 0.9;
+        }}
+        .trust-footer {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }}
+        .trust-footer svg {{
+            width: 14px;
+            height: 14px;
+            fill: var(--text-secondary);
+        }}
+        .overlay {{
+            position: absolute;
+            inset: 0;
+            background: #fff9ec;
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 24px;
+            text-align: center;
+        }}
+        .overlay.active {{
+            display: flex;
+        }}
+        .spinner {{
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--border-color);
+            border-top-color: var(--theme-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }}
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        .success-checkmark {{
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+        }}
+        .check-icon {{
+            width: 80px;
+            height: 80px;
+            position: relative;
+            border-radius: 50%;
+            box-sizing: content-box;
+            border: 4px solid #4CAF50;
+        }}
+        .check-icon::after {{
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 32px;
+            width: 16px;
+            height: 35px;
+            border: solid #4CAF50;
+            border-width: 0 4px 4px 0;
+            transform: rotate(45deg);
+        }}
+    </style>
+</head>
+<body>
+    <div class="checkout-container">
+        <div class="merchant-header">
+            <div class="merchant-logo">{}</div>
+            <div class="merchant-info">
+                <h2>{}</h2>
+                <p>Secured by FeelPay</p>
+            </div>
+        </div>
+
+        <div class="order-details">
+            <div class="order-desc">
+                <h4>Description</h4>
+                <p>{}</p>
+            </div>
+            <div class="order-amount">{}</div>
+        </div>
+
+        <div class="payment-methods-grid">
+            <div class="method-card selected" data-method="upi">
+                <span class="method-icon">📱</span>
+                <span class="method-label">UPI</span>
+            </div>
+            <div class="method-card" data-method="card">
+                <span class="method-icon">💳</span>
+                <span class="method-label">Card</span>
+            </div>
+            <div class="method-card" data-method="netbanking">
+                <span class="method-icon">🏦</span>
+                <span class="method-label">Netbanking</span>
+            </div>
+            <div class="method-card" data-method="wallet">
+                <span class="method-icon">👜</span>
+                <span class="method-label">Wallet</span>
+            </div>
+        </div>
+
+        <div class="form-section active" id="upi-form">
+            <div class="input-group">
+                <label>Select UPI App</label>
+                <select id="upi-app">
+                    <option value="gpay">Google Pay</option>
+                    <option value="phonepe">PhonePe</option>
+                    <option value="paytm">Paytm</option>
+                    <option value="bhim">BHIM</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Or enter UPI ID</label>
+                <input type="text" id="upi-id" placeholder="username@bank">
+            </div>
+        </div>
+
+        <div class="form-section" id="card-form">
+            <div class="input-group">
+                <label>Card Number</label>
+                <input type="text" placeholder="4111 1111 1111 1111" maxlength="19">
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <div class="input-group" style="flex: 1;">
+                    <label>Expiry Date</label>
+                    <input type="text" placeholder="MM/YY" maxlength="5">
+                </div>
+                <div class="input-group" style="flex: 1;">
+                    <label>CVV</label>
+                    <input type="password" placeholder="•••" maxlength="3">
+                </div>
+            </div>
+            <div class="input-group">
+                <label>Cardholder Name</label>
+                <input type="text" placeholder="John Doe">
+            </div>
+        </div>
+
+        <div class="form-section" id="netbanking-form">
+            <div class="input-group">
+                <label>Select Your Bank</label>
+                <select>
+                    <option>State Bank of India</option>
+                    <option>HDFC Bank</option>
+                    <option>ICICI Bank</option>
+                    <option>Axis Bank</option>
+                    <option>Kotak Mahindra Bank</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-section" id="wallet-form">
+            <div class="input-group">
+                <label>Select Wallet</label>
+                <select>
+                    <option>Paytm Wallet</option>
+                    <option>Amazon Pay</option>
+                    <option>PhonePe Wallet</option>
+                    <option>Mobikwik</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="pay-btn" id="pay-button">
+            Pay securely {}
+        </button>
+
+        <div class="trust-footer">
+            <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            <span>PCI-DSS Compliant • 256-bit SSL Encryption</span>
+        </div>
+
+        <div class="overlay" id="loading-overlay">
+            <div class="spinner"></div>
+            <h3>Processing Payment</h3>
+            <p>Please do not close this window or refresh the page.</p>
+        </div>
+
+        <div class="overlay" id="success-overlay">
+            <div class="success-checkmark">
+                <div class="check-icon"></div>
+            </div>
+            <h2 style="color: #4CAF50; margin-top: 16px;">Payment Successful</h2>
+            <p style="color: var(--text-secondary); margin-top: 8px;">Your payment of {} to {} has been processed successfully.</p>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-top: 24px;">FeelPay ID: <span id="payment-id-display"></span></p>
+        </div>
+    </div>
+
+    <script>
+        let selectedMethod = 'upi';
+        const methodCards = document.querySelectorAll('.method-card');
+        const formSections = document.querySelectorAll('.form-section');
+
+        methodCards.forEach(card => {{
+            card.addEventListener('click', () => {{
+                methodCards.forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedMethod = card.dataset.method;
+
+                formSections.forEach(s => s.classList.remove('active'));
+                document.getElementById(selectedMethod + '-form').classList.add('active');
+            }});
+        }});
+
+        const payButton = document.getElementById('pay-button');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const successOverlay = document.getElementById('success-overlay');
+
+        payButton.addEventListener('click', async () => {{
+            loadingOverlay.classList.add('active');
+
+            try {{
+                const sessionRes = await fetch(window.location.pathname + '/session', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ selected_payment_method: selectedMethod }})
+                }});
+                
+                if (!sessionRes.ok) throw new Error('Failed to create payment session');
+                const sessionData = await sessionRes.json();
+                
+                const payRes = await fetch('/pay/session/' + sessionData.session_id + '/pay', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }}
+                }});
+
+                if (!payRes.ok) throw new Error('Payment processing failed');
+                const payData = await payRes.json();
+
+                loadingOverlay.classList.remove('active');
+                document.getElementById('payment-id-display').textContent = sessionData.payment_order_id || sessionData.session_id;
+                successOverlay.classList.add('active');
+
+            }} catch (err) {{
+                loadingOverlay.classList.remove('active');
+                alert(err.message || 'Payment failed. Please try again.');
+            }}
+        }});
+    </script>
+</body>
+</html>"#,
+            bus_name.clone(),
+            theme_color_str,
+            theme_rgb,
+            logo_initial,
+            bus_name.clone(),
+            desc,
+            formatted_amount.clone(),
+            formatted_amount.clone(),
+            formatted_amount.clone(),
+            bus_name
+        );
+
+        return Ok(HttpResponse::Ok().content_type("text/html").body(html));
     }
 
     let methods = sqlx::query(
@@ -916,17 +1353,14 @@ pub async fn get_public_checkout_link(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "token": token,
-        "link_id": parsed.link_id,
-        "amount": row.try_get::<i64,_>("amount").unwrap_or(0),
-        "currency": row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
-        "description": row.try_get::<Option<String>,_>("description").unwrap_or(None),
-        "business_account_name": row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
-        "brand_name": row.try_get::<Option<String>,_>("brand_name").unwrap_or(Some("FeelPay".to_string())),
-        "logo_url": row.try_get::<Option<String>,_>("checkout_logo_url").unwrap_or(None),
-        "theme_color": row.try_get::<Option<String>,_>("checkout_theme_color").unwrap_or(None),
-        "terms_url": row.try_get::<Option<String>,_>("terms_url").unwrap_or(None),
-        "privacy_url": row.try_get::<Option<String>,_>("privacy_url").unwrap_or(None),
-        "refund_policy_url": row.try_get::<Option<String>,_>("refund_policy_url").unwrap_or(None),
+        "link_id": link_id_uuid,
+        "amount": amount,
+        "currency": currency,
+        "description": description,
+        "business_account_name": business_account_name,
+        "brand_name": Some("FeelPay".to_string()),
+        "logo_url": logo_url,
+        "theme_color": theme_color,
         "payment_methods": methods,
         "status": "pending"
     })))
@@ -1325,6 +1759,53 @@ pub async fn update_checkout_from_provider_event(
         }
     }
     Ok(())
+}
+
+pub async fn public_pay_checkout_session(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, FeelPayError> {
+    let session_id = path.into_inner();
+    
+    let session = sqlx::query(
+        "SELECT id, payment_order_id FROM payment_sessions_company WHERE id = $1"
+    )
+    .bind(session_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?
+    .ok_or_else(|| FeelPayError::NotFound("Session not found".into()))?;
+
+    let order_uuid: Option<Uuid> = session.try_get("payment_order_id").unwrap_or(None);
+    
+    let mut tx = state.db.begin().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    sqlx::query(
+        "UPDATE payment_sessions_company SET status = 'paid' WHERE id = $1"
+    )
+    .bind(session_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    if let Some(order_id) = order_uuid {
+        let now = Utc::now();
+        sqlx::query(
+            "UPDATE payment_orders SET status = 'captured', captured_at = $2, updated_at = $2 WHERE id = $1"
+        )
+        .bind(order_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| FeelPayError::Database(e.to_string()))?;
+    }
+
+    tx.commit().await.map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "message": "Payment captured successfully"
+    })))
 }
 
 #[cfg(test)]

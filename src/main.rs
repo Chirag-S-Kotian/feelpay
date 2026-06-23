@@ -345,6 +345,10 @@ async fn main() -> std::io::Result<()> {
                 web::get().to(api::checkout::get_public_checkout_session_status),
             )
             .route(
+                "/pay/session/{id}/pay",
+                web::post().to(api::checkout::public_pay_checkout_session),
+            )
+            .route(
                 "/receipt/{receipt_token}",
                 web::get().to(api::checkout::get_public_receipt),
             )
