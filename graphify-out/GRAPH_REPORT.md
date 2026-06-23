@@ -1,7 +1,7 @@
 # Graph Report - /home/chiragskotian/Desktop/clg project/payment  (2026-06-23)
 
 ## Corpus Check
-- 328 files · ~576,334 words
+- 328 files · ~577,031 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -1054,11 +1054,11 @@ Nodes (1): HTTP Strict Transport Security
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `json()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 20`, `Community 30`, `Community 31`, `Community 37`, `Community 39`, `Community 41`, `Community 42`, `Community 50`?**
-  _High betweenness centrality (0.211) - this node is a cross-community bridge._
+  _High betweenness centrality (0.189) - this node is a cross-community bridge._
 - **Why does `apiRequest()` connect `Community 2` to `Community 19`, `Community 10`, `Community 11`, `Community 15`?**
-  _High betweenness centrality (0.162) - this node is a cross-community bridge._
+  _High betweenness centrality (0.133) - this node is a cross-community bridge._
 - **Why does `loginMerchant()` connect `Community 7` to `Community 15`?**
-  _High betweenness centrality (0.065) - this node is a cross-community bridge._
+  _High betweenness centrality (0.098) - this node is a cross-community bridge._
 - **Are the 453 inferred relationships involving `json()` (e.g. with `.error_response()` and `.error_response()`) actually correct?**
   _`json()` has 453 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 74 inferred relationships involving `apiRequest()` (e.g. with `handleLogout()` and `saveProfileFromHeader()`) actually correct?**
