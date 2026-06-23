@@ -812,9 +812,9 @@ pub async fn get_public_checkout_link(
                    COALESCE(m.business_name, m.name) AS business_account_name,
                    wl.brand_name, wl.checkout_logo_url, wl.checkout_theme_color,
                    wl.terms_url, wl.privacy_url, wl.refund_policy_url
-            FROM payment_links pl
+                        FROM payment_links pl
             LEFT JOIN merchants m ON m.id = pl.merchant_id
-            LEFT JOIN white_label_configs wl ON TRUE
+            LEFT JOIN white_label_payment_config wl ON TRUE
             WHERE pl.link_id = $1 AND pl.deleted_at IS NULL
             "#,
         )
@@ -878,7 +878,7 @@ pub async fn get_public_checkout_link(
                wl.terms_url, wl.privacy_url, wl.refund_policy_url
         FROM payment_links_company pl
         LEFT JOIN business_accounts_company ba ON ba.id = pl.business_account_id
-        LEFT JOIN white_label_configs wl ON TRUE
+        LEFT JOIN white_label_payment_config wl ON TRUE
         WHERE pl.id = $1
         "#,
     )
@@ -1041,7 +1041,7 @@ pub async fn create_public_checkout_session(
                 payment_session_id, brand_name, logo_url, theme_color, support_email, terms_url, privacy_url, refund_policy_url
             )
             SELECT $1, brand_name, checkout_logo_url, checkout_theme_color, support_email, terms_url, privacy_url, refund_policy_url
-            FROM white_label_configs
+            FROM white_label_payment_config
             ORDER BY updated_at DESC NULLS LAST
             LIMIT 1
             "#,
@@ -1164,7 +1164,7 @@ pub async fn create_public_checkout_session(
             payment_session_id, brand_name, logo_url, theme_color, support_email, terms_url, privacy_url, refund_policy_url
         )
         SELECT $1, brand_name, checkout_logo_url, checkout_theme_color, support_email, terms_url, privacy_url, refund_policy_url
-        FROM white_label_configs
+        FROM white_label_payment_config
         ORDER BY updated_at DESC NULLS LAST
         LIMIT 1
         "#,
