@@ -81,6 +81,10 @@ fn decode_checkout_token(token: &str) -> Result<SignedCheckoutToken, FeelPayErro
         .map_err(|_| FeelPayError::Unauthorized("Invalid checkout token payload".into()))
 }
 
+fn is_merchant_link_id(token: &str) -> bool {
+    token.len() == 14 && token.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
 fn verify_checkout_token(
     state: &AppState,
     token: &str,
@@ -787,6 +791,83 @@ pub async fn get_public_checkout_link(
     path: web::Path<String>,
 ) -> Result<HttpResponse, FeelPayError> {
     let token = path.into_inner();
+
+    if is_merchant_link_id(&token) {
+        let mut conn = state
+            .db
+            .acquire()
+            .await
+            .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+        let _ = sqlx::query(
+            "UPDATE payment_links SET view_count = view_count + 1 WHERE link_id = $1 AND deleted_at IS NULL"
+        )
+        .bind(&token)
+        .execute(&mut *conn)
+        .await;
+
+        let row = sqlx::query(
+            r#"
+            SELECT pl.id, pl.amount, pl.currency, pl.description, pl.status, pl.expires_at,
+                   COALESCE(m.business_name, m.name) AS business_account_name,
+                   wl.brand_name, wl.checkout_logo_url, wl.checkout_theme_color,
+                   wl.terms_url, wl.privacy_url, wl.refund_policy_url
+            FROM payment_links pl
+            LEFT JOIN merchants m ON m.id = pl.merchant_id
+            LEFT JOIN white_label_configs wl ON TRUE
+            WHERE pl.link_id = $1 AND pl.deleted_at IS NULL
+            "#,
+        )
+        .bind(&token)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+        let row = row.ok_or_else(|| FeelPayError::NotFound("Payment link not found".into()))?;
+        let status: String = row.get("status");
+        if status != "active" {
+            return Err(FeelPayError::BadRequest("Payment link not active".into()));
+        }
+        let link_exp: Option<DateTime<Utc>> = row.try_get("expires_at").unwrap_or(None);
+        if link_exp.map(|v| v <= Utc::now()).unwrap_or(false) {
+            return Err(FeelPayError::BadRequest("Payment link expired".into()));
+        }
+
+        let methods = sqlx::query(
+            r#"
+            SELECT capability, enabled, status
+            FROM payment_provider_capabilities
+            WHERE enabled = true AND status = 'active'
+            ORDER BY capability ASC
+            "#,
+        )
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+        .iter()
+        .map(|r| serde_json::json!({
+            "capability": r.try_get::<String,_>("capability").unwrap_or_else(|_| "payments".to_string()),
+        }))
+        .collect::<Vec<_>>();
+
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "token": token,
+            "link_id": row.try_get::<Uuid, _>("id").ok(),
+            "amount": row.try_get::<i64,_>("amount").unwrap_or(0),
+            "currency": row.try_get::<String,_>("currency").unwrap_or_else(|_| "INR".to_string()),
+            "description": row.try_get::<Option<String>,_>("description").unwrap_or(None),
+            "business_account_name": row.try_get::<Option<String>,_>("business_account_name").unwrap_or(None),
+            "brand_name": row.try_get::<Option<String>,_>("brand_name").unwrap_or(Some("FeelPay".to_string())),
+            "logo_url": row.try_get::<Option<String>,_>("checkout_logo_url").unwrap_or(None),
+            "theme_color": row.try_get::<Option<String>,_>("checkout_theme_color").unwrap_or(None),
+            "terms_url": row.try_get::<Option<String>,_>("terms_url").unwrap_or(None),
+            "privacy_url": row.try_get::<Option<String>,_>("privacy_url").unwrap_or(None),
+            "refund_policy_url": row.try_get::<Option<String>,_>("refund_policy_url").unwrap_or(None),
+            "payment_methods": methods,
+            "status": "pending"
+        })));
+    }
+
     let parsed = verify_checkout_token(&state, &token)?;
 
     let row = sqlx::query(
@@ -857,6 +938,128 @@ pub async fn create_public_checkout_session(
     body: web::Json<PublicCheckoutSessionRequest>,
 ) -> Result<HttpResponse, FeelPayError> {
     let token = path.into_inner();
+
+    if is_merchant_link_id(&token) {
+        if let Ok(mut conn) = state.redis.get_connection() {
+            let key = format!("public_checkout_rate:{}", token);
+            let count: i64 = redis::cmd("INCR").arg(&key).query(&mut conn).unwrap_or(1);
+            let _: Result<(), _> = redis::cmd("EXPIRE").arg(&key).arg(60).query(&mut conn);
+            if count > 10 {
+                return Err(FeelPayError::RateLimited);
+            }
+        }
+
+        let link = sqlx::query(
+            "SELECT id, merchant_id, amount, currency, description, status, expires_at FROM payment_links WHERE link_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(&token)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?
+        .ok_or_else(|| FeelPayError::NotFound("Payment link not found".into()))?;
+
+        let status: String = link.get("status");
+        if status != "active" {
+            return Err(FeelPayError::BadRequest("Payment link not active".into()));
+        }
+        let link_exp: Option<DateTime<Utc>> = link.try_get("expires_at").unwrap_or(None);
+        if link_exp.map(|v| v <= Utc::now()).unwrap_or(false) {
+            return Err(FeelPayError::BadRequest("Payment link expired".into()));
+        }
+
+        let amount: i64 = link.get("amount");
+        let currency: String = link.get("currency");
+        let merchant_id: Uuid = link.get("merchant_id");
+        let description: Option<String> = link.try_get("description").unwrap_or(None);
+        let link_uuid: Uuid = link.get("id");
+        let order_id = format!("plink_{}", Uuid::new_v4().simple());
+
+        let payment_order_id = Uuid::new_v4();
+        let created = Utc::now();
+        sqlx::query(
+            r#"
+            INSERT INTO payment_orders (
+                id, merchant_id, amount, currency, status, order_id, payment_method,
+                connector, description, metadata, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10, $10)
+            "#,
+        )
+        .bind(payment_order_id)
+        .bind(merchant_id)
+        .bind(amount)
+        .bind(&currency)
+        .bind(&order_id)
+        .bind(
+            body.selected_payment_method
+                .clone()
+                .unwrap_or_else(|| "card".to_string()),
+        )
+        .bind("simulator")
+        .bind(description.clone())
+        .bind(serde_json::json!({ "public_checkout_token": token, "payment_link_id": link_uuid, "is_merchant_link": true }))
+        .bind(created)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+        let provider_code = sqlx::query_scalar::<_, String>(
+            "SELECT p.code FROM routing_rules_company rr JOIN payment_providers p ON p.id = rr.provider_id WHERE rr.status = 'active' ORDER BY rr.priority ASC LIMIT 1",
+        )
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "mock".to_string());
+
+        let provider_session_id = format!("{}_sess_{}", provider_code, Uuid::new_v4().simple());
+        let provider_checkout_url =
+            format!("https://checkout.{provider_code}.example/session/{provider_session_id}");
+        let session_id = Uuid::new_v4();
+        
+        sqlx::query(
+            r#"
+            INSERT INTO payment_sessions_company (
+                id, payment_link_id, payment_order_id, provider_id, selected_payment_method,
+                status, expires_at, provider_session_id, provider_checkout_url, created_at
+            ) VALUES ($1, NULL, $2, (SELECT id FROM payment_providers WHERE code = $3 LIMIT 1), $4, 'processing', $5, $6, $7, NOW())
+            "#,
+        )
+        .bind(session_id)
+        .bind(payment_order_id)
+        .bind(&provider_code)
+        .bind(body.selected_payment_method.clone().unwrap_or_else(|| "card".to_string()))
+        .bind(Utc::now() + chrono::Duration::minutes(20))
+        .bind(&provider_session_id)
+        .bind(&provider_checkout_url)
+        .execute(&state.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO checkout_theme_snapshots (
+                payment_session_id, brand_name, logo_url, theme_color, support_email, terms_url, privacy_url, refund_policy_url
+            )
+            SELECT $1, brand_name, checkout_logo_url, checkout_theme_color, support_email, terms_url, privacy_url, refund_policy_url
+            FROM white_label_configs
+            ORDER BY updated_at DESC NULLS LAST
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .execute(&state.db)
+        .await;
+
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "session_id": session_id,
+            "payment_order_id": payment_order_id,
+            "status": "processing",
+            "provider": provider_code,
+            "provider_session_id": provider_session_id,
+            "provider_checkout_url": provider_checkout_url
+        })));
+    }
+
     let parsed = verify_checkout_token(&state, &token)?;
 
     // Rate limit: max 10 sessions/min per link token
