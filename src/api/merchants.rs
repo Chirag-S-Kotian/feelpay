@@ -1602,6 +1602,40 @@ pub async fn get_keys(
     .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
 
     let Some(row) = row else {
+        let should_generate = if env == "live" {
+            let approved: bool = sqlx::query_scalar(
+                "SELECT onboarding_status = 'approved' AND COALESCE(review_status, 'draft') = 'approved' FROM merchants WHERE id = $1",
+            )
+            .bind(merchant_id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(false);
+            approved
+        } else {
+            true
+        };
+
+        if should_generate {
+            let api_key = if env == "live" {
+                format!("fp_live_{}", Uuid::new_v4().simple())
+            } else {
+                format!("fp_test_{}", Uuid::new_v4().simple())
+            };
+            
+            if let Ok(_) = store_active_api_key(&state.db, merchant_id, env, &api_key).await {
+                let display = masked_key(&api_key)["display"].as_str().unwrap_or_default().to_string();
+                return Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "api_key": display,
+                    "key": { "display": display },
+                    "environment": env,
+                    "created_at": chrono::Utc::now().to_rfc3339(),
+                    "last_used_at": null,
+                    "scopes": ["payments:write", "payments:read", "webhooks:write"],
+                    "status": "active"
+                })));
+            }
+        }
+
         return Ok(HttpResponse::Ok().json(serde_json::json!({
             "api_key": null,
             "key": null,
