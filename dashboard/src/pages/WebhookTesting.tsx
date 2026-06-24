@@ -292,7 +292,7 @@ export default function WebhookTesting() {
             <button
               className="btn-primary"
               onClick={handleTestWebhook}
-              disabled={testing}
+              disabled={testing || !selectedEndpoint}
             >
               {testing ? (
                 <>
