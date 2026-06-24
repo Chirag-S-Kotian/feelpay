@@ -908,39 +908,46 @@ pub async fn get_public_checkout_link(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout | {}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {{
             --theme-color: {};
             --theme-rgb: {};
-            --accent-color: #10b981;
-            --background: #fff9ec;
+            --accent-color: var(--theme-color);
+            --background: #F5EFE2;
+            --card-bg: #FFF9EC;
+            --elevated-bg: #F5EFE2;
+            --border-color: #E6DFD0;
             --text-primary: #141413;
-            --text-secondary: #8a857d;
-            --border-color: #d5c9af;
+            --text-secondary: #6B6862;
+            --text-muted: #8F8C84;
         }}
         * {{
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Outfit', sans-serif;
         }}
         body {{
             background-color: var(--background);
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(235, 0, 27, 0.03), transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(247, 158, 27, 0.03), transparent 40%);
             color: var(--text-primary);
             display: grid;
             place-items: center;
             min-height: 100vh;
-            padding: 20px;
+            padding: 24px;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
         }}
         .checkout-container {{
-            background: #fff9ec;
+            background: var(--card-bg);
             border: 1px solid var(--border-color);
-            box-shadow: 0 24px 80px rgba(20, 20, 19, 0.15);
+            box-shadow: 0 24px 64px -16px rgba(20, 20, 19, 0.06);
             border-radius: 34px;
             width: 100%;
             max-width: 440px;
-            padding: 32px;
+            padding: 36px;
             display: flex;
             flex-direction: column;
             gap: 24px;
@@ -955,9 +962,9 @@ pub async fn get_public_checkout_link(
         .merchant-logo {{
             width: 48px;
             height: 48px;
-            border-radius: 50%;
+            border-radius: 100px;
             background: var(--theme-color);
-            color: white;
+            color: #FFF9EC;
             display: grid;
             place-items: center;
             font-size: 20px;
@@ -965,64 +972,84 @@ pub async fn get_public_checkout_link(
         }}
         .merchant-info h2 {{
             font-size: 18px;
-            font-weight: 600;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
         }}
         .merchant-info p {{
-            font-size: 13px;
+            font-size: 12px;
             color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 2px;
+        }}
+        .merchant-info p svg {{
+            width: 13px;
+            height: 13px;
+            fill: #22c55e;
         }}
         .order-details {{
-            border-top: 1px solid var(--border-color);
-            border-bottom: 1px solid var(--border-color);
-            padding: 16px 0;
+            background: rgba(20, 20, 19, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 18px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }}
         .order-desc h4 {{
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
         }}
         .order-desc p {{
-            font-size: 15px;
-            font-weight: 600;
-            margin-top: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 2px;
+            color: var(--text-secondary);
         }}
         .order-amount {{
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 700;
-            color: var(--theme-color);
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
         }}
         .payment-methods-grid {{
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
+            gap: 10px;
         }}
         .method-card {{
-            border: 1.5px solid var(--border-color);
-            border-radius: 16px;
-            padding: 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 100px;
+            padding: 12px 18px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
-            flex-direction: column;
             align-items: center;
+            justify-content: center;
             gap: 8px;
-            background: white;
+            background: var(--elevated-bg);
+            color: var(--text-secondary);
         }}
         .method-card:hover {{
-            border-color: var(--theme-color);
-            transform: translateY(-2px);
+            background: #FFF9EC;
+            color: var(--text-primary);
+            border-color: var(--text-primary);
         }}
         .method-card.selected {{
-            border-color: var(--theme-color);
-            background: rgba(var(--theme-rgb), 0.05);
-            box-shadow: 0 0 0 3px rgba(var(--theme-rgb), 0.15);
+            background: var(--text-primary);
+            color: #FFF9EC;
+            border-color: var(--text-primary);
         }}
-        .method-icon {{
-            font-size: 24px;
+        .method-icon-svg {{
+            width: 18px;
+            height: 18px;
+            stroke-width: 2px;
         }}
         .method-label {{
             font-size: 13px;
@@ -1031,7 +1058,12 @@ pub async fn get_public_checkout_link(
         .form-section {{
             display: none;
             flex-direction: column;
-            gap: 12px;
+            gap: 16px;
+            animation: fadeIn 0.2s ease;
+        }}
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(2px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
         }}
         .form-section.active {{
             display: flex;
@@ -1042,64 +1074,79 @@ pub async fn get_public_checkout_link(
             gap: 6px;
         }}
         .input-group label {{
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
         }}
         .input-group input, .input-group select {{
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: 1.5px solid var(--border-color);
+            padding: 12px 18px;
+            border-radius: 100px;
+            border: 1px solid var(--border-color);
             font-size: 14px;
             outline: none;
-            background: white;
-            transition: border-color 0.2s;
+            background: #FFF9EC;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }}
+        .input-group input::placeholder {{
+            color: var(--text-muted);
         }}
         .input-group input:focus, .input-group select:focus {{
-            border-color: var(--theme-color);
+            border-color: var(--text-primary);
+            background: #FFF9EC;
         }}
         .pay-btn {{
-            background: var(--theme-color);
-            color: white;
+            background: var(--accent-color);
+            color: #FFF9EC;
             border: none;
             padding: 16px;
-            border-radius: 16px;
-            font-size: 16px;
-            font-weight: 600;
+            border-radius: 100px;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: inherit;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
         }}
         .pay-btn:hover {{
-            opacity: 0.9;
+            filter: brightness(0.9);
+        }}
+        .pay-btn:active {{
+            transform: scale(0.98);
         }}
         .trust-footer {{
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
             font-size: 11px;
             color: var(--text-secondary);
+            font-weight: 500;
         }}
         .trust-footer svg {{
-            width: 14px;
-            height: 14px;
-            fill: var(--text-secondary);
+            width: 13px;
+            height: 13px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
         }}
         .overlay {{
             position: absolute;
             inset: 0;
-            background: #fff9ec;
+            background: var(--card-bg);
             z-index: 10;
             display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 16px;
-            padding: 24px;
+            padding: 32px;
             text-align: center;
         }}
         .overlay.active {{
@@ -1108,37 +1155,28 @@ pub async fn get_public_checkout_link(
         .spinner {{
             width: 48px;
             height: 48px;
-            border: 4px solid var(--border-color);
-            border-top-color: var(--theme-color);
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-color);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }}
         @keyframes spin {{
             to {{ transform: rotate(360deg); }}
         }}
         .success-checkmark {{
-            width: 80px;
-            height: 80px;
-            margin: 0 auto;
-        }}
-        .check-icon {{
-            width: 80px;
-            height: 80px;
-            position: relative;
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
-            box-sizing: content-box;
-            border: 4px solid #4CAF50;
+            background: rgba(34, 197, 94, 0.1);
+            display: grid;
+            place-items: center;
+            margin-bottom: 8px;
+            border: 1px solid rgba(34, 197, 94, 0.2);
         }}
-        .check-icon::after {{
-            content: '';
-            position: absolute;
-            top: 15px;
-            left: 32px;
-            width: 16px;
-            height: 35px;
-            border: solid #4CAF50;
-            border-width: 0 4px 4px 0;
-            transform: rotate(45deg);
+        .success-checkmark svg {{
+            width: 32px;
+            height: 32px;
+            color: #22c55e;
         }}
     </style>
 </head>
@@ -1148,33 +1186,36 @@ pub async fn get_public_checkout_link(
             <div class="merchant-logo">{}</div>
             <div class="merchant-info">
                 <h2>{}</h2>
-                <p>Secured by FeelPay</p>
+                <p>
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    Secured by FeelPay
+                </p>
             </div>
         </div>
 
         <div class="order-details">
             <div class="order-desc">
                 <h4>Description</h4>
-                <p>{}</p>
+                <p class="order-desc-text">{}</p>
             </div>
             <div class="order-amount">{}</div>
         </div>
 
         <div class="payment-methods-grid">
             <div class="method-card selected" data-method="upi">
-                <span class="method-icon">📱</span>
+                <svg class="method-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
                 <span class="method-label">UPI</span>
             </div>
             <div class="method-card" data-method="card">
-                <span class="method-icon">💳</span>
+                <svg class="method-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
                 <span class="method-label">Card</span>
             </div>
             <div class="method-card" data-method="netbanking">
-                <span class="method-icon">🏦</span>
+                <svg class="method-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22v-6h18v6M6 16V9M10 16V9M14 16V9M18 16V9M12 2L2 7h20L12 2z"></path></svg>
                 <span class="method-label">Netbanking</span>
             </div>
             <div class="method-card" data-method="wallet">
-                <span class="method-icon">👜</span>
+                <svg class="method-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h14v-4M4 6v12a2 2 0 0 0 2 2h14v-4"></path></svg>
                 <span class="method-label">Wallet</span>
             </div>
         </div>
@@ -1242,27 +1283,30 @@ pub async fn get_public_checkout_link(
         </div>
 
         <button class="pay-btn" id="pay-button">
-            Pay securely {}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top: -1px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <span class="btn-text">Pay securely {}</span>
         </button>
 
         <div class="trust-footer">
-            <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
             <span>PCI-DSS Compliant • 256-bit SSL Encryption</span>
         </div>
 
         <div class="overlay" id="loading-overlay">
             <div class="spinner"></div>
-            <h3>Processing Payment</h3>
-            <p>Please do not close this window or refresh the page.</p>
+            <h3 style="font-family: inherit; font-weight: 700; font-size: 18px; margin-top: 8px;">Processing Payment</h3>
+            <p style="color: var(--text-secondary); font-size: 13px; max-width: 280px; line-height: 1.5;">Please do not close this window or refresh the page.</p>
         </div>
 
         <div class="overlay" id="success-overlay">
             <div class="success-checkmark">
-                <div class="check-icon"></div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
-            <h2 style="color: #4CAF50; margin-top: 16px;">Payment Successful</h2>
-            <p style="color: var(--text-secondary); margin-top: 8px;">Your payment of {} to {} has been processed successfully.</p>
-            <p style="font-size: 12px; color: var(--text-secondary); margin-top: 24px;">FeelPay ID: <span id="payment-id-display"></span></p>
+            <h2 style="color: #22c55e; font-family: inherit; font-weight: 700; font-size: 22px;">Payment Successful</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; max-width: 300px; line-height: 1.6; margin-top: 4px;">Your payment of <span class="success-amount">{}</span> to <span class="success-merchant">{}</span> has been processed successfully.</p>
+            <div style="margin-top: 20px; padding: 10px 16px; background: rgba(20,20,19,0.02); border: 1px solid var(--border-color); border-radius: 100px; font-size: 12px; color: var(--text-secondary);">
+                Transaction ID: <span id="payment-id-display" style="color: var(--text-primary); font-family: monospace; font-weight: 600; margin-left: 4px;"></span>
+            </div>
         </div>
     </div>
 
@@ -1331,7 +1375,14 @@ pub async fn get_public_checkout_link(
             bus_name
         );
 
-        return Ok(HttpResponse::Ok().content_type("text/html").body(html));
+        return Ok(HttpResponse::Ok()
+            .content_type("text/html")
+            .insert_header((
+                "content-security-policy",
+                "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: *; frame-ancestors *",
+            ))
+            .insert_header(("x-frame-options", "ALLOWALL"))
+            .body(html));
     }
 
     let methods = sqlx::query(

@@ -132,9 +132,13 @@ case "$RUN_TARGET" in
     start_frontend
     ;;
   both)
-    start_frontend
-    sleep 2
     start_backend "$BUILD_PROFILE"
+    echo -e "${YELLOW}Waiting for backend to start listening on port 8080...${RESET}"
+    while ! (echo > /dev/tcp/127.0.0.1/8080) >/dev/null 2>&1; do
+      sleep 0.5
+    done
+    echo -e "${GREEN}Backend is ready!${RESET}"
+    start_frontend
     ;;
 esac
 
