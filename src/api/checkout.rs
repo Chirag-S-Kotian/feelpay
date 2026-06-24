@@ -1081,6 +1081,7 @@ pub async fn get_public_checkout_link(
             color: var(--text-muted);
         }}
         .input-group input, .input-group select {{
+            width: 100%;
             padding: 12px 18px;
             border-radius: 100px;
             border: 1px solid var(--border-color);
@@ -1182,6 +1183,11 @@ pub async fn get_public_checkout_link(
 </head>
 <body>
     <div class="checkout-container">
+        <!-- Test Mode Badge -->
+        <div style="position: absolute; top: 16px; right: 16px; background: rgba(235, 0, 27, 0.1); border: 1px solid rgba(235, 0, 27, 0.2); color: #EB001B; font-size: 9px; font-weight: 700; padding: 4px 10px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.05em; pointer-events: none; z-index: 5;">
+            Test Mode Only
+        </div>
+
         <div class="merchant-header">
             <div class="merchant-logo">{}</div>
             <div class="merchant-info">
@@ -1239,28 +1245,28 @@ pub async fn get_public_checkout_link(
         <div class="form-section" id="card-form">
             <div class="input-group">
                 <label>Card Number</label>
-                <input type="text" placeholder="4111 1111 1111 1111" maxlength="19">
+                <input type="text" id="card-number" placeholder="4111 1111 1111 1111" maxlength="19">
             </div>
             <div style="display: flex; gap: 12px;">
                 <div class="input-group" style="flex: 1;">
                     <label>Expiry Date</label>
-                    <input type="text" placeholder="MM/YY" maxlength="5">
+                    <input type="text" id="card-expiry" placeholder="MM/YY" maxlength="5">
                 </div>
                 <div class="input-group" style="flex: 1;">
                     <label>CVV</label>
-                    <input type="password" placeholder="•••" maxlength="3">
+                    <input type="password" id="card-cvv" placeholder="•••" maxlength="4">
                 </div>
             </div>
             <div class="input-group">
                 <label>Cardholder Name</label>
-                <input type="text" placeholder="John Doe">
+                <input type="text" id="card-name" placeholder="John Doe">
             </div>
         </div>
 
         <div class="form-section" id="netbanking-form">
             <div class="input-group">
                 <label>Select Your Bank</label>
-                <select>
+                <select id="netbanking-bank">
                     <option>State Bank of India</option>
                     <option>HDFC Bank</option>
                     <option>ICICI Bank</option>
@@ -1273,7 +1279,7 @@ pub async fn get_public_checkout_link(
         <div class="form-section" id="wallet-form">
             <div class="input-group">
                 <label>Select Wallet</label>
-                <select>
+                <select id="wallet-provider">
                     <option>Paytm Wallet</option>
                     <option>Amazon Pay</option>
                     <option>PhonePe Wallet</option>
@@ -1282,10 +1288,36 @@ pub async fn get_public_checkout_link(
             </div>
         </div>
 
+        <div class="input-group" style="flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <input type="checkbox" id="bypass-validation" style="width: auto; cursor: pointer; margin: 0;">
+            <label for="bypass-validation" style="text-transform: none; font-size: 12px; color: var(--text-secondary); cursor: pointer; user-select: none;">Skip frontend validation (Test Mode)</label>
+        </div>
+
         <button class="pay-btn" id="pay-button">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top: -1px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
             <span class="btn-text">Pay securely {}</span>
         </button>
+
+        <!-- Collapsible Test Credentials -->
+        <div style="border-top: 1px dashed var(--border-color); padding-top: 12px; margin-top: 4px;">
+            <div id="toggle-creds" style="font-size: 11px; font-weight: 700; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; user-select: none;">
+                <span>💡 Show Test Credentials</span>
+            </div>
+            <div id="test-creds-content" style="display: none; margin-top: 8px; font-size: 11px; color: var(--text-muted); background: rgba(20, 20, 19, 0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 18px; flex-direction: column; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>UPI ID:</span>
+                    <strong style="color: var(--text-primary); font-family: monospace; font-size: 12px;">test@upi</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(20,20,19,0.03); padding-top: 4px;">
+                    <span>Card Number:</span>
+                    <strong style="color: var(--text-primary); font-family: monospace; font-size: 12px;">4111 1111 1111 1111</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(20,20,19,0.03); padding-top: 4px;">
+                    <span>Expiry / CVV:</span>
+                    <strong style="color: var(--text-primary); font-family: monospace; font-size: 12px;">12/29 &nbsp; 123</strong>
+                </div>
+            </div>
+        </div>
 
         <div class="trust-footer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -1311,6 +1343,21 @@ pub async fn get_public_checkout_link(
     </div>
 
     <script>
+        // Collapsible Test Credentials Logic
+        const toggleCreds = document.getElementById('toggle-creds');
+        const credsContent = document.getElementById('test-creds-content');
+        if (toggleCreds && credsContent) {{
+            toggleCreds.addEventListener('click', () => {{
+                if (credsContent.style.display === 'none') {{
+                    credsContent.style.display = 'flex';
+                    toggleCreds.querySelector('span').textContent = '💡 Hide Test Credentials';
+                }} else {{
+                    credsContent.style.display = 'none';
+                    toggleCreds.querySelector('span').textContent = '💡 Show Test Credentials';
+                }}
+            }});
+        }}
+
         let selectedMethod = 'upi';
         const methodCards = document.querySelectorAll('.method-card');
         const formSections = document.querySelectorAll('.form-section');
@@ -1323,14 +1370,173 @@ pub async fn get_public_checkout_link(
 
                 formSections.forEach(s => s.classList.remove('active'));
                 document.getElementById(selectedMethod + '-form').classList.add('active');
+                clearErrors();
             }});
         }});
+
+        // Input formatters & helpers
+        const cardNumInput = document.getElementById('card-number');
+        const expiryInput = document.getElementById('card-expiry');
+        const cvvInput = document.getElementById('card-cvv');
+        const nameInput = document.getElementById('card-name');
+        const upiInput = document.getElementById('upi-id');
+
+        cardNumInput.addEventListener('input', (e) => {{
+            let value = e.target.value.replace(/\D/g, '');
+            let formatted = '';
+            for (let i = 0; i < value.length; i++) {{
+                if (i > 0 && i % 4 === 0) {{
+                    formatted += ' ';
+                }}
+                formatted += value[i];
+            }}
+            e.target.value = formatted;
+            clearInputError('card-number');
+        }});
+
+        expiryInput.addEventListener('input', (e) => {{
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 2) {{
+                e.target.value = value.substring(0, 2) + '/' + value.substring(2, 4);
+            }} else {{
+                e.target.value = value;
+            }}
+            clearInputError('card-expiry');
+        }});
+
+        cvvInput.addEventListener('input', (e) => {{
+            e.target.value = e.target.value.replace(/\D/g, '');
+            clearInputError('card-cvv');
+        }});
+
+        nameInput.addEventListener('input', () => clearInputError('card-name'));
+        if (upiInput) {{
+            upiInput.addEventListener('input', () => clearInputError('upi-id'));
+        }}
+
+        function showError(inputId, message) {{
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            input.style.borderColor = '#EB001B';
+            let errEl = input.parentNode.querySelector('.error-msg');
+            if (!errEl) {{
+                errEl = document.createElement('span');
+                errEl.className = 'error-msg';
+                errEl.style.color = '#EB001B';
+                errEl.style.fontSize = '11px';
+                errEl.style.fontWeight = '600';
+                errEl.style.marginTop = '4px';
+                errEl.style.display = 'block';
+                input.parentNode.appendChild(errEl);
+            }}
+            errEl.textContent = message;
+        }}
+
+        function clearInputError(inputId) {{
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            input.style.borderColor = 'var(--border-color)';
+            const errEl = input.parentNode.querySelector('.error-msg');
+            if (errEl) errEl.remove();
+        }}
+
+        function clearErrors() {{
+            document.querySelectorAll('.error-msg').forEach(el => el.remove());
+            document.querySelectorAll('.input-group input, .input-group select').forEach(input => {{
+                input.style.borderColor = 'var(--border-color)';
+            }});
+        }}
+
+        function luhnCheck(num) {{
+            let sum = 0;
+            let shouldDouble = false;
+            for (let i = num.length - 1; i >= 0; i--) {{
+                let digit = parseInt(num.charAt(i));
+                if (shouldDouble) {{
+                    if ((digit *= 2) > 9) digit -= 9;
+                }}
+                sum += digit;
+                shouldDouble = !shouldDouble;
+            }}
+            return (sum % 10) === 0;
+        }}
+
+        function validateForm() {{
+            if (document.getElementById('bypass-validation').checked) {{
+                clearErrors();
+                return true;
+            }}
+
+            clearErrors();
+            let isValid = true;
+
+            if (selectedMethod === 'upi') {{
+                const upiId = upiInput.value.trim();
+                if (upiId && !/^[a-zA-Z0-9.\-_]{{2,256}}@[a-zA-Z]{{2,64}}$/.test(upiId)) {{
+                    showError('upi-id', 'Enter a valid UPI ID (e.g., name@bank)');
+                    isValid = false;
+                }}
+            }} else if (selectedMethod === 'card') {{
+                const cardNum = cardNumInput.value.replace(/\s+/g, '');
+                if (!/^\d{{13,19}}$/.test(cardNum)) {{
+                    showError('card-number', 'Enter a valid card number (13-19 digits)');
+                    isValid = false;
+                }} else if (!luhnCheck(cardNum)) {{
+                    showError('card-number', 'Invalid card number (failed checksum)');
+                    isValid = false;
+                }}
+
+                const expiry = expiryInput.value;
+                const match = expiry.match(/^(0[1-9]|1[0-2])\/([0-9]{{2}})$/);
+                if (!match) {{
+                    showError('card-expiry', 'Use MM/YY format');
+                    isValid = false;
+                }} else {{
+                    const month = parseInt(match[1]);
+                    const year = parseInt('20' + match[2]);
+                    const now = new Date();
+                    const curMonth = now.getMonth() + 1;
+                    const curYear = now.getFullYear();
+                    if (year < curYear || (year === curYear && month < curMonth)) {{
+                        showError('card-expiry', 'Card has expired');
+                        isValid = false;
+                    }}
+                }}
+
+                const cvv = cvvInput.value;
+                if (!/^\d{{3,4}}$/.test(cvv)) {{
+                    showError('card-cvv', 'Enter 3 or 4 digits');
+                    isValid = false;
+                }}
+
+                const name = nameInput.value.trim();
+                if (name.length < 2) {{
+                    showError('card-name', 'Enter cardholder name');
+                    isValid = false;
+                }}
+            }} else if (selectedMethod === 'netbanking') {{
+                const bank = document.getElementById('netbanking-bank').value;
+                if (!bank) {{
+                    showError('netbanking-bank', 'Please select a bank');
+                    isValid = false;
+                }}
+            }} else if (selectedMethod === 'wallet') {{
+                const wallet = document.getElementById('wallet-provider').value;
+                if (!wallet) {{
+                    showError('wallet-provider', 'Please select a wallet');
+                    isValid = false;
+                }}
+            }}
+            return isValid;
+        }}
 
         const payButton = document.getElementById('pay-button');
         const loadingOverlay = document.getElementById('loading-overlay');
         const successOverlay = document.getElementById('success-overlay');
 
         payButton.addEventListener('click', async () => {{
+            if (!validateForm()) return;
+
             loadingOverlay.classList.add('active');
 
             try {{
