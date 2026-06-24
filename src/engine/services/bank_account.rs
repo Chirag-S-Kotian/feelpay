@@ -423,9 +423,9 @@ impl BankAccountService {
         >(
             r#"
             SELECT 
-                id, merchant_id, account_holder_name, account_number_encrypted, ifsc_code,
+                id::TEXT, merchant_id::TEXT, account_holder_name, account_number_encrypted, ifsc_code,
                 account_type, verification_status, penny_drop_amount_paise, penny_drop_reference,
-                is_primary, created_at, updated_at, verified_at
+                is_primary, created_at::TEXT, updated_at::TEXT, verified_at::TEXT
             FROM bank_accounts
             WHERE merchant_id = $1
             ORDER BY is_primary DESC, created_at DESC

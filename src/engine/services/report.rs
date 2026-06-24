@@ -418,9 +418,9 @@ impl ReportService {
         >(
             r#"
             SELECT 
-                id, merchant_id, report_type, frequency, day_of_week, day_of_month,
-                time_of_day, recipient_emails, format, is_active, last_run_at, next_run_at,
-                created_at, updated_at, created_by_user_id
+                id::TEXT, merchant_id::TEXT, report_type, frequency, day_of_week, day_of_month,
+                time_of_day::TEXT, recipient_emails, format, is_active, last_run_at::TEXT, next_run_at::TEXT,
+                created_at::TEXT, updated_at::TEXT, created_by_user_id::TEXT
             FROM scheduled_reports
             WHERE merchant_id = $1
             ORDER BY created_at DESC

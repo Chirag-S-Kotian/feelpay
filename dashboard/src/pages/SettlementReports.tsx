@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, FileText, Loader, RefreshCw } from 'lucide-react';
+import { Download, FileText, Loader, RefreshCw, X } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import { formatPaise } from '../utils/money';
 
@@ -13,6 +13,7 @@ interface Settlement {
   status: string;
   created_at: string;
   utr?: string;
+  transaction_count?: number;
 }
 
 interface SettlementItem {
@@ -43,6 +44,16 @@ interface SettlementDetail {
   created_at: string;
   items: SettlementItem[];
 }
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return 'N/A';
+  const dateOnly = dateStr.split('T')[0] || dateStr;
+  const parts = dateOnly.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateOnly;
+};
 
 export default function SettlementReports() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -215,7 +226,7 @@ export default function SettlementReports() {
         </div>
       )}
 
-      <div className="grid grid-2">
+      <div className={selectedSettlement && reportPreview ? "grid grid-2" : ""}>
         <div className="card">
           <div className="card-title-row">
             <h2>Settlements</h2>
@@ -249,16 +260,14 @@ export default function SettlementReports() {
                   {settlements.map(settlement => (
                     <tr key={settlement.id}>
                       <td>
-                        {new Date(
-                          settlement.settlement_date || settlement.created_at
-                        ).toLocaleDateString()}
+                        {formatDate(settlement.settlement_date || settlement.created_at)}
                       </td>
                       <td>
                         <span className={`status-pill status-${settlement.status.toLowerCase()}`}>
                           {settlement.status}
                         </span>
                       </td>
-                      <td>-</td>
+                      <td>{settlement.transaction_count ?? 1}</td>
                       <td>{formatPaise(settlement.amount)}</td>
                       <td>{formatPaise(settlement.fee_amount + settlement.tax_amount)}</td>
                       <td className="font-bold">{formatPaise(settlement.net_amount)}</td>
@@ -280,16 +289,27 @@ export default function SettlementReports() {
 
         {selectedSettlement && reportPreview && (
           <div className="card">
-            <h2>Report Preview</h2>
+            <div className="card-title-row">
+              <h2>Report Preview</h2>
+              <button
+                className="close-btn"
+                onClick={() => {
+                  setSelectedSettlement(null);
+                  setReportPreview(null);
+                }}
+                type="button"
+                aria-label="Close preview"
+              >
+                <X size={18} />
+              </button>
+            </div>
             <div className="report-preview">
               <div className="preview-section">
                 <h3>Settlement Summary</h3>
                 <div className="preview-row">
                   <span>Settlement Date:</span>
                   <strong>
-                    {new Date(
-                      reportPreview.settlement_date || reportPreview.created_at
-                    ).toLocaleDateString()}
+                    {formatDate(reportPreview.settlement_date || reportPreview.created_at)}
                   </strong>
                 </div>
                 <div className="preview-row">
@@ -339,9 +359,7 @@ export default function SettlementReports() {
                 <div className="preview-row">
                   <span>Transfer Date:</span>
                   <strong>
-                    {reportPreview.processed_at
-                      ? new Date(reportPreview.processed_at).toLocaleDateString()
-                      : 'N/A'}
+                    {formatDate(reportPreview.processed_at)}
                   </strong>
                 </div>
                 <div className="preview-row">
@@ -487,16 +505,29 @@ export default function SettlementReports() {
         .status-processed,
         .status-completed,
         .status-success {
-          background: rgba(36, 201, 132, 0.22);
-          color: #89f7c0;
+          background: #10b981;
+          color: #ffffff;
+          box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
         }
         .status-pending {
-          background: rgba(255, 183, 3, 0.2);
-          color: #ffe199;
+          background: #f59e0b;
+          color: #ffffff;
+          box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+        }
+        .status-processing {
+          background: #3b82f6;
+          color: #ffffff;
+          box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+        }
+        .status-held {
+          background: #8b5cf6;
+          color: #ffffff;
+          box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
         }
         .status-failed {
-          background: rgba(255, 107, 107, 0.2);
-          color: #ffb3b3;
+          background: #ef4444;
+          color: #ffffff;
+          box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
         }
         .format-selector {
           margin-top: 12px;
@@ -509,26 +540,50 @@ export default function SettlementReports() {
         .btn-format {
           flex: 1;
           padding: 10px 12px;
-          border: 1px solid rgba(102, 172, 255, 0.35);
-          background: linear-gradient(180deg, rgba(20, 42, 78, 0.9), rgba(14, 31, 60, 0.9));
-          border-radius: 10px;
+          border: 1px solid #6B6862;
+          background: #FFF9EC;
+          border-radius: 100px;
           cursor: pointer;
           font-size: 12px;
           font-weight: 600;
-          color: #c2d8ff;
+          color: #6B6862;
           transition: all 0.2s ease;
         }
+        .btn-format:hover {
+          background: #F5EFE2;
+          border-color: #141413;
+          color: #141413;
+        }
         .btn-format.active {
-          background: linear-gradient(135deg, #f8a429, #9f5cff);
-          color: #fff;
-          border-color: transparent;
+          background: #EB001B;
+          color: #FFF9EC;
+          border-color: #EB001B;
         }
         .spin {
           animation: spin 1s linear infinite;
         }
+        .data-table th, .data-table td {
+          white-space: nowrap;
+        }
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        .close-btn {
+          background: transparent;
+          border: none;
+          color: #6B6862;
+          cursor: pointer;
+          padding: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          transition: all 0.2s ease;
+        }
+        .close-btn:hover {
+          background: #F5EFE2;
+          color: #EB001B;
         }
       `}</style>
     </div>

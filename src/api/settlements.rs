@@ -85,9 +85,10 @@ pub async fn list_settlements(
         Option<String>,
         Option<chrono::DateTime<chrono::Utc>>,
         chrono::DateTime<chrono::Utc>,
+        Option<i32>,
     )> = sqlx::query_as(
         r#"
-        SELECT id, settlement_date, status, amount, fee_amount, net_amount, utr_number, processed_at, created_at
+        SELECT id, settlement_date, status, amount, fee_amount, net_amount, utr_number, processed_at, created_at, transaction_count
         FROM settlements
         WHERE merchant_id = $1
           AND environment = $2::TEXT
@@ -142,6 +143,7 @@ pub async fn list_settlements(
                 utr_number,
                 processed_at,
                 created_at,
+                transaction_count,
             )| {
                 let tax_amount = gst_on_fee_paise(fee_amount);
                 serde_json::json!({
@@ -154,7 +156,8 @@ pub async fn list_settlements(
                     "net_amount": net_amount,
                     "utr": utr_number,
                     "processed_at": processed_at,
-                    "created_at": created_at
+                    "created_at": created_at,
+                    "transaction_count": transaction_count.unwrap_or(0)
                 })
             },
         )

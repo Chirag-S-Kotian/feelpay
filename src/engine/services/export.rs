@@ -683,10 +683,10 @@ impl ExportService {
         >(
             r#"
             SELECT 
-                id, merchant_id, job_type, status, filters,
+                id::TEXT, merchant_id::TEXT, job_type, status, filters,
                 file_url, file_size_bytes, record_count, error_message,
-                created_at, started_at, completed_at, expires_at,
-                idempotency_key, created_by_user_id
+                created_at::TEXT, started_at::TEXT, completed_at::TEXT, expires_at::TEXT,
+                idempotency_key, created_by_user_id::TEXT
             FROM export_jobs
             WHERE merchant_id = $1
             ORDER BY created_at DESC
