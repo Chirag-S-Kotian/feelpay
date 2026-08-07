@@ -439,8 +439,15 @@ function renderAdminIdentity(row: GenericRecord, prefix: string) {
   return renderValue(row[`${prefix}_admin_id`] || row[`${prefix}_id`]);
 }
 
-function rowsFrom(value: { items?: GenericRecord[] }) {
-  return value.items || [];
+function rowsFrom(value: unknown): GenericRecord[] {
+  if (Array.isArray(value)) return value as GenericRecord[];
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.items)) return record.items as GenericRecord[];
+    if (Array.isArray(record.rows)) return record.rows as GenericRecord[];
+    return [record as GenericRecord];
+  }
+  return [];
 }
 
 function useRows(path: string) {
