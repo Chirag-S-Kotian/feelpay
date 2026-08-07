@@ -11651,20 +11651,20 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(create_routing_rule),
         )
         .route(
-            &format!("{prefix}/routing-rules/{{id}}"),
-            web::patch().to(update_routing_rule),
-        )
-        .route(
-            &format!("{prefix}/routing-rules/{{id}}/disable"),
-            web::post().to(disable_routing_rule),
-        )
-        .route(
             &format!("{prefix}/routing-rules/simulate"),
             web::post().to(simulate_routing),
         )
         .route(
             &format!("{prefix}/routing/simulate"),
             web::post().to(simulate_routing),
+        )
+        .route(
+            &format!("{prefix}/routing-rules/{{id}}"),
+            web::patch().to(update_routing_rule),
+        )
+        .route(
+            &format!("{prefix}/routing-rules/{{id}}/disable"),
+            web::post().to(disable_routing_rule),
         )
         .route(
             &format!("{prefix}/transactions"),
