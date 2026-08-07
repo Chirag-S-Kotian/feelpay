@@ -373,16 +373,16 @@ export default function AdminIntegrationCenter() {
             <Field label="Test phone"><input value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>
             <Field label="KYC test type"><Select value={kycVerificationType} options={['pan', 'gstin', 'business']} onChange={setKycVerificationType} /></Field>
           </div>
-          <div className="button-row">
-            <button onClick={() => selected && void run('Secret saved.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets`, { secret_name: secretName, value: secretValue }))}>Save secret</button>
-            <button onClick={() => selected && void run('Secret rotated.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets/${secretName}/rotate`, { secret_name: secretName, value: secretValue }))}>Rotate secret</button>
-            <button onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
-            <button onClick={() => selected && void run('Test email sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-email`, { recipient: testRecipient }))}><Mail size={14} /> Test email</button>
-            <button onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
-            <button onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
-            <button onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone }))}>Test OTP</button>
-            <button onClick={() => selected && void run('KYC test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-kyc`, { verification_type: kycVerificationType }))}>Test KYC</button>
-            <button onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
+          <div className="button-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px', marginBottom: '16px' }}>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret saved.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets`, { secret_name: secretName, value: secretValue }))}>Save secret</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret rotated.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets/${secretName}/rotate`, { secret_name: secretName, value: secretValue }))}>Rotate secret</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Test email sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-email`, { recipient: testRecipient }))}><Mail size={14} /> Test email</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone }))}>Test OTP</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('KYC test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-kyc`, { verification_type: kycVerificationType }))}>Test KYC</button>
+            <button type="button" className="btn-secondary" onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
           </div>
           <div className="table-wrap">
             <table>
