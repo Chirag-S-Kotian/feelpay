@@ -1009,7 +1009,18 @@ async fn admin_login(pool: web::Data<PgPool>, req: web::Json<AdminLoginRequest>)
             .json(serde_json::json!({"message": "Admin access required"}));
     }
     let password_hash: String = row.get("password_hash");
-    let password_ok = bcrypt::verify(req.password.as_str(), &password_hash).unwrap_or(false);
+    let password_ok = if password_hash.starts_with("$argon2id$") {
+        use argon2::PasswordVerifier;
+        if let Ok(parsed_hash) = argon2::PasswordHash::new(&password_hash) {
+            argon2::Argon2::default()
+                .verify_password(req.password.as_bytes(), &parsed_hash)
+                .is_ok()
+        } else {
+            false
+        }
+    } else {
+        bcrypt::verify(req.password.as_str(), &password_hash).unwrap_or(false)
+    };
     if !password_ok {
         return HttpResponse::Unauthorized()
             .json(serde_json::json!({"message": "Invalid credentials"}));

@@ -482,6 +482,15 @@ async fn authenticate_api_key(
                 .bind(api_key_id)
                 .execute(&state.db)
                 .await;
+            if let Some(mid) = merchant_id {
+                req.extensions_mut().insert(MerchantId(mid));
+            }
+            req.extensions_mut()
+                .insert(RequestEnvironment(if environment == "live" {
+                    crate::middleware::auth::EnvironmentMode::Live
+                } else {
+                    crate::middleware::auth::EnvironmentMode::Test
+                }));
             req.extensions_mut().insert(ExternalApiKeyContext {
                 api_key_id: Some(api_key_id),
                 merchant_id,
@@ -600,9 +609,10 @@ fn scope_allowed(scopes: &[String], method: &Method, path: &str) -> bool {
         "write"
     };
     scopes.iter().any(|scope| {
-        scope == &format!("{resource}.{action}")
-            || scope == &format!("{resource}.*")
-            || scope == &format!("*.{action}")
+        let normalized = scope.replace(':', ".");
+        normalized == format!("{resource}.{action}")
+            || normalized == format!("{resource}.*")
+            || normalized == format!("*.{action}")
     })
 }
 

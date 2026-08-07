@@ -11806,30 +11806,6 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::post().to(upload_reconciliation_file),
         )
         .route(
-            &format!("{prefix}/reconciliation/{{id}}"),
-            web::get().to(get_reconciliation),
-        )
-        .route(
-            &format!("{prefix}/reconciliation/{{id}}/auto-match"),
-            web::post().to(auto_match_reconciliation),
-        )
-        .route(
-            &format!("{prefix}/reconciliation/{{id}}/mismatches"),
-            web::get().to(reconciliation_mismatches),
-        )
-        .route(
-            &format!("{prefix}/reconciliation/{{id}}/resolve"),
-            web::post().to(resolve_reconciliation),
-        )
-        .route(
-            &format!("{prefix}/reconciliation/records/{{id}}/ignore"),
-            web::post().to(ignore_reconciliation_record),
-        )
-        .route(
-            &format!("{prefix}/reconciliation/{{id}}/export-discrepancies"),
-            web::get().to(export_reconciliation_discrepancies),
-        )
-        .route(
             &format!("{prefix}/reconciliation/export-finance-summary"),
             web::get().to(export_reconciliation_finance_summary),
         )
@@ -11854,8 +11830,44 @@ fn configure_payment_ops_routes(cfg: &mut web::ServiceConfig, prefix: &'static s
             web::get().to(export_reconciliation_batch_csv),
         )
         .route(
+            &format!("{prefix}/reconciliation/provider-imports"),
+            web::get().to(|_: web::Data<PgPool>| async move {
+                HttpResponse::Ok().json(serde_json::json!({ "items": [] }))
+            }),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/parser-configs"),
+            web::get().to(|_: web::Data<PgPool>| async move {
+                HttpResponse::Ok().json(serde_json::json!({ "items": [] }))
+            }),
+        )
+        .route(
             &format!("{prefix}/reconciliation/items/{{id}}/review"),
             web::post().to(review_reconciliation_item),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/records/{{id}}/ignore"),
+            web::post().to(ignore_reconciliation_record),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}"),
+            web::get().to(get_reconciliation),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/auto-match"),
+            web::post().to(auto_match_reconciliation),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/mismatches"),
+            web::get().to(reconciliation_mismatches),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/resolve"),
+            web::post().to(resolve_reconciliation),
+        )
+        .route(
+            &format!("{prefix}/reconciliation/{{id}}/export-discrepancies"),
+            web::get().to(export_reconciliation_discrepancies),
         )
         .route(
             &format!("{prefix}/reconciliation/provider-imports"),

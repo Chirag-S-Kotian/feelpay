@@ -22,6 +22,7 @@ pub enum PaymentStatus {
     Voided,
     Refunded,
     PartiallyRefunded,
+    Pending,
 }
 
 impl PaymentStatus {
@@ -36,6 +37,7 @@ impl PaymentStatus {
             Self::Voided => "voided",
             Self::Refunded => "refunded",
             Self::PartiallyRefunded => "partially_refunded",
+            Self::Pending => "pending",
         }
     }
 }
@@ -54,6 +56,7 @@ impl FromStr for PaymentStatus {
             "voided" => Ok(Self::Voided),
             "refunded" => Ok(Self::Refunded),
             "partially_refunded" => Ok(Self::PartiallyRefunded),
+            "pending" => Ok(Self::Pending),
             _ => Err(FeelPayError::BadRequest(format!(
                 "Invalid payment status: {}",
                 s
@@ -66,8 +69,9 @@ impl PaymentStatus {
     /// Validate state transition. Returns error if transition invalid.
     pub fn can_transition_to(&self, target: &PaymentStatus) -> Result<(), FeelPayError> {
         let valid = match self {
-            Self::Created => matches!(target, Self::Processing | Self::Failed),
-            Self::Processing => matches!(target, Self::Authorized | Self::Captured | Self::Failed),
+            Self::Created => matches!(target, Self::Processing | Self::Failed | Self::Pending),
+            Self::Pending => matches!(target, Self::Processing | Self::Authorized | Self::Captured | Self::Failed),
+            Self::Processing => matches!(target, Self::Authorized | Self::Captured | Self::Failed | Self::Pending),
             Self::Authorized => matches!(target, Self::Captured | Self::Voided | Self::Failed),
             Self::Captured => matches!(
                 target,
