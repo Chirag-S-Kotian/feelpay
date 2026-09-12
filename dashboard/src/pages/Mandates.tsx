@@ -33,7 +33,7 @@ export default function Mandates() {
     try {
       setMandates(await apiRequest<Mandate[]>('GET', '/v1/mandates', undefined, undefined, { cacheMs: 5_000 }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load mandates');
+      setError(err instanceof Error ? err.message : 'Failed to load AutoPay records');
     } finally {
       setLoading(false);
     }
@@ -57,10 +57,10 @@ export default function Mandates() {
         payer_name: form.payer_name.trim() || null,
       });
       setForm({ mandate_type: 'upi', amount_limit: '', frequency: 'monthly', payer_vpa: '', payer_name: '' });
-      setMessage('Mandate initiated.');
+      setMessage('AutoPay initiated.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create mandate');
+      setError(err instanceof Error ? err.message : 'Failed to create AutoPay mandate');
     } finally {
       setSaving(false);
     }
@@ -72,35 +72,35 @@ export default function Mandates() {
     setMessage('');
     try {
       await apiRequest('POST', `/v1/mandates/${id}/${action}`, action === 'execute' ? { amount: parseInrToPaise(executeAmount[id] || '0') || 0 } : {});
-      setMessage(action === 'execute' ? 'Mandate executed.' : 'Mandate cancelled.');
+      setMessage(action === 'execute' ? 'AutoPay executed.' : 'AutoPay cancelled.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${action} mandate`);
+      setError(err instanceof Error ? err.message : `Failed to ${action} AutoPay mandate`);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div className="loading">Loading mandates...</div>;
+  if (loading) return <div className="loading">Loading AutoPay...</div>;
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Mandates</h1>
-          <p>UPI AutoPay/NACH-style mandate creation, execution, and cancellation.</p>
+          <h1>AutoPay</h1>
+          <p>UPI AutoPay & recurring mandate creation, execution, and cancellation.</p>
         </div>
       </div>
       {error && <div className="error-banner">{error}</div>}
       {message && <div className="success-banner">{message}</div>}
 
       <div className="card">
-        <h3>Create Mandate</h3>
+        <h3>Set up AutoPay</h3>
         <div className="form-grid">
           <select className="form-input" value={form.mandate_type} onChange={(e) => setForm({ ...form, mandate_type: e.target.value })}>
-            <option value="upi">UPI</option>
-            <option value="nach">NACH</option>
-            <option value="card">Card</option>
+            <option value="upi">UPI AutoPay</option>
+            <option value="nach">e-NACH</option>
+            <option value="card">Card Recurring</option>
           </select>
           <input className="form-input" value={form.amount_limit} onChange={(e) => setForm({ ...form, amount_limit: e.target.value })} placeholder="Limit INR" type="number" min="1" />
           <select className="form-input" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })}>
@@ -113,13 +113,14 @@ export default function Mandates() {
           <input className="form-input" value={form.payer_name} onChange={(e) => setForm({ ...form, payer_name: e.target.value })} placeholder="Payer name" />
         </div>
         <button className="btn btn-primary" onClick={() => void createMandate()} disabled={saving || !form.amount_limit}>
-          <Plus size={16} /> Create Mandate
+          <Plus size={16} /> Set up AutoPay
         </button>
       </div>
 
       <div className="card">
+        <h3>Active AutoPay Mandates</h3>
         <table className="data-table">
-          <thead><tr><th>Reference</th><th>Payer</th><th>Limit</th><th>Frequency</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Reference / UMN</th><th>Payer</th><th>Limit</th><th>Frequency</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {mandates.map((mandate) => (
               <tr key={mandate.id}>
@@ -135,7 +136,7 @@ export default function Mandates() {
                 </td>
               </tr>
             ))}
-            {mandates.length === 0 && <tr><td colSpan={6}>No mandates yet.</td></tr>}
+            {mandates.length === 0 && <tr><td colSpan={6}>No AutoPay mandates yet.</td></tr>}
           </tbody>
         </table>
       </div>

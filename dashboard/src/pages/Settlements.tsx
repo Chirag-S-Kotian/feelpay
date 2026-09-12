@@ -256,10 +256,6 @@ export default function Settlements() {
           <div className="stat-label">On Hold</div>
           <div className="stat-value warning">{formatPaise(balance.hold)}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Reserve Balance</div>
-          <div className="stat-value">{formatPaise(balance.reserve)}</div>
-        </div>
       </div>
 
       {reco && (
@@ -275,10 +271,6 @@ export default function Settlements() {
           <div className="stat-card">
             <div className="stat-label">Net</div>
             <div className="stat-value success">{formatPaise(reco.net)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Counts (C/P/F)</div>
-            <div className="stat-value">{reco.counts.completed}/{reco.counts.pending}/{reco.counts.failed}</div>
           </div>
         </div>
       )}

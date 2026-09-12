@@ -33,7 +33,7 @@ const USE_CASES = [
     endpoints: ['POST /v1/payments', 'GET /v1/payments/{id}', 'POST /v1/payments/{id}/refund'],
   },
   {
-    title: 'Subscriptions and mandates',
+    title: 'Subscriptions and AutoPay',
     desc: 'Recurring billing with pause/resume/cancel lifecycle APIs.',
     endpoints: ['POST /v1/subscriptions', 'POST /v1/mandates', 'POST /v1/subscriptions/{id}/pause'],
   },

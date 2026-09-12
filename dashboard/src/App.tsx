@@ -77,6 +77,7 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   '/payment-methods': () => import('./pages/PaymentMethods'),
   '/checkout-preview': () => import('./pages/CheckoutPreview'),
   '/subscriptions': () => import('./pages/Subscriptions'),
+  '/autopay': () => import('./pages/Mandates'),
   '/mandates': () => import('./pages/Mandates'),
   '/virtual-accounts': () => import('./pages/VirtualAccounts'),
   '/customers': () => import('./pages/Customers'),
@@ -129,7 +130,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/payment-methods', label: 'Payment Methods', icon: SlidersHorizontal },
       { path: '/checkout-preview', label: 'Checkout Preview', icon: Smartphone },
       { path: '/subscriptions', label: 'Subscriptions', icon: Repeat2 },
-      { path: '/mandates', label: 'Mandates', icon: Activity },
+      { path: '/autopay', label: 'AutoPay', icon: Activity },
       { path: '/virtual-accounts', label: 'Virtual Accounts', icon: Building2 },
       { path: '/webhooks', label: 'Webhooks', icon: Code2 },
     ],
@@ -664,6 +665,7 @@ function Layout() {
             <Route path="/payment-methods" element={<PaymentMethods />} />
             <Route path="/checkout-preview" element={<CheckoutPreview />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
+            <Route path="/autopay" element={<Mandates />} />
             <Route path="/mandates" element={<Mandates />} />
             <Route path="/virtual-accounts" element={<VirtualAccounts />} />
             <Route path="/customers" element={<Customers />} />
