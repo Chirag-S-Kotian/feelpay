@@ -61,7 +61,7 @@ export default function Signup() {
             </div>
             <div className="auth-pills">
               <span className="auth-pill">Multi-Env Keys</span>
-              <span className="auth-pill">Dispute Workflow</span>
+              <span className="auth-pill">Payment Issues Workflow</span>
               <span className="auth-pill">Bank Settlements</span>
             </div>
           </section>

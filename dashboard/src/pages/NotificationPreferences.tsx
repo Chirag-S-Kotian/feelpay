@@ -41,7 +41,7 @@ const EVENT_COPY: Record<string, string> = {
   'payment.failed': 'Payment attempt failed',
   'refund.initiated': 'Refund was initiated',
   'refund.success': 'Refund completed',
-  'dispute.created': 'New dispute requires attention',
+  'dispute.created': 'New payment issue requires attention',
   'settlement.processed': 'Settlement batch processed',
   'subscription.charged': 'Subscription charge succeeded',
   'subscription.failed': 'Subscription charge failed',
@@ -222,7 +222,7 @@ export default function NotificationPreferences() {
           <div className="empty-state">
             <Bell size={28} aria-hidden={true} />
             <strong>No notifications</strong>
-            <p>KYC, settlement, webhook, dispute, and API key alerts will appear here.</p>
+            <p>KYC, settlement, webhook, payment issue, and API key alerts will appear here.</p>
           </div>
         )}
       </section>

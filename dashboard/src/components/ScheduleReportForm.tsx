@@ -141,7 +141,7 @@ export default function ScheduleReportForm({ report, onClose }: Props) {
               <option value="transaction_summary">Transaction Summary</option>
               <option value="settlement_reconciliation">Settlement Reconciliation</option>
               <option value="refund_report">Refund Report</option>
-              <option value="dispute_report">Dispute Report</option>
+              <option value="dispute_report">Payment Issues Report</option>
               <option value="gst_report">GST Report</option>
               <option value="custom">Custom Date Range</option>
             </select>

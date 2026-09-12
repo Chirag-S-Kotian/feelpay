@@ -119,7 +119,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/settlement-reports', label: 'Settlement Reports', icon: BarChart3 },
       { path: '/scheduled-reports', label: 'Scheduled Reports', icon: BarChart3 },
       { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-      { path: '/disputes', label: 'Disputes', icon: ShieldAlert },
+      { path: '/disputes', label: 'Payment Issues', icon: ShieldAlert },
     ],
   },
   {

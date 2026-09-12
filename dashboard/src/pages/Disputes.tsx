@@ -43,7 +43,7 @@ export default function Disputes() {
       );
       setDisputes(res.disputes || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load disputes');
+      setError(err instanceof Error ? err.message : 'Failed to load payment issues');
     } finally {
       setLoading(false);
     }
@@ -60,7 +60,7 @@ export default function Disputes() {
       await apiRequest('POST', '/v1/disputes/test-generator', {});
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate test dispute');
+      setError(err instanceof Error ? err.message : 'Failed to generate test payment issue');
     } finally {
       setGenerating(false);
     }
@@ -72,14 +72,14 @@ export default function Disputes() {
       await apiRequest('POST', `/v1/disputes/${id}/accept`, {});
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to accept dispute');
+      setError(err instanceof Error ? err.message : 'Failed to accept payment issue');
     }
   };
 
   const openEvidenceModal = (id?: string) => {
     const nextDisputeId = id || actionableDisputes[0]?.id || null;
     if (!nextDisputeId) {
-      setError('No disputes yet. Create a test failed/dispute scenario from sandbox tools.');
+      setError('No payment issues yet. Create a test scenario from sandbox tools.');
       setShowEvidenceModal(false);
       return;
     }
@@ -130,14 +130,14 @@ export default function Disputes() {
     <div className="fade-in">
       <div className="page-header">
         <div>
-          <h1>Disputes</h1>
-          <p>Chargeback defense command center</p>
+          <h1>Payment Issues</h1>
+          <p>Customer payment issue & chargeback resolution center</p>
         </div>
         <button
           className="btn btn-primary"
           onClick={() => openEvidenceModal()}
           disabled={actionableDisputes.length === 0}
-          title={actionableDisputes.length === 0 ? 'Create a test dispute before uploading evidence.' : 'Upload evidence'}
+          title={actionableDisputes.length === 0 ? 'Create a test payment issue before uploading evidence.' : 'Upload evidence'}
         >
           Upload Evidence
         </button>
@@ -196,15 +196,15 @@ export default function Disputes() {
         ))}
         {!loading && disputes.length === 0 && (
           <div className="card dispute-empty-state">
-            <h3>No disputes yet.</h3>
-            <p>Create a test failed/dispute scenario from sandbox tools. Evidence upload becomes available only after an open dispute exists.</p>
+            <h3>No payment issues yet.</h3>
+            <p>Create a test issue/chargeback scenario from sandbox tools. Evidence upload becomes available only after an open issue exists.</p>
             <button
               className="btn btn-primary"
               type="button"
               onClick={triggerTestDispute}
               disabled={generating}
             >
-              {generating ? 'Generating Dispute...' : 'Generate Test Dispute'}
+              {generating ? 'Generating Issue...' : 'Generate Test Payment Issue'}
             </button>
           </div>
         )}
@@ -213,18 +213,18 @@ export default function Disputes() {
       {showEvidenceModal && (
         <div className="modal-overlay" onClick={() => setShowEvidenceModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-kicker">Chargeback Defense</div>
+            <div className="modal-kicker">Payment Issue Defense</div>
             <h3>Upload Evidence</h3>
-            <p className="modal-subtitle">Send supporting docs and context to strengthen your dispute response.</p>
+            <p className="modal-subtitle">Send supporting docs and context to resolve this payment issue.</p>
             {error && <div className="modal-error">{error}</div>}
             {actionableDisputes.length === 0 && (
               <div className="modal-hint">
-                No open disputes right now. Add dispute via webhook/test flow first.
+                No open payment issues right now. Add issue via webhook/test flow first.
               </div>
             )}
             {actionableDisputes.length > 0 && (
               <>
-                <label>Select dispute</label>
+                <label>Select payment issue</label>
                 <select
                   value={targetDisputeId || ''}
                   onChange={e => setTargetDisputeId(e.target.value)}

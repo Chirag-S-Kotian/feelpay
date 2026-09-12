@@ -100,7 +100,7 @@ const FALLBACK_HUB_SECTIONS: HubSection[] = [
     links: [
       { key: 'payments', label: 'Payments', route: '/payments', enabled: true },
       { key: 'settlements', label: 'Settlements', route: '/settlements', enabled: true },
-      { key: 'disputes', label: 'Disputes', route: '/disputes', enabled: true },
+      { key: 'disputes', label: 'Payment Issues', route: '/disputes', enabled: true },
     ],
   },
   {

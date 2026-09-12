@@ -107,7 +107,7 @@ export default function Login() {
             <div className="auth-pills">
               <span className="auth-pill">Hosted Checkout</span>
               <span className="auth-pill">Smart Retries</span>
-              <span className="auth-pill">Disputes + Settlements</span>
+              <span className="auth-pill">Payment Issues + Settlements</span>
             </div>
           </section>
           <section className="auth-form-wrap">
