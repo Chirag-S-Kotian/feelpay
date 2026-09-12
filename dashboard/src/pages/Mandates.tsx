@@ -102,7 +102,7 @@ export default function Mandates() {
             <option value="nach">e-NACH</option>
             <option value="card">Card Recurring</option>
           </select>
-          <input className="form-input" value={form.amount_limit} onChange={(e) => setForm({ ...form, amount_limit: e.target.value })} placeholder="Limit INR" type="number" min="1" />
+          <input className="form-input" value={form.amount_limit} onChange={(e) => setForm({ ...form, amount_limit: e.target.value })} placeholder="Limit ₹ (e.g. 15000)" type="number" min="1" />
           <select className="form-input" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })}>
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
@@ -130,7 +130,15 @@ export default function Mandates() {
                 <td>{mandate.frequency}</td>
                 <td><span className={`badge ${mandate.status === 'active' ? 'captured' : 'pending'}`}>{mandate.status}</span></td>
                 <td className="action-row">
-                  <input className="form-input compact-input" value={executeAmount[mandate.id] || ''} onChange={(e) => setExecuteAmount({ ...executeAmount, [mandate.id]: e.target.value })} placeholder="INR" type="number" min="1" />
+                  <input
+                    className="form-input compact-input"
+                    value={executeAmount[mandate.id] || ''}
+                    onChange={(e) => setExecuteAmount({ ...executeAmount, [mandate.id]: e.target.value })}
+                    placeholder="₹ Amount"
+                    title="Enter amount in ₹ to debit from customer"
+                    type="number"
+                    min="1"
+                  />
                   <button className="btn btn-secondary" onClick={() => void runAction(mandate.id, 'execute')} disabled={saving || mandate.status !== 'active' || !executeAmount[mandate.id]}><Play size={14} /> Execute</button>
                   <button className="btn btn-danger" onClick={() => void runAction(mandate.id, 'cancel')} disabled={saving || mandate.status === 'revoked'}><XCircle size={14} /> Cancel</button>
                 </td>
