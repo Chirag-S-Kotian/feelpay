@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, ExternalLink } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { apiRequest, clearToken } from '../hooks/useApi';
 
 const DASHBOARD_BASE_URL = import.meta.env.VITE_DASHBOARD_BASE_URL || window.location.origin;
 
@@ -90,8 +90,18 @@ export default function AdminDashboard() {
     return (
       <div className="page fade-in">
         <div className="stat-card warning" style={{ maxWidth: '420px', margin: '100px auto', textAlign: 'center' }}>
-          <h3>Service Unavailable</h3>
+          <h3>Access / Service Issue</h3>
           <p>{error}</p>
+          <button
+            className="btn-primary"
+            style={{ marginTop: '16px', display: 'inline-block' }}
+            onClick={() => {
+              clearToken();
+              window.location.href = '/login';
+            }}
+          >
+            Sign In with Admin Account
+          </button>
         </div>
       </div>
     );

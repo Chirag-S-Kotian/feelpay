@@ -79,8 +79,11 @@ export async function apiRequest<T = unknown>(
     : null;
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 || (res.status === 403 && (errorData?.message?.includes('Admin') || errorData?.message?.includes('Forbidden')))) {
       clearToken();
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     const label =
       res.status === 401 ? 'Unauthenticated' :

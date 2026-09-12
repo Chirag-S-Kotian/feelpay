@@ -433,19 +433,6 @@ function LoginPage() {
               )}
             </button>
           </form>
-
-          <div className="login-card-divider"></div>
-
-          <div className="login-card-meta">
-            <div className="login-meta-item">
-              <ShieldCheck size={14} className="text-success" />
-              <span>256-bit TLS Encrypted</span>
-            </div>
-            <span className="login-meta-dot">•</span>
-            <div className="login-meta-item">
-              <span>RBAC Enforced</span>
-            </div>
-          </div>
         </div>
 
         <footer className="login-page-footer">
@@ -457,7 +444,19 @@ function LoginPage() {
 }
 
 function ProtectedApp() {
-  if (!getToken()) {
+  const token = getToken();
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  const claims = getAdminClaims();
+  if (!claims) {
+    clearToken();
+    return <Navigate to="/login" replace />;
+  }
+  const isSuper = claims.role === 'Super Admin' || claims.role === 'super_admin' || claims.role === 'admin';
+  const hasAnyPerm = Boolean(claims.permissions && claims.permissions.length > 0);
+  if (!isSuper && !hasAnyPerm) {
+    clearToken();
     return <Navigate to="/login" replace />;
   }
   return <Layout />;

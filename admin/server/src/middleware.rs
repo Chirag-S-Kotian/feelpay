@@ -309,7 +309,12 @@ where
                 }
             };
 
-            let role = claims.role.as_deref().unwrap_or("Super Admin");
+            let role = match claims.role.as_deref() {
+                Some("Payment Ops Admin" | "Compliance Analyst" | "Finance & Reconciliation" | "Read-Only Auditor" | "Developer Support") => {
+                    claims.role.as_deref().unwrap()
+                }
+                _ => "Super Admin",
+            };
             let has_claim_permission = claims
                 .permissions
                 .as_ref()
