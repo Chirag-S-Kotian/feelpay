@@ -841,7 +841,7 @@ export function DisputesPage() {
     if (action === 'mark_lost') helpers.setConfirm({ title: 'Mark dispute lost', body: 'Lost dispute creates debit ledger impact and settlement adjustment when applicable.', action: () => helpers.run('Dispute marked lost.', () => apiRequest('POST', `${API}/disputes/${id}/mark-lost`, { outcome: 'lost' })).then(load) });
   };
   return (
-    <CrudPage title="Disputes" subtitle="Company dispute, evidence, chargeback, reversal, and ledger impact queue" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Payment Issues" subtitle="Company dispute, evidence, chargeback, reversal, and ledger impact queue" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <DataTable
         rows={rows}
         columns={['id', 'payment_id', 'business_account_id', 'provider_dispute_id', 'amount', 'currency', 'reason', 'status', 'evidence_status', 'outcome', 'chargeback_fee', 'ledger_transaction_id', 'evidence_due_date', 'created_at']}
@@ -913,7 +913,7 @@ export function RiskRulesPage() {
     })).then(load);
   };
   return (
-    <CrudPage title="Risk Rules" subtitle="Velocity rules, block/allow lists, review queue, decisions, signals, and simulator" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Fraud Protection" subtitle="Velocity rules, block/allow lists, review queue, decisions, signals, and simulator" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
         {['Rules', 'Evaluations', 'Cases', 'Review Queue', 'Blocklists', 'Allowlists', 'Decisions', 'Signals', 'Simulator'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
@@ -1091,10 +1091,10 @@ export function ReconciliationPage() {
       });
     }
     else if (action === 'mark_reviewed' && row) helpers.setConfirm({ title: 'Mark reviewed', body: 'Marks the reconciliation item reviewed with an internal note.', action: () => helpers.run('Item reviewed.', () => apiRequest('POST', `${API}/reconciliation/items/${String(row.id)}/review`, { note: 'Reviewed from company admin' })).then(load) });
-    else helpers.setDrawer({ title: 'Reconciliation', body: row || rows[0] || {} });
+    else helpers.setDrawer({ title: 'Payment Matching', body: row || rows[0] || {} });
   };
   return (
-    <CrudPage title="Reconciliation" subtitle="Provider and bank statement matching" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Payment Matching" subtitle="Provider and bank statement matching" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <div className="stats-grid">
         <Metric label="Uploaded files" value={rows.length} icon={Upload} />
         <Metric label="Matched records" value={matched} icon={BadgeCheck} />
@@ -1342,7 +1342,7 @@ export function ProviderConnectorsPage() {
   });
 
   return (
-    <CrudPage title="Provider Connectors" subtitle="Integration health, sandbox testing, credentials, and capabilities" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Payment Gateways" subtitle="Integration health, sandbox testing, credentials, and capabilities" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
         {['Overview', 'Credentials', 'Capabilities', 'Health Log'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
@@ -1483,7 +1483,7 @@ export function BankIntegrationsPage() {
     else helpers.setDrawer({ title: 'Bank integration', body: row });
   };
   return (
-    <CrudPage title="Bank Integrations" subtitle="Safe settlement bank metadata and sandbox readiness" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Settlement Bank Accounts" subtitle="Safe settlement bank metadata and sandbox readiness" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <section className="card">
         <h2><Landmark size={18} /> Settlement bank setup</h2>
         <form onSubmit={save}>
@@ -2015,7 +2015,7 @@ export function NotificationsPage() {
     return row.status !== 'resolved' && row.status !== 'ignored';
   });
   return (
-    <CrudPage title="Notifications" subtitle="Company admin alerts center" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="System Alerts" subtitle="Company admin alerts center" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
         {['Inbox', 'Assigned to me', 'Critical', 'Resolved', 'Ignored'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
@@ -2513,11 +2513,19 @@ function TableRoute({ title, subtitle, rows, state, error, notice, columns, acti
     Refunds: { title: 'No refunds yet', body: 'Refund requests will appear here.' },
     Settlements: { title: 'No settlement batches yet.', body: 'Settlement batches appear when providers or bank files are ready for finance review.' },
     Disputes: { title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' },
+    'Payment Issues': { title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' },
     'Risk Rules': { title: 'No risk rules configured.', body: 'Create rules to review risky payments, refunds, or payout activity.' },
+    'Fraud Protection': { title: 'No risk rules configured.', body: 'Create rules to review risky payments, refunds, or payout activity.' },
+    Reconciliation: { title: 'No reconciliation batches yet.', body: 'Upload bank statements or provider files to start matching.' },
+    'Payment Matching': { title: 'No reconciliation batches yet.', body: 'Upload bank statements or provider files to start matching.' },
     'Audit Logs': { title: 'No sensitive admin actions recorded yet.', body: 'Sensitive admin actions will create audit logs here.' },
     Notifications: { title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' },
+    'System Alerts': { title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' },
     Reports: { title: 'Reports are ready to export.', body: 'Choose a report type and export format when finance needs data.' },
     'Bank Integrations': { title: 'No bank integrations configured yet.', body: 'Add one before live settlement. Full account numbers are never shown.' },
+    'Settlement Bank Accounts': { title: 'No bank integrations configured yet.', body: 'Add one before live settlement. Full account numbers are never shown.' },
+    'Provider Connectors': { title: 'No payment gateways configured yet.', body: 'Configure provider credentials for live or sandbox processing.' },
+    'Payment Gateways': { title: 'No payment gateways configured yet.', body: 'Configure provider credentials for live or sandbox processing.' },
   };
   return (
     <CrudPage title={title} subtitle={subtitle} state={state} error={error} notice={notice} onRefresh={onRefresh}>

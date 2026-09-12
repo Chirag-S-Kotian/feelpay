@@ -296,7 +296,7 @@ export default function AdminIntegrationCenter() {
     <section className="page-shell">
       <header className="page-header">
         <div>
-          <h1>Integration Center</h1>
+          <h1>Email & SMS Services</h1>
           <p>Internal provider setup for messaging, verification, payout, notifications, and future adapters</p>
         </div>
         <button className="btn-secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</button>
