@@ -29,6 +29,12 @@ import {
   Banknote,
   Boxes,
   MessageSquareText,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { apiRequest, clearToken, getToken, setToken } from './hooks/useApi';
@@ -175,7 +181,17 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-icon">FP</div>
+        <img
+          src="/feelpay-logo.png"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (!target.src.endsWith('/feelpay.png')) {
+              target.src = '/feelpay.png';
+            }
+          }}
+          alt="FeelPay"
+          className="logo-mark"
+        />
         <span className="logo-text">FeelPay</span>
       </div>
       <nav className="sidebar-nav">
@@ -300,6 +316,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -334,18 +351,113 @@ function LoginPage() {
 
   return (
     <div className="login-page">
-      <form className="login-card" onSubmit={handleSubmit}>
-        <div className="login-header">
-          <h2>FeelPay Admin Login</h2>
-          <p>Use internal company admin email + password</p>
+      <div className="login-container">
+        <div className="login-branding">
+          <div className="login-logo-wrap">
+            <img
+              src="/feelpay-logo.png"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.endsWith('/feelpay.png')) {
+                  target.src = '/feelpay.png';
+                }
+              }}
+              alt="FeelPay Logo"
+              className="login-logo-img"
+            />
+          </div>
+          <div className="login-env-tag">
+            <span className="login-env-dot"></span>
+            <span>Platform Administration</span>
+          </div>
+          <h1 className="login-title">FeelPay Admin Portal</h1>
+          <p className="login-subtitle">Secure access for authorized company operations</p>
         </div>
-        {error && <div className="alert alert-error">{error}</div>}
-        <input type="email" placeholder="Email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input type="password" placeholder="Password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <button className="btn-primary" type="submit" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
+
+        <div className="login-card">
+          {error && (
+            <div className="login-alert-error" role="alert">
+              <AlertCircle size={18} className="login-alert-icon" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form className="login-form" onSubmit={handleSubmit}>
+            <div className="login-field-group">
+              <label htmlFor="admin-email">Admin Email</label>
+              <div className="login-input-wrapper">
+                <Mail size={18} className="login-input-icon" />
+                <input
+                  id="admin-email"
+                  type="email"
+                  placeholder="admin@feelpay.com"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div className="login-field-group">
+              <div className="login-label-row">
+                <label htmlFor="admin-password">Security Password</label>
+              </div>
+              <div className="login-input-wrapper">
+                <Lock size={18} className="login-input-icon" />
+                <input
+                  id="admin-password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••••••"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="login-password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button className="login-submit-btn" type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 size={18} className="login-spinner" />
+                  <span>Authenticating...</span>
+                </>
+              ) : (
+                <span>Sign In to Admin Portal</span>
+              )}
+            </button>
+          </form>
+
+          <div className="login-card-divider"></div>
+
+          <div className="login-card-meta">
+            <div className="login-meta-item">
+              <ShieldCheck size={14} className="text-success" />
+              <span>256-bit TLS Encrypted</span>
+            </div>
+            <span className="login-meta-dot">•</span>
+            <div className="login-meta-item">
+              <span>RBAC Enforced</span>
+            </div>
+          </div>
+        </div>
+
+        <footer className="login-page-footer">
+          <p>Strictly restricted to authorized personnel. All session events are cryptographically audited.</p>
+        </footer>
+      </div>
     </div>
   );
 }
