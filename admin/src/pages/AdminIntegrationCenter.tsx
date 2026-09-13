@@ -177,13 +177,23 @@ export default function AdminIntegrationCenter() {
   );
 
   useEffect(() => {
-    if (selected?.provider_kind !== 'bank_payout') {
+    if (!selected || selected.provider_kind !== 'bank_payout') {
       setCallbacks([]);
       return;
     }
-    void apiRequest<{ items: BankPayoutCallback[] }>('GET', '/admin/integrations/bank-payout/callbacks')
+    void apiRequest<{ items: BankPayoutCallback[] }>(
+      'GET',
+      `/admin/integrations/providers/${selected.id}/bank-payout-callbacks`
+    )
       .then(data => setCallbacks(data.items || []))
-      .catch(() => setCallbacks([]));
+      .catch(() => {
+        void apiRequest<{ items: BankPayoutCallback[] }>(
+          'GET',
+          `/admin/integrations/bank-payout/callbacks?provider_id=${selected.id}`
+        )
+          .then(data => setCallbacks(data.items || []))
+          .catch(() => setCallbacks([]));
+      });
   }, [selected?.id, selected?.provider_kind]);
 
   const counts = useMemo(() => {
@@ -394,27 +404,29 @@ export default function AdminIntegrationCenter() {
 
         <section className="card">
           <h2><KeyRound size={18} /> Secrets and tests</h2>
-          <Field label="Selected provider">
-            <Select value={selectedId} options={providers.map(provider => ({ label: `${provider.name} (${label(provider.provider_kind)})`, value: provider.id }))} onChange={setSelectedId} />
-          </Field>
-          <div className="filter-grid" style={{ marginTop: '12px' }}>
-            <Field label="Secret name"><input value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
-            <Field label="Secret value"><input type="password" value={secretValue} onChange={event => setSecretValue(event.target.value)} /></Field>
-            <Field label="Test email"><input value={testRecipient} onChange={event => setTestRecipient(event.target.value)} /></Field>
-            <Field label="Test phone"><input value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>
-            <Field label="KYC test type"><Select value={kycVerificationType} options={['pan', 'gstin', 'business']} onChange={setKycVerificationType} /></Field>
-          </div>
-          <div className="button-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '16px', marginBottom: '18px' }}>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret saved.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets`, { secret_name: secretName, value: secretValue }))}>Save secret</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret rotated.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets/${secretName}/rotate`, { secret_name: secretName, value: secretValue }))}>Rotate secret</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Test email sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-email`, { recipient: testRecipient }))}><Mail size={14} /> Test email</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone }))}>Test OTP</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('KYC test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-kyc`, { verification_type: kycVerificationType }))}>Test KYC</button>
-            <button type="button" className="btn-secondary" onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
-          </div>
+          <form onSubmit={event => event.preventDefault()} autoComplete="off">
+            <Field label="Selected provider">
+              <Select value={selectedId} options={providers.map(provider => ({ label: `${provider.name} (${label(provider.provider_kind)})`, value: provider.id }))} onChange={setSelectedId} />
+            </Field>
+            <div className="filter-grid" style={{ marginTop: '12px' }}>
+              <Field label="Secret name"><input name="secret_name" value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
+              <Field label="Secret value"><input type="password" name="secret_value" autoComplete="new-password" value={secretValue} onChange={event => setSecretValue(event.target.value)} /></Field>
+              <Field label="Test email"><input name="test_email" value={testRecipient} onChange={event => setTestRecipient(event.target.value)} /></Field>
+              <Field label="Test phone"><input name="test_phone" value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>
+              <Field label="KYC test type"><Select value={kycVerificationType} options={['pan', 'gstin', 'business']} onChange={setKycVerificationType} /></Field>
+            </div>
+            <div className="button-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '16px', marginBottom: '18px' }}>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret saved.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets`, { secret_name: secretName, value: secretValue }))}>Save secret</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret rotated.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets/${secretName}/rotate`, { secret_name: secretName, value: secretValue }))}>Rotate secret</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Test email sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-email`, { recipient: testRecipient }))}><Mail size={14} /> Test email</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Default email tested.', () => apiRequest('POST', `/admin/integrations/providers/default/email/${selected.environment}/test-email`, { recipient: testRecipient }))}>Test default email</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Test SMS sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-sms`, { phone: testPhone }))}><Smartphone size={14} /> Test SMS</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Test OTP sent.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-otp`, { phone: testPhone }))}>Test OTP</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('KYC test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-kyc`, { verification_type: kycVerificationType }))}>Test KYC</button>
+              <button type="button" className="btn-secondary" onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
+            </div>
+          </form>
           <div className="table-card table-scroll">
             <table>
               <thead><tr><th>Secret</th><th>Masked value</th><th>Rotated</th></tr></thead>

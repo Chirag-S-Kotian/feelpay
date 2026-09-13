@@ -145,7 +145,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/integration-center', label: 'Email & SMS Services', icon: Boxes, permission: 'providers.manage' },
       { path: '/notification-templates', label: 'Notification Templates', icon: MessageSquareText, permission: 'providers.manage' },
       { path: '/bank-integrations', label: 'Settlement Bank Accounts', icon: Landmark, permission: 'bank_integrations.manage' },
-      { path: '/routing-rules', label: 'Routing Rules', icon: RouteIcon, permission: 'routing.manage' },
+      { path: '/routing-rules', label: 'Smart Payment Routing', icon: RouteIcon, permission: 'routing.manage' },
       { path: '/white-label-checkout', label: 'Platform Checkout', icon: ShieldCheck, permission: 'webhook_config.manage' },
       { path: '/webhook-config', label: 'Webhook Config', icon: Webhook, permission: 'webhook_config.manage' },
       { path: '/developer-tools', label: 'Developer Tools', icon: Code2, permission: 'developer_tools.view' },

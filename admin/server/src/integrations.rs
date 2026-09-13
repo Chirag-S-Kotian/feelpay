@@ -270,6 +270,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/providers/{id}/bank-payout-callbacks",
                 web::get().to(list_bank_payout_callbacks),
             )
+            .route(
+                "/bank-payout/callbacks",
+                web::get().to(list_all_bank_payout_callbacks),
+            )
+            .route(
+                "/bank-payout-callbacks",
+                web::get().to(list_all_bank_payout_callbacks),
+            )
             .route("/providers/{id}/logs", web::get().to(list_provider_logs))
             .route("/logs", web::get().to(list_logs))
             .route("/templates", web::get().to(list_notification_templates))
@@ -1786,6 +1794,48 @@ async fn list_bank_payout_callbacks(
     .fetch_all(pool.get_ref())
     .await
     .unwrap_or_default();
+    HttpResponse::Ok().json(json!({
+        "items": rows.into_iter().map(|row| json!({
+            "id": row.get::<Uuid, _>("id"),
+            "payout_id": row.get::<Option<Uuid>, _>("payout_id"),
+            "provider_event_id": row.get::<String, _>("provider_event_id"),
+            "provider_reference": row.get::<Option<String>, _>("provider_reference"),
+            "mapped_status": row.get::<String, _>("mapped_status"),
+            "processing_status": row.get::<String, _>("processing_status"),
+            "created_at": row.get::<DateTime<Utc>, _>("created_at"),
+        })).collect::<Vec<_>>()
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BankPayoutCallbacksQuery {
+    pub provider_id: Option<Uuid>,
+}
+
+async fn list_all_bank_payout_callbacks(
+    pool: web::Data<PgPool>,
+    request: HttpRequest,
+    query: web::Query<BankPayoutCallbacksQuery>,
+) -> impl Responder {
+    if let Err(response) = ensure_internal_admin(pool.get_ref(), &request).await {
+        return response;
+    }
+    let rows = if let Some(provider_id) = query.provider_id {
+        sqlx::query(
+            "SELECT id, payout_id, provider_event_id, provider_reference, mapped_status, processing_status, created_at FROM bank_payout_provider_callbacks WHERE provider_id = $1 ORDER BY created_at DESC LIMIT 100",
+        )
+        .bind(provider_id)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+    } else {
+        sqlx::query(
+            "SELECT id, payout_id, provider_event_id, provider_reference, mapped_status, processing_status, created_at FROM bank_payout_provider_callbacks ORDER BY created_at DESC LIMIT 100",
+        )
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+    };
     HttpResponse::Ok().json(json!({
         "items": rows.into_iter().map(|row| json!({
             "id": row.get::<Uuid, _>("id"),

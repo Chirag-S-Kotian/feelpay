@@ -814,7 +814,7 @@ struct MerchantReviewActionRequest {
     reason_code: Option<String>,
     note: Option<String>,
     risk_level: Option<String>,
-    reviewer_admin_id: Option<Uuid>,
+    reviewer_admin_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -3423,11 +3423,11 @@ async fn list_reconciliation(pool: web::Data<PgPool>) -> impl Responder {
                COALESCE(rf.uploaded_by_admin_id, rf.uploaded_by) AS uploaded_by_admin_id,
                rf.status, rf.row_count,
                GREATEST(rf.matched_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) = 'matched'), 0))::bigint AS matched_count,
-               GREATEST(rf.mismatch_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) IN ('unmatched','mismatch')), 0))::bigint AS mismatch_count,
+               GREATEST(rf.mismatch_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND (COALESCE(rr.match_status, rr.status) LIKE '%mismatch%' OR COALESCE(rr.match_status, rr.status) = 'unmatched')), 0))::bigint AS mismatch_count,
                GREATEST(rf.duplicate_count, COALESCE((SELECT COUNT(*) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND COALESCE(rr.match_status, rr.status) = 'duplicate'), 0))::bigint AS duplicate_count,
-               COALESCE((SELECT SUM(ABS(COALESCE(rr.amount, rr.observed_amount, 0) - COALESCE(rr.expected_amount, rr.amount, rr.observed_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS amount_variance,
-               COALESCE((SELECT SUM(ABS(COALESCE(rr.fee_amount, 0) - COALESCE(rr.expected_fee_amount, rr.fee_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS fee_variance,
-               COALESCE((SELECT SUM(ABS(COALESCE(rr.tax_amount, 0) - COALESCE(rr.expected_tax_amount, rr.tax_amount, 0))) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id), 0)::bigint AS tax_variance,
+               COALESCE((SELECT SUM(ABS(COALESCE(rr.observed_amount, rr.amount, 0) - rr.expected_amount)) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND rr.expected_amount IS NOT NULL), 0)::bigint AS amount_variance,
+               COALESCE((SELECT SUM(ABS(COALESCE(rr.fee_amount, 0) - rr.expected_fee_amount)) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND rr.expected_fee_amount IS NOT NULL), 0)::bigint AS fee_variance,
+               COALESCE((SELECT SUM(ABS(COALESCE(rr.tax_amount, 0) - rr.expected_tax_amount)) FROM reconciliation_records rr WHERE COALESCE(rr.file_id, rr.reconciliation_file_id) = rf.id AND rr.expected_tax_amount IS NOT NULL), 0)::bigint AS tax_variance,
                rf.created_at, rf.processed_at
         FROM reconciliation_files rf
         ORDER BY rf.created_at DESC
@@ -4748,6 +4748,23 @@ async fn review_business_account(
         ),
     };
     let actor_admin_id = admin_user_id_from_request(pool.get_ref(), &request).await;
+    let reviewer_uuid: Option<Uuid> = match body.reviewer_admin_id.as_deref().map(str::trim) {
+        Some(s) if !s.is_empty() => {
+            if let Ok(u) = Uuid::parse_str(s) {
+                Some(u)
+            } else {
+                sqlx::query_scalar::<_, Uuid>(
+                    "SELECT id FROM admin_users WHERE LOWER(name) = LOWER($1) OR LOWER(email) = LOWER($1) LIMIT 1",
+                )
+                .bind(s)
+                .fetch_optional(pool.get_ref())
+                .await
+                .ok()
+                .flatten()
+            }
+        }
+        _ => None,
+    };
     let note = body
         .note
         .as_deref()
@@ -4776,7 +4793,7 @@ async fn review_business_account(
     .bind(onboarding_status)
     .bind(merchant_status)
     .bind(body.risk_level.as_deref())
-    .bind(body.reviewer_admin_id)
+    .bind(reviewer_uuid)
     .bind(&body.action)
     .fetch_optional(pool.get_ref())
     .await;
@@ -4842,7 +4859,7 @@ async fn review_business_account(
             "to_status": to_status,
             "risk_level": body.risk_level,
             "reason_code": body.reason_code,
-            "reviewer_assigned": body.reviewer_admin_id.is_some()
+            "reviewer_assigned": reviewer_uuid.is_some()
         }),
     )
     .await;

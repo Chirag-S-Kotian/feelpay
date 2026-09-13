@@ -4,6 +4,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  ArrowDownCircle,
   BadgeCheck,
   RotateCcw,
   Banknote,
@@ -14,12 +15,19 @@ import {
   Download,
   Eye,
   FileSearch,
+  FileText,
+  HelpCircle,
+  Info,
   KeyRound,
   Landmark,
+  Layers,
+  LayoutGrid,
   Mail,
+  Plus,
   Receipt,
   RefreshCw,
   Route,
+  Settings,
   ShieldCheck,
   SlidersHorizontal,
   Timer,
@@ -28,6 +36,7 @@ import {
   Wallet,
   Database,
   X,
+  Zap,
 } from 'lucide-react';
 import { apiDownload, apiRequest } from '../hooks/useApi';
 
@@ -475,6 +484,35 @@ function formatDateTime(value: GenericRecord[string] | undefined, column?: strin
 }
 
 function formatHeader(key: string) {
+  const customHeaders: Record<string, string> = {
+    provider_name: 'Primary Gateway',
+    failover_provider_name: 'Backup Gateway',
+    provider_weight: 'Traffic Share %',
+    min_success_rate: 'Min Success %',
+    max_provider_fee_percent: 'Max Allowed Fee %',
+    max_latency_ms: 'Max Latency (ms)',
+    health_required: 'Health Check Required',
+    last_matched_at: 'Last Used At',
+    failover_strategy: 'Backup Strategy',
+    retry_strategy: 'Retry Method',
+    cooldown_minutes: 'Cooldown Period (min)',
+    amount_min: 'Min Amount',
+    amount_max: 'Max Amount',
+    rule_group: 'Rule Group',
+    avg_latency_ms: 'Avg Speed (ms)',
+    p95_latency_ms: '95th% Speed (ms)',
+    provider_fee_percent: 'Gateway Fee %',
+    attempt_count: 'Total Attempts',
+    success_rate: 'Success Rate %',
+    failure_rate: 'Failure Rate %',
+    customer_region: 'Customer Region',
+    business_account: 'Business Account',
+    fee_percent: 'Fee %',
+    latency_ms: 'Response Speed (ms)',
+  };
+
+  if (customHeaders[key]) return customHeaders[key];
+
   const acronyms: Record<string, string> = {
     id: 'ID',
     utr: 'UTR',
@@ -624,6 +662,30 @@ function renderCell(row: GenericRecord, column: string) {
       <span className="id-cell" title={value}>
         <span>{shortId(value)}</span>
         <button className="btn-small" type="button" aria-label={`Copy ${column}`} onClick={() => copyText(value)}><Copy size={12} /></button>
+      </span>
+    );
+  }
+  if (column === 'confidence_score' && value !== null && value !== undefined && value !== '') {
+    const num = Number(value);
+    let badgeClass = 'recon-score-fuzzy';
+    let label = `${num}% Fuzzy`;
+    let hint = '65% Fuzzy: Matched by approximate amount & date window (human review recommended)';
+    if (num >= 98) {
+      badgeClass = 'recon-score-exact';
+      label = `${num}% Exact`;
+      hint = '100% Exact Match: Both reference IDs and amount match platform transactions exactly.';
+    } else if (num >= 90) {
+      badgeClass = 'recon-score-high';
+      label = `${num}% High`;
+      hint = num >= 96 ? '96% Ledger Match: Matched directly via ledger transaction group ID.' : '90–92% Match: Matched via provider reference or dispute/refund ID.';
+    } else if (num >= 80) {
+      badgeClass = 'recon-score-utr';
+      label = `${num}% UTR`;
+      hint = '85% Settlement Match: Matched via bank settlement UTR or payout batch ID.';
+    }
+    return (
+      <span className={`recon-score-badge ${badgeClass}`} title={hint} style={{ cursor: 'help' }}>
+        {label}
       </span>
     );
   }
@@ -1420,6 +1482,7 @@ export function RiskRulesPage() {
 
 export function ReconciliationPage() {
   const [tab, setTab] = useState('Overview');
+  const [showGuide, setShowGuide] = useState(false);
   const [rows, setRows] = useState<GenericRecord[]>([]);
   const [queue, setQueue] = useState<GenericRecord[]>([]);
   const providerImports = useRows(`${API}/reconciliation/provider-imports`);
@@ -1453,9 +1516,6 @@ export function ReconciliationPage() {
   const mismatches = rows.reduce((sum, row) => sum + Number(row.mismatch_count || 0), 0);
   const unresolved = rows.reduce((sum, row) => sum + Number(row.unresolved_count || row.mismatch_count || 0), 0);
   const duplicates = rows.reduce((sum, row) => sum + Number(row.duplicate_count || 0), 0);
-  const variance = rows.reduce((sum, row) => sum + Number(row.amount_variance || 0), 0);
-  const feeVariance = rows.reduce((sum, row) => sum + Number(row.fee_variance || 0), 0);
-  const taxVariance = rows.reduce((sum, row) => sum + Number(row.tax_variance || 0), 0);
   const upload = (source: string) => {
     helpers.setConfirm({
       title: `Upload ${formatHeader(source)}`,
@@ -1529,20 +1589,231 @@ export function ReconciliationPage() {
   return (
     <CrudPage title="Payment Matching" subtitle="Provider and bank statement matching" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <div className="stats-grid">
-        <Metric label="Uploaded files" value={rows.length} icon={Upload} />
-        <Metric label="Matched records" value={matched} icon={BadgeCheck} />
-        <Metric label="Mismatches" value={mismatches} icon={AlertTriangle} />
-        <Metric label="Unresolved items" value={unresolved} icon={FileSearch} />
-        <Metric label="Duplicate records" value={duplicates} icon={Copy} />
-        <Metric label="Amount variance" value={money(variance)} icon={Banknote} />
-        <Metric label="Fee variance" value={money(feeVariance)} icon={Receipt} />
-        <Metric label="Tax variance" value={money(taxVariance)} icon={Landmark} />
+        <Metric label="Uploaded files" value={rows.length} icon={Upload} description="Raw statement files processed" />
+        <Metric label="Matched records" value={matched} icon={BadgeCheck} description="Fully reconciled ledger transactions" />
+        <Metric label="Mismatches" value={mismatches} icon={AlertTriangle} status={mismatches > 0 ? 'warning' : undefined} description="Items with amount, fee or state discrepancies" />
+        <Metric label="Unresolved items" value={unresolved} icon={FileSearch} description="Exceptions pending investigation" />
+        <Metric label="Duplicate records" value={duplicates} icon={Copy} description="Duplicate UTRs or provider IDs" />
       </div>
-      <div className="button-row">
-        {['Overview', 'Batches', 'Uploads', 'Matching Queue', 'Mismatches', 'Resolved', 'Reports', 'Provider Imports', 'Parser Configs'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+
+      <div className="recon-nav-wrapper">
+        <div className="recon-nav-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="recon-nav-title">
+              <SlidersHorizontal size={14} className="recon-nav-icon" />
+              <span>DATASET VIEWS</span>
+            </div>
+            <span className="recon-nav-hint">Switch between matching queues, file batches, and discrepancy reports</span>
+          </div>
+          <button
+            type="button"
+            className="recon-guide-toggle-btn"
+            onClick={() => setShowGuide(!showGuide)}
+            title="Click to view full workflow instructions, confidence score hints, and simple glossary"
+          >
+            <HelpCircle size={13} />
+            <span>{showGuide ? 'Hide Guide & Hints' : 'How It Works & Hints'}</span>
+          </button>
+        </div>
+        <div className="recon-tabs-bar">
+          {[
+            { id: 'Overview', label: 'Overview', icon: LayoutGrid, count: queue.length },
+            { id: 'Batches', label: 'Batches', icon: Layers, count: batches.rows.length },
+            { id: 'Uploads', label: 'Uploads', icon: Upload, count: rows.length },
+            { id: 'Matching Queue', label: 'Matching Queue', icon: RotateCcw, count: queue.length },
+            { id: 'Mismatches', label: 'Mismatches', icon: AlertTriangle, count: mismatches, isWarning: mismatches > 0 },
+            { id: 'Resolved', label: 'Resolved', icon: BadgeCheck },
+            { id: 'Reports', label: 'Reports', icon: FileText },
+            { id: 'Provider Imports', label: 'Provider Imports', icon: ArrowDownCircle, count: providerImports.rows.length },
+            { id: 'Parser Configs', label: 'Parser Configs', icon: Settings, count: parserConfigs.rows.length },
+          ].map(item => {
+            const Icon = item.icon;
+            const isActive = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`recon-tab-pill ${isActive ? 'active' : ''}`}
+                onClick={() => setTab(item.id)}
+              >
+                <Icon size={14} />
+                <span>{item.label}</span>
+                {typeof item.count === 'number' && item.count > 0 && (
+                  <span className={`recon-pill-badge ${item.isWarning ? 'badge-warning' : ''}`}>
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="button-row">
-        {['Create sample batch', 'Upload provider report', 'Upload bank statement', 'Upload payout report', 'Upload fee report', 'Auto match', 'View mismatches', 'Manually resolve', 'Ignore', 'Export discrepancy report', 'Export finance summary'].map(action => <button key={action} type="button" onClick={() => act(normalizeAction(action))}>{action}</button>)}
+
+      {showGuide && (
+        <div className="recon-guide-card">
+          <div className="recon-guide-header">
+            <div className="recon-guide-title">
+              <HelpCircle size={16} style={{ color: 'var(--fp-primary)' }} />
+              <strong>Reconciliation Quick Guide & Glossary</strong>
+            </div>
+            <span className="recon-guide-subtitle">Why this toolbar exists and how to use it step-by-step</span>
+          </div>
+          <div className="recon-guide-grid">
+            <div className="recon-guide-block">
+              <h4>1. How To Use (3-Step Workflow)</h4>
+              <ol className="recon-guide-steps">
+                <li><strong>1. Upload Statements (IMPORT):</strong> Upload settlement CSV from your payment gateway (Razorpay/Stripe) or Bank account.</li>
+                <li><strong>2. Run Engine (MATCH):</strong> Click <em>Run Auto-Match</em>. The engine compares statement rows against internal orders.</li>
+                <li><strong>3. Audit & Export (EXPORT):</strong> Inspect unmatched records in <em>Mismatches</em>. Download <em>Discrepancy Report</em> for finance/audit.</li>
+              </ol>
+            </div>
+
+            <div className="recon-guide-block">
+              <h4>2. Confidence Score (What Numbers Mean)</h4>
+              <div className="recon-score-list">
+                <div className="recon-score-item">
+                  <span className="recon-score-badge recon-score-exact">100% Exact</span>
+                  <span>Both Reference IDs and transaction amount match platform transactions exactly. 100% verified.</span>
+                </div>
+                <div className="recon-score-item">
+                  <span className="recon-score-badge recon-score-high">96% Ledger</span>
+                  <span>Matched directly to internal double-entry financial ledger journal entry group.</span>
+                </div>
+                <div className="recon-score-item">
+                  <span className="recon-score-badge recon-score-high">90–92% High</span>
+                  <span>Matched via provider charge ID, refund ID, or dispute reference number.</span>
+                </div>
+                <div className="recon-score-item">
+                  <span className="recon-score-badge recon-score-utr">85% Bank UTR</span>
+                  <span>Matched via Bank Settlement UTR number or payout batch disbursement ID.</span>
+                </div>
+                <div className="recon-score-item">
+                  <span className="recon-score-badge recon-score-fuzzy">65% Fuzzy</span>
+                  <span>Matched by approximate amount & date window. Requires human eye verification.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="recon-guide-block">
+              <h4>3. Simple Glossary</h4>
+              <ul className="recon-glossary-list">
+                <li>
+                  <strong>Provider Imports:</strong> The history log of every statement file uploaded from payment gateways (Razorpay, Stripe, etc.) showing total rows, imported, and errors.
+                </li>
+                <li>
+                  <strong>Parser Config:</strong> The "translator rulebook". Every bank and gateway formats CSV spreadsheets differently. Parser configs tell FeelPay which column is Amount, Date, Fees, or Order ID.
+                </li>
+                <li>
+                  <strong>Matching Queue:</strong> The active work inbox. Every payment row extracted from external bank statements waits here until it is matched or investigated.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="recon-actions-bar">
+        <div className="recon-action-cluster">
+          <div className="recon-cluster-label-wrap">
+            <span className="recon-cluster-tag">ENGINE</span>
+            <span className="recon-cluster-desc">Process & match</span>
+          </div>
+          <button
+            type="button"
+            className="recon-action-btn primary"
+            title="Automatically scan all uploaded statement rows and compare them against internal payments using our matching algorithm."
+            onClick={() => act('auto_match')}
+          >
+            <Zap size={13} />
+            <span>Run Auto-Match</span>
+          </button>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Create a simulated statement batch with test data so you can test reconciliation safely without real bank files."
+            onClick={() => act('create_sample_batch')}
+          >
+            <Plus size={13} />
+            <span>Create Sample Batch</span>
+          </button>
+        </div>
+
+        <div className="recon-cluster-divider" />
+
+        <div className="recon-action-cluster">
+          <div className="recon-cluster-label-wrap">
+            <span className="recon-cluster-tag">IMPORT STATEMENTS</span>
+            <span className="recon-cluster-desc">Upload external data</span>
+          </div>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Upload settlement statement CSV from your payment gateway (e.g. Razorpay, Stripe, Cashfree)."
+            onClick={() => act('upload_provider_report')}
+          >
+            <Upload size={13} />
+            <span>Provider Report</span>
+          </button>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Upload official bank account statement CSV to verify actual settled funds received in your bank."
+            onClick={() => act('upload_bank_statement')}
+          >
+            <Upload size={13} />
+            <span>Bank Statement</span>
+          </button>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Upload vendor/merchant payout batch reports to match outgoing disbursements."
+            onClick={() => act('upload_payout_report')}
+          >
+            <Upload size={13} />
+            <span>Payout Report</span>
+          </button>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Upload provider processing fee & tax deductions to reconcile net vs gross amounts."
+            onClick={() => act('upload_fee_report')}
+          >
+            <Upload size={13} />
+            <span>Fee Report</span>
+          </button>
+        </div>
+
+        <div className="recon-cluster-divider" />
+
+        <div className="recon-action-cluster">
+          <div className="recon-cluster-label-wrap">
+            <span className="recon-cluster-tag">EXPORT & AUDIT</span>
+            <span className="recon-cluster-desc">Download & review</span>
+          </div>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Download a CSV list of all unmatched payments, fee variances, and suspicious differences for audit."
+            onClick={() => act('export_discrepancy_report')}
+          >
+            <Download size={13} />
+            <span>Discrepancy Report</span>
+          </button>
+          <button
+            type="button"
+            className="recon-action-btn"
+            title="Download a consolidated finance reconciliation summary report for accounting and tax records."
+            onClick={() => act('export_finance_summary')}
+          >
+            <Download size={13} />
+            <span>Finance Summary</span>
+          </button>
+        </div>
+
+        <div className="recon-actions-hint">
+          <Info size={13} style={{ color: 'var(--fp-primary)', flexShrink: 0 }} />
+          <span><strong>How this works:</strong> First upload external statements under <strong>IMPORT STATEMENTS</strong>, then click <strong>Run Auto-Match</strong> to match money in the bank with platform transactions. Export discrepancies anytime.</span>
+        </div>
       </div>
       {tab === 'Overview' && <DataTable rows={queue.slice(0, 12)} columns={['row_number', 'external_reference', 'internal_reference', 'amount', 'currency', 'record_type', 'match_status', 'mismatch_reason', 'confidence_score', 'resolution_status']} empty={{ title: 'Upload provider or bank files to start matching.', body: 'Provider reports, bank statements, payout reports, fee reports, and ledger exports create queue records here.' }} renderActions={row => <ActionButtons actions={['Manually resolve', 'Ignore', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
       {tab === 'Batches' && <DataTable rows={batches.rows} columns={['id', 'source_type', 'environment', 'status', 'total_items', 'matched_items', 'mismatched_items', 'total_amount_paise', 'created_at', 'closed_at']} empty="No reconciliation batches" renderActions={row => <ActionButtons actions={['Close batch', 'Export batch csv', 'View detail']} onClick={action => act(normalizeAction(action), row)} />} />}
@@ -1588,7 +1859,45 @@ export function BusinessAccountsPage() {
   const openDetail = async (row: GenericRecord) => {
     try {
       const detail = await apiRequest<GenericRecord>('GET', `${API}/business-accounts/${String(row.id || '')}`);
-      helpers.setDrawer({ title: 'Business account detail', body: detail });
+      const profile = (typeof detail.profile === 'object' && detail.profile !== null ? detail.profile : row) as GenericRecord;
+      const cleanBody: GenericRecord = {};
+
+      const keyOrder = [
+        'id', 'display_name', 'legal_name', 'business_type', 'business_category',
+        'email', 'phone', 'status', 'review_status', 'onboarding_status', 'kyc_status',
+        'risk_status', 'payout_status', 'default_currency', 'pan_masked', 'gstin_masked',
+        'cin_masked', 'llpin_masked', 'website_app_url', 'webhook_url', 'created_at', 'updated_at'
+      ];
+      for (const k of keyOrder) {
+        if (profile[k] !== null && profile[k] !== undefined && profile[k] !== '') {
+          cleanBody[k] = profile[k];
+        }
+      }
+      for (const [k, v] of Object.entries(profile)) {
+        if (!keyOrder.includes(k) && v !== null && v !== undefined && v !== '') {
+          cleanBody[k] = v;
+        }
+      }
+
+      // Only show related sections if they actually have recorded entries
+      const relatedKeys: Array<{ key: string; label: string }> = [
+        { key: 'bank_accounts', label: 'bank_accounts' },
+        { key: 'kyc_documents', label: 'kyc_documents' },
+        { key: 'risk_notes', label: 'risk_notes' },
+        { key: 'review_history', label: 'review_history' },
+        { key: 'provider_links', label: 'provider_links' },
+        { key: 'verification_attempts', label: 'verification_attempts' },
+        { key: 'ledger_history', label: 'ledger_history' },
+      ];
+      for (const rel of relatedKeys) {
+        const arr = detail[rel.key];
+        if (Array.isArray(arr) && arr.length > 0) {
+          cleanBody[rel.label] = arr;
+        }
+      }
+
+      const accountName = String(profile.display_name || profile.legal_name || shortId(String(row.id || '')));
+      helpers.setDrawer({ title: `Account: ${accountName}`, body: cleanBody });
     } catch {
       helpers.setDrawer({ title: 'Business account detail', body: row });
     }
@@ -1603,8 +1912,20 @@ export function BusinessAccountsPage() {
   };
   const actionsForAccount = (row: GenericRecord): string[] => {
     const reviewStatus = str(row.review_status).toLowerCase();
-    const actions = ['View detail', 'Mark under review', 'Request more information', 'Approve', 'Reject', 'Restrict', 'Suspend', 'Add risk note', 'Assign reviewer'];
-    if (reviewStatus === 'approved') return actions.filter(action => action !== 'Approve');
+    const status = str(row.status).toLowerCase();
+    const actions = ['View detail'];
+
+    if (status === 'suspended' || status === 'restricted' || reviewStatus === 'rejected') {
+      actions.push('Approve', 'Add risk note');
+    } else if (reviewStatus === 'approved' || status === 'active') {
+      actions.push('Suspend', 'Add risk note');
+    } else {
+      actions.push('Approve');
+      if (reviewStatus !== 'under_review') {
+        actions.push('Mark under review');
+      }
+      actions.push('Reject', 'Add risk note');
+    }
     return actions;
   };
   const payoutReason = (row: GenericRecord) => {
@@ -1618,26 +1939,24 @@ export function BusinessAccountsPage() {
   const act = (row: GenericRecord, action: string) => {
     if (action === 'view_detail') void openDetail(row);
     if (action === 'mark_under_review') reviewAccount(row, action, 'Mark under review');
-    if (action === 'request_more_information') {
-      const note = window.prompt('What information is required?');
-      if (note?.trim()) reviewAccount(row, action, 'Request more information', { note });
-    }
     if (action === 'approve') reviewAccount(row, action, 'Approve merchant');
-    if (['reject', 'restrict', 'suspend'].includes(action)) {
-      const reason_code = window.prompt('Reason code', 'manual_review');
-      const note = window.prompt('Internal note');
-      if (reason_code?.trim() && note?.trim()) {
-        reviewAccount(row, action, `${action.charAt(0).toUpperCase()}${action.slice(1)} merchant`, { reason_code, note });
+    if (action === 'reject' || action === 'suspend') {
+      const note = window.prompt(`Reason for ${action === 'reject' ? 'rejection' : 'suspension'}:`, 'Manual review decision');
+      if (note?.trim()) {
+        reviewAccount(row, action, `${action.charAt(0).toUpperCase()}${action.slice(1)} merchant`, {
+          reason_code: 'manual_review',
+          note: note.trim(),
+        });
       }
     }
     if (action === 'add_risk_note') {
-      const risk_level = window.prompt('Risk level: low, medium, high, blocked', str(row.risk_status || 'medium'));
-      const note = window.prompt('Internal risk note');
-      if (risk_level?.trim() && note?.trim()) reviewAccount(row, action, 'Add risk note', { risk_level, note });
-    }
-    if (action === 'assign_reviewer') {
-      const reviewer_admin_id = window.prompt('Reviewer admin id');
-      if (reviewer_admin_id?.trim()) reviewAccount(row, action, 'Assign reviewer', { reviewer_admin_id });
+      const note = window.prompt('Internal risk note:');
+      if (note?.trim()) {
+        reviewAccount(row, action, 'Add risk note', {
+          note: note.trim(),
+          risk_level: str(row.risk_status || 'medium'),
+        });
+      }
     }
   };
   return (
@@ -1956,16 +2275,202 @@ export function RoutingRulesPage() {
     event.preventDefault();
     setResult(await apiRequest<RoutingSimulation>('POST', `${API}/routing/simulate`, form));
   };
+
+  const routingTabs = [
+    { id: 'Rules', label: 'Active Route Rules', hint: 'Automatic gateway selection rules' },
+    { id: 'Simulator', label: 'Test Route Simulator', hint: 'Preview which gateway will be picked' },
+    { id: 'Provider Performance', label: 'Gateway Health & Speed', hint: 'Live uptime, speed, and success rates' },
+    { id: 'Failover Rules', label: 'Backup & Failover Rules', hint: 'Emergency backup gateways if primary is down' },
+    { id: 'Match Logs', label: 'Live Routing History', hint: 'Recent transactions and which route was picked' },
+  ];
+
   return (
-    <CrudPage title="Routing Rules" subtitle="Method, cost, success, health, risk, failover, and explainable provider routing" state={state} error={error || performance.error} notice={helpers.notice} onRefresh={() => void Promise.all([load(), performance.load()])}>
-      <div className="button-row">
-        {['Rules', 'Simulator', 'Provider Performance', 'Failover Rules', 'Match Logs'].map(item => <button key={item} className={tab === item ? 'btn-primary' : 'btn-secondary'} type="button" onClick={() => setTab(item)}>{item}</button>)}
+    <CrudPage
+      title="Smart Payment Routing"
+      subtitle="Automatically chooses the best bank or payment gateway for every transaction to get lowest fees and highest success rate."
+      state={state}
+      error={error || performance.error}
+      notice={helpers.notice}
+      onRefresh={() => void Promise.all([load(), performance.load()])}
+    >
+      {/* Educational Guide Banner */}
+      <div style={{
+        background: 'var(--fp-bg-card)',
+        border: '1px solid var(--fp-border)',
+        borderRadius: 'var(--fp-radius)',
+        padding: '18px 20px',
+        marginBottom: 20,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: '1.4rem' }}>🧭</span>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--fp-text)' }}>
+              How Smart Payment Routing Works
+            </h4>
+            <p style={{ margin: '3px 0 0', fontSize: '0.84rem', color: 'var(--fp-text-muted)' }}>
+              Think of routing as a smart GPS for customer payments. When someone clicks &ldquo;Pay&rdquo;, it selects the fastest, cheapest, and most reliable route.
+            </p>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 12,
+          fontSize: '0.8125rem',
+        }}>
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '14px 16px' }}>
+            <div style={{ fontWeight: 600, color: 'var(--fp-text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+              <span>🎯</span> 1. Primary Gateway
+            </div>
+            <div style={{ color: 'var(--fp-text-muted)', lineHeight: 1.5 }}>
+              The preferred payment gateway (e.g. Razorpay or Cashfree) that handles payments first for lowest fees and high speed.
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '14px 16px' }}>
+            <div style={{ fontWeight: 600, color: 'var(--fp-text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+              <span>🛡️</span> 2. Automatic Backup (Failover)
+            </div>
+            <div style={{ color: 'var(--fp-text-muted)', lineHeight: 1.5 }}>
+              If your main gateway goes down or has bank issues, payments instantly hop to a backup so transactions never fail.
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '14px 16px' }}>
+            <div style={{ fontWeight: 600, color: 'var(--fp-text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+              <span>⚖️</span> 3. Smart Traffic Split
+            </div>
+            <div style={{ color: 'var(--fp-text-muted)', lineHeight: 1.5 }}>
+              Share payment volume (e.g. 70% / 30%) across multiple partners to prevent relying entirely on a single company.
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '14px 16px' }}>
+            <div style={{ fontWeight: 600, color: 'var(--fp-text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+              <span>🧪</span> 4. Test Simulator
+            </div>
+            <div style={{ color: 'var(--fp-text-muted)', lineHeight: 1.5 }}>
+              Test any hypothetical payment in the simulator tab to see exactly which gateway will be picked and why.
+            </div>
+          </div>
+        </div>
       </div>
-      {tab === 'Rules' && <DataTable rows={rows} columns={['name', 'rule_group', 'strategy', 'payment_method', 'currency', 'country', 'amount_min', 'amount_max', 'provider_name', 'provider_weight', 'min_success_rate', 'max_provider_fee_percent', 'max_latency_ms', 'health_required', 'failover_provider_name', 'risk_level', 'status']} empty={{ title: 'No routing rules configured', body: 'Create routing rules to choose providers by priority, cost, health, risk, success rate, or latency.' }} onView={row => helpers.setDrawer({ title: 'Routing rule', body: row })} />}
+
+      <div className="button-row" style={{ marginBottom: 16 }}>
+        {routingTabs.map(item => (
+          <button
+            key={item.id}
+            className={tab === item.id ? 'btn-primary' : 'btn-secondary'}
+            type="button"
+            onClick={() => setTab(item.id)}
+            title={item.hint}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'Rules' && (
+        <>
+          <div style={{
+            background: 'var(--fp-bg-elevated)',
+            border: '1px solid var(--fp-border)',
+            borderRadius: 'var(--fp-radius-sm)',
+            padding: '16px 18px',
+            marginBottom: 16,
+            fontSize: '0.85rem',
+            color: 'var(--fp-text-muted)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>📌</span>
+              <div>
+                <strong style={{ color: 'var(--fp-text)', fontSize: '0.92rem' }}>What are Active Route Rules?</strong>
+                <p style={{ margin: '4px 0 0', lineHeight: 1.5 }}>
+                  Active Route Rules are the live automated instructions currently directing customer payments across your connected gateways (Razorpay, Cashfree, Stripe, etc.). When a customer pays, FeelPay matches these rules to send the transaction to the most reliable and cost-effective provider.
+                </p>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 10,
+              paddingTop: 12,
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              fontSize: '0.8rem',
+            }}>
+              <div style={{ background: 'var(--fp-bg-card)', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--fp-border)' }}>
+                <span style={{ color: 'var(--fp-primary)', fontWeight: 600 }}>💡 Example 1 (By Method):</span>
+                <div style={{ marginTop: 3, color: 'var(--fp-text-muted)', lineHeight: 1.4 }}>Send all <strong>UPI</strong> payments to <strong>Razorpay</strong> for highest speed and instant QR confirmations.</div>
+              </div>
+              <div style={{ background: 'var(--fp-bg-card)', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--fp-border)' }}>
+                <span style={{ color: 'var(--fp-primary)', fontWeight: 600 }}>💡 Example 2 (By Amount):</span>
+                <div style={{ marginTop: 3, color: 'var(--fp-text-muted)', lineHeight: 1.4 }}>Send transactions above <strong>₹50,000</strong> to <strong>Cashfree</strong> to reduce percentage transaction fees.</div>
+              </div>
+              <div style={{ background: 'var(--fp-bg-card)', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--fp-border)' }}>
+                <span style={{ color: 'var(--fp-primary)', fontWeight: 600 }}>💡 Example 3 (By Currency):</span>
+                <div style={{ marginTop: 3, color: 'var(--fp-text-muted)', lineHeight: 1.4 }}>Send international currencies (<strong>USD, EUR</strong>) to <strong>Stripe</strong> for global cards and 3D-Secure.</div>
+              </div>
+              <div style={{ background: 'var(--fp-bg-card)', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--fp-border)' }}>
+                <span style={{ color: 'var(--fp-primary)', fontWeight: 600 }}>💡 Example 4 (Auto Backup):</span>
+                <div style={{ marginTop: 3, color: 'var(--fp-text-muted)', lineHeight: 1.4 }}>If primary gateway latency spikes or fails, instantly redirect to backup gateway with zero downtime.</div>
+              </div>
+            </div>
+          </div>
+          <DataTable
+            rows={rows}
+            columns={['name', 'rule_group', 'strategy', 'payment_method', 'currency', 'country', 'amount_min', 'amount_max', 'provider_name', 'provider_weight', 'min_success_rate', 'max_provider_fee_percent', 'max_latency_ms', 'health_required', 'failover_provider_name', 'risk_level', 'status']}
+            empty={{ title: 'No routing rules configured', body: 'Add routing rules to automatically pick payment gateways based on payment method (UPI, Cards), transaction amount, or lowest fees.' }}
+            onView={row => helpers.setDrawer({ title: 'Routing Rule Details', body: row })}
+          />
+        </>
+      )}
+
       {tab === 'Simulator' && <RoutingSimulator form={form} result={result} onChange={setForm} onSubmit={simulate} />}
-      {tab === 'Provider Performance' && <DataTable rows={performance.rows} columns={['provider', 'payment_method', 'currency', 'country', 'success_rate', 'failure_rate', 'avg_latency_ms', 'p95_latency_ms', 'provider_fee_percent', 'attempt_count', 'updated_at']} empty={{ title: 'No provider performance yet', body: 'Performance metrics appear after payment attempts update provider success, latency, and fee data.' }} />}
-      {tab === 'Failover Rules' && <DataTable rows={rows} columns={['name', 'provider_name', 'failover_provider_name', 'failover_strategy', 'retry_strategy', 'cooldown_minutes', 'health_required', 'status']} empty="No failover rules configured" />}
-      {tab === 'Match Logs' && <DataTable rows={rows} columns={['name', 'last_matched_at', 'provider_name', 'failover_provider_name', 'status']} empty="No routing match logs yet" />}
+
+      {tab === 'Provider Performance' && (
+        <>
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '12px 16px', marginBottom: 16, fontSize: '0.85rem', color: 'var(--fp-text-muted)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.1rem' }}>📊</span>
+            <span><strong style={{ color: 'var(--fp-text)' }}>Gateway Health &amp; Speed:</strong> Live scoreboard of each payment gateway. High success rates and low response times ensure customers enjoy instant checkouts without drop-offs.</span>
+          </div>
+          <DataTable
+            rows={performance.rows}
+            columns={['provider', 'payment_method', 'currency', 'country', 'success_rate', 'failure_rate', 'avg_latency_ms', 'p95_latency_ms', 'provider_fee_percent', 'attempt_count', 'updated_at']}
+            empty={{ title: 'No gateway performance data yet', body: 'Live uptime, response speed, and success rates will show here as soon as transactions are processed.' }}
+          />
+        </>
+      )}
+
+      {tab === 'Failover Rules' && (
+        <>
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '12px 16px', marginBottom: 16, fontSize: '0.85rem', color: 'var(--fp-text-muted)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.1rem' }}>🛡️</span>
+            <span><strong style={{ color: 'var(--fp-text)' }}>Backup &amp; Failover Rules:</strong> Zero-downtime protection. If Gateway A experiences network issues or downtime, payments automatically redirect to Gateway B without the customer seeing an error.</span>
+          </div>
+          <DataTable
+            rows={rows}
+            columns={['name', 'provider_name', 'failover_provider_name', 'failover_strategy', 'retry_strategy', 'cooldown_minutes', 'health_required', 'status']}
+            empty={{ title: 'No backup rules configured', body: 'Configure backup rules so transactions seamlessly switch to another gateway if one goes down.' }}
+          />
+        </>
+      )}
+
+      {tab === 'Match Logs' && (
+        <>
+          <div style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)', borderRadius: 'var(--fp-radius-sm)', padding: '12px 16px', marginBottom: 16, fontSize: '0.85rem', color: 'var(--fp-text-muted)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.1rem' }}>🕒</span>
+            <span><strong style={{ color: 'var(--fp-text)' }}>Live Routing History:</strong> An audit log showing recent payments, the rule that matched them, and the gateway that successfully processed each one.</span>
+          </div>
+          <DataTable
+            rows={rows}
+            columns={['name', 'last_matched_at', 'provider_name', 'failover_provider_name', 'status']}
+            empty={{ title: 'No routing history yet', body: 'Live history of matched rules and gateway selections will appear here after payments are attempted.' }}
+          />
+        </>
+      )}
+
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -3135,11 +3640,12 @@ function DataTable({ rows, columns, empty, renderActions, onView }: { rows: Gene
   );
 }
 
-function Metric({ label, value, status, icon: Icon }: { label: string; value: string | number; status?: string; icon: typeof Activity }) {
+function Metric({ label, value, status, icon: Icon, description }: { label: string; value: string | number; status?: string; icon: typeof Activity; description?: string }) {
   return (
     <article className="stat-card">
       <div className="stat-label"><Icon size={14} /> {label}</div>
       <div className={`stat-value ${status ? status : ''}`}>{value}</div>
+      {description && <div className="stat-hint">{description}</div>}
     </article>
   );
 }
@@ -3278,41 +3784,95 @@ function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; 
 }
 
 function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { payment_method: string; currency: string; country: string; amount: number; business_account: string; customer_region: string; risk_level: string; strategy: string }; result: RoutingSimulation | null; onChange: (value: { payment_method: string; currency: string; country: string; amount: number; business_account: string; customer_region: string; risk_level: string; strategy: string }) => void; onSubmit: (event: FormEvent) => void }) {
+  const riskOptions = [
+    { label: 'Low Risk (Verified Customer)', value: 'low' },
+    { label: 'Medium Risk (Standard)', value: 'medium' },
+    { label: 'High Risk (Flagged/Unusual)', value: 'high' },
+    { label: 'Critical Risk (High Fraud Chance)', value: 'critical' },
+  ];
+
+  const strategyOptions = [
+    { label: 'Preferred Gateway First (Priority)', value: 'priority' },
+    { label: 'Lowest Cost (Cheapest Gateway Fee)', value: 'lowest_cost' },
+    { label: 'Highest Success Rate (Most Reliable)', value: 'highest_success_rate' },
+    { label: 'Fastest Response Speed (Lowest Latency)', value: 'latency_aware' },
+    { label: '100% Uptime Only (Health Aware)', value: 'health_aware' },
+    { label: 'Risk Aware (Extra Checks for Suspicious)', value: 'risk_aware' },
+    { label: 'Split Volume % (Weighted)', value: 'weighted' },
+    { label: 'Even Distribution (Round Robin)', value: 'round_robin' },
+    { label: 'Emergency Backup Only (Fallback)', value: 'fallback_only' },
+  ];
+
   return (
     <section className="card">
-      <h2><Route size={18} /> Routing simulator</h2>
-        <form onSubmit={onSubmit} className="filter-grid">
-          <Field label="Payment method">
-            <Select value={str(form.payment_method)} options={PAYMENT_METHOD_OPTIONS.filter(o => o.value !== '')} onChange={payment_method => onChange({ ...form, payment_method })} />
-          </Field>
-          <Field label="Currency">
-            <Select value={str(form.currency)} options={CURRENCY_OPTIONS.filter(o => o.value !== '')} onChange={currency => onChange({ ...form, currency })} />
-          </Field>
-          <Field label="Country"><input value={str(form.country)} onChange={event => onChange({ ...form, country: event.target.value })} /></Field>
-          <Field label="Amount"><input type="number" value={form.amount ?? 0} onChange={event => onChange({ ...form, amount: Number(event.target.value) })} /></Field>
-          <Field label="Business account"><input value={str(form.business_account)} onChange={event => onChange({ ...form, business_account: event.target.value })} /></Field>
-          <Field label="Customer region"><input value={str(form.customer_region)} onChange={event => onChange({ ...form, customer_region: event.target.value })} /></Field>
-          <Field label="Risk level">
-            <Select value={str(form.risk_level)} options={['low', 'medium', 'high', 'critical']} onChange={risk_level => onChange({ ...form, risk_level })} />
-          </Field>
-          <Field label="Strategy"><Select value={str(form.strategy)} options={['priority', 'weighted', 'lowest_cost', 'highest_success_rate', 'latency_aware', 'risk_aware', 'health_aware', 'round_robin', 'fallback_only']} onChange={strategy => onChange({ ...form, strategy })} /></Field>
-          <div className="filter-actions">
-            <button className="btn-primary" type="submit">Simulate</button>
-          </div>
-        </form>
+      <h2><Route size={18} /> Test Route Simulator (Preview Gateway Choice)</h2>
+      <p style={{ color: 'var(--fp-text-muted)', fontSize: '0.875rem', marginTop: 4, marginBottom: 16 }}>
+        Test a sample payment to see which gateway (e.g. Razorpay or Cashfree) our smart router chooses, along with estimated fees and response speed.
+      </p>
+      <form onSubmit={onSubmit} className="filter-grid">
+        <Field label="Payment method (e.g. UPI, Card)">
+          <Select value={str(form.payment_method)} options={PAYMENT_METHOD_OPTIONS.filter(o => o.value !== '')} onChange={payment_method => onChange({ ...form, payment_method })} />
+        </Field>
+        <Field label="Currency">
+          <Select value={str(form.currency)} options={CURRENCY_OPTIONS.filter(o => o.value !== '')} onChange={currency => onChange({ ...form, currency })} />
+        </Field>
+        <Field label="Customer Country">
+          <input value={str(form.country)} onChange={event => onChange({ ...form, country: event.target.value })} placeholder="e.g. IN" />
+        </Field>
+        <Field label="Payment Amount (paise/cents)">
+          <input type="number" value={form.amount ?? 0} onChange={event => onChange({ ...form, amount: Number(event.target.value) })} placeholder="e.g. 10000" />
+        </Field>
+        <Field label="Merchant Business Account ID">
+          <input value={str(form.business_account)} onChange={event => onChange({ ...form, business_account: event.target.value })} placeholder="Merchant Account UUID" />
+        </Field>
+        <Field label="Customer State / Region">
+          <input value={str(form.customer_region)} onChange={event => onChange({ ...form, customer_region: event.target.value })} placeholder="e.g. IN-MH" />
+        </Field>
+        <Field label="Customer Risk Level">
+          <Select value={str(form.risk_level)} options={riskOptions} onChange={risk_level => onChange({ ...form, risk_level })} />
+        </Field>
+        <Field label="Routing Goal (Strategy)">
+          <Select value={str(form.strategy)} options={strategyOptions} onChange={strategy => onChange({ ...form, strategy })} />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-primary" type="submit">Run Route Test</button>
+        </div>
+      </form>
+
       <div className="stats-grid">
-        <Metric label="Selected provider" value={result?.selected_provider || 'No match'} icon={Cable} />
-        <Metric label="Matched rule" value={result?.matched_routing_rule || 'Default Route'} icon={Route} />
-        <Metric label="Provider score" value={result?.provider_score ? result.provider_score.toFixed(2) : '1.00'} icon={Activity} />
-        <Metric label="Fallback provider" value={result?.fallback_provider || 'None (Primary Healthy)'} icon={AlertTriangle} />
-        <Metric label="Provider fee" value={money(result?.estimated_provider_fee || 0)} icon={Receipt} />
-        <Metric label="Latency estimate" value={`${result?.latency_estimate_ms || 0} ms`} icon={RefreshCw} />
-        <Metric label="Success estimate" value={`${(result?.success_estimate || 0).toFixed(1)}%`} icon={BadgeCheck} />
-        <Metric label="Strategy used" value={result?.strategy_used || 'Default Strategy'} icon={SlidersHorizontal} />
+        <Metric label="Chosen Gateway (Winner)" value={result?.selected_provider || 'No match'} icon={Cable} />
+        <Metric label="Matched Routing Rule" value={result?.matched_routing_rule || 'Default Route'} icon={Route} />
+        <Metric label="Gateway Fit Score" value={result?.provider_score ? result.provider_score.toFixed(2) : '1.00'} icon={Activity} />
+        <Metric label="Backup Gateway (Failover)" value={result?.fallback_provider || 'None (Primary Healthy)'} icon={AlertTriangle} />
+        <Metric label="Estimated Gateway Fee" value={money(result?.estimated_provider_fee || 0)} icon={Receipt} />
+        <Metric label="Estimated Speed" value={`${result?.latency_estimate_ms || 0} ms`} icon={RefreshCw} />
+        <Metric label="Estimated Success Rate" value={`${(result?.success_estimate || 0).toFixed(1)}%`} icon={BadgeCheck} />
+        <Metric label="Strategy Applied" value={result?.strategy_used || 'Default Strategy'} icon={SlidersHorizontal} />
       </div>
-      {result && !result.selected_provider && <div className="alert alert-warning">No matching rule; create a rule or enable default mock route.</div>}
-      {result && <DataTable rows={result.candidate_providers || []} columns={['provider', 'score', 'success_rate', 'latency_ms', 'fee_percent', 'attempt_count']} empty="No candidate providers" />}
-      {result && <DataTable rows={result.rejected_providers || []} columns={['provider', 'reason']} empty="No rejected providers" />}
+
+      {result && !result.selected_provider && (
+        <div className="alert alert-warning" style={{ marginTop: 16 }}>
+          No matching gateway found for this transaction. Check that your route rules are active or enable a default backup route.
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>🏆</span> Evaluated Gateways (Ranked by Score)
+          </h3>
+          <DataTable rows={result.candidate_providers || []} columns={['provider', 'score', 'success_rate', 'latency_ms', 'fee_percent', 'attempt_count']} empty="No candidate gateways evaluated" />
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>🚫</span> Ineligible Gateways (Why they were rejected or skipped)
+          </h3>
+          <DataTable rows={result.rejected_providers || []} columns={['provider', 'reason']} empty="No gateways rejected" />
+        </div>
+      )}
     </section>
   );
 }
@@ -3638,6 +4198,9 @@ function renderDetailValue(value: GenericRecord[string] | undefined, key?: strin
       if (safeValue.length === 0) {
         if (key?.includes('settlement')) return 'Pending Settlement Batch';
         return 'None recorded';
+      }
+      if (typeof safeValue[0] === 'object' && safeValue[0] !== null) {
+        return <pre className="json-preview">{JSON.stringify(safeValue, null, 2)}</pre>;
       }
       return safeValue.join(', ');
     }
