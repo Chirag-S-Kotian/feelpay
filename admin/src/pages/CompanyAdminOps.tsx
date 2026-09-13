@@ -3542,7 +3542,7 @@ export function ComplianceCenterPage() {
     { id: 'bank_data_masking', item: 'Bank data masking coverage', count: 100, status: overview.bank_accounts_encrypted || 'enabled' },
   ];
   return (
-    <CrudPage title="Compliance Center" subtitle="PCI readiness, access review, security events, retention, exports, and credential rotation" state={state} error={error || relatedError || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Trust & Security" subtitle="Manage platform security, compliance, and access controls" state={state} error={error || relatedError || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="stats-grid">
         <Metric label="Raw card storage" value={String(overview.raw_card_storage || 'disabled')} status={statusClass(String(overview.raw_card_storage || 'disabled'), 'raw_card_storage')} icon={ShieldCheck} />
         <Metric label="CVV storage" value={String(overview.cvv_storage || 'disabled')} status={statusClass(String(overview.cvv_storage || 'disabled'), 'cvv_storage')} icon={ShieldCheck} />
