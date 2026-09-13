@@ -564,7 +564,7 @@ fn accepted(prefix: &str, request: ConnectorRequest) -> ConnectorResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct CompanyPaymentDashboard {
     total_gmv: i64,
     successful_payments: i64,
@@ -586,14 +586,14 @@ struct CompanyPaymentDashboard {
     daily_gmv: Vec<SeriesPoint>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct ProviderHealthMetric {
     provider: String,
     health_status: String,
     success_rate: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct SeriesPoint {
     label: String,
     amount: i64,
@@ -1265,7 +1265,13 @@ struct CutoverRequest {
 }
 
 async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
-    let summary = sqlx::query(
+    let cache_key = "admin:company:dashboard";
+    if let Some(cached) = crate::cache::AdminCache::get::<CompanyPaymentDashboard>(cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
+
+    let pool_ref = pool.get_ref();
+    let summary_fut = sqlx::query(
         r#"
         SELECT
           COALESCE((SELECT SUM(amount) FROM payment_orders WHERE status IN ('captured','successful','paid')), 0)::bigint AS total_gmv,
@@ -1285,14 +1291,9 @@ async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
           COALESCE((SELECT SUM(company_fee_amount) FROM settlement_batches_company), 0)::bigint AS company_revenue_total
         "#,
     )
-    .fetch_one(pool.get_ref())
-    .await;
+    .fetch_one(pool_ref);
 
-    let Ok(summary) = summary else {
-        return server_error("Failed to load company payment dashboard");
-    };
-
-    let provider_rows = sqlx::query(
+    let provider_fut = sqlx::query(
         r#"
         SELECT display_name, health_status, COALESCE(success_rate, 0)::float8 AS success_rate
         FROM payment_providers
@@ -1300,11 +1301,9 @@ async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
         LIMIT 12
         "#,
     )
-    .fetch_all(pool.get_ref())
-    .await
-    .unwrap_or_default();
+    .fetch_all(pool_ref);
 
-    let daily_rows = sqlx::query(
+    let daily_fut = sqlx::query(
         r#"
         SELECT to_char(created_at::date, 'YYYY-MM-DD') AS label, COALESCE(SUM(amount), 0)::bigint AS amount
         FROM payment_orders
@@ -1313,25 +1312,33 @@ async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
         ORDER BY created_at::date
         "#,
     )
-    .fetch_all(pool.get_ref())
-    .await
-    .unwrap_or_default();
+    .fetch_all(pool_ref);
+
+    let total_attempts_fut = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(COUNT(*), 0)::bigint FROM payment_orders WHERE status <> 'created'",
+    )
+    .fetch_one(pool_ref);
+
+    let (summary_res, provider_res, daily_res, total_attempts_res) =
+        tokio::join!(summary_fut, provider_fut, daily_fut, total_attempts_fut);
+
+    let Ok(summary) = summary_res else {
+        return server_error("Failed to load company payment dashboard");
+    };
+
+    let provider_rows = provider_res.unwrap_or_default();
+    let daily_rows = daily_res.unwrap_or_default();
 
     let successful_payments: i64 = summary.get("successful_payments");
     let failed_payments: i64 = summary.get("failed_payments");
-    let total_attempts: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(COUNT(*), 0)::bigint FROM payment_orders WHERE status <> 'created'",
-    )
-    .fetch_one(pool.get_ref())
-    .await
-    .unwrap_or(successful_payments + failed_payments);
+    let total_attempts: i64 = total_attempts_res.unwrap_or(successful_payments + failed_payments);
     let payment_success_rate = if total_attempts == 0 {
         0.0
     } else {
         successful_payments as f64 * 100.0 / total_attempts as f64
     };
 
-    HttpResponse::Ok().json(CompanyPaymentDashboard {
+    let data = CompanyPaymentDashboard {
         total_gmv: summary.get("total_gmv"),
         successful_payments,
         failed_payments,
@@ -1363,10 +1370,18 @@ async fn dashboard(pool: web::Data<PgPool>) -> impl Responder {
                 amount: row.get("amount"),
             })
             .collect(),
-    })
+    };
+
+    crate::cache::AdminCache::set(cache_key, data.clone(), std::time::Duration::from_secs(10));
+    HttpResponse::Ok().json(data)
 }
 
 async fn list_providers(pool: web::Data<PgPool>) -> impl Responder {
+    let cache_key = "admin:providers";
+    if let Some(cached) = crate::cache::AdminCache::get::<serde_json::Value>(cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let rows = sqlx::query(
         r#"
         SELECT id, display_name, COALESCE(code, name) AS code, provider_type, environment, status,
@@ -1397,9 +1412,13 @@ async fn list_providers(pool: web::Data<PgPool>) -> impl Responder {
     .await;
 
     match rows {
-        Ok(rows) => HttpResponse::Ok().json(json!({
-            "items": rows.into_iter().map(provider_from_row).collect::<Vec<_>>()
-        })),
+        Ok(rows) => {
+            let res = json!({
+                "items": rows.into_iter().map(provider_from_row).collect::<Vec<_>>()
+            });
+            crate::cache::AdminCache::set(cache_key, res.clone(), std::time::Duration::from_secs(30));
+            HttpResponse::Ok().json(res)
+        }
         Err(e) => {
             tracing::error!("List company payment providers failed: {}", e);
             server_error("Failed to load providers")
@@ -2648,6 +2667,16 @@ async fn list_transactions(
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
     let status = query.status.clone();
+    let cache_key = format!(
+        "admin:transactions:{}:{}:{}",
+        status.as_deref().unwrap_or("all"),
+        limit,
+        offset
+    );
+    if let Some(cached) = crate::cache::AdminCache::get::<serde_json::Value>(&cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let rows = sqlx::query(
         r#"
         SELECT po.id, po.order_id, po.amount, po.currency, po.status, po.payment_method,
@@ -2673,8 +2702,11 @@ async fn list_transactions(
     .await;
 
     match rows {
-        Ok(rows) => HttpResponse::Ok()
-            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => {
+            let res = json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() });
+            crate::cache::AdminCache::set(&cache_key, res.clone(), std::time::Duration::from_secs(15));
+            HttpResponse::Ok().json(res)
+        }
         Err(e) => {
             tracing::error!("List company transactions failed: {}", e);
             server_error("Failed to load transactions")
@@ -2685,6 +2717,11 @@ async fn list_transactions(
 async fn list_ledger(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
     let limit = query.limit.unwrap_or(100).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
+    let cache_key = format!("admin:ledger:{}:{}", limit, offset);
+    if let Some(cached) = crate::cache::AdminCache::get::<serde_json::Value>(&cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let rows = sqlx::query(
         r#"
         SELECT le.id, le.created_at, le.transaction_group_id, le.source_type, le.source_id,
@@ -2719,10 +2756,14 @@ async fn list_ledger(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> i
     .await;
 
     match (rows, summary) {
-        (Ok(rows), Ok(summary)) => HttpResponse::Ok().json(json!({
-            "summary": row_to_json(&summary),
-            "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
-        })),
+        (Ok(rows), Ok(summary)) => {
+            let res = json!({
+                "summary": row_to_json(&summary),
+                "items": rows.iter().map(row_to_json).collect::<Vec<_>>()
+            });
+            crate::cache::AdminCache::set(&cache_key, res.clone(), std::time::Duration::from_secs(15));
+            HttpResponse::Ok().json(res)
+        }
         (Err(e), _) | (_, Err(e)) => {
             tracing::error!("List ledger failed: {}", e);
             server_error("Failed to load ledger")
@@ -2882,6 +2923,16 @@ async fn create_refund(
 async fn list_refunds(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
+    let cache_key = format!(
+        "admin:refunds:{}:{}:{}",
+        query.status.as_deref().unwrap_or("all"),
+        limit,
+        offset
+    );
+    if let Some(cached) = crate::cache::AdminCache::get::<serde_json::Value>(&cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let rows = sqlx::query(
         "SELECT * FROM payment_refunds WHERE ($1::text IS NULL OR status = $1) ORDER BY created_at DESC LIMIT $2 OFFSET $3",
     )
@@ -2891,8 +2942,11 @@ async fn list_refunds(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> 
     .fetch_all(pool.get_ref())
     .await;
     match rows {
-        Ok(rows) => HttpResponse::Ok()
-            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => {
+            let res = json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() });
+            crate::cache::AdminCache::set(&cache_key, res.clone(), std::time::Duration::from_secs(15));
+            HttpResponse::Ok().json(res)
+        }
         Err(e) => {
             tracing::error!("List refunds failed: {}", e);
             server_error("Failed to load refunds")
@@ -3283,6 +3337,16 @@ async fn ignore_webhook(pool: web::Data<PgPool>, path: web::Path<Uuid>) -> impl 
 async fn list_settlements(pool: web::Data<PgPool>, query: web::Query<ListQuery>) -> impl Responder {
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
+    let cache_key = format!(
+        "admin:settlements:{}:{}:{}",
+        query.status.as_deref().unwrap_or("all"),
+        limit,
+        offset
+    );
+    if let Some(cached) = crate::cache::AdminCache::get::<serde_json::Value>(&cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let rows = sqlx::query(
         "SELECT * FROM settlement_batches_company WHERE ($1::text IS NULL OR status = $1) ORDER BY created_at DESC LIMIT $2 OFFSET $3",
     )
@@ -3292,8 +3356,11 @@ async fn list_settlements(pool: web::Data<PgPool>, query: web::Query<ListQuery>)
     .fetch_all(pool.get_ref())
     .await;
     match rows {
-        Ok(rows) => HttpResponse::Ok()
-            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => {
+            let res = json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() });
+            crate::cache::AdminCache::set(&cache_key, res.clone(), std::time::Duration::from_secs(15));
+            HttpResponse::Ok().json(res)
+        }
         Err(e) => {
             tracing::error!("List company settlements failed: {}", e);
             server_error("Failed to load settlements")
@@ -10805,9 +10872,18 @@ async fn query_items(
     sql: &'static str,
     error_message: &'static str,
 ) -> HttpResponse {
+    use sha2::{Digest, Sha256};
+    let hash = hex::encode(Sha256::digest(sql.as_bytes()));
+    let cache_key = format!("admin:query:{hash}");
+    if let Some(cached) = crate::cache::AdminCache::get::<serde_json::Value>(&cache_key) {
+        return HttpResponse::Ok().json(cached);
+    }
     match sqlx::query(sql).fetch_all(pool.get_ref()).await {
-        Ok(rows) => HttpResponse::Ok()
-            .json(json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() })),
+        Ok(rows) => {
+            let res = json!({ "items": rows.iter().map(row_to_json).collect::<Vec<_>>() });
+            crate::cache::AdminCache::set(&cache_key, res.clone(), std::time::Duration::from_secs(15));
+            HttpResponse::Ok().json(res)
+        }
         Err(e) => {
             tracing::error!("{}: {}", error_message, e);
             server_error(error_message)
@@ -11232,6 +11308,7 @@ async fn audit(
     entity_id: Option<Uuid>,
     summary: Value,
 ) {
+    crate::cache::AdminCache::invalidate_prefix("admin:");
     let _ = sqlx::query(
         r#"
         INSERT INTO audit_logs_company (actor_role, action, entity_type, entity_id, new_value_summary)
@@ -11254,6 +11331,7 @@ async fn audit_with_request(
     entity_id: Option<Uuid>,
     summary: Value,
 ) {
+    crate::cache::AdminCache::invalidate_prefix("admin:");
     let claims = request.extensions().get::<AdminClaims>().cloned();
     let actor_admin_id = claims.as_ref().map(|claims| claims.admin_id);
     let actor_role = claims

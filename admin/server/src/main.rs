@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{http::header, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{http::header, middleware::{Compress, Logger}, web, App, HttpResponse, HttpServer, Responder};
 use aes_gcm::aead::{Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -13,6 +13,9 @@ use std::env;
 use std::str::FromStr;
 use std::time::Duration;
 use uuid::Uuid;
+
+pub mod cache;
+use cache::AdminCache;
 
 fn validate_admin_startup_env() -> Result<(), String> {
     let app_env = env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
@@ -94,7 +97,7 @@ struct OperationsSummary {
     capture_rate_bps: i64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct MerchantLite {
     id: Uuid,
     name: String,
@@ -105,7 +108,7 @@ struct MerchantLite {
     created_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct MerchantListResponse {
     merchants: Vec<MerchantLite>,
 }
@@ -245,6 +248,11 @@ struct RevenueSummary {
 }
 
 async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
+    const CACHE_KEY: &str = "admin:stats";
+    if let Some(cached) = AdminCache::get::<serde_json::Value>(CACHE_KEY) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let stats = sqlx::query(
         r#"
         SELECT
@@ -261,12 +269,14 @@ async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
     match stats {
         Ok(row) => {
             use sqlx::Row;
-            HttpResponse::Ok().json(serde_json::json!({
+            let resp = serde_json::json!({
                 "total_volume": row.get::<i64, _>("total_volume"),
                 "active_merchants": row.get::<i64, _>("active_merchants"),
                 "failed_payments": row.get::<i64, _>("failed_payments"),
                 "system_health": "Healthy"
-            }))
+            });
+            AdminCache::set(CACHE_KEY, resp.clone(), Duration::from_secs(10));
+            HttpResponse::Ok().json(resp)
         }
         Err(e) => {
             tracing::error!("Stats error: {}", e);
@@ -276,6 +286,11 @@ async fn get_platform_stats(pool: web::Data<PgPool>) -> impl Responder {
 }
 
 async fn list_merchants(pool: web::Data<PgPool>) -> impl Responder {
+    const CACHE_KEY: &str = "admin:merchants";
+    if let Some(cached) = AdminCache::get::<MerchantListResponse>(CACHE_KEY) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let merchants = sqlx::query(
         r#"
         SELECT id, name, email, business_name, business_type, onboarding_status, created_at
@@ -301,7 +316,9 @@ async fn list_merchants(pool: web::Data<PgPool>) -> impl Responder {
                     created_at: row.get::<Option<DateTime<Utc>>, _>("created_at"),
                 })
                 .collect::<Vec<_>>();
-            HttpResponse::Ok().json(MerchantListResponse { merchants })
+            let resp = MerchantListResponse { merchants };
+            AdminCache::set(CACHE_KEY, resp.clone(), Duration::from_secs(15));
+            HttpResponse::Ok().json(resp)
         }
         Err(e) => {
             tracing::error!("List merchants error: {}", e);
@@ -735,6 +752,11 @@ async fn list_disputes(pool: web::Data<PgPool>, query: web::Query<ListQuery>) ->
 }
 
 async fn revenue_summary(pool: web::Data<PgPool>) -> impl Responder {
+    const CACHE_KEY: &str = "admin:revenue:summary";
+    if let Some(cached) = AdminCache::get::<serde_json::Value>(CACHE_KEY) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let row = sqlx::query(
         r#"
         SELECT
@@ -750,12 +772,16 @@ async fn revenue_summary(pool: web::Data<PgPool>) -> impl Responder {
     match row {
         Ok(row) => {
             use sqlx::Row;
-            HttpResponse::Ok().json(RevenueSummary {
+            let data = RevenueSummary {
                 captured_amount: row.get("captured_amount"),
                 refunded_amount: row.get("refunded_amount"),
                 dispute_amount: row.get("dispute_amount"),
                 settlement_amount: row.get("settlement_amount"),
-            })
+            };
+            if let Ok(val) = serde_json::to_value(&data) {
+                AdminCache::set(CACHE_KEY, val, Duration::from_secs(10));
+            }
+            HttpResponse::Ok().json(data)
         }
         Err(e) => {
             tracing::error!("Revenue summary failed: {}", e);
@@ -766,6 +792,11 @@ async fn revenue_summary(pool: web::Data<PgPool>) -> impl Responder {
 }
 
 async fn operations_summary(pool: web::Data<PgPool>) -> impl Responder {
+    const CACHE_KEY: &str = "admin:operations:summary";
+    if let Some(cached) = AdminCache::get::<serde_json::Value>(CACHE_KEY) {
+        return HttpResponse::Ok().json(cached);
+    }
+
     let row = sqlx::query(
         r#"
         SELECT
@@ -790,14 +821,18 @@ async fn operations_summary(pool: web::Data<PgPool>) -> impl Responder {
     match row {
         Ok(row) => {
             use sqlx::Row;
-            HttpResponse::Ok().json(OperationsSummary {
+            let data = OperationsSummary {
                 today_volume: row.get("today_volume"),
                 failed_last_24h: row.get("failed_last_24h"),
                 disputes_needing_response: row.get("disputes_needing_response"),
                 pending_settlements: row.get("pending_settlements"),
                 queued_exports: row.get("queued_exports"),
                 capture_rate_bps: row.get("capture_rate_bps"),
-            })
+            };
+            if let Ok(val) = serde_json::to_value(&data) {
+                AdminCache::set(CACHE_KEY, val, Duration::from_secs(10));
+            }
+            HttpResponse::Ok().json(data)
         }
         Err(e) => {
             tracing::error!("Operations summary failed: {}", e);
@@ -1059,8 +1094,8 @@ async fn main() -> std::io::Result<()> {
     }
 
     let pool = PgPoolOptions::new()
-        .max_connections(20)
-        .min_connections(5)
+        .max_connections(30)
+        .min_connections(2)
         .acquire_timeout(Duration::from_secs(30))
         .idle_timeout(Duration::from_secs(300))
         .max_lifetime(Duration::from_secs(1800))
@@ -1069,6 +1104,7 @@ async fn main() -> std::io::Result<()> {
         .expect("Failed to connect to Postgres");
 
     let bind_addr = admin_bind_addr();
+    std::fs::create_dir_all("uploads").ok();
     println!("Admin server starting on {}", bind_addr);
 
     HttpServer::new(move || {
@@ -1076,6 +1112,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .wrap(Logger::default())
+            .wrap(Compress::default())
             .wrap(cors)
             .wrap(feelpay::middleware::rate_limit::RateLimiter::new(60))
             .app_data(web::Data::new(pool.clone()))
@@ -1188,17 +1225,21 @@ fn admin_bind_addr() -> String {
 }
 
 fn admin_cors() -> Cors {
-    let origins = env::var("ADMIN_CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
-        [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5174",
-            "http://localhost:5174",
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-        ]
-        .join(",")
-    });
+    let origins = env::var("ADMIN_CORS_ALLOWED_ORIGINS")
+        .or_else(|_| env::var("CORS_ALLOWED_ORIGINS"))
+        .unwrap_or_else(|_| {
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+                "http://127.0.0.1:5174",
+                "http://localhost:5174",
+                "http://127.0.0.1:5173",
+                "http://localhost:5173",
+            ]
+            .join(",")
+        });
     let allowed_origins: Vec<String> = origins
         .split(',')
         .map(str::trim)

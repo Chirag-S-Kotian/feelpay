@@ -26,6 +26,7 @@ fn jwt_secret() -> Result<String, Error> {
 
 fn allowed_origins() -> Vec<String> {
     std::env::var("ADMIN_CORS_ALLOWED_ORIGINS")
+        .or_else(|_| std::env::var("CORS_ALLOWED_ORIGINS"))
         .ok()
         .map(|origins| {
             origins
@@ -39,6 +40,8 @@ fn allowed_origins() -> Vec<String> {
             [
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "http://localhost:5174",
