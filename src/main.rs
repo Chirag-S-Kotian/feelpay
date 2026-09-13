@@ -809,7 +809,8 @@ async fn main() -> std::io::Result<()> {
     
     let health_check_pool = notification_retry_pool.clone();
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        // Run health check update every 3 minutes (180s) instead of 30s
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(180));
         loop {
             interval.tick().await;
             
@@ -821,6 +822,10 @@ async fn main() -> std::io::Result<()> {
 
             if let Ok(rows) = providers_res {
                 use sqlx::Row;
+                let mut ids: Vec<uuid::Uuid> = Vec::with_capacity(rows.len());
+                let mut latencies: Vec<i32> = Vec::with_capacity(rows.len());
+                let mut success_rates: Vec<rust_decimal::Decimal> = Vec::with_capacity(rows.len());
+
                 for row in rows {
                     let id: uuid::Uuid = row.get("id");
                     let name: String = row.get("name");
@@ -847,17 +852,28 @@ async fn main() -> std::io::Result<()> {
                         (latency, dec)
                     };
 
+                    ids.push(id);
+                    latencies.push(latency);
+                    success_rates.push(dec);
+                }
+
+                if !ids.is_empty() {
                     let _ = sqlx::query(
-                        "UPDATE payment_providers SET 
-                            avg_latency_ms = $1, 
-                            success_rate = $2, 
-                            last_health_check = NOW(),
-                            updated_at = NOW()
-                         WHERE id = $3"
+                        "UPDATE payment_providers AS p
+                         SET avg_latency_ms = u.latency,
+                             success_rate = u.success_rate,
+                             last_health_check = NOW(),
+                             updated_at = NOW()
+                         FROM (
+                             SELECT UNNEST($1::uuid[]) AS id,
+                                    UNNEST($2::int[]) AS latency,
+                                    UNNEST($3::numeric[]) AS success_rate
+                         ) AS u
+                         WHERE p.id = u.id"
                     )
-                    .bind(latency)
-                    .bind(dec)
-                    .bind(id)
+                    .bind(&ids)
+                    .bind(&latencies)
+                    .bind(&success_rates)
                     .execute(&health_check_pool)
                     .await;
                 }
