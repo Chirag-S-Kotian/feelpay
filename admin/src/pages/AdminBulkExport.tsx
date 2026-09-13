@@ -131,10 +131,12 @@ export default function AdminBulkExport() {
   };
 
   return (
-    <div className="page-container">
+    <div className="page fade-in">
       <div className="page-header">
-        <h1>Bulk Export</h1>
-        <p>Export platform-wide data for reconciliation</p>
+        <div>
+          <h1>Bulk Export</h1>
+          <p>Export platform-wide data for reconciliation, auditing, and financial settlement</p>
+        </div>
       </div>
 
       <div className="grid grid-2">
@@ -172,7 +174,7 @@ export default function AdminBulkExport() {
             </div>
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginTop: '16px' }}>
             <label>Entity Types</label>
             <div className="checkbox-group">
               {Object.entries(entityTypes).map(([type, selected]) => (
@@ -188,7 +190,7 @@ export default function AdminBulkExport() {
             </div>
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginTop: '16px' }}>
             <label>Business Account Filter</label>
             <select value={businessAccountFilter} onChange={e => setBusinessAccountFilter(e.target.value)}>
               <option value="all">All Business Accounts</option>
@@ -200,11 +202,11 @@ export default function AdminBulkExport() {
             </select>
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginTop: '16px', marginBottom: '20px' }}>
             <label>Format</label>
             <select value={format} onChange={e => setFormat(e.target.value as 'csv' | 'excel')}>
-              <option value="csv">CSV</option>
-              <option value="excel">Excel (.xlsx)</option>
+              <option value="csv">CSV (Comma-Separated Values)</option>
+              <option value="excel">Excel (.xlsx Spreadsheet)</option>
             </select>
           </div>
 
@@ -220,22 +222,22 @@ export default function AdminBulkExport() {
         <div className="card">
           <h2>Export History</h2>
           {jobsLoading ? (
-            <div className="loading">Loading...</div>
+            <div className="loading" style={{ padding: '24px 0' }}>Loading export jobs...</div>
           ) : jobs.length === 0 ? (
-            <div className="empty-state">
+            <div className="empty-state" style={{ padding: '32px 0' }}>
               <Calendar size={32} />
-              <p>No exports yet</p>
+              <p>No exports generated yet</p>
             </div>
           ) : (
-            <div className="table-container">
-              <table className="data-table">
+            <div className="table-card table-scroll" style={{ marginTop: '14px' }}>
+              <table>
                 <thead>
                   <tr>
                     <th>Job ID</th>
                     <th>Status</th>
                     <th>Records</th>
                     <th>Created</th>
-                    <th>Action</th>
+                    <th className="actions-cell">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,20 +245,21 @@ export default function AdminBulkExport() {
                     <tr key={job.job_id}>
                       <td className="mono" title={job.job_id}>{job.job_id.slice(0, 8)}…{job.job_id.slice(-5)}</td>
                       <td>
-                        <span className={`badge badge-${job.status}`}>
+                        <span className={`badge badge-${job.status} ${job.status}`}>
                           {job.status === 'processing' && <Clock size={12} />}
                           {job.status}
                         </span>
                       </td>
-                      <td>{job.record_count || '-'}</td>
+                      <td>{job.record_count ?? '-'}</td>
                       <td title={job.created_at}>{formatDateTime(job.created_at)}</td>
-                      <td>
+                      <td className="actions-cell">
                         {job.status === 'completed' && (
                           <button
-                            className="btn-small"
+                            type="button"
+                            className="btn-action-primary"
                             onClick={() => handleDownload(job.job_id)}
                           >
-                            <Download size={14} />
+                            <Download size={12} /> Download
                           </button>
                         )}
                       </td>

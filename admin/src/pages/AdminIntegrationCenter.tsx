@@ -123,6 +123,20 @@ const DEFAULT_FORM = {
 
 const label = (value: string) => value.replaceAll('_', ' ');
 
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date).replace(',', '');
+}
+
 export default function AdminIntegrationCenter() {
   const [providers, setProviders] = useState<IntegrationProvider[]>([]);
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
@@ -149,7 +163,7 @@ export default function AdminIntegrationCenter() {
       setLogs(logData.items || []);
       setSelectedId(current => current || providerData.items?.[0]?.id || '');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Integration center load failed');
+      setError(err instanceof Error ? err.message : 'Failed to load integration data');
     }
   };
 
@@ -157,88 +171,103 @@ export default function AdminIntegrationCenter() {
     void load();
   }, []);
 
-  const selected = providers.find(provider => provider.id === selectedId);
+  const selected = useMemo(
+    () => providers.find(provider => provider.id === selectedId) || providers[0],
+    [providers, selectedId]
+  );
+
   useEffect(() => {
-    if (!selected || selected.provider_kind !== 'bank_payout') {
+    if (selected?.provider_kind !== 'bank_payout') {
       setCallbacks([]);
       return;
     }
-    void apiRequest<{ items: BankPayoutCallback[] }>('GET', `/admin/integrations/providers/${selected.id}/bank-payout-callbacks`)
-      .then(response => setCallbacks(response.items))
+    void apiRequest<{ items: BankPayoutCallback[] }>('GET', '/admin/integrations/bank-payout/callbacks')
+      .then(data => setCallbacks(data.items || []))
       .catch(() => setCallbacks([]));
-  }, [selected?.id]);
-  const counts = useMemo(() => ({
-    enabled: providers.filter(provider => provider.status === 'enabled').length,
-    healthy: providers.filter(provider => provider.health_status === 'healthy').length,
-    liveBanks: providers.filter(provider => provider.provider_kind === 'bank_payout' && provider.environment === 'live').length,
-  }), [providers]);
+  }, [selected?.id, selected?.provider_kind]);
 
-  const configFromForm = () => ({
-    smtp_host: form.smtp_host || undefined,
-    smtp_port: form.smtp_port ? Number(form.smtp_port) : undefined,
-    smtp_user: form.smtp_user || undefined,
-    smtp_security: form.smtp_security || 'starttls',
-    from_name: form.from_name || undefined,
-    from_email: form.from_email || undefined,
-    reply_to: form.reply_to || undefined,
-    sender_id: form.sender_id || undefined,
-    route_type: form.route_type || undefined,
-    provider_code: form.provider_code || undefined,
-    base_url: form.base_url || undefined,
-    account_sid: form.account_sid || undefined,
-    from_number: form.from_number || undefined,
-    sms_base_url: form.sms_base_url || undefined,
-    sms_http_method: form.sms_http_method || undefined,
-    sms_headers_template: form.sms_headers_template ? JSON.parse(form.sms_headers_template) : undefined,
-    sms_body_template: form.sms_body_template ? JSON.parse(form.sms_body_template) : undefined,
-    callback_url: form.callback_url || undefined,
-    client_id: form.client_id || undefined,
-    client_key: form.client_key || undefined,
-    certificate_metadata: form.certificate_metadata || undefined,
-    key_metadata: form.key_metadata || undefined,
-    settlement_account_mapping: form.settlement_account_mapping || undefined,
-    reconciliation_source: form.reconciliation_source || undefined,
-    utr_reference_field: form.utr_reference_field || undefined,
-    template_mapping: form.template_map
-      ? Object.fromEntries(form.template_map.split(',').map(item => item.trim()).filter(Boolean).map(item => {
-        const [key, value] = item.split(':').map(part => part.trim());
-        return [key, value];
-      }))
-      : {},
-  });
+  const counts = useMemo(() => {
+    const enabled = providers.filter(provider => provider.status === 'enabled').length;
+    const healthy = providers.filter(provider => provider.health_status === 'healthy').length;
+    const liveBanks = providers.filter(provider => provider.provider_kind === 'bank_payout' && provider.environment === 'live' && provider.approved_for_live).length;
+    return { enabled, healthy, liveBanks };
+  }, [providers]);
 
   const saveProvider = async (event: FormEvent) => {
     event.preventDefault();
     setNotice('');
     setError('');
+    const templateMapping = form.template_map
+      .split(',')
+      .map(pair => pair.trim())
+      .filter(Boolean)
+      .reduce<Record<string, string>>((acc, pair) => {
+        const [k, v] = pair.split(':').map(part => part.trim());
+        if (k && v) acc[k] = v;
+        return acc;
+      }, {});
+
+    const payload = {
+      provider_kind: form.provider_kind,
+      name: form.name,
+      code: form.code,
+      environment: form.environment,
+      status: form.status,
+      is_default: form.is_default,
+      priority: Number(form.priority),
+      timeout_ms: Number(form.timeout_ms),
+      max_retries: Number(form.max_retries),
+      retry_backoff_ms: Number(form.retry_backoff_ms),
+      config: {
+        smtp_host: form.smtp_host,
+        smtp_port: form.smtp_port ? Number(form.smtp_port) : 587,
+        smtp_user: form.smtp_user,
+        smtp_security: form.smtp_security,
+        from_name: form.from_name,
+        from_email: form.from_email,
+        reply_to: form.reply_to,
+        sender_id: form.sender_id,
+        route_type: form.route_type,
+        provider_code: form.provider_code,
+        base_url: form.base_url,
+        account_sid: form.account_sid,
+        from_number: form.from_number,
+        sms_base_url: form.sms_base_url,
+        sms_http_method: form.sms_http_method,
+        sms_headers_template: form.sms_headers_template ? JSON.parse(form.sms_headers_template) : undefined,
+        sms_body_template: form.sms_body_template ? JSON.parse(form.sms_body_template) : undefined,
+        callback_url: form.callback_url,
+        client_id: form.client_id,
+        client_key: form.client_key,
+        certificate_metadata: form.certificate_metadata,
+        key_metadata: form.key_metadata,
+        settlement_account_mapping: form.settlement_account_mapping,
+        reconciliation_source: form.reconciliation_source,
+        utr_reference_field: form.utr_reference_field,
+        template_mapping: templateMapping,
+      },
+    };
+
     try {
-      const payload = {
-        provider_kind: form.provider_kind,
-        name: form.name,
-        code: form.code,
-        environment: form.environment,
-        status: form.status,
-        is_default: form.is_default,
-        priority: form.priority,
-        timeout_ms: form.timeout_ms,
-        max_retries: form.max_retries,
-        retry_backoff_ms: form.retry_backoff_ms,
-        config: configFromForm(),
-        live_enable_approved: false,
-      };
-      await apiRequest(editingId ? 'PUT' : 'POST', editingId ? `/admin/integrations/providers/${editingId}` : '/admin/integrations/providers', payload);
-      setNotice(editingId ? 'Provider updated.' : 'Provider created.');
+      if (editingId) {
+        await apiRequest('PUT', `/admin/integrations/providers/${editingId}`, payload);
+        setNotice('Provider updated successfully.');
+      } else {
+        await apiRequest('POST', '/admin/integrations/providers', payload);
+        setNotice('Provider added successfully.');
+      }
       setEditingId(null);
       setForm(DEFAULT_FORM);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      setError(err instanceof Error ? err.message : 'Save provider failed');
     }
   };
 
   const edit = (provider: IntegrationProvider) => {
-    const config = provider.config || {};
     setEditingId(provider.id);
+    setSelectedId(provider.id);
+    const config = (provider.config || {}) as Record<string, unknown>;
     setForm({
       ...DEFAULT_FORM,
       provider_kind: provider.provider_kind,
@@ -266,8 +295,8 @@ export default function AdminIntegrationCenter() {
       from_number: String(config.from_number || ''),
       sms_base_url: String(config.sms_base_url || ''),
       sms_http_method: String(config.sms_http_method || 'POST'),
-      sms_headers_template: JSON.stringify(config.sms_headers_template || { Authorization: 'Bearer {{token}}' }),
-      sms_body_template: JSON.stringify(config.sms_body_template || { to: '{{phone}}', message: '{{message}}', sender: '{{sender_id}}', template_id: '{{template_id}}' }),
+      sms_headers_template: config.sms_headers_template ? JSON.stringify(config.sms_headers_template, null, 2) : '',
+      sms_body_template: config.sms_body_template ? JSON.stringify(config.sms_body_template, null, 2) : '',
       callback_url: String(config.callback_url || ''),
       client_id: String(config.client_id || ''),
       client_key: String(config.client_key || ''),
@@ -276,7 +305,9 @@ export default function AdminIntegrationCenter() {
       settlement_account_mapping: String(config.settlement_account_mapping || ''),
       reconciliation_source: String(config.reconciliation_source || ''),
       utr_reference_field: String(config.utr_reference_field || ''),
-      template_map: Object.entries((config.template_mapping as Record<string, string>) || {}).map(([key, value]) => `${key}:${value}`).join(','),
+      template_map: Object.entries((config.template_mapping as Record<string, string>) || {})
+        .map(([k, v]) => `${k}:${v}`)
+        .join(', '),
     });
   };
 
@@ -293,10 +324,10 @@ export default function AdminIntegrationCenter() {
   };
 
   return (
-    <section className="page-shell">
+    <div className="page fade-in">
       <header className="page-header">
         <div>
-          <h1>Email & SMS Services</h1>
+          <h1>Email &amp; SMS Services</h1>
           <p>Internal provider setup for messaging, verification, payout, notifications, and future adapters</p>
         </div>
         <button className="btn-secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</button>
@@ -353,7 +384,7 @@ export default function AdminIntegrationCenter() {
               <Field label="UTR reference field"><input value={form.utr_reference_field} onChange={event => setForm({ ...form, utr_reference_field: event.target.value })} /></Field>
               <Field label="Template map"><input value={form.template_map} onChange={event => setForm({ ...form, template_map: event.target.value })} placeholder="otp:OTP01,payout:PAY01" /></Field>
             </div>
-            <label className="check-row">
+            <label className="check-row" style={{ marginTop: '14px', marginBottom: '14px' }}>
               <input type="checkbox" checked={form.is_default} onChange={event => setForm({ ...form, is_default: event.target.checked })} />
               Default provider
             </label>
@@ -366,14 +397,14 @@ export default function AdminIntegrationCenter() {
           <Field label="Selected provider">
             <Select value={selectedId} options={providers.map(provider => ({ label: `${provider.name} (${label(provider.provider_kind)})`, value: provider.id }))} onChange={setSelectedId} />
           </Field>
-          <div className="filter-grid">
+          <div className="filter-grid" style={{ marginTop: '12px' }}>
             <Field label="Secret name"><input value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
             <Field label="Secret value"><input type="password" value={secretValue} onChange={event => setSecretValue(event.target.value)} /></Field>
             <Field label="Test email"><input value={testRecipient} onChange={event => setTestRecipient(event.target.value)} /></Field>
             <Field label="Test phone"><input value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>
             <Field label="KYC test type"><Select value={kycVerificationType} options={['pan', 'gstin', 'business']} onChange={setKycVerificationType} /></Field>
           </div>
-          <div className="button-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px', marginBottom: '16px' }}>
+          <div className="button-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '16px', marginBottom: '18px' }}>
             <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret saved.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets`, { secret_name: secretName, value: secretValue }))}>Save secret</button>
             <button type="button" className="btn-secondary" onClick={() => selected && void run('Secret rotated.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/secrets/${secretName}/rotate`, { secret_name: secretName, value: secretValue }))}>Rotate secret</button>
             <button type="button" className="btn-secondary" onClick={() => selected && void run('Connection tested.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-connection`))}>Test connection</button>
@@ -384,15 +415,15 @@ export default function AdminIntegrationCenter() {
             <button type="button" className="btn-secondary" onClick={() => selected && void run('KYC test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-kyc`, { verification_type: kycVerificationType }))}>Test KYC</button>
             <button type="button" className="btn-secondary" onClick={() => selected && void run('Bank payout test completed.', () => apiRequest('POST', `/admin/integrations/providers/${selected.id}/test-bank-payout`))}><Landmark size={14} /> Test bank payout</button>
           </div>
-          <div className="table-wrap">
+          <div className="table-card table-scroll">
             <table>
               <thead><tr><th>Secret</th><th>Masked value</th><th>Rotated</th></tr></thead>
               <tbody>
                 {(selected?.masked_secrets || []).map(secret => (
                   <tr key={secret.secret_name}>
                     <td>{secret.secret_name}</td>
-                    <td>{secret.masked_value}</td>
-                    <td>{secret.rotated_at}</td>
+                    <td className="mono">{secret.masked_value}</td>
+                    <td>{formatDateTime(secret.rotated_at)}</td>
                   </tr>
                 ))}
                 {!selected?.masked_secrets?.length && <tr><td colSpan={3}>No secrets configured</td></tr>}
@@ -402,99 +433,113 @@ export default function AdminIntegrationCenter() {
         </section>
       </div>
 
-      <section className="table-wrap">
+      <div className="card" style={{ marginTop: '24px' }}>
         <h2>Notification Template Mapping</h2>
-        <table>
-          <thead><tr><th>Template key</th><th>Selected provider mapping</th></tr></thead>
-          <tbody>
-            {TEMPLATE_KEYS.map(key => (
-              <tr key={key}>
-                <td>{label(key)}</td>
-                <td>{String(((selected?.config.template_mapping as Record<string, string> | undefined) || {})[key] || '-')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Provider</th><th>Kind</th><th>Env</th><th>Status</th><th>Default</th>
-              <th>Priority</th><th>Health</th><th>Live approved</th><th>Last success</th><th>Last failure</th><th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {providers.map(provider => (
-              <tr key={provider.id}>
-                <td>{provider.name}</td>
-                <td>{label(provider.provider_kind)}</td>
-                <td>{provider.environment}</td>
-                <td>{provider.status}</td>
-                <td>{provider.is_default ? 'yes' : 'no'}</td>
-                <td>{provider.priority}</td>
-                <td>{provider.health_status}</td>
-                <td>{provider.approved_for_live ? 'yes' : 'no'}</td>
-                <td>{provider.last_success_at || '-'}</td>
-                <td>{provider.last_failure_at || '-'}</td>
-                <td>
-                  <button onClick={() => edit(provider)}>Edit</button>
-                  <button onClick={() => void run(provider.status === 'enabled' ? 'Provider disabled.' : 'Provider enabled.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/status`, { enabled: provider.status !== 'enabled', live_enable_approved: false }))}>{provider.status === 'enabled' ? 'Disable' : 'Enable'}</button>
-                  {provider.provider_kind === 'bank_payout' && provider.environment === 'live' && !provider.approved_for_live && (
-                    <button onClick={() => void run('Live bank provider approved.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/status`, { enabled: true, live_enable_approved: true }))}>Approve live</button>
-                  )}
-                  <button onClick={() => void run('Default provider updated.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/default`))}>Set default</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="table-wrap">
-        <h2>Integration Logs</h2>
-        <table>
-          <thead><tr><th>Action</th><th>Type</th><th>Status</th><th>Latency</th><th>Error</th><th>Actor</th><th>Time</th></tr></thead>
-          <tbody>
-            {logs.map(log => (
-              <tr key={log.id}>
-                <td>{log.action}</td>
-                <td>{log.request_type}</td>
-                <td>{log.status}</td>
-                <td>{log.latency_ms} ms</td>
-                <td>{log.error_code || log.error_message || '-'}</td>
-                <td>{log.actor_admin_id || '-'}</td>
-                <td>{log.created_at}</td>
-              </tr>
-            ))}
-            {!logs.length && <tr><td colSpan={7}>No integration logs yet</td></tr>}
-          </tbody>
-        </table>
-      </section>
-
-      {selected?.provider_kind === 'bank_payout' && (
-        <section className="table-wrap">
-          <h2>Bank Payout Callbacks</h2>
+        <div className="table-card table-scroll" style={{ marginTop: '14px' }}>
           <table>
-            <thead><tr><th>Event</th><th>Payout</th><th>Reference</th><th>Mapped status</th><th>Processing</th><th>Time</th></tr></thead>
+            <thead><tr><th>Template key</th><th>Selected provider mapping</th></tr></thead>
             <tbody>
-              {callbacks.map(callback => (
-                <tr key={callback.id}>
-                  <td>{callback.provider_event_id}</td>
-                  <td>{callback.payout_id || '-'}</td>
-                  <td>{callback.provider_reference || '-'}</td>
-                  <td>{callback.mapped_status}</td>
-                  <td>{callback.processing_status}</td>
-                  <td>{callback.created_at}</td>
+              {TEMPLATE_KEYS.map(key => (
+                <tr key={key}>
+                  <td>{label(key)}</td>
+                  <td><span className="var-pill">{String(((selected?.config.template_mapping as Record<string, string> | undefined) || {})[key] || '-')}</span></td>
                 </tr>
               ))}
-              {!callbacks.length && <tr><td colSpan={6}>No callback events recorded</td></tr>}
             </tbody>
           </table>
-        </section>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '24px' }}>
+        <h2>Integration Providers</h2>
+        <div className="table-card table-scroll" style={{ marginTop: '14px' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Provider</th><th>Kind</th><th>Env</th><th>Status</th><th>Default</th>
+                <th>Priority</th><th>Health</th><th>Live approved</th><th>Last success</th><th>Last failure</th><th className="actions-cell">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map(provider => (
+                <tr key={provider.id}>
+                  <td><strong>{provider.name}</strong></td>
+                  <td>{label(provider.provider_kind)}</td>
+                  <td><span className={`badge ${provider.environment === 'live' ? 'badge-completed success' : 'badge-pending pending'}`}>{provider.environment}</span></td>
+                  <td><span className={`badge ${provider.status === 'enabled' ? 'badge-completed success' : 'badge-failed failed'}`}>{provider.status}</span></td>
+                  <td><span className={`badge ${provider.is_default ? 'badge-completed success' : 'badge-failed failed'}`}>{provider.is_default ? 'yes' : 'no'}</span></td>
+                  <td>{provider.priority}</td>
+                  <td><span className={`badge ${provider.health_status === 'healthy' ? 'badge-completed success' : provider.health_status === 'unhealthy' ? 'badge-failed failed' : 'badge-pending pending'}`}>{provider.health_status}</span></td>
+                  <td><span className={`badge ${provider.approved_for_live ? 'badge-completed success' : 'badge-failed failed'}`}>{provider.approved_for_live ? 'yes' : 'no'}</span></td>
+                  <td>{formatDateTime(provider.last_success_at)}</td>
+                  <td>{formatDateTime(provider.last_failure_at)}</td>
+                  <td className="actions-cell">
+                    <div className="compact-actions">
+                      <button type="button" className="btn-action-primary" onClick={() => edit(provider)}>Edit</button>
+                      <button type="button" className="btn-action-secondary" onClick={() => void run(provider.status === 'enabled' ? 'Provider disabled.' : 'Provider enabled.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/status`, { enabled: provider.status !== 'enabled', live_enable_approved: false }))}>
+                        {provider.status === 'enabled' ? 'Disable' : 'Enable'}
+                      </button>
+                      {provider.provider_kind === 'bank_payout' && provider.environment === 'live' && !provider.approved_for_live && (
+                        <button type="button" className="btn-action-secondary" onClick={() => void run('Live bank provider approved.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/status`, { enabled: true, live_enable_approved: true }))}>Approve live</button>
+                      )}
+                      <button type="button" className="btn-action-secondary" onClick={() => void run('Default provider updated.', () => apiRequest('POST', `/admin/integrations/providers/${provider.id}/default`))}>Set default</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!providers.length && <tr><td colSpan={11}>No integration providers found</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '24px' }}>
+        <h2>Integration Logs</h2>
+        <div className="table-card table-scroll" style={{ marginTop: '14px' }}>
+          <table>
+            <thead><tr><th>Action</th><th>Type</th><th>Status</th><th>Latency</th><th>Error</th><th>Actor</th><th>Time</th></tr></thead>
+            <tbody>
+              {logs.map(log => (
+                <tr key={log.id}>
+                  <td><strong>{log.action}</strong></td>
+                  <td>{log.request_type}</td>
+                  <td><span className={`badge ${log.status === 'success' || log.status === 'completed' ? 'badge-completed success' : log.status === 'failed' || log.status === 'error' ? 'badge-failed failed' : 'badge-pending pending'}`}>{log.status}</span></td>
+                  <td>{log.latency_ms} ms</td>
+                  <td>{log.error_code || log.error_message || '-'}</td>
+                  <td>{log.actor_admin_id || '-'}</td>
+                  <td>{formatDateTime(log.created_at)}</td>
+                </tr>
+              ))}
+              {!logs.length && <tr><td colSpan={7}>No integration logs yet</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {selected?.provider_kind === 'bank_payout' && (
+        <div className="card" style={{ marginTop: '24px' }}>
+          <h2>Bank Payout Callbacks</h2>
+          <div className="table-card table-scroll" style={{ marginTop: '14px' }}>
+            <table>
+              <thead><tr><th>Event</th><th>Payout</th><th>Reference</th><th>Mapped status</th><th>Processing</th><th>Time</th></tr></thead>
+              <tbody>
+                {callbacks.map(callback => (
+                  <tr key={callback.id}>
+                    <td>{callback.provider_event_id}</td>
+                    <td>{callback.payout_id || '-'}</td>
+                    <td>{callback.provider_reference || '-'}</td>
+                    <td><span className={`badge ${callback.mapped_status === 'success' ? 'badge-completed success' : callback.mapped_status === 'failed' ? 'badge-failed failed' : 'badge-pending pending'}`}>{callback.mapped_status}</span></td>
+                    <td><span className={`badge ${callback.processing_status === 'processed' ? 'badge-completed success' : callback.processing_status === 'failed' ? 'badge-failed failed' : 'badge-pending pending'}`}>{callback.processing_status}</span></td>
+                    <td>{formatDateTime(callback.created_at)}</td>
+                  </tr>
+                ))}
+                {!callbacks.length && <tr><td colSpan={6}>No callback events recorded</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
-    </section>
+    </div>
   );
 }
 

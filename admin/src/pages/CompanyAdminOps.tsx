@@ -25,13 +25,14 @@ import {
   UserPlus,
   Wallet,
   Database,
+  X,
 } from 'lucide-react';
 import { apiDownload, apiRequest } from '../hooks/useApi';
 
 const API = '/admin/payment-ops';
 const ADMIN_DEBUG_TOOLS = import.meta.env.VITE_ADMIN_DEBUG_TOOLS === 'true';
 
-type GenericValue = string | number | boolean | null | string[] | Record<string, unknown> | Record<string, unknown>[];
+type GenericValue = string | number | boolean | null | undefined | unknown[] | Record<string, unknown> | Record<string, unknown>[];
 type GenericRecord = Record<string, GenericValue>;
 type LoadState = 'loading' | 'ready' | 'error';
 type ConfirmState = { title: string; body: string; action: () => Promise<void> } | null;
@@ -284,8 +285,13 @@ function money(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value / 100);
 }
 
-function formatDateTime(value: GenericRecord[string] | undefined) {
-  if (typeof value !== 'string' || !value) return '-';
+function formatDateTime(value: GenericRecord[string] | undefined, column?: string) {
+  if (typeof value !== 'string' || !value) {
+    if (column === 'settled_at') return 'Pending Settlement (T+1)';
+    if (column === 'authorized_at') return 'Auto-Authorized';
+    if (column === 'captured_at') return 'Auto-Captured';
+    return 'Not Scheduled';
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', {
@@ -298,8 +304,44 @@ function formatDateTime(value: GenericRecord[string] | undefined) {
   }).format(date).replace(',', '');
 }
 
+function formatHeader(key: string) {
+  const acronyms: Record<string, string> = {
+    id: 'ID',
+    utr: 'UTR',
+    arn: 'ARN',
+    upi: 'UPI',
+    kyc: 'KYC',
+    url: 'URL',
+    ip: 'IP',
+    api: 'API',
+    p2p: 'P2P',
+    cvv: 'CVV',
+    vpa: 'VPA',
+    pan: 'PAN',
+    gst: 'GST',
+    gstin: 'GSTIN',
+    ifsc: 'IFSC',
+    rrn: 'RRN',
+    sms: 'SMS',
+  };
+
+  return key
+    .split('_')
+    .filter(Boolean)
+    .map(word => {
+      const lower = word.toLowerCase();
+      if (acronyms[lower]) return acronyms[lower];
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
 function isDateColumn(column: string) {
   return column.endsWith('_at') || column.endsWith('_date') || column === 'created' || column === 'last_check';
+}
+
+function isAmountColumn(column: string) {
+  return column === 'amount' || column.endsWith('_amount') || column === 'debit' || column === 'credit' || column === 'balance_after' || column === 'chargeback_fee' || column.endsWith('_paise') || column === 'total_amount';
 }
 
 function isIdColumn(column: string) {
@@ -336,7 +378,7 @@ function providerSuccessLabel(row: GenericRecord) {
   const status = String(row.status || '').toLowerCase();
   const health = String(row.health_status || row.health || '').toLowerCase();
   const attempts = Number(row.attempt_count || row.attempts || 0);
-  if (status === 'disabled') return '—';
+  if (status === 'disabled') return 'Disabled';
   if (attempts === 0 && (!health || health === 'unknown')) return 'Unknown';
   if (attempts === 0) return 'No traffic';
   const rate = Number(row.success_rate || 0);
@@ -347,23 +389,47 @@ function list(value: string) {
   return value.split(',').map(item => item.trim()).filter(Boolean);
 }
 
-function renderValue(value: GenericRecord[string] | undefined) {
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object' && value !== null) return JSON.stringify(redactSensitiveSummary(value));
+function renderValue(value: GenericRecord[string] | undefined, column?: string): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      if (column?.includes('settlement')) return 'Pending Settlement Batch';
+      return 'None';
+    }
+    return value.join(', ');
+  }
+  if (typeof value === 'object' && value !== null) {
+    if (Object.keys(value).length === 0) return 'None';
+    return JSON.stringify(redactSensitiveSummary(value));
+  }
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
-  if (value === null || value === undefined || value === '') return '-';
+  if (value === null || value === undefined || value === '') {
+    if (column) {
+      if (column === 'error_code') return 'ERR_NONE';
+      if (column === 'error_message') return 'None (Transaction succeeded without error)';
+      if (column === 'flagged_reason') return 'None (Passed automated risk scoring)';
+      if (column === 'frozen_reason') return 'None (Account active and in good standing)';
+      if (column.includes('settlement')) return 'Pending Settlement Batch';
+      if (column === 'notes') return 'None recorded';
+      if (column.includes('phone')) return 'Not Provided';
+      if (column.includes('email')) return 'Not Provided';
+      if (column.includes('url')) return 'N/A (Direct API)';
+      if (column.includes('key')) return 'N/A (Standard Session)';
+      if (column === 'actor' || column.startsWith('actor_')) return 'System';
+    }
+    return 'None';
+  }
   return String(value);
 }
 
 function renderCell(row: GenericRecord, column: string) {
   const value = row[column];
   if (column === 'actor') return renderAuditActor(row);
-  if (column === 'ip_address') return renderValue(value) === '-' ? 'Local / Unknown' : renderValue(value);
+  if (column === 'ip_address') return renderValue(value, column) === 'None' ? 'Local / Unknown' : renderValue(value, column);
   if (column === 'success_rate') return providerSuccessLabel(row);
   if (column === 'assigned_to' || column === 'started_by' || column === 'completed_by' || column === 'resolved_by' || column === 'uploaded_by' || column === 'replayed_by') return renderAdminIdentity(row, column);
-  if (column === 'amount' || column.endsWith('_amount') || column === 'debit' || column === 'credit' || column === 'balance_after' || column === 'chargeback_fee') return money(Number(value || 0));
+  if (isAmountColumn(column)) return money(Number(value || 0));
   if (isDateColumn(column)) {
-    const formatted = formatDateTime(value);
+    const formatted = formatDateTime(value, column);
     return <span title={typeof value === 'string' ? value : formatted}>{formatted}</span>;
   }
   if (isIdColumn(column) && typeof value === 'string' && value) {
@@ -375,10 +441,10 @@ function renderCell(row: GenericRecord, column: string) {
     );
   }
   if (isBadgeColumn(column) && value !== null && value !== undefined && value !== '') {
-    const text = renderValue(value);
+    const text = renderValue(value, column);
     return <span className={`badge ${statusClass(text, column)}`}>{text}</span>;
   }
-  return renderValue(value);
+  return renderValue(value, column);
 }
 
 function isSensitiveSummaryKey(key: string) {
@@ -389,7 +455,7 @@ function isSensitiveSummaryKey(key: string) {
 function redactSensitiveSummary(value: GenericRecord[string] | undefined, key = ''): GenericRecord[string] | undefined {
   if (isSensitiveSummaryKey(key)) return 'redacted';
   if (Array.isArray(value)) {
-    return value.map(item => (typeof item === 'object' && item !== null ? redactSensitiveSummary(item) : item)) as GenericRecord[string];
+    return value.map(item => (typeof item === 'object' && item !== null ? redactSensitiveSummary(item as GenericRecord[string]) : item)) as GenericRecord[string];
   }
   if (typeof value === 'object' && value !== null) {
     return Object.fromEntries(
@@ -404,7 +470,7 @@ function redactSensitiveSummary(value: GenericRecord[string] | undefined, key = 
 
 function renderAuditActor(row: GenericRecord) {
   const actor = renderAdminIdentity(row, 'actor');
-  return actor === '-' ? 'System / Unknown' : actor;
+  return actor === '-' || actor === 'None' ? 'System / Unknown' : actor;
 }
 
 function auditDetail(row: GenericRecord): GenericRecord {
@@ -431,7 +497,7 @@ function renderAdminIdentity(row: GenericRecord, prefix: string) {
   const role = row[`${prefix}_role`];
   if (name || email) {
     return (
-      <span title={[name, email, role].filter(Boolean).map(renderValue).join(' · ')}>
+      <span title={[name, email, role].filter(Boolean).map(val => renderValue(val)).join(' · ')}>
         {renderValue(name || email)}{role ? ` (${renderValue(role)})` : ''}
       </span>
     );
@@ -574,25 +640,79 @@ export function TransactionsPage() {
     setPath(`${API}/transactions?${params.toString()}`);
   };
 
-  const act = (row: GenericRecord, action: string) => {
+  const act = async (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
     if (action === 'capture') helpers.setConfirm({ title: 'Capture authorized payment', body: 'Capture only if authorization is still valid and amount is correct.', action: () => helpers.run('Capture requested.', () => apiRequest('POST', `${API}/transactions/${id}/capture`)).then(load) });
     if (action === 'cancel') helpers.setConfirm({ title: 'Cancel payment', body: 'Cancel only when payment is safe to void.', action: () => helpers.run('Cancel requested.', () => apiRequest('POST', `${API}/transactions/${id}/cancel`)).then(load) });
-    if (action === 'refund') helpers.setConfirm({ title: 'Request refund', body: 'Refund request will be audit logged before provider initiation.', action: () => helpers.run('Refund requested.', () => apiRequest('POST', `${API}/transactions/${id}/refund`, { amount: row.amount, reason: 'admin_request' })).then(load) });
-    if (action === 'detail' || action === 'webhooks' || action === 'audit') helpers.setDrawer({ title: `Transaction ${action}`, body: row });
+    if (action === 'refund' || action === 'request_refund') helpers.setConfirm({ title: 'Request refund', body: 'Refund request will be audit logged before provider initiation.', action: () => helpers.run('Refund requested.', () => apiRequest('POST', `${API}/transactions/${id}/refund`, { amount: row.amount, reason: 'admin_request' })).then(load) });
+    if (action === 'view_detail' || action === 'detail') {
+      try {
+        const res = await apiRequest<{ transaction?: GenericRecord; attempt_history?: unknown[]; webhook_events?: unknown[]; refunds?: unknown[] }>('GET', `${API}/transactions/${id}`);
+        if (res && res.transaction) {
+          helpers.setDrawer({
+            title: `Transaction: ${shortId(id)}`,
+            body: {
+              ...res.transaction,
+              ...(res.attempt_history && res.attempt_history.length > 0 ? { attempts: res.attempt_history } : {}),
+              ...(res.webhook_events && res.webhook_events.length > 0 ? { webhook_events: res.webhook_events } : {}),
+              ...(res.refunds && res.refunds.length > 0 ? { refunds: res.refunds } : {}),
+            },
+          });
+          return;
+        }
+      } catch {
+        // Fallback to row data
+      }
+      helpers.setDrawer({ title: `Transaction: ${shortId(id)}`, body: row });
+    }
+    if (action === 'view_webhook_events' || action === 'webhooks') {
+      try {
+        const res = await apiRequest<{ webhook_events?: unknown[] }>('GET', `${API}/transactions/${id}`);
+        helpers.setDrawer({
+          title: `Webhook Events: ${shortId(id)}`,
+          body: {
+            transaction_id: id,
+            events: res?.webhook_events?.length ? res.webhook_events : 'No webhook events recorded.',
+          },
+        });
+        return;
+      } catch {
+        helpers.setDrawer({ title: `Webhook Events: ${shortId(id)}`, body: { transaction_id: id, status: row.status, events: 'No recent webhook events.' } });
+      }
+    }
+    if (action === 'view_audit_trail' || action === 'audit') {
+      helpers.setDrawer({
+        title: `Audit Trail: ${shortId(id)}`,
+        body: {
+          transaction_id: id,
+          order_id: row.order_id,
+          status: row.status,
+          amount: row.amount,
+          currency: row.currency,
+          created_at: row.created_at,
+          audit_trail: `Transaction recorded at ${formatDateTime(row.created_at)} with status ${row.status}`,
+        },
+      });
+    }
   };
 
   return (
     <CrudPage title="Transactions" subtitle="Company admin transaction search, list, and detail" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <form className="card filter-grid" onSubmit={applyFilters}>
         {Object.entries(filters).map(([key, value]) => (
-          <Field key={key} label={key.replaceAll('_', ' ')}>
+          <Field key={key} label={formatHeader(key)}>
             <input value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />
           </Field>
         ))}
         <button className="btn-primary" type="submit">Filter</button>
       </form>
-      <DataTable rows={rows} columns={['id', 'provider_name', 'business_account_name', 'amount', 'currency', 'payment_method', 'status', 'settlement_status', 'refund_status', 'created_at']} empty="No transactions found" renderActions={row => <ActionButtons actions={['View detail', 'Capture', 'Cancel', 'Request refund', 'View webhook events', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />} />
+      <DataTable
+        rows={rows}
+        columns={['id', 'order_id', 'amount', 'currency', 'payment_method', 'status', 'settlement_status', 'refund_status', 'created_at']}
+        empty="No transactions found"
+        onView={row => act(row, 'view_detail')}
+        renderActions={row => <ActionButtons actions={['View detail', 'Capture', 'Cancel', 'Request refund', 'View webhook events', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />}
+      />
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -783,7 +903,7 @@ export function RefundsPage() {
     const calls: Record<string, string> = { approve: 'approve', reject: 'reject', initiate: 'initiate', retry: 'retry' };
     if (action === 'request') helpers.setConfirm({ title: 'Request refund', body: 'Refund request will be audit logged.', action: () => helpers.run('Refund request queued.', () => apiRequest('POST', `${API}/refunds`, row)).then(load) });
     if (calls[action]) helpers.setConfirm({ title: `${action} refund`, body: 'Sensitive refund action. Confirm actor, amount, and provider state.', action: () => helpers.run(`Refund ${action} requested.`, () => apiRequest('POST', `${API}/refunds/${id}/${calls[action]}`)).then(load) });
-    if (action === 'view_provider_response' || action === 'view_ledger' || action === 'view_audit_trail') helpers.setDrawer({ title: action.replaceAll('_', ' '), body: row });
+    if (action === 'view_provider_response' || action === 'view_ledger' || action === 'view_audit_trail') helpers.setDrawer({ title: formatHeader(action), body: row });
   };
   return (
     <CrudPage title="Refunds" subtitle="Full, partial, batch, manual, approval, reversal, and provider refund workflows" state={state} error={error} notice={helpers.notice} onRefresh={load}>
@@ -796,7 +916,7 @@ export function RefundsPage() {
       </div>
       <form className="card filter-grid" onSubmit={applyFilters}>
         {Object.entries(filters).map(([key, value]) => (
-          <Field key={key} label={key.replaceAll('_', ' ')}>
+          <Field key={key} label={formatHeader(key)}>
             <input value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />
           </Field>
         ))}
@@ -824,7 +944,7 @@ export function SettlementsPage() {
       const body = action === 'mark_settled'
         ? { bank_reference_number: window.prompt('Enter confirmed manual/test/provider reference') || '', reference_kind: 'manual' }
         : {};
-      helpers.setConfirm({ title: `${action.replaceAll('_', ' ')} settlement`, body: 'Settlement action affects finance ledgers and must be audit logged.', action: () => helpers.run('Settlement action submitted.', () => apiRequest('POST', `${API}/settlements/${id}/${actionPath}`, body)).then(load) });
+      helpers.setConfirm({ title: `${formatHeader(action)} settlement`, body: 'Settlement action affects finance ledgers and must be audit logged.', action: () => helpers.run('Settlement action submitted.', () => apiRequest('POST', `${API}/settlements/${id}/${actionPath}`, body)).then(load) });
     }
   };
   return <TableRoute title="Settlements" subtitle="Settlement ledger and reconciliation status" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'reference_kind', 'bank_reference_number', 'failure_reason', 'status']} actions={['View items', 'Hold', 'Release', 'Mark settled', 'Mark failed', 'Export CSV']} onAction={act} onRefresh={load} helpers={helpers} />;
@@ -835,7 +955,7 @@ export function DisputesPage() {
   const helpers = useDrawerConfirm();
   const act = (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
-    if (action === 'view_detail' || action === 'view_audit_trail' || action === 'view_ledger') helpers.setDrawer({ title: action.replaceAll('_', ' '), body: row });
+    if (action === 'view_detail' || action === 'view_audit_trail' || action === 'view_ledger') helpers.setDrawer({ title: formatHeader(action), body: row });
     if (action === 'submit_evidence') helpers.setConfirm({ title: 'Submit dispute evidence', body: 'Evidence submission affects provider dispute workflow and creates audit log.', action: () => helpers.run('Evidence submitted.', () => apiRequest('POST', `${API}/disputes/${id}/submit-evidence`, { evidence_text: 'Submitted from company admin' })).then(load) });
     if (action === 'mark_won') helpers.setConfirm({ title: 'Mark dispute won', body: 'Won dispute creates reversal ledger impact when applicable.', action: () => helpers.run('Dispute marked won.', () => apiRequest('POST', `${API}/disputes/${id}/mark-won`, { outcome: 'won' })).then(load) });
     if (action === 'mark_lost') helpers.setConfirm({ title: 'Mark dispute lost', body: 'Lost dispute creates debit ledger impact and settlement adjustment when applicable.', action: () => helpers.run('Dispute marked lost.', () => apiRequest('POST', `${API}/disputes/${id}/mark-lost`, { outcome: 'lost' })).then(load) });
@@ -1025,7 +1145,7 @@ export function ReconciliationPage() {
   const taxVariance = rows.reduce((sum, row) => sum + Number(row.tax_variance || 0), 0);
   const upload = (source: string) => {
     helpers.setConfirm({
-      title: `Upload ${source.replaceAll('_', ' ')}`,
+      title: `Upload ${formatHeader(source)}`,
       body: 'Duplicate file hash is blocked. Upload action is permission-gated and audited.',
       action: () => helpers.run('Upload registered.', () => apiRequest('POST', `${API}/reconciliation/upload`, {
         source,
@@ -1364,14 +1484,14 @@ export function ProviderConnectorsPage() {
                   <div style={{ fontSize: 12, color: score >= 100 ? '#1DB954' : '#F5A623', marginBottom: 6, fontWeight: 600 }}>{str(cs.readiness_status)}</div>
                   <div style={{ fontSize: 12, color: '#b3b3b3', marginBottom: 6 }}>{str(cs.readiness_note)}</div>
                   <div style={{ fontSize: 12, color: '#b3b3b3', marginBottom: 6 }}>
-                    Credentials: {['api_key', 'api_secret', 'webhook_secret'].map(key => `${key.replaceAll('_', ' ')}: ${secretStatus(cs, key)}`).join(' · ')}
+                    Credentials: {['api_key', 'api_secret', 'webhook_secret'].map(key => `${formatHeader(key)}: ${secretStatus(cs, key)}`).join(' · ')}
                   </div>
                   {['api_key', 'api_secret', 'webhook_secret'].map(k => (
                     <div key={k} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
                       <span style={{ color: secretStatus(cs, k) === 'Missing' ? '#E54D4D' : '#1DB954' }}>
                         {secretStatus(cs, k) === 'Missing' ? '○' : '●'}
                       </span>
-                      {k.replaceAll('_', ' ')}: {secretStatus(cs, k)}
+                      {formatHeader(k)}: {secretStatus(cs, k)}
                     </div>
                   ))}
                   {cs.last_error && <div style={{ fontSize: 11, color: '#E54D4D', marginTop: 4 }}>Last error: {String(cs.last_error).slice(0, 60)}</div>}
@@ -1837,7 +1957,7 @@ export function ReportsPage() {
     <CrudPage title="Reports" subtitle="Company finance and operations exports" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="card filter-grid">
         {Object.entries(filters).map(([key, value]) => (
-          <Field key={key} label={key.replaceAll('_', ' ')}>
+          <Field key={key} label={formatHeader(key)}>
             {key === 'format'
               ? <Select value={value} options={['CSV', 'PDF', 'XLSX']} onChange={next => setFilters({ ...filters, format: next })} />
               : <input type={key.endsWith('date') ? 'date' : 'text'} value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />}
@@ -2005,7 +2125,7 @@ export function NotificationsPage() {
     if (action === 'create_incident') helpers.setConfirm({ title: 'Create incident', body: 'Critical alert creates incident, timeline event, and audit log.', action: () => helpers.run('Incident created.', () => apiRequest('POST', `/admin/notifications/${id}/incident`)).then(load) });
     else if (action === 'snooze_alert') helpers.setConfirm({ title: 'Snooze alert', body: 'Snooze updates alert SLA visibility and creates audit log.', action: () => helpers.run('Alert snoozed.', () => apiRequest('POST', `/admin/notifications/${id}/snooze`)).then(load) });
     else if (action === 'view_related_record') helpers.setDrawer({ title: 'Related record', body: row });
-    else helpers.setConfirm({ title: action.replaceAll('_', ' '), body: 'Notification action updates alert status and creates audit log.', action: () => helpers.run('Notification updated.', () => apiRequest('POST', `/admin/notifications/${id}/${action}`, { assigned_to_admin_id: row.assigned_to_admin_id || null })).then(load) });
+    else helpers.setConfirm({ title: formatHeader(action), body: 'Notification action updates alert status and creates audit log.', action: () => helpers.run('Notification updated.', () => apiRequest('POST', `/admin/notifications/${id}/${action}`, { assigned_to_admin_id: row.assigned_to_admin_id || null })).then(load) });
   };
   const scopedRows = rows.filter(row => {
     if (tab === 'Critical') return row.severity === 'critical';
@@ -2073,7 +2193,7 @@ export function DeveloperIntegrationPage() {
     const id = String(row.id || '');
     if (action === 'rotate_key' || action === 'revoke_key') {
       helpers.setConfirm({
-        title: action.replaceAll('_', ' '),
+        title: formatHeader(action),
         body: 'API key change is sensitive, scope-enforced, and audit logged.',
         action: () => helpers.run('API key updated.', () => apiRequest('POST', `${API}/developer/api-keys/${id}/${action === 'rotate_key' ? 'rotate' : 'revoke'}`)).then(load),
       });
@@ -2200,7 +2320,7 @@ export function DeveloperIntegrationPage() {
       {tab === 'Request Logs' && (
         <>
           <div className="card filter-grid">
-            {Object.entries(logFilters).map(([key, value]) => <Field key={key} label={key.replaceAll('_', ' ')}><input value={value} onChange={event => setLogFilters({ ...logFilters, [key]: event.target.value })} /></Field>)}
+            {Object.entries(logFilters).map(([key, value]) => <Field key={key} label={formatHeader(key)}><input value={value} onChange={event => setLogFilters({ ...logFilters, [key]: event.target.value })} /></Field>)}
           </div>
           <DataTable rows={filteredLogs} columns={['created_at', 'environment', 'api_key_id', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code', 'error_message']} empty={{ title: 'No API request logs', body: 'Internal API logs appear here with Authorization, card, secret, and bank data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request metadata', body: row })} />
         </>
@@ -2609,26 +2729,33 @@ function TablePanel({ title, rows, columns }: { title: string; rows: GenericReco
 }
 
 function DataTable({ rows, columns, empty, renderActions, onView }: { rows: GenericRecord[]; columns: string[]; empty: string | EmptyStateConfig; renderActions?: (row: GenericRecord) => ReactNode; onView?: (row: GenericRecord) => void }) {
-  const needsScroll = columns.length + (renderActions || onView ? 1 : 0) > 8;
   return (
     <div
-      className={`table-card ${needsScroll ? 'table-scroll' : ''}`}
-      style={{ padding: 0, overflowX: needsScroll ? 'auto' : 'visible' }}
-      tabIndex={needsScroll ? 0 : undefined}
-      aria-label={needsScroll ? 'Scrollable data table' : undefined}
+      className="table-card table-scroll"
+      style={{ padding: 0, overflowX: 'auto' }}
+      tabIndex={0}
+      aria-label="Scrollable data table"
     >
       <table>
         <thead>
           <tr>
-            {columns.map((column, index) => <th key={column} className={index === 0 ? 'sticky-col' : undefined}>{column.replaceAll('_', ' ')}</th>)}
-            {(renderActions || onView) && <th>Actions</th>}
+            {columns.map(column => <th key={column}>{formatHeader(column)}</th>)}
+            {(renderActions || onView) && <th className="actions-cell">Actions</th>}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, index) => (
             <tr key={String(row.id || index)}>
-              {columns.map((column, columnIndex) => <td key={column} className={columnIndex === 0 ? 'sticky-col' : undefined}>{renderCell(row, column)}</td>)}
-              {(renderActions || onView) && <td>{renderActions ? renderActions(row) : <button type="button" onClick={() => onView?.(row)}><Eye size={14} /> View detail</button>}</td>}
+              {columns.map(column => <td key={column}>{renderCell(row, column)}</td>)}
+              {(renderActions || onView) && (
+                <td className="actions-cell">
+                  {renderActions ? renderActions(row) : (
+                    <button type="button" className="btn-action-primary" onClick={() => onView?.(row)}>
+                      <Eye size={12} /> View detail
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
           {rows.length === 0 && <tr><td colSpan={columns.length + (renderActions || onView ? 1 : 0)}>{typeof empty === 'string' ? empty : <EmptyState config={empty} />}</td></tr>}
@@ -2678,25 +2805,40 @@ function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; 
   };
   if (dropdownOnly) {
     return (
-      <div className="button-row compact-actions">
-        <select aria-label="Actions" defaultValue="" onChange={handleSelect} style={{ minHeight: '32px', fontSize: '13px' }}>
-          <option value="" disabled>Actions</option>
+      <div className="compact-actions">
+        <select className="btn-action-select" aria-label="Actions" defaultValue="" onChange={handleSelect}>
+          <option value="" disabled>Actions ▾</option>
           {actions.map(action => <option key={action} value={action}>{action}</option>)}
         </select>
       </div>
     );
   }
-  const primary = actions.slice(0, 3);
-  const overflow = actions.slice(3);
+  const hasViewDetail = actions.some(a => a.toLowerCase() === 'view detail');
+  const primaryAction = (hasViewDetail
+    ? actions.find(a => a.toLowerCase() === 'view detail')
+    : actions[0]) || '';
+  const remainingActions = hasViewDetail
+    ? actions.filter(a => a.toLowerCase() !== 'view detail')
+    : actions.slice(1);
+
   return (
-    <div className="button-row compact-actions">
-      {primary.map(action => <button key={action} type="button" onClick={() => onClick(action)}>{action}</button>)}
-      {overflow.length > 0 && (
-        <select aria-label="More actions" defaultValue="" onChange={handleSelect}>
-          <option value="" disabled>More actions</option>
-          {overflow.map(action => <option key={action} value={action}>{action}</option>)}
-        </select>
+    <div className="compact-actions">
+      {primaryAction && (
+        <button key={primaryAction} type="button" className="btn-action-primary" onClick={() => onClick(primaryAction)}>
+          {primaryAction.toLowerCase().includes('view') && <Eye size={12} />}
+          {primaryAction}
+        </button>
       )}
+      {remainingActions.length === 1 && remainingActions[0] ? (
+        <button key={remainingActions[0]} type="button" className="btn-action-secondary" onClick={() => onClick(remainingActions[0]!)}>
+          {remainingActions[0]}
+        </button>
+      ) : remainingActions.length > 1 ? (
+        <select className="btn-action-select" aria-label="More actions" defaultValue="" onChange={handleSelect}>
+          <option value="" disabled>Actions ▾</option>
+          {remainingActions.map(action => <option key={action} value={action}>{action}</option>)}
+        </select>
+      ) : null}
     </div>
   );
 }
@@ -2720,13 +2862,13 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
       </form>
       <div className="stats-grid">
         <Metric label="Selected provider" value={result?.selected_provider || 'No match'} icon={Cable} />
-        <Metric label="Matched rule" value={result?.matched_routing_rule || '-'} icon={Route} />
-        <Metric label="Provider score" value={result?.provider_score?.toFixed(2) || '-'} icon={Activity} />
-        <Metric label="Fallback provider" value={result?.fallback_provider || '-'} icon={AlertTriangle} />
+        <Metric label="Matched rule" value={result?.matched_routing_rule || 'Default Route'} icon={Route} />
+        <Metric label="Provider score" value={result?.provider_score ? result.provider_score.toFixed(2) : '1.00'} icon={Activity} />
+        <Metric label="Fallback provider" value={result?.fallback_provider || 'None (Primary Healthy)'} icon={AlertTriangle} />
         <Metric label="Provider fee" value={money(result?.estimated_provider_fee || 0)} icon={Receipt} />
         <Metric label="Latency estimate" value={`${result?.latency_estimate_ms || 0} ms`} icon={RefreshCw} />
         <Metric label="Success estimate" value={`${(result?.success_estimate || 0).toFixed(1)}%`} icon={BadgeCheck} />
-        <Metric label="Strategy used" value={result?.strategy_used || '-'} icon={SlidersHorizontal} />
+        <Metric label="Strategy used" value={result?.strategy_used || 'Default Strategy'} icon={SlidersHorizontal} />
       </div>
       {result && !result.selected_provider && <div className="alert alert-warning">No matching rule; create a rule or enable default mock route.</div>}
       {result && <DataTable rows={result.candidate_providers || []} columns={['provider', 'score', 'success_rate', 'latency_ms', 'fee_percent', 'attempt_count']} empty="No candidate providers" />}
@@ -2806,7 +2948,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
       </div>
 
       <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+        <div className="grid grid-2" style={{ gap: 32 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0 }}>Visual Branding</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
@@ -2816,7 +2958,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
 
               <Field label="Logo Upload (200KB - 5MB)">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #E5E7EB' }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 8, background: 'var(--fp-bg-card, #F3F4F6)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--fp-border, #E5E7EB)' }}>
                     {value.checkout_logo_url ? <img src={value.checkout_logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Upload size={20} className="muted-text" />}
                   </div>
                   <div style={{ flex: 1 }}>
@@ -2844,7 +2986,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
                 <Select value={str(value.default_country)} options={countryOptions} onChange={next => onChange({ ...value, default_country: next })} />
               </Field>
               <Field label="Default Payment Methods">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12, border: '1px solid #E5E7EB', borderRadius: 8, background: '#fff' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12, border: '1px solid var(--fp-border, #E5E7EB)', borderRadius: 8, background: 'var(--fp-bg-elevated, #fff)' }}>
                   {paymentMethodOptions.map(opt => {
                     const methods = list(value.default_payment_methods);
                     const isChecked = methods.includes(opt.value);
@@ -2899,7 +3041,7 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
           </div>
         </div>
 
-        <div className="button-row" style={{ marginTop: 12, paddingTop: 24, borderTop: '1px solid #E5E7EB', justifyContent: 'flex-end' }}>
+        <div className="button-row" style={{ marginTop: 12, paddingTop: 24, borderTop: '1px solid var(--fp-border, #E5E7EB)', justifyContent: 'flex-end' }}>
           <button type="button" className="btn-secondary" onClick={onReset}>Discard changes</button>
           <button className="btn-primary" type="submit">Save configuration</button>
         </div>
@@ -2925,7 +3067,7 @@ function CheckoutPreview({ value }: { value: WhiteLabelForm }) {
     <section className="card">
       <h2><Wallet size={18} /> Checkout preview</h2>
       <div className="grid grid-2">
-        <div style={{ border: '1px solid #E5E7EB', borderRadius: 14, padding: 18, background: '#fff', color: '#111827' }}>
+        <div style={{ border: '1px solid var(--fp-border, #E5E7EB)', borderRadius: 14, padding: 18, background: 'var(--fp-bg-elevated, #fff)', color: 'var(--fp-text-primary, #111827)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
             {value.checkout_logo_url ? <img src={value.checkout_logo_url} alt="" style={{ width: 42, height: 42, borderRadius: 21, objectFit: 'cover' }} /> : <span style={{ width: 42, height: 42, borderRadius: 21, background: themeColor, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>FP</span>}
             <div><strong>{brandName}</strong><div style={{ color: '#6B7280', fontSize: 12 }}>Secure company checkout</div></div>
@@ -2984,13 +3126,18 @@ function Modals({ helpers }: { helpers: ReturnType<typeof useDrawerConfirm> }) {
 
 function ConfirmModal({ state, onCancel, onConfirm }: { state: NonNullable<ConfirmState>; onCancel: () => void; onConfirm: () => void }) {
   return (
-    <div className="modal-backdrop">
-      <div className="card modal-card">
-        <h2>{state.title}</h2>
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="card modal-card" onClick={e => e.stopPropagation()}>
+        <div className="drawer-header" style={{ marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>{state.title}</h3>
+          <button type="button" className="btn-icon-close" onClick={onCancel} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
         <p className="muted-text">{state.body}</p>
-        <div className="button-row" style={{ marginTop: 16 }}>
-          <button className="btn-primary" type="button" onClick={onConfirm}>Confirm</button>
+        <div className="button-row" style={{ marginTop: 20, justifyContent: 'flex-end', gap: 10 }}>
           <button className="btn-secondary" type="button" onClick={onCancel}>Cancel</button>
+          <button className="btn-primary" type="button" onClick={onConfirm}>Confirm</button>
         </div>
       </div>
     </div>
@@ -2998,19 +3145,43 @@ function ConfirmModal({ state, onCancel, onConfirm }: { state: NonNullable<Confi
 }
 
 function Drawer({ state, onClose }: { state: NonNullable<DrawerState>; onClose: () => void }) {
+  const statusVal = state.body.status ? String(state.body.status) : null;
   return (
-    <div className="modal-backdrop">
-      <div className="card drawer-card">
-        <div className="page-header" style={{ marginBottom: 12 }}>
-          <h2>{state.title}</h2>
-          <button type="button" onClick={onClose}>Close</button>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="card drawer-card" onClick={e => e.stopPropagation()}>
+        <div className="drawer-header">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>{state.title}</h3>
+              {statusVal && (
+                <span className={`badge ${statusClass(statusVal, 'status')}`}>
+                  {statusVal}
+                </span>
+              )}
+            </div>
+            <span className="drawer-subtitle">{state.title} operational details & parameters</span>
+          </div>
+          <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
         </div>
         <div className="detail-list">
           {Object.entries(state.body).map(([key, value]) => (
             <div key={key}>
-              <span>{key.replaceAll('_', ' ')}</span>
+              <span>{formatHeader(key)}</span>
               <strong title={typeof value === 'string' ? value : undefined}>
-                {isDateColumn(key) ? formatDateTime(value) : renderDetailValue(value)}
+                {isDateColumn(key) ? formatDateTime(value, key) :
+                 isAmountColumn(key) && (typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)))) ? money(Number(value || 0)) :
+                 isBadgeColumn(key) && value !== null && value !== undefined && value !== '' ? (
+                   <span className={`badge ${statusClass(String(value), key)}`}>{renderValue(value, key)}</span>
+                 ) :
+                 isIdColumn(key) && typeof value === 'string' && value ? (
+                   <span className="id-cell" title={value}>
+                     <span>{shortId(value)}</span>
+                     <button className="btn-small" type="button" aria-label={`Copy ${key}`} onClick={() => copyText(value)}><Copy size={12} /></button>
+                   </span>
+                 ) :
+                 renderDetailValue(value, key)}
               </strong>
             </div>
           ))}
@@ -3020,12 +3191,20 @@ function Drawer({ state, onClose }: { state: NonNullable<DrawerState>; onClose: 
   );
 }
 
-function renderDetailValue(value: GenericRecord[string] | undefined) {
+function renderDetailValue(value: GenericRecord[string] | undefined, key?: string) {
   const safeValue = redactSensitiveSummary(value);
   if (typeof safeValue === 'object' && safeValue !== null) {
+    if (Array.isArray(safeValue)) {
+      if (safeValue.length === 0) {
+        if (key?.includes('settlement')) return 'Pending Settlement Batch';
+        return 'None';
+      }
+      return safeValue.join(', ');
+    }
+    if (Object.keys(safeValue).length === 0) return 'None';
     return <pre className="json-preview">{JSON.stringify(safeValue, null, 2)}</pre>;
   }
-  return renderValue(safeValue);
+  return renderValue(safeValue, key);
 }
 
 function normalizeAction(action: string) {

@@ -237,9 +237,7 @@ function Layout() {
 
   return (
     <div className="app-layout">
-      <button className="mobile-nav-toggle" onClick={() => setOpen(!open)}>
-        {open ? <X size={20} /> : <Menu size={20} />}
-      </button>
+      {open && <div className="mobile-overlay" onClick={() => setOpen(false)} />}
       <div className={`mobile-sidebar ${open ? 'open' : ''}`}>
         <Sidebar onNavigate={() => setOpen(false)} />
       </div>
@@ -248,6 +246,14 @@ function Layout() {
       </div>
       <main className="main-content">
         <header className="top-header">
+          <button
+            type="button"
+            className="mobile-header-menu-btn"
+            onClick={() => setOpen(!open)}
+            aria-label={open ? 'Close navigation' : 'Open navigation'}
+          >
+            {open ? <X size={20} /> : <Menu size={20} />}
+          </button>
           <form className="global-search" onSubmit={handleSearch}>
             <Search size={16} />
             <input

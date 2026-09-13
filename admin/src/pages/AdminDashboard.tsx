@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ExternalLink } from 'lucide-react';
+import { Activity, ExternalLink, TrendingUp, Building2, AlertTriangle } from 'lucide-react';
 import { apiRequest, clearToken } from '../hooks/useApi';
 
 const DASHBOARD_BASE_URL = import.meta.env.VITE_DASHBOARD_BASE_URL || window.location.origin;
@@ -38,6 +38,14 @@ function formatDateTime(value?: string) {
     minute: '2-digit',
     hour12: true,
   }).format(date).replace(',', '');
+}
+
+function getOnboardingBadgeClass(status?: string | null) {
+  const s = String(status || '').toLowerCase();
+  if (['completed', 'verified', 'active', 'enabled'].includes(s)) return 'badge-completed';
+  if (['pending', 'in_progress', 'review', 'submitted'].includes(s)) return 'badge-pending';
+  if (['rejected', 'failed', 'suspended', 'disabled'].includes(s)) return 'badge-failed';
+  return 'badge-pending';
 }
 
 export default function AdminDashboard() {
@@ -83,7 +91,7 @@ export default function AdminDashboard() {
   const recentBusinessAccounts = useMemo(() => businessAccounts.slice(0, 8), [businessAccounts]);
 
   if (loading) {
-    return <div className="page">Loading platform data...</div>;
+    return <div className="page fade-in">Loading platform data...</div>;
   }
 
   if (error) {
@@ -114,70 +122,118 @@ export default function AdminDashboard() {
           <h1>Global Overview</h1>
           <p>Live admin metrics from production tables</p>
         </div>
-        <div className="btn-secondary">
-          <Activity size={16} />
-          System: {stats?.system_health || 'Unknown'}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            background: 'var(--fp-bg-card)',
+            border: '1px solid var(--fp-border)',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: stats?.system_health === 'healthy' ? 'var(--spotify-tertiary)' : 'var(--fp-warning)',
+              display: 'inline-block',
+            }}
+          />
+          <Activity size={14} style={{ color: 'var(--fp-text-muted)' }} />
+          <span>System: <strong style={{ textTransform: 'capitalize', color: 'var(--fp-text)' }}>{stats?.system_health || 'Healthy'}</strong></span>
         </div>
       </div>
 
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-label">Captured Volume</div>
+          <div className="stat-label">
+            <TrendingUp size={14} /> Captured Volume
+          </div>
           <div className="stat-value">₹{(stats?.total_volume || 0).toLocaleString('en-IN')}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Active Business Accounts</div>
+          <div className="stat-label">
+            <Building2 size={14} /> Active Business Accounts
+          </div>
           <div className="stat-value">{(stats?.active_merchants || 0).toLocaleString('en-IN')}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Failed Payments</div>
+          <div className="stat-label">
+            <AlertTriangle size={14} /> Failed Payments
+          </div>
           <div className="stat-value warning">{(stats?.failed_payments || 0).toLocaleString('en-IN')}</div>
         </div>
       </div>
 
-      <div className="table-card" style={{ marginTop: '20px' }}>
-        <div className="page-header" style={{ marginBottom: '15px' }}>
-          <h3>Recent Business Accounts</h3>
+      <div className="table-card" style={{ marginTop: '24px' }}>
+        <div className="page-header" style={{ marginBottom: '16px' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Recent Business Accounts</h3>
+            <span style={{ fontSize: '13px', color: 'var(--fp-text-muted)' }}>Latest registered partner merchants and platforms</span>
+          </div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Business Account</th>
-              <th>Business Account Email</th>
-              <th>Business Type</th>
-              <th>Status</th>
-              <th>Date Joined</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recentBusinessAccounts.map(m => (
-              <tr key={m.id}>
-                <td>{m.business_name || m.name}</td>
-                <td>{m.email || 'N/A'}</td>
-                <td>{m.business_type || 'N/A'}</td>
-                <td>{m.onboarding_status || 'N/A'}</td>
-                <td title={m.created_at || undefined}>{formatDateTime(m.created_at)}</td>
-                <td>
-                  <button
-                    className="btn-primary"
-                    style={{ padding: '4px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    onClick={() => handleOpenAccount(m.id)}
-                    disabled={impersonating === m.id}
-                  >
-                    <ExternalLink size={12} />
-                    {impersonating === m.id ? 'Opening...' : 'Open'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {recentBusinessAccounts.length === 0 && (
+        <div className="table-scroll">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>No business accounts found</td>
+                <th>Business Account</th>
+                <th>Account Email</th>
+                <th>Business Type</th>
+                <th>Status</th>
+                <th>Date Joined</th>
+                <th className="actions-cell">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {recentBusinessAccounts.map(m => (
+                <tr key={m.id}>
+                  <td>
+                    <div style={{ fontWeight: 600, color: 'var(--fp-text)' }}>{m.business_name || m.name}</div>
+                    {m.business_name && m.name && m.business_name !== m.name && (
+                      <div style={{ fontSize: '12px', color: 'var(--fp-text-muted)' }}>{m.name}</div>
+                    )}
+                  </td>
+                  <td>{m.email || 'N/A'}</td>
+                  <td>
+                    <span className="badge" style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)' }}>
+                      {m.business_type || 'Standard'}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`badge ${getOnboardingBadgeClass(m.onboarding_status)}`}>
+                      {m.onboarding_status ? m.onboarding_status.replace('_', ' ') : 'Pending'}
+                    </span>
+                  </td>
+                  <td title={m.created_at || undefined}>{formatDateTime(m.created_at)}</td>
+                  <td className="actions-cell">
+                    <button
+                      type="button"
+                      className="btn-action-primary"
+                      onClick={() => handleOpenAccount(m.id)}
+                      disabled={impersonating === m.id}
+                      title="Open Business Dashboard"
+                    >
+                      <ExternalLink size={12} />
+                      <span>{impersonating === m.id ? 'Opening...' : 'Open'}</span>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {recentBusinessAccounts.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--fp-text-muted)' }}>
+                    No business accounts found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
