@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, Download } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, Download, FileText } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import { SideDrawer } from '../components/SideDrawer';
 import { formatPaise } from '../utils/money';
@@ -238,9 +239,14 @@ export default function Settlements() {
 
       <div className="page-header">
         <h1>Settlements</h1>
-        <button className="btn-secondary" onClick={exportCsv}>
-          <Download size={16} /> Export CSV
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <Link to="/settlement-reports" className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FileText size={16} /> Detailed Reports
+          </Link>
+          <button className="btn-secondary" onClick={exportCsv}>
+            <Download size={16} /> Export CSV
+          </button>
+        </div>
       </div>
 
       <div className="stats-grid">

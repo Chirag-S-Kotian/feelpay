@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { BarChart3, Calendar, Download, FileText, Repeat2, Wallet } from 'lucide-react';
+import ReportNavTabs from '../components/ReportNavTabs';
 
 const reportSurfaces = [
   {
@@ -47,9 +48,11 @@ export default function Reports() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Reports</h1>
+        <h1>Reports & Exports</h1>
         <p>Transactions, settlements, refunds, fees, taxes, and export controls for merchant reconciliation.</p>
       </div>
+
+      <ReportNavTabs />
 
       <div className="card">
         <div className="card-title-row">

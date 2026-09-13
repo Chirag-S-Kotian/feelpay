@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Download, FileText, Loader, RefreshCw, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Download, FileText, Loader, RefreshCw, X, Wallet } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import { formatPaise } from '../utils/money';
+import ReportNavTabs from '../components/ReportNavTabs';
 
 interface Settlement {
   id: string;
@@ -216,10 +218,18 @@ export default function SettlementReports() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>Settlement Reports</h1>
-        <p>Download detailed settlement reports</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1>Settlement Reports</h1>
+          <p>Download detailed settlement reports</p>
+        </div>
+        <Link to="/settlements" className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Wallet size={16} />
+          View Settlements
+        </Link>
       </div>
+
+      <ReportNavTabs />
       {error && (
         <div className="error-banner" role="alert">
           {error}

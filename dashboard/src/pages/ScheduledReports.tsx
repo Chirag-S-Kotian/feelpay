@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Clock } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 import ScheduleReportForm from '../components/ScheduleReportForm';
+import ReportNavTabs from '../components/ReportNavTabs';
 
 interface ScheduledReport {
   id: string;
@@ -101,6 +102,8 @@ export default function ScheduledReports() {
           <p>Manage recurring report generation and delivery</p>
         </div>
       </div>
+
+      <ReportNavTabs />
       {error && <div className="error-banner">{error}</div>}
 
       {showForm && (

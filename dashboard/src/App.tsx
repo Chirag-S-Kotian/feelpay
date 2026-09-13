@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   CreditCard,
@@ -25,6 +25,7 @@ import {
   ClipboardList,
   PanelLeftClose,
   PanelLeftOpen,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import {
@@ -114,10 +115,7 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/payments', label: 'Payments', icon: CreditCard },
       { path: '/settlements', label: 'Settlements', icon: Wallet },
       { path: '/refunds', label: 'Refunds', icon: Repeat2 },
-      { path: '/reports', label: 'Reports', icon: BarChart3 },
-      { path: '/exports', label: 'Exports', icon: BarChart3 },
-      { path: '/settlement-reports', label: 'Settlement Reports', icon: BarChart3 },
-      { path: '/scheduled-reports', label: 'Scheduled Reports', icon: BarChart3 },
+      { path: '/reports', label: 'Reports & Exports', icon: FileSpreadsheet },
       { path: '/analytics', label: 'Analytics', icon: BarChart3 },
       { path: '/disputes', label: 'Payment Issues', icon: ShieldAlert },
     ],
@@ -165,8 +163,18 @@ function Sidebar({
   mode: EnvironmentMode;
   onModeChange: (mode: EnvironmentMode) => Promise<void> | void;
 }) {
+  const location = useLocation();
   const preloadRoute = (path: string) => {
     routePreloaders[path]?.();
+  };
+
+  const isItemActive = (itemPath: string, standardActive: boolean) => {
+    if (itemPath === '/reports') {
+      return ['/reports', '/exports', '/settlement-reports', '/scheduled-reports'].some(
+        p => location.pathname === p || location.pathname.startsWith(p + '/')
+      );
+    }
+    return standardActive;
   };
 
   return (
@@ -187,7 +195,7 @@ function Sidebar({
                 onClick={onNavigate}
                 onMouseEnter={() => preloadRoute(n.path)}
                 onFocus={() => preloadRoute(n.path)}
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                className={({ isActive }) => `nav-item ${isItemActive(n.path, isActive) ? 'active' : ''}`}
               >
                 <n.icon size={18} aria-hidden={true} />
                 {n.label}

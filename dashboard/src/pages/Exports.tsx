@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, Calendar, Filter, Settings, Copy, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
+import ReportNavTabs from '../components/ReportNavTabs';
 
 interface ExportJob {
   job_id: string;
@@ -159,6 +160,8 @@ export default function Exports() {
         <h1>Transaction Exports</h1>
         <p>Export transactions for reconciliation and analysis</p>
       </div>
+
+      <ReportNavTabs />
 
       <div className="tabs">
         <button
