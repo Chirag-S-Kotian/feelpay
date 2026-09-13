@@ -829,24 +829,38 @@ function rowsFrom(value: unknown): GenericRecord[] {
   return [];
 }
 
+const rowCache = new Map<string, { rows: GenericRecord[]; timestamp: number }>();
+
 function useRows(path: string) {
-  const [rows, setRows] = useState<GenericRecord[]>([]);
-  const [state, setState] = useState<LoadState>('loading');
+  const cached = rowCache.get(path);
+  const [rows, setRows] = useState<GenericRecord[]>(cached ? cached.rows : []);
+  const [state, setState] = useState<LoadState>(cached ? 'ready' : 'loading');
   const [error, setError] = useState('');
   const load = async () => {
-    setState('loading');
+    if (!rowCache.has(path)) {
+      setState('loading');
+    }
     setError('');
     try {
       const data = await apiRequest<{ items?: GenericRecord[] }>('GET', path);
-      setRows(rowsFrom(data));
+      const newRows = rowsFrom(data);
+      rowCache.set(path, { rows: newRows, timestamp: Date.now() });
+      setRows(newRows);
       setState('ready');
     } catch (err) {
-      setRows([]);
-      setState('error');
+      if (!rowCache.has(path)) {
+        setRows([]);
+        setState('error');
+      }
       setError(err instanceof Error ? err.message : 'Load failed');
     }
   };
   useEffect(() => {
+    const hit = rowCache.get(path);
+    if (hit) {
+      setRows(hit.rows);
+      setState('ready');
+    }
     void load();
   }, [path]);
   return { rows, state, error, load };
@@ -1256,7 +1270,59 @@ export function RefundsPage() {
     if (action === 'view_provider_response' || action === 'view_ledger' || action === 'view_audit_trail') helpers.setDrawer({ title: formatHeader(action), body: row });
   };
   return (
-    <CrudPage title="Refunds" subtitle="Full, partial, batch, manual, approval, reversal, and provider refund workflows" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Refunds" subtitle="Customer Refunds & Reversals — returning collected money back to original buyers." state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div
+        className="card"
+        style={{
+          marginBottom: '1.25rem',
+          padding: '1.1rem 1.25rem',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          background: '#111c2e',
+          border: '1px solid #3b82f6',
+          borderRadius: '0.75rem',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)'
+        }}
+      >
+        <div
+          style={{
+            padding: '0.625rem',
+            borderRadius: '0.5rem',
+            background: 'rgba(59, 130, 246, 0.25)',
+            color: '#60a5fa',
+            flexShrink: 0
+          }}
+        >
+          <RotateCcw size={22} />
+        </div>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
+            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
+              Refunds = Money Returned to Customer / Buyer
+            </h4>
+            <span
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '0.2rem 0.6rem',
+                borderRadius: '1rem',
+                background: 'rgba(59, 130, 246, 0.3)',
+                color: '#93c5fd',
+                border: '1px solid rgba(147, 197, 253, 0.4)'
+              }}
+            >
+              Customer Payout
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.88rem', color: '#f1f5f9', lineHeight: 1.5 }}>
+            A <strong style={{ color: '#ffffff', fontWeight: 600 }}>Refund</strong> sends previously charged money <em style={{ color: '#93c5fd' }}>backward</em> to the buyer's original payment method (for cancelled orders, returned goods, or disputed charges). 
+            <span style={{ marginLeft: '0.5rem', color: '#60a5fa', fontWeight: 600 }}>
+              (Differs from Settlement: Refunds go to individual buyers; Settlements go to the merchant's bank account).
+            </span>
+          </p>
+        </div>
+      </div>
       <div className="stats-grid">
         <Metric label="Pending approval" value={rows.filter(row => row.approval_status === 'pending').length} icon={Receipt} />
         <Metric label="Processing" value={rows.filter(row => row.status === 'processing' || row.status === 'initiated').length} icon={RefreshCw} />
@@ -1324,7 +1390,59 @@ export function SettlementsPage() {
   };
 
   return (
-    <CrudPage title="Settlements" subtitle="Settlement ledger and reconciliation status" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Settlements" subtitle="Merchant Payouts & Net Earnings — batched sales earnings deposited to merchant bank accounts." state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div
+        className="card"
+        style={{
+          marginBottom: '1.25rem',
+          padding: '1.1rem 1.25rem',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          background: '#0f241a',
+          border: '1px solid #10b981',
+          borderRadius: '0.75rem',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)'
+        }}
+      >
+        <div
+          style={{
+            padding: '0.625rem',
+            borderRadius: '0.5rem',
+            background: 'rgba(16, 185, 129, 0.25)',
+            color: '#34d399',
+            flexShrink: 0
+          }}
+        >
+          <Landmark size={22} />
+        </div>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
+            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
+              Settlements = Sales Payouts to Merchant / Business
+            </h4>
+            <span
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '0.2rem 0.6rem',
+                borderRadius: '1rem',
+                background: 'rgba(16, 185, 129, 0.3)',
+                color: '#6ee7b7',
+                border: '1px solid rgba(110, 231, 183, 0.4)'
+              }}
+            >
+              Merchant Payout
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.88rem', color: '#f1f5f9', lineHeight: 1.5 }}>
+            A <strong style={{ color: '#ffffff', fontWeight: 600 }}>Settlement</strong> transfers batched captured sales earnings directly into the <strong style={{ color: '#ffffff', fontWeight: 600 }}>merchant's registered business bank account</strong> after deducting processing fees, gateway cuts, and reserve holdbacks.
+            <span style={{ marginLeft: '0.5rem', color: '#34d399', fontWeight: 600 }}>
+              (Differs from Refund: Settlements are business payouts to sellers; Refunds are money returned to consumers).
+            </span>
+          </p>
+        </div>
+      </div>
       <div className="card filter-grid">
         <Field label="Status">
           <Select value={filters.status} options={SETTLEMENT_STATUS_OPTIONS} onChange={status => setFilters({ ...filters, status })} />

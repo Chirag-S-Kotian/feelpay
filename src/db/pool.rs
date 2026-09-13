@@ -1,5 +1,5 @@
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::PgPool;
+use sqlx::{ConnectOptions, PgPool};
 use std::str::FromStr;
 
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
@@ -14,6 +14,12 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     if cleaned_url.contains("-pooler.") {
         connect_options = connect_options.statement_cache_capacity(0);
     }
+
+    // Serverless cloud DB (AWS Singapore) WAN latency + TLS can take >1s for batch updates.
+    // Set slow statement alert threshold to 5s so routine WAN transit does not spam WARN logs.
+    connect_options = connect_options
+        .log_statements(tracing::log::LevelFilter::Debug)
+        .log_slow_statements(tracing::log::LevelFilter::Warn, std::time::Duration::from_secs(5));
 
     let pool = PgPoolOptions::new()
         .max_connections(20)

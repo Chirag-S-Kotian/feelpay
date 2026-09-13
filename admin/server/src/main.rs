@@ -7,8 +7,11 @@ use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::PgPool;
 use std::env;
+use std::str::FromStr;
+use std::time::Duration;
 use uuid::Uuid;
 
 fn validate_admin_startup_env() -> Result<(), String> {
@@ -1043,7 +1046,25 @@ async fn main() -> std::io::Result<()> {
     validate_admin_startup_env().map_err(std::io::Error::other)?;
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url)
+    let cleaned_url = database_url
+        .replace("?channel_binding=require", "")
+        .replace("&channel_binding=require", "")
+        .replace("?statement_cache_size=0", "")
+        .replace("&statement_cache_size=0", "");
+    let mut connect_options = PgConnectOptions::from_str(&cleaned_url)
+        .expect("Invalid DATABASE_URL");
+
+    if cleaned_url.contains("-pooler.") {
+        connect_options = connect_options.statement_cache_capacity(0);
+    }
+
+    let pool = PgPoolOptions::new()
+        .max_connections(20)
+        .min_connections(5)
+        .acquire_timeout(Duration::from_secs(30))
+        .idle_timeout(Duration::from_secs(300))
+        .max_lifetime(Duration::from_secs(1800))
+        .connect_with(connect_options)
         .await
         .expect("Failed to connect to Postgres");
 

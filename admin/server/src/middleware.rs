@@ -8,8 +8,14 @@ use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::Deserialize;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::future::{ready, Ready};
+use std::sync::{LazyLock, RwLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
+
+static ADMIN_AUTH_CACHE: LazyLock<RwLock<HashMap<Uuid, (bool, String, Instant)>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 pub struct AdminAuthMiddleware;
 
@@ -259,41 +265,63 @@ where
             let pool =
                 pool.ok_or_else(|| actix_web::error::ErrorInternalServerError("DB pool missing"))?;
 
-            // Check if is_admin
-            let merchant = sqlx::query("SELECT is_admin, name FROM merchants WHERE id = $1")
-                .bind(merchant_id)
-                .fetch_optional(pool.get_ref())
-                .await
-                .map_err(|e| {
-                    tracing::error!("Auth check DB error: {}", e);
-                    actix_web::error::ErrorInternalServerError("Database error")
-                })?;
+            // Check if is_admin with in-memory TTL caching (300s) to avoid slow WAN roundtrips
+            let cached = {
+                let cache = ADMIN_AUTH_CACHE.read().unwrap();
+                cache
+                    .get(&merchant_id)
+                    .and_then(|(is_admin, name, cached_at)| {
+                        if cached_at.elapsed() < Duration::from_secs(300) {
+                            Some((*is_admin, name.clone()))
+                        } else {
+                            None
+                        }
+                    })
+            };
 
-            match merchant {
-                Some(row) => {
-                    use sqlx::Row;
-                    let is_admin: bool = row.get("is_admin");
-                    let name: String = row.get("name");
-                    tracing::info!("Auth check for {}: is_admin={}", name, is_admin);
+            let (is_admin, _name) = if let Some(hit) = cached {
+                hit
+            } else {
+                let merchant = sqlx::query("SELECT is_admin, name FROM merchants WHERE id = $1")
+                    .bind(merchant_id)
+                    .fetch_optional(pool.get_ref())
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Auth check DB error: {}", e);
+                        actix_web::error::ErrorInternalServerError("Database error")
+                    })?;
 
-                    if !is_admin {
+                match merchant {
+                    Some(row) => {
+                        use sqlx::Row;
+                        let is_admin: bool = row.get("is_admin");
+                        let name: String = row.get("name");
+                        tracing::info!("Auth check for {}: is_admin={}", name, is_admin);
+
+                        if let Ok(mut cache) = ADMIN_AUTH_CACHE.write() {
+                            cache.insert(merchant_id, (is_admin, name.clone(), Instant::now()));
+                        }
+                        (is_admin, name)
+                    }
+                    None => {
+                        tracing::warn!("Merchant ID {} not found in auth check", merchant_id);
                         return Err(cors_actix_error(
-                            StatusCode::FORBIDDEN,
-                            "Forbidden: Admin access required",
+                            StatusCode::UNAUTHORIZED,
+                            "Merchant not found",
                             origin,
                             request_id,
                         ));
                     }
                 }
-                None => {
-                    tracing::warn!("Merchant ID {} not found in auth check", merchant_id);
-                    return Err(cors_actix_error(
-                        StatusCode::UNAUTHORIZED,
-                        "Merchant not found",
-                        origin,
-                        request_id,
-                    ));
-                }
+            };
+
+            if !is_admin {
+                return Err(cors_actix_error(
+                    StatusCode::FORBIDDEN,
+                    "Forbidden: Admin access required",
+                    origin,
+                    request_id,
+                ));
             }
 
             let required_permission = match required_permission_for_path(&path, &method) {
