@@ -1582,9 +1582,9 @@ pub async fn get_payment_timeline(
 
     let events = sqlx::query(
         r#"
-        SELECT id, event_type, status_before, status_after, metadata, created_at
+        SELECT id, event_type, from_status AS status_before, to_status AS status_after, COALESCE(metadata, event_data, '{}'::jsonb) AS metadata, created_at
         FROM transaction_events
-        WHERE payment_id = $1 AND merchant_id = $2
+        WHERE transaction_id = $1 AND merchant_id = $2
         ORDER BY created_at ASC
         "#,
     )

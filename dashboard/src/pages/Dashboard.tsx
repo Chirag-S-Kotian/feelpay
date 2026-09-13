@@ -91,10 +91,10 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     if (!summary) {
       return [
-      { label: 'Total Volume', value: formatPaise(0) },
+        { label: 'Total Volume', value: formatPaise(0) },
         { label: 'Successful Txns', value: '0' },
         { label: 'Success Rate', value: '0%' },
-      { label: 'Avg Ticket Size', value: formatPaise(0) },
+        { label: 'Average Payment', value: formatPaise(0) },
       ];
     }
     const avg = summary.total_transactions > 0 ? Math.trunc(summary.total_volume / summary.total_transactions) : 0;
@@ -102,7 +102,7 @@ export default function Dashboard() {
       { label: 'Total Volume', value: formatPaise(summary.total_volume) },
       { label: 'Successful Txns', value: `${summary.successful.toLocaleString('en-IN')}` },
       { label: 'Success Rate', value: `${summary.success_rate}%` },
-      { label: 'Avg Ticket Size', value: formatPaise(avg) },
+      { label: 'Average Payment', value: formatPaise(avg) },
     ];
   }, [summary]);
 
