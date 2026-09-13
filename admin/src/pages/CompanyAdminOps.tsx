@@ -3066,7 +3066,7 @@ export function DeveloperIntegrationPage() {
   const errorCatalog = useRows(`${API}/developer/error-catalog`);
   const rateLimits = useRows(`${API}/developer/rate-limits`);
   const [logFilters, setLogFilters] = useState({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' });
-  const [tab, setTab] = useState('API Keys');
+  const [tab, setTab] = useState('keys');
   const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '2026-12-31' });
   const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: 'evt_sim_live_771928019', note: 'Standard ops delivery simulation', dry_run: false });
   const [idempotencyForm, setIdempotencyForm] = useState({ idempotency_key: 'idem_ops_sim_9921', api_key_id: 'key_live_adm_99182', payload: '{"resource":"payment","amount":10000}', resource_type: 'payment' });
@@ -3135,7 +3135,7 @@ export function DeveloperIntegrationPage() {
     { id: 'refund.succeeded', event: 'refund.succeeded', sample: { id: 'rf_test', payment_id: 'pay_test', amount: 500 } },
     { id: 'dispute.opened', event: 'dispute.opened', sample: { id: 'dp_test', payment_id: 'pay_test', reason: 'fraudulent' } },
   ];
-  const checklist = ['Create sandbox API key', 'Configure webhook endpoint', 'Send webhook test', 'Replay failed event', 'Review idempotency logs', 'Switch to live mode after approval'].map((item, index) => ({ id: String(index), item, status: index < 2 ? 'ready' : 'pending' }));
+  const checklist = ['Create test key', 'Set up notification endpoint', 'Send test message', 'Re-send test event', 'Review duplicate checks', 'Switch to live mode after approval'].map((item, index) => ({ id: String(index), item, status: index < 2 ? 'ready' : 'pending' }));
   const createIdempotencyRecord = (event: FormEvent) => {
     event.preventDefault();
     helpers.setConfirm({
@@ -3166,51 +3166,73 @@ export function DeveloperIntegrationPage() {
     helpers.run('Rate limit check complete.', () => apiRequest('POST', `${API}/developer/rate-limits/${id}/check`));
   };
   return (
-    <CrudPage title="Developer Tools" subtitle="Internal API keys, sandbox/live mode, webhook testing, event replay, and logs" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
+    <CrudPage title="Developer Tools" subtitle="Tools to test, monitor, and connect your platform" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['API Versions', 'Idempotency Logs', 'Error Catalog', 'Rate Limits', 'API Keys', 'Request Logs', 'Webhook Testing', 'Stored Events', 'Event Replay', 'Sample Payloads', 'Integration Checklist'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {[
+          { id: 'keys', label: 'Keys' },
+          { id: 'activity', label: 'Activity' },
+          { id: 'history', label: 'History' },
+          { id: 'duplicates', label: 'Duplicate Checks' },
+          { id: 'errors', label: 'Errors' },
+          { id: 'limits', label: 'Limits' },
+          { id: 'testing', label: 'Testing' },
+          { id: 'resend', label: 'Re-send' },
+          { id: 'examples', label: 'Examples' },
+          { id: 'checklist', label: 'Checklist' },
+          { id: 'versions', label: 'Versions' },
+        ].map(item => (
+          <button
+            key={item.id}
+            type="button"
+            className={tab === item.id ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setTab(item.id)}
+            data-tab={item.id}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
-      {tab === 'API Versions' && <DataTable rows={apiVersions.rows} columns={['version', 'status', 'sunset_at', 'changelog_url', 'created_at']} empty={{ title: 'No API versions', body: 'Define current, supported, and deprecated versions for external readiness.' }} />}
-      {tab === 'Idempotency Logs' && (
+      {tab === 'versions' && <DataTable rows={apiVersions.rows} columns={['version', 'status', 'sunset_at', 'changelog_url', 'created_at']} empty={{ title: 'No API versions', body: 'Define active and retired system versions.' }} />}
+      {tab === 'duplicates' && (
         <>
           {ADMIN_DEBUG_TOOLS && (
             <section className="card">
-              <h2><RefreshCw size={18} /> Idempotency key store</h2>
+              <h2><RefreshCw size={18} /> Duplicate prevention record</h2>
               <form onSubmit={createIdempotencyRecord}>
                 <div className="filter-grid">
-                  <Field label="Idempotency key"><input value={str(idempotencyForm.idempotency_key)} onChange={event => setIdempotencyForm({ ...idempotencyForm, idempotency_key: event.target.value })} /></Field>
+                  <Field label="Check key"><input value={str(idempotencyForm.idempotency_key)} onChange={event => setIdempotencyForm({ ...idempotencyForm, idempotency_key: event.target.value })} /></Field>
                   <Field label="API key ID"><input value={str(idempotencyForm.api_key_id)} onChange={event => setIdempotencyForm({ ...idempotencyForm, api_key_id: event.target.value })} /></Field>
                   <Field label="Resource type"><input value={str(idempotencyForm.resource_type)} onChange={event => setIdempotencyForm({ ...idempotencyForm, resource_type: event.target.value })} /></Field>
                   <Field label="Payload JSON"><textarea value={str(idempotencyForm.payload)} onChange={event => setIdempotencyForm({ ...idempotencyForm, payload: event.target.value })} /></Field>
                 </div>
-                <button className="btn-primary" type="submit">Store idempotency record</button>
+                <button className="btn-primary" type="submit">Save record</button>
               </form>
             </section>
           )}
-          <DataTable rows={idempotencyLogs.rows} columns={['created_at', 'idempotency_key', 'api_key_id', 'request_hash', 'response_hash', 'response_status', 'resource_type', 'resource_id', 'expires_at']} empty={{ title: 'No idempotency logs', body: 'Idempotency records appear here and link to request logs by key.' }} onView={row => helpers.setDrawer({ title: 'Idempotency record', body: row })} />
+          <DataTable rows={idempotencyLogs.rows} columns={['created_at', 'idempotency_key', 'api_key_id', 'request_hash', 'response_hash', 'response_status', 'resource_type', 'resource_id', 'expires_at']} empty={{ title: 'No duplicate records', body: 'Duplicate check records appear here to prevent repeated charges.' }} onView={row => helpers.setDrawer({ title: 'Duplicate record', body: row })} />
         </>
       )}
-      {tab === 'Error Catalog' && <DataTable rows={errorCatalog.rows} columns={['code', 'message', 'http_status', 'retryable', 'docs_url']} empty={{ title: 'No error catalog', body: 'All public API failures should map to catalog codes.' }} />}
-      {tab === 'Rate Limits' && (
+      {tab === 'errors' && <DataTable rows={errorCatalog.rows} columns={['code', 'message', 'http_status', 'retryable', 'docs_url']} empty={{ title: 'No error list', body: 'Known system error codes and helpful messages appear here.' }} />}
+      {tab === 'limits' && (
         <>
           <section className="card">
-            <h2><Timer size={18} /> API rate limits</h2>
+            <h2><Timer size={18} /> Request limits</h2>
             <form onSubmit={createRateLimit}>
               <div className="filter-grid">
                 <Field label="API key ID"><input value={rateLimitForm.api_key_id} onChange={event => setRateLimitForm({ ...rateLimitForm, api_key_id: event.target.value })} /></Field>
                 <Field label="Window seconds"><input type="number" value={rateLimitForm.window_seconds} onChange={event => setRateLimitForm({ ...rateLimitForm, window_seconds: Number(event.target.value) })} /></Field>
                 <Field label="Max requests"><input type="number" value={rateLimitForm.max_requests} onChange={event => setRateLimitForm({ ...rateLimitForm, max_requests: Number(event.target.value) })} /></Field>
               </div>
-              <button className="btn-primary" type="submit">Save rate limit</button>
+              <button className="btn-primary" type="submit">Save limit</button>
             </form>
           </section>
-          <DataTable rows={rateLimits.rows} columns={['api_key_id', 'window_seconds', 'max_requests', 'current_count', 'reset_at']} empty={{ title: 'No rate limits', body: 'Configure per-key request windows for public API readiness.' }} renderActions={row => <ActionButtons actions={['Check now', 'View detail']} onClick={action => action === 'Check now' ? checkRateLimit(row) : helpers.setDrawer({ title: 'Rate limit', body: row })} />} />
+          <DataTable rows={rateLimits.rows} columns={['api_key_id', 'window_seconds', 'max_requests', 'current_count', 'reset_at']} empty={{ title: 'No limits set', body: 'Set traffic limits to prevent abuse or overload.' }} renderActions={row => <ActionButtons actions={['Check now', 'View detail']} onClick={action => action === 'Check now' ? checkRateLimit(row) : helpers.setDrawer({ title: 'Limit detail', body: row })} />} />
         </>
       )}
-      {tab === 'API Keys' && (
+      {tab === 'keys' && (
         <>
           <section className="card">
-            <h2><KeyRound size={18} /> API key management</h2>
+            <h2><KeyRound size={18} /> API keys</h2>
             <form onSubmit={createKey}>
               <div className="filter-grid">
                 <Field label="Name"><input value={keyForm.name} onChange={event => setKeyForm({ ...keyForm, name: event.target.value })} /></Field>
@@ -3223,16 +3245,16 @@ export function DeveloperIntegrationPage() {
               </div>
             </form>
           </section>
-          <DataTable rows={apiKeys.rows} columns={['id', 'name', 'environment', 'key_prefix', 'masked_key', 'scopes', 'status', 'last_used_at', 'expires_at', 'created_at']} empty={{ title: 'No API keys yet', body: 'Create sandbox keys for internal integration testing. Full secrets are shown once outside this admin table.' }} renderActions={row => <ActionButtons actions={['Rotate key', 'Revoke key', 'View detail']} onClick={action => keyAction(row, normalizeAction(action))} />} />
+          <DataTable rows={apiKeys.rows} columns={['id', 'name', 'environment', 'key_prefix', 'masked_key', 'scopes', 'status', 'last_used_at', 'expires_at', 'created_at']} empty={{ title: 'No API keys yet', body: 'Create sandbox keys for testing. Secret keys are displayed once and never stored unmasked.' }} renderActions={row => <ActionButtons actions={['Rotate key', 'Revoke key', 'View detail']} onClick={action => keyAction(row, normalizeAction(action))} />} />
         </>
       )}
-      {tab === 'Request Logs' && (
+      {tab === 'activity' && (
         <>
           <div className="card filter-grid">
             <Field label="Request ID">
               <input placeholder="req_..." value={logFilters.request_id} onChange={event => setLogFilters({ ...logFilters, request_id: event.target.value })} />
             </Field>
-            <Field label="Idempotency Key">
+            <Field label="Check Key">
               <input placeholder="idem_..." value={logFilters.idempotency_key} onChange={event => setLogFilters({ ...logFilters, idempotency_key: event.target.value })} />
             </Field>
             <Field label="Status Code">
@@ -3248,59 +3270,59 @@ export function DeveloperIntegrationPage() {
               <button className="btn-secondary" type="button" onClick={() => setLogFilters({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' })}>Reset</button>
             </div>
           </div>
-          <DataTable rows={filteredLogs} columns={['created_at', 'environment', 'api_key_id', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code', 'error_message']} empty={{ title: 'No API request logs', body: 'Internal API logs appear here with Authorization, card, secret, and bank data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request metadata', body: row })} />
+          <DataTable rows={filteredLogs} columns={['created_at', 'environment', 'api_key_id', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code', 'error_message']} empty={{ title: 'No activity logs', body: 'Request activity appears here with sensitive secrets and payment data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request details', body: row })} />
         </>
       )}
-      {tab === 'Webhook Testing' && (
+      {tab === 'testing' && (
         <section className="card">
-          <h2><Cable size={18} /> Webhook simulator</h2>
+          <h2><Cable size={18} /> Test event simulator</h2>
           <form onSubmit={testWebhook}>
             <div className="filter-grid">
               <Field label="Event type">
                 <Select value={webhookForm.event_type} onChange={val => setWebhookForm({ ...webhookForm, event_type: val })} options={WEBHOOK_EVENT_OPTIONS} />
               </Field>
-              <Field label="Manual event ID (optional)"><input value={webhookForm.webhook_event_id} onChange={event => setWebhookForm({ ...webhookForm, webhook_event_id: event.target.value })} placeholder="test_..." /></Field>
+              <Field label="Event ID (optional)"><input value={webhookForm.webhook_event_id} onChange={event => setWebhookForm({ ...webhookForm, webhook_event_id: event.target.value })} placeholder="test_..." /></Field>
               <div className="filter-actions">
-                <button className="btn-primary" type="submit">Send sandbox test event</button>
+                <button className="btn-primary" type="submit">Send test event</button>
               </div>
             </div>
           </form>
           <div className="alert pending" style={{ marginTop: 12 }}>
-            Simulator uses <strong>Mock Provider</strong> to record a test event internally without requiring external delivery.
+            Simulate events safely without affecting real customer transactions.
           </div>
         </section>
       )}
-      {tab === 'Stored Events' && (
+      {tab === 'history' && (
         <>
           <div className="card">
-            <h2><Database size={18} /> Recently recorded events</h2>
+            <h2><Database size={18} /> Event history</h2>
             <div className="filter-grid" style={{ marginBottom: 12 }}>
-              <Field label="Replay note"><input value={webhookForm.note} onChange={event => setWebhookForm({ ...webhookForm, note: event.target.value })} placeholder="Reason for replay..." /></Field>
+              <Field label="Note"><input value={webhookForm.note} onChange={event => setWebhookForm({ ...webhookForm, note: event.target.value })} placeholder="Reason for re-send..." /></Field>
             </div>
           </div>
           <DataTable
             rows={webhookEvents.rows}
             columns={['id', 'event_id', 'event_type', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']}
-            empty={{ title: 'No recorded webhook events', body: 'Send a test event or configure a provider to see events here.' }}
-            renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run', 'Copy ID', 'View payload']} onClick={action => action === 'Replay event' ? replayEvent(row, false) : action === 'Dry-run' ? replayEvent(row, true) : action === 'Copy ID' ? copyText(String(row.event_id || row.id)) : helpers.setDrawer({ title: 'Webhook payload', body: row })} />}
+            empty={{ title: 'No recorded events', body: 'Send a test event or configure a provider to see events here.' }}
+            renderActions={row => <ActionButtons actions={['Re-send event', 'Dry-run', 'Copy ID', 'View payload']} onClick={action => action === 'Re-send event' ? replayEvent(row, false) : action === 'Dry-run' ? replayEvent(row, true) : action === 'Copy ID' ? copyText(String(row.event_id || row.id)) : helpers.setDrawer({ title: 'Event payload', body: row })} />}
           />
         </>
       )}
-      {tab === 'Event Replay' && <DataTable rows={replays.rows} columns={['id', 'webhook_event_id', 'replay_status', 'replayed_by_admin_id', 'replayed_at', 'error_message', 'created_at']} empty={{ title: 'No webhook replays', body: 'Replay records appear here after failed or selected webhook events are queued again.' }} renderActions={row => <ActionButtons actions={['Replay selected event', 'View detail']} onClick={action => action === 'Replay selected event' ? replayEvent(row) : helpers.setDrawer({ title: 'Webhook replay', body: row })} />} />}
-      {tab === 'Sample Payloads' && <SamplePayloads payloads={payloads} />}
-      {tab === 'Integration Checklist' && <DataTable rows={[
+      {tab === 'resend' && <DataTable rows={replays.rows} columns={['id', 'webhook_event_id', 'replay_status', 'replayed_by_admin_id', 'replayed_at', 'error_message', 'created_at']} empty={{ title: 'No re-sent events', body: 'Re-sent events appear here after queued again.' }} renderActions={row => <ActionButtons actions={['Re-send selected event', 'View detail']} onClick={action => action === 'Re-send selected event' ? replayEvent(row) : helpers.setDrawer({ title: 'Re-send detail', body: row })} />} />}
+      {tab === 'examples' && <SamplePayloads payloads={payloads} />}
+      {tab === 'checklist' && <DataTable rows={[
         ...checklist,
-        { id: 'sandbox_provider', item: 'Sandbox provider configured', status: 'ready' },
-        { id: 'production_provider', item: 'Production provider configured', status: 'pending' },
-        { id: 'webhook_secret', item: 'Webhook secret configured', status: 'ready' },
-        { id: 'signature_verification', item: 'Webhook signature verification enabled', status: 'ready' },
-        { id: 'api_key_active', item: 'API key active', status: apiKeys.rows.some(row => row.status === 'active') ? 'ready' : 'pending' },
-        { id: 'idempotency', item: 'Idempotency enabled', status: 'ready' },
-        { id: 'no_raw_card', item: 'No raw card data', status: 'ready' },
-        { id: 'no_cvv', item: 'No CVV storage', status: 'ready' },
-        { id: 'reconciliation', item: 'Reconciliation enabled', status: 'ready' },
-        { id: 'settlement_export', item: 'Settlement export enabled', status: 'ready' },
-      ]} columns={['item', 'status']} empty="No integration checklist" />}
+        { id: 'sandbox_provider', item: 'Test provider configured', status: 'ready' },
+        { id: 'production_provider', item: 'Live provider configured', status: 'pending' },
+        { id: 'webhook_secret', item: 'Secret key configured', status: 'ready' },
+        { id: 'signature_verification', item: 'Signature check enabled', status: 'ready' },
+        { id: 'api_key_active', item: 'Access key active', status: apiKeys.rows.some(row => row.status === 'active') ? 'ready' : 'pending' },
+        { id: 'idempotency', item: 'Duplicate prevention enabled', status: 'ready' },
+        { id: 'no_raw_card', item: 'No raw card data stored', status: 'ready' },
+        { id: 'no_cvv', item: 'No CVV code stored', status: 'ready' },
+        { id: 'reconciliation', item: 'Auto-matching enabled', status: 'ready' },
+        { id: 'settlement_export', item: 'Payout export enabled', status: 'ready' },
+      ]} columns={['item', 'status']} empty="No checklist items" />}
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -5751,8 +5773,8 @@ function SamplePayloads({ payloads }: { payloads: { id: string; event: string; s
   };
   return (
     <section className="card">
-      <h2><Cable size={18} /> Sample payloads</h2>
-      <p className="muted-text">Redacted examples only. They are safe for integration reference and do not contain live credentials or card data.</p>
+      <h2><Cable size={18} /> Example messages</h2>
+      <p className="muted-text">Safe example data to help test and connect your system without exposing real customer credentials.</p>
       <div className="grid grid-2">
         {payloads.map(payload => (
           <div key={payload.id} className="table-card" style={{ padding: 14 }}>

@@ -87,17 +87,17 @@ test.describe('critical sandbox payment flow', () => {
     await test.step('Developer Tools and Webhook Config: stored events, replay and processing surfaces load', async () => {
       const developerTools = new DeveloperToolsPage(page);
       await developerTools.goto();
-      await page.getByRole('button', { name: 'Webhook Testing' }).click();
-      await expect(page.getByRole('button', { name: /Send sandbox test event/i })).toBeVisible();
-      await page.getByRole('button', { name: 'Stored Events' }).click();
+      await page.getByRole('button', { name: /^(Testing|Webhook Testing)$/ }).click();
+      await expect(page.getByRole('button', { name: /Send (sandbox )?test event/i })).toBeVisible();
+      await page.getByRole('button', { name: /^(History|Stored Events)$/ }).click();
       await expect(page.locator('table, .empty-state').first()).toBeVisible();
-      await page.getByRole('button', { name: 'Event Replay' }).click();
+      await page.getByRole('button', { name: /^(Re-send|Event Replay)$/ }).click();
       await expect(page.locator('table, .empty-state').first()).toBeVisible();
 
       await new GenericAdminPage(page, { path: '/webhook-config', navLabel: 'Webhook Config', heading: 'Webhook Config' }).goto();
       await page.getByRole('button', { name: 'Events' }).click();
       await expect(page.locator('table, .empty-state').first()).toBeVisible();
-      await page.getByRole('button', { name: 'Processing Attempts' }).click();
+      await page.getByRole('button', { name: /^(Pending Retries|Processing Attempts)$/ }).click();
       await expect(page.locator('table, .empty-state').first()).toBeVisible();
     });
 

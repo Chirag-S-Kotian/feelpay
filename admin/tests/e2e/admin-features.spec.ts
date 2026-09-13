@@ -135,20 +135,20 @@ test.describe('admin feature coverage', () => {
   test('Developer Tools and Webhook Config: redacted API keys, events and replay surfaces', async ({ page }) => {
     const developerTools = new DeveloperToolsPage(page);
     await developerTools.goto();
-    await openTab(page, 'API Keys');
+    await openTab(page, 'Keys');
     await expect(page.locator('body')).not.toContainText(/\bsk_[a-z0-9_]{12,}\b/i);
-    await openTab(page, 'Request Logs');
-    await openTab(page, 'Webhook Testing');
-    await openTab(page, 'Stored Events');
-    await openTab(page, 'Event Replay');
-    await openTab(page, 'Sample Payloads');
+    await openTab(page, 'Activity');
+    await openTab(page, 'Testing');
+    await openTab(page, 'History');
+    await openTab(page, 'Re-send');
+    await openTab(page, 'Examples');
 
     await new GenericAdminPage(page, { path: '/webhook-config', navLabel: 'Webhook Config', heading: 'Webhook Config' }).goto();
-    await openTab(page, 'Endpoint Configs');
+    await openTab(page, 'Endpoints');
     await openTab(page, 'Events');
-    await openTab(page, 'Processing Attempts');
-    await openTab(page, 'Dead Letter');
-    await openTab(page, 'Retry Policies');
+    await openTab(page, 'Pending Retries');
+    await openTab(page, 'Failed Deliveries');
+    await openTab(page, 'Retry Rules');
   });
 
   test('Audit Logs and Admin Users & Roles: details and confirmations are present', async ({ page }) => {
