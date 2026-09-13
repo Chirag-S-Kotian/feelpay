@@ -2633,7 +2633,7 @@ export function WebhookConfigPage() {
   const events = useRows(`${API}/webhook-events?limit=100`);
   const attempts = useRows(`${API}/webhook-processing-attempts`);
   const policies = useRows(`${API}/webhook-retry-policies`);
-  const [tab, setTab] = useState('Endpoint Configs');
+  const [tab, setTab] = useState('endpoints');
   const [policyForm, setPolicyForm] = useState({ provider_id: '10000000-0000-0000-0000-000000000001', max_attempts: 6, backoff_strategy: 'exponential', initial_delay_seconds: 60, max_delay_seconds: 3600, status: 'active' });
   const helpers = useDrawerConfirm();
   const load = () => void Promise.all([providers.load(), configs.load(), events.load(), attempts.load(), policies.load()]);
@@ -2656,39 +2656,55 @@ export function WebhookConfigPage() {
     });
   };
   return (
-    <CrudPage title="Webhook Config" subtitle="Endpoint config, events, retry queue, dead-letter, attempts, and retry policies" state={configs.state} error={providers.error || configs.error || events.error || attempts.error || policies.error} notice={helpers.notice} onRefresh={load}>
-      <div className="alert alert-success">Signatures required. Raw payload stored before processing. Processing idempotent. Failed events retried.</div>
+    <CrudPage title="Webhook Config" subtitle="Manage webhook URLs, track incoming events, and monitor delivery status" state={configs.state} error={providers.error || configs.error || events.error || attempts.error || policies.error} notice={helpers.notice} onRefresh={load}>
+      <div className="alert alert-success">Secure &amp; reliable: Verified signatures, duplicate protection, and automatic retries for failed events.</div>
       <div className="button-row">
-        {['Endpoint Configs', 'Events', 'Retry Queue', 'Dead Letter', 'Processing Attempts', 'Retry Policies'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {[
+          { id: 'endpoints', label: 'Endpoints' },
+          { id: 'events', label: 'Events' },
+          { id: 'retries', label: 'Pending Retries' },
+          { id: 'failures', label: 'Failed Deliveries' },
+          { id: 'logs', label: 'Delivery Logs' },
+          { id: 'policies', label: 'Retry Rules' },
+        ].map(item => (
+          <button
+            key={item.id}
+            type="button"
+            className={tab === item.id ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
-      {tab === 'Endpoint Configs' && (
+      {tab === 'endpoints' && (
         <DataTable
           rows={configs.rows}
           columns={['provider_name', 'environment', 'webhook_url', 'masked_signing_secret', 'signature_verification_enabled', 'last_event_received_at', 'failed_event_count', 'retry_queue_count', 'status']}
           empty={{ title: 'No webhook endpoints configured yet.', body: 'Configure provider credentials first. Signing secrets remain masked and signature verification defaults to required.' }}
         />
       )}
-      {tab === 'Events' && <DataTable rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'event_version', 'payload_hash', 'dedupe_key', 'idempotency_key', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} empty={{ title: 'No webhook events yet.', body: 'Events appear after configured providers send signed webhooks.' }} renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run replay', 'View detail']} onClick={action => action === 'Replay event' ? replay(row, false) : action === 'Dry-run replay' ? replay(row, true) : helpers.setDrawer({ title: 'Webhook event', body: row })} />} />}
-      {tab === 'Retry Queue' && <DataTable rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} empty={{ title: 'No retry queue events.', body: 'Failed webhook events that can be retried will appear here.' }} renderActions={row => <ActionButtons actions={['Retry now', 'View detail']} onClick={action => action === 'Retry now' ? helpers.run('Retry queued.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Retry queue item', body: row })} />} />}
-      {tab === 'Dead Letter' && <DataTable rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'retry_count', 'dead_letter_reason', 'error_message', 'received_at']} empty={{ title: 'No dead-letter events.', body: 'Unrecoverable webhook failures appear here for review.' }} renderActions={row => <ActionButtons actions={['Resolve dead letter', 'Ignore', 'View detail']} onClick={action => action === 'Resolve dead letter' ? helpers.run('Dead-letter resolved.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/resolve-dead-letter`, { note: 'Resolved by admin' })).then(load) : action === 'Ignore' ? helpers.run('Webhook ignored.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/ignore`)).then(load) : helpers.setDrawer({ title: 'Dead-letter event', body: row })} />} />}
-      {tab === 'Processing Attempts' && <DataTable rows={attempts.rows} columns={['id', 'webhook_event_id', 'attempt_number', 'status', 'started_at', 'finished_at', 'error_message', 'worker_id']} empty={{ title: 'No processing attempts yet.', body: 'Attempts appear after webhook workers process events.' }} onView={row => helpers.setDrawer({ title: 'Processing attempt', body: row })} />}
-      {tab === 'Retry Policies' && (
+      {tab === 'events' && <DataTable rows={events.rows} columns={['provider_id', 'provider_event_id', 'event_type', 'event_version', 'payload_hash', 'dedupe_key', 'idempotency_key', 'signature_verification_status', 'processing_status', 'retry_count', 'received_at']} empty={{ title: 'No webhook events yet.', body: 'Events appear after configured providers send signed webhooks.' }} renderActions={row => <ActionButtons actions={['Replay event', 'Dry-run replay', 'View detail']} onClick={action => action === 'Replay event' ? replay(row, false) : action === 'Dry-run replay' ? replay(row, true) : helpers.setDrawer({ title: 'Webhook event', body: row })} />} />}
+      {tab === 'retries' && <DataTable rows={events.rows.filter(row => Number(row.retry_count || 0) > 0)} columns={['provider_event_id', 'event_type', 'processing_status', 'retry_count', 'next_retry_at', 'error_message']} empty={{ title: 'No pending retries.', body: 'Failed webhook events scheduled for retry will appear here.' }} renderActions={row => <ActionButtons actions={['Retry now', 'View detail']} onClick={action => action === 'Retry now' ? helpers.run('Retry queued.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/retry`)).then(load) : helpers.setDrawer({ title: 'Pending retry event', body: row })} />} />}
+      {tab === 'failures' && <DataTable rows={events.rows.filter(row => String(row.processing_status || '') === 'dead_letter')} columns={['provider_event_id', 'event_type', 'retry_count', 'dead_letter_reason', 'error_message', 'received_at']} empty={{ title: 'No failed deliveries.', body: 'Events that failed all retry attempts will appear here for review.' }} renderActions={row => <ActionButtons actions={['Resolve dead letter', 'Ignore', 'View detail']} onClick={action => action === 'Resolve dead letter' ? helpers.run('Dead-letter resolved.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/resolve-dead-letter`, { note: 'Resolved by admin' })).then(load) : action === 'Ignore' ? helpers.run('Webhook ignored.', () => apiRequest('POST', `${API}/webhook-events/${String(row.id || '')}/ignore`)).then(load) : helpers.setDrawer({ title: 'Failed delivery', body: row })} />} />}
+      {tab === 'logs' && <DataTable rows={attempts.rows} columns={['id', 'webhook_event_id', 'attempt_number', 'status', 'started_at', 'finished_at', 'error_message', 'worker_id']} empty={{ title: 'No delivery logs yet.', body: 'Logs appear once webhook events are processed.' }} onView={row => helpers.setDrawer({ title: 'Delivery log detail', body: row })} />}
+      {tab === 'policies' && (
         <>
           <section className="card">
-            <h2><RefreshCw size={18} /> Retry policy</h2>
+            <h2><RefreshCw size={18} /> Retry rules</h2>
             <form onSubmit={savePolicy}>
               <div className="filter-grid">
                 <Field label="Provider"><Select value={str(policyForm.provider_id)} options={[{ label: 'Select provider', value: '' }, ...providers.rows.map(provider => ({ label: str(provider.name || provider.code || 'Provider'), value: str(provider.id) }))]} onChange={provider_id => setPolicyForm({ ...policyForm, provider_id })} /></Field>
                 <Field label="Max attempts"><input type="number" value={policyForm.max_attempts} onChange={event => setPolicyForm({ ...policyForm, max_attempts: Number(event.target.value) })} /></Field>
                 <Field label="Backoff strategy"><Select value={policyForm.backoff_strategy} options={['fixed', 'exponential']} onChange={backoff_strategy => setPolicyForm({ ...policyForm, backoff_strategy })} /></Field>
-                <Field label="Initial delay sec"><input type="number" value={policyForm.initial_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, initial_delay_seconds: Number(event.target.value) })} /></Field>
-                <Field label="Max delay sec"><input type="number" value={policyForm.max_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, max_delay_seconds: Number(event.target.value) })} /></Field>
+                <Field label="Initial delay (sec)"><input type="number" value={policyForm.initial_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, initial_delay_seconds: Number(event.target.value) })} /></Field>
+                <Field label="Max delay (sec)"><input type="number" value={policyForm.max_delay_seconds} onChange={event => setPolicyForm({ ...policyForm, max_delay_seconds: Number(event.target.value) })} /></Field>
                 <Field label="Status"><Select value={policyForm.status} options={['active', 'disabled']} onChange={status => setPolicyForm({ ...policyForm, status })} /></Field>
               </div>
               <button className="btn-primary" type="submit">Save retry policy</button>
             </form>
           </section>
-          <DataTable rows={policies.rows} columns={['id', 'provider_id', 'max_attempts', 'backoff_strategy', 'initial_delay_seconds', 'max_delay_seconds', 'status', 'updated_at']} empty={{ title: 'No retry policies yet.', body: 'Create a provider retry policy after webhook endpoints are configured.' }} onView={row => helpers.setDrawer({ title: 'Retry policy', body: row })} />
+          <DataTable rows={policies.rows} columns={['id', 'provider_id', 'max_attempts', 'backoff_strategy', 'initial_delay_seconds', 'max_delay_seconds', 'status', 'updated_at']} empty={{ title: 'No retry rules configured yet.', body: 'Configure a provider retry rule to customize delivery attempts.' }} onView={row => helpers.setDrawer({ title: 'Retry rule', body: row })} />
         </>
       )}
       <Modals helpers={helpers} />
