@@ -14,6 +14,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   CreditCard,
   Download,
@@ -697,6 +699,47 @@ function renderCell(row: GenericRecord, column: string) {
       <span className={`recon-score-badge ${badgeClass}`} title={hint} style={{ cursor: 'help' }}>
         {label}
       </span>
+    );
+  }
+  if (column === 'mfa_enabled') {
+    const isMfa = value === true || value === 'true' || value === 'yes';
+    return (
+      <span className={`badge-mfa ${isMfa ? 'mfa-enabled' : 'mfa-disabled'}`}>
+        <ShieldCheck size={12} />
+        {isMfa ? 'Enabled' : 'Disabled'}
+      </span>
+    );
+  }
+  if (column === 'email' && typeof value === 'string' && value) {
+    return (
+      <span className="table-email-cell" title={value}>
+        {value}
+      </span>
+    );
+  }
+  if (column === 'role' && typeof value === 'string' && value) {
+    return <span className="table-role-tag">{value}</span>;
+  }
+  if (column === 'permissions') {
+    const perms = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+      ? value.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    if (perms.length === 0) return <span style={{ color: 'var(--fp-text-muted)' }}>None</span>;
+    const displayPerms = perms.slice(0, 3);
+    const remaining = perms.length - 3;
+    return (
+      <div className="perm-pills-wrap">
+        {displayPerms.map((p, idx) => (
+          <span key={idx} className="perm-pill">{String(p)}</span>
+        ))}
+        {remaining > 0 && (
+          <span className="perm-pill perm-pill-more" title={perms.slice(3).join(', ')}>
+            +{remaining} more
+          </span>
+        )}
+      </div>
     );
   }
   if (isBadgeColumn(column) && value !== null && value !== undefined && value !== '') {
@@ -2947,14 +2990,44 @@ export function AdminUsersRolesPage() {
   };
   return (
     <CrudPage title="Admin Users & Roles" subtitle="Company admin users only, deny-by-default permissions" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
-      <form className="card filter-grid" onSubmit={inviteAdmin}>
-        <Field label="Name"><input value={invite.name} onChange={event => setInvite({ ...invite, name: event.target.value })} /></Field>
-        <Field label="Email"><input type="email" value={invite.email} onChange={event => setInvite({ ...invite, email: event.target.value })} /></Field>
-        <Field label="Role"><Select value={invite.role} options={ADMIN_ROLES} onChange={role => setInvite({ ...invite, role })} /></Field>
-        <div className="filter-actions">
-          <button className="btn-primary" type="submit"><UserPlus size={14} /> Invite</button>
+      <div className="card admin-invite-card">
+        <div className="admin-invite-header">
+          <div>
+            <h3 className="admin-invite-title">Invite New Admin</h3>
+            <p className="admin-invite-subtitle">Provision access with least-privilege role assignment and audit logging</p>
+          </div>
+          <span className="admin-invite-badge">Deny-by-Default</span>
         </div>
-      </form>
+        <form className="admin-invite-form" onSubmit={inviteAdmin}>
+          <div className="admin-invite-grid">
+            <Field label="Name">
+              <input
+                placeholder="e.g. Deepak Varma"
+                value={invite.name}
+                onChange={event => setInvite({ ...invite, name: event.target.value })}
+                required
+              />
+            </Field>
+            <Field label="Email">
+              <input
+                type="email"
+                placeholder="e.g. deepak.varma@feelpay.com"
+                value={invite.email}
+                onChange={event => setInvite({ ...invite, email: event.target.value })}
+                required
+              />
+            </Field>
+            <Field label="Role">
+              <Select value={invite.role} options={ADMIN_ROLES} onChange={role => setInvite({ ...invite, role })} />
+            </Field>
+            <div className="admin-invite-action">
+              <button className="btn-primary admin-invite-btn" type="submit">
+                <UserPlus size={15} /> Invite Admin
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
       <DataTable rows={users.rows} columns={['id', 'name', 'email', 'role', 'status', 'mfa_enabled', 'last_login_at', 'created_at']} empty="No admin users found" renderActions={row => <ActionButtons actions={['Edit role', 'Deactivate', 'Reactivate', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />} />
       <div className="grid grid-2">
         <TablePanel title="Roles" rows={ADMIN_ROLES.map((role, index) => ({ id: String(index), role, scope: 'company_admin' }))} columns={['role', 'scope']} />
@@ -3644,46 +3717,144 @@ function EmptyState({ config }: { config: EmptyStateConfig }) {
 
 function TablePanel({ title, rows, columns }: { title: string; rows: GenericRecord[]; columns: string[] }) {
   return (
-    <section className="table-card">
-      <h2>{title}</h2>
-      <DataTable rows={rows} columns={columns} empty={`No ${title.toLowerCase()} records`} />
+    <section className="table-card table-panel-card">
+      <div className="table-panel-header">
+        <h2>{title}</h2>
+        <span className="count-badge">{rows.length}</span>
+      </div>
+      <DataTable rows={rows} columns={columns} empty={`No ${title.toLowerCase()} records`} isNested={true} />
     </section>
   );
 }
 
-function DataTable({ rows, columns, empty, renderActions, onView }: { rows: GenericRecord[]; columns: string[]; empty: string | EmptyStateConfig; renderActions?: (row: GenericRecord) => ReactNode; onView?: (row: GenericRecord) => void }) {
+function DataTable({
+  rows,
+  columns,
+  empty,
+  renderActions,
+  onView,
+  pageSize = 10,
+  isNested = false,
+}: {
+  rows: GenericRecord[];
+  columns: string[];
+  empty: string | EmptyStateConfig;
+  renderActions?: (row: GenericRecord) => ReactNode;
+  onView?: (row: GenericRecord) => void;
+  pageSize?: number;
+  isNested?: boolean;
+}) {
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [rows.length]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const activePage = Math.min(currentPage, totalPages);
+
+  const paginatedRows = rows.length > pageSize
+    ? rows.slice((activePage - 1) * pageSize, activePage * pageSize)
+    : rows;
+
+  const isCompact = columns.length <= 3 && !renderActions && !onView;
+
   return (
-    <div
-      className="table-card table-scroll"
-      style={{ padding: 0, overflowX: 'auto' }}
-      tabIndex={0}
-      aria-label="Scrollable data table"
-    >
-      <table>
-        <thead>
-          <tr>
-            {columns.map(column => <th key={column}>{formatHeader(column)}</th>)}
-            {(renderActions || onView) && <th className="actions-cell">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={String(row.id || index)}>
-              {columns.map(column => <td key={column}>{renderCell(row, column)}</td>)}
-              {(renderActions || onView) && (
-                <td className="actions-cell">
-                  {renderActions ? renderActions(row) : (
-                    <button type="button" className="btn-action-primary" onClick={() => onView?.(row)}>
-                      <Eye size={12} /> View detail
-                    </button>
-                  )}
-                </td>
-              )}
+    <div className={`data-table-container ${isNested ? 'nested-table' : ''}`}>
+      <div
+        className={`table-scroll ${isCompact ? 'table-fit' : ''}`}
+        tabIndex={0}
+        aria-label="Scrollable data table"
+      >
+        <table className={isCompact ? 'table-fit-content' : ''}>
+          <thead>
+            <tr>
+              {columns.map(column => <th key={column}>{formatHeader(column)}</th>)}
+              {(renderActions || onView) && <th className="actions-cell">Actions</th>}
             </tr>
-          ))}
-          {rows.length === 0 && <tr><td colSpan={columns.length + (renderActions || onView ? 1 : 0)}>{typeof empty === 'string' ? empty : <EmptyState config={empty} />}</td></tr>}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {paginatedRows.map((row, index) => (
+              <tr key={String(row.id || (activePage - 1) * pageSize + index)}>
+                {columns.map(column => <td key={column}>{renderCell(row, column)}</td>)}
+                {(renderActions || onView) && (
+                  <td className="actions-cell">
+                    {renderActions ? renderActions(row) : (
+                      <button type="button" className="btn-action-primary" onClick={() => onView?.(row)}>
+                        <Eye size={12} /> View detail
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={columns.length + (renderActions || onView ? 1 : 0)}>
+                  {typeof empty === 'string' ? empty : <EmptyState config={empty} />}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > pageSize && (
+        <div className="table-pagination">
+          <div className="table-pagination-info">
+            Showing <span className="pagination-highlight">{(activePage - 1) * pageSize + 1}</span>–<span className="pagination-highlight">{Math.min(activePage * pageSize, rows.length)}</span> of <span className="pagination-highlight">{rows.length}</span> entries
+          </div>
+          <div className="table-pagination-controls">
+            <button
+              type="button"
+              className="pagination-btn"
+              disabled={activePage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} />
+              <span>Prev</span>
+            </button>
+            <div className="pagination-pages">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                if (
+                  totalPages <= 7 ||
+                  page === 1 ||
+                  page === totalPages ||
+                  (page >= activePage - 1 && page <= activePage + 1)
+                ) {
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      className={`pagination-num ${page === activePage ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </button>
+                  );
+                }
+                if (
+                  (page === 2 && activePage > 3) ||
+                  (page === totalPages - 1 && activePage < totalPages - 2)
+                ) {
+                  return <span key={page} className="pagination-ellipsis">…</span>;
+                }
+                return null;
+              })}
+            </div>
+            <button
+              type="button"
+              className="pagination-btn"
+              disabled={activePage === totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              aria-label="Next page"
+            >
+              <span>Next</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
