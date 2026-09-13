@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, ExternalLink, TrendingUp, Building2, AlertTriangle } from 'lucide-react';
 import { apiRequest, clearToken } from '../hooks/useApi';
 
-const DASHBOARD_BASE_URL = import.meta.env.VITE_DASHBOARD_BASE_URL || window.location.origin;
-
 export interface Merchant {
   id: string;
   name: string;
@@ -48,6 +46,19 @@ function getOnboardingBadgeClass(status?: string | null) {
   return 'badge-pending';
 }
 
+function getDashboardBaseUrl(): string {
+  if (import.meta.env.VITE_DASHBOARD_BASE_URL) {
+    return import.meta.env.VITE_DASHBOARD_BASE_URL;
+  }
+  if (window.location.port === '3001') {
+    return `${window.location.protocol}//${window.location.hostname}:3000`;
+  }
+  if (window.location.port === '5174') {
+    return `${window.location.protocol}//${window.location.hostname}:5173`;
+  }
+  return window.location.origin;
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [businessAccounts, setBusinessAccounts] = useState<Merchant[]>([]);
@@ -57,13 +68,22 @@ export default function AdminDashboard() {
 
   const handleOpenAccount = async (businessAccountId: string) => {
     setImpersonating(businessAccountId);
+    // Pre-open blank tab synchronously in user gesture context to prevent popup blockers
+    const targetWin = window.open('about:blank', '_blank');
     try {
       const res = await apiRequest<{ token: string }>('POST', `/admin/merchants/${businessAccountId}/impersonate`);
-      const dashboardUrl = new URL('/login', DASHBOARD_BASE_URL);
+      const baseUrl = getDashboardBaseUrl();
+      const dashboardUrl = new URL('/login', baseUrl);
       dashboardUrl.searchParams.set('token', res.token);
-      window.open(dashboardUrl.toString(), '_blank');
-    } catch (err) {
+      if (targetWin) {
+        targetWin.location.href = dashboardUrl.toString();
+      } else {
+        window.location.href = dashboardUrl.toString();
+      }
+    } catch (err: any) {
+      if (targetWin) targetWin.close();
       console.error('Failed to open business account', err);
+      alert(`Could not open business account: ${err?.message || 'Check connection or authorization'}`);
     } finally {
       setImpersonating(null);
     }

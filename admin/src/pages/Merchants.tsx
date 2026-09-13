@@ -2,7 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Search } from 'lucide-react';
 import { apiRequest } from '../hooks/useApi';
 
-const DASHBOARD_BASE_URL = import.meta.env.VITE_DASHBOARD_BASE_URL || window.location.origin;
+function getDashboardBaseUrl(): string {
+  if (import.meta.env.VITE_DASHBOARD_BASE_URL) {
+    return import.meta.env.VITE_DASHBOARD_BASE_URL;
+  }
+  if (window.location.port === '3001') {
+    return `${window.location.protocol}//${window.location.hostname}:3000`;
+  }
+  if (window.location.port === '5174') {
+    return `${window.location.protocol}//${window.location.hostname}:5173`;
+  }
+  return window.location.origin;
+}
 
 interface Merchant {
   id: string;
@@ -48,13 +59,21 @@ export default function Merchants() {
 
   const handleImpersonate = async (merchantId: string) => {
     setImpersonating(merchantId);
+    const targetWin = window.open('about:blank', '_blank');
     try {
       const res = await apiRequest<{ token: string }>('POST', `/admin/merchants/${merchantId}/impersonate`);
-      const dashboardUrl = new URL('/login', DASHBOARD_BASE_URL);
+      const baseUrl = getDashboardBaseUrl();
+      const dashboardUrl = new URL('/login', baseUrl);
       dashboardUrl.searchParams.set('token', res.token);
-      window.open(dashboardUrl.toString(), '_blank');
-    } catch (err) {
+      if (targetWin) {
+        targetWin.location.href = dashboardUrl.toString();
+      } else {
+        window.location.href = dashboardUrl.toString();
+      }
+    } catch (err: any) {
+      if (targetWin) targetWin.close();
       console.error('Failed to impersonate merchant', err);
+      alert(`Could not open business account: ${err?.message || 'Check connection or authorization'}`);
     } finally {
       setImpersonating(null);
     }
