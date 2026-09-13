@@ -355,7 +355,6 @@ export default function Customers() {
                 <th>Reference</th>
                 <th>Created</th>
                 <th>Methods</th>
-                <th>LTV</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -387,7 +386,6 @@ export default function Customers() {
                   </td>
                   <td className="customers-date">{formatDate(customer.created_at)}</td>
                   <td>{methodCounts[customer.id] ?? 0}</td>
-                  <td>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format((customer.metadata?.lifetime_value || 0) / 100)}</td>
                   <td>
                     <div className="customers-action-row">
                       <button
