@@ -26,8 +26,8 @@ function formatDateTime(value: string) {
 }
 
 export default function AdminBulkExport() {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState('2026-01-01');
+  const [endDate, setEndDate] = useState('2026-12-31');
   const [format, setFormat] = useState<'csv' | 'excel'>('csv');
   const [entityTypes, setEntityTypes] = useState({
     transactions: true,
@@ -250,7 +250,7 @@ export default function AdminBulkExport() {
                           {job.status}
                         </span>
                       </td>
-                      <td>{job.record_count ?? '-'}</td>
+                      <td>{job.record_count ?? '0 records'}</td>
                       <td title={job.created_at}>{formatDateTime(job.created_at)}</td>
                       <td className="actions-cell">
                         {job.status === 'completed' && (

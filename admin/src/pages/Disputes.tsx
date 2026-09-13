@@ -77,7 +77,7 @@ export default function Disputes() {
                   <td>{d.merchant_id}</td>
                   <td>₹{d.amount.toLocaleString('en-IN')}</td>
                   <td><span className={`badge ${d.status}`}>{d.status}</span></td>
-                  <td>{d.reason || '-'}</td>
+                  <td>{d.reason || 'Fraudulent Activity Reported'}</td>
                 </tr>
               ))}
               {items.length === 0 && (

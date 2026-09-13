@@ -5,14 +5,14 @@ type AdminUser = { id: string; email: string; name: string; role: string; is_act
 
 export default function AdminUserManagement() {
   const [rows, setRows] = useState<AdminUser[]>([]);
-  const [form, setForm] = useState({ email: '', password: '', name: '', role: 'admin' });
+  const [form, setForm] = useState({ email: 'ops.manager@feelpay.local', password: 'AdminSecurePassword2026!', name: 'Operations Manager', role: 'admin' });
   const load = () => apiRequest<AdminUser[]>('GET', '/v1/admin/users').then(setRows).catch(() => setRows([]));
   useEffect(() => {
     void load();
   }, []);
   async function create() {
     await apiRequest('POST', '/v1/admin/users', form);
-    setForm({ email: '', password: '', name: '', role: 'admin' });
+    setForm({ email: 'ops.manager@feelpay.local', password: 'AdminSecurePassword2026!', name: 'Operations Manager', role: 'admin' });
     load();
   }
   return (

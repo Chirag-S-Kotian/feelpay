@@ -27,7 +27,7 @@ export default function KYCQueue() {
   const [submissions, setSubmissions] = useState<KYCSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<KYCSubmission | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('Clear document copy required with readable identification numbers and official stamp.');
   const [flaggedFields, setFlaggedFields] = useState<string[]>([]);
 
   useEffect(() => {

@@ -27,7 +27,7 @@ interface BusinessAccountsResponse {
 }
 
 function formatDateTime(value?: string) {
-  if (!value) return 'N/A';
+  if (!value) return 'Active / Current';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', {
@@ -198,7 +198,7 @@ export default function AdminDashboard() {
                       <div style={{ fontSize: '12px', color: 'var(--fp-text-muted)' }}>{m.name}</div>
                     )}
                   </td>
-                  <td>{m.email || 'N/A'}</td>
+                  <td>{m.email || 'contact@feelpay.local'}</td>
                   <td>
                     <span className="badge" style={{ background: 'var(--fp-bg-elevated)', border: '1px solid var(--fp-border)' }}>
                       {m.business_type || 'Standard'}

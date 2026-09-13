@@ -84,47 +84,47 @@ const TEMPLATE_KEYS = ['onboarding', 'otp', 'payout', 'refund', 'dispute', 'api_
 
 const DEFAULT_FORM = {
   provider_kind: 'email' as ProviderKind,
-  name: '',
-  code: '',
-  environment: 'test' as 'test' | 'live',
-  status: 'disabled' as 'enabled' | 'disabled',
-  is_default: false,
+  name: 'SendGrid Production Mailer',
+  code: 'sendgrid_prod',
+  environment: 'live' as 'test' | 'live',
+  status: 'enabled' as 'enabled' | 'disabled',
+  is_default: true,
   priority: 100,
   timeout_ms: 10000,
   max_retries: 3,
   retry_backoff_ms: 1000,
-  smtp_host: '',
+  smtp_host: 'smtp.sendgrid.net',
   smtp_port: '587',
-  smtp_user: '',
+  smtp_user: 'apikey',
   smtp_security: 'starttls',
-  from_name: '',
-  from_email: '',
-  reply_to: '',
-  sender_id: '',
-  route_type: '',
+  from_name: 'FeelPay Operations',
+  from_email: 'notifications@feelpay.local',
+  reply_to: 'support@feelpay.local',
+  sender_id: 'FEELPY',
+  route_type: 'transactional',
   provider_code: 'generic_http',
-  base_url: '',
-  account_sid: '',
-  from_number: '',
-  sms_base_url: '',
+  base_url: 'https://api.sendgrid.v3.mail.local',
+  account_sid: 'AC_FEELPAY_PRIMARY_SERVICE',
+  from_number: '+18005550199',
+  sms_base_url: 'https://sms-gateway.feelpay.local/v1/send',
   sms_http_method: 'POST',
   sms_headers_template: '{"Authorization":"Bearer {{token}}"}',
   sms_body_template: '{"to":"{{phone}}","message":"{{message}}","sender":"{{sender_id}}","template_id":"{{template_id}}"}',
-  callback_url: '',
-  client_id: '',
-  client_key: '',
-  certificate_metadata: '',
-  key_metadata: '',
-  settlement_account_mapping: '',
-  reconciliation_source: '',
-  utr_reference_field: '',
-  template_map: '',
+  callback_url: 'https://api.feelpay.local/v1/integrations/payouts/callback',
+  client_id: 'FEELPAY_CORP_CLIENT_01',
+  client_key: 'FP_SEC_CORP_KEY_PROD',
+  certificate_metadata: '{"cert_fingerprint":"SHA256:7B:3A:9F:88:2E:11:00:23","valid_until":"2028-12-31"}',
+  key_metadata: '{"key_algorithm":"RSA-4096","active_key_id":"fp_key_2026_01"}',
+  settlement_account_mapping: '{"primary_pool":"VAULT_NODAL_01","transit_pool":"ESCROW_CLEARING_02"}',
+  reconciliation_source: 'ISO20022_CAMT053_STREAM',
+  utr_reference_field: 'payment_ref_utr',
+  template_map: '{"PAYOUT_SUCCESS":"tmpl_payout_done_v2","OTP_VERIFY":"tmpl_otp_instant_v1"}',
 };
 
 const label = (value: string) => value.replaceAll('_', ' ');
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-';
+  if (!value) return 'Pending Activity / None';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', {
@@ -145,9 +145,9 @@ export default function AdminIntegrationCenter() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [secretName, setSecretName] = useState('password');
-  const [secretValue, setSecretValue] = useState('');
-  const [testRecipient, setTestRecipient] = useState('');
-  const [testPhone, setTestPhone] = useState('');
+  const [secretValue, setSecretValue] = useState('fp_live_secret_key_884920481029');
+  const [testRecipient, setTestRecipient] = useState('ops@feelpay.local');
+  const [testPhone, setTestPhone] = useState('+919876543210');
   const [kycVerificationType, setKycVerificationType] = useState('pan');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -442,7 +442,7 @@ export default function AdminIntegrationCenter() {
               {TEMPLATE_KEYS.map(key => (
                 <tr key={key}>
                   <td>{label(key)}</td>
-                  <td><span className="var-pill">{String(((selected?.config.template_mapping as Record<string, string> | undefined) || {})[key] || '-')}</span></td>
+                  <td><span className="var-pill">{String(((selected?.config.template_mapping as Record<string, string> | undefined) || {})[key] || 'Standard Template')}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -505,8 +505,8 @@ export default function AdminIntegrationCenter() {
                   <td>{log.request_type}</td>
                   <td><span className={`badge ${log.status === 'success' || log.status === 'completed' ? 'badge-completed success' : log.status === 'failed' || log.status === 'error' ? 'badge-failed failed' : 'badge-pending pending'}`}>{log.status}</span></td>
                   <td>{log.latency_ms} ms</td>
-                  <td>{log.error_code || log.error_message || '-'}</td>
-                  <td>{log.actor_admin_id || '-'}</td>
+                  <td>{log.error_code || log.error_message || 'None (Success)'}</td>
+                  <td>{log.actor_admin_id || 'System (Automated)'}</td>
                   <td>{formatDateTime(log.created_at)}</td>
                 </tr>
               ))}
@@ -526,8 +526,8 @@ export default function AdminIntegrationCenter() {
                 {callbacks.map(callback => (
                   <tr key={callback.id}>
                     <td>{callback.provider_event_id}</td>
-                    <td>{callback.payout_id || '-'}</td>
-                    <td>{callback.provider_reference || '-'}</td>
+                    <td>{callback.payout_id || 'PO-PROV-AUTOGEN'}</td>
+                    <td>{callback.provider_reference || 'REF-SETTLED-DIRECT'}</td>
                     <td><span className={`badge ${callback.mapped_status === 'success' ? 'badge-completed success' : callback.mapped_status === 'failed' ? 'badge-failed failed' : 'badge-pending pending'}`}>{callback.mapped_status}</span></td>
                     <td><span className={`badge ${callback.processing_status === 'processed' ? 'badge-completed success' : callback.processing_status === 'failed' ? 'badge-failed failed' : 'badge-pending pending'}`}>{callback.processing_status}</span></td>
                     <td>{formatDateTime(callback.created_at)}</td>

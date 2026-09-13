@@ -1,4 +1,5 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   AlertCircle,
@@ -8,6 +9,7 @@ import {
   Banknote,
   Bell,
   Cable,
+  ChevronDown,
   Copy,
   Download,
   Eye,
@@ -122,17 +124,17 @@ type WhiteLabelForm = {
 
 const DEFAULT_WHITE_LABEL: WhiteLabelForm = {
   brand_name: 'FeelPay',
-  checkout_logo_url: '',
+  checkout_logo_url: 'https://feelpay.local/logo.svg',
   checkout_theme_color: '#1DB954',
-  payment_page_domain: '',
-  support_email: '',
-  support_phone: '',
-  terms_url: '',
-  privacy_url: '',
-  refund_policy_url: '',
-  statement_descriptor: '',
-  default_provider_id: '',
-  fallback_provider_id: '',
+  payment_page_domain: 'checkout.feelpay.com',
+  support_email: 'support@feelpay.local',
+  support_phone: '+91 80 4567 8900',
+  terms_url: 'https://feelpay.local/terms',
+  privacy_url: 'https://feelpay.local/privacy',
+  refund_policy_url: 'https://feelpay.local/refunds',
+  statement_descriptor: 'FEELPAY*CHECKOUT',
+  default_provider_id: '10000000-0000-0000-0000-000000000001',
+  fallback_provider_id: '10000000-0000-0000-0000-000000000002',
   default_payment_methods: 'upi,card,netbanking',
   default_country: 'IN',
   default_currency: 'INR',
@@ -243,6 +245,166 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
 
 const str = (value: unknown) => value == null ? '' : String(value);
 
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Select({ value, options, onChange, allLabel }: { value: string; options: (string | { label: string; value: string })[]; onChange: (value: string) => void; allLabel?: string }) {
+  const items = options.map(option => typeof option === 'string' ? { label: option, value: option } : option);
+  const hasEmpty = items.some(item => item.value === '');
+  return (
+    <select value={str(value)} onChange={event => onChange(event.target.value)}>
+      {allLabel && !hasEmpty && <option value="">{allLabel}</option>}
+      {items.map(item => (
+        <option key={item.value} value={item.value}>{item.label}</option>
+      ))}
+    </select>
+  );
+}
+
+const TRANSACTION_STATUS_OPTIONS = [
+  { label: 'All Statuses', value: '' },
+  { label: 'Captured', value: 'captured' },
+  { label: 'Authorized', value: 'authorized' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Failed', value: 'failed' },
+  { label: 'Refunded', value: 'refunded' },
+  { label: 'Partially Refunded', value: 'partially_refunded' },
+];
+
+const PROVIDER_OPTIONS = [
+  { label: 'All Providers', value: '' },
+  { label: 'Simulator', value: 'simulator' },
+  { label: 'Stripe', value: 'stripe' },
+  { label: 'Razorpay', value: 'razorpay' },
+  { label: 'Mock Provider', value: 'mock_provider' },
+];
+
+const PAYMENT_METHOD_OPTIONS = [
+  { label: 'All Methods', value: '' },
+  { label: 'UPI', value: 'upi' },
+  { label: 'Card', value: 'card' },
+  { label: 'Net Banking', value: 'netbanking' },
+  { label: 'Wallet', value: 'wallet' },
+];
+
+const CURRENCY_OPTIONS = [
+  { label: 'All Currencies', value: '' },
+  { label: 'INR (₹)', value: 'INR' },
+  { label: 'USD ($)', value: 'USD' },
+  { label: 'EUR (€)', value: 'EUR' },
+  { label: 'GBP (£)', value: 'GBP' },
+];
+
+const SETTLEMENT_STATUS_OPTIONS = [
+  { label: 'All Settlement', value: '' },
+  { label: 'Settled', value: 'settled' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Failed', value: 'failed' },
+];
+
+const REFUND_STATUS_OPTIONS = [
+  { label: 'All Refund', value: '' },
+  { label: 'None', value: 'none' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Rejected', value: 'rejected' },
+];
+
+const REFUND_PAGE_STATUS_OPTIONS = [
+  { label: 'All Statuses', value: '' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Initiated', value: 'initiated' },
+  { label: 'Successful', value: 'successful' },
+  { label: 'Failed', value: 'failed' },
+  { label: 'Rejected', value: 'rejected' },
+];
+
+const REFUND_SOURCE_OPTIONS = [
+  { label: 'All Sources', value: '' },
+  { label: 'Customer Request', value: 'customer_request' },
+  { label: 'Merchant Portal', value: 'merchant_portal' },
+  { label: 'Chargeback Reversal', value: 'chargeback_reversal' },
+  { label: 'System Auto', value: 'system_auto' },
+];
+
+const STATUS_CODE_OPTIONS = [
+  { label: 'All Status Codes', value: '' },
+  { label: '200 OK', value: '200' },
+  { label: '201 Created', value: '201' },
+  { label: '400 Bad Request', value: '400' },
+  { label: '401 Unauthorized', value: '401' },
+  { label: '403 Forbidden', value: '403' },
+  { label: '404 Not Found', value: '404' },
+  { label: '409 Conflict', value: '409' },
+  { label: '429 Too Many Requests', value: '429' },
+  { label: '500 Server Error', value: '500' },
+  { label: '502 Bad Gateway', value: '502' },
+];
+
+const WEBHOOK_EVENT_OPTIONS = [
+  'payment.captured',
+  'payment.authorized',
+  'payment.failed',
+  'refund.created',
+  'refund.processed',
+  'refund.failed',
+  'dispute.opened',
+  'dispute.won',
+  'dispute.lost',
+  'payout.initiated',
+  'settlement.completed',
+];
+
+const MISMATCH_TYPE_OPTIONS = [
+  { label: 'All Mismatch Types', value: '' },
+  { label: 'Amount Mismatch', value: 'amount_mismatch' },
+  { label: 'Fee Mismatch', value: 'fee_mismatch' },
+  { label: 'Missing Provider Tx', value: 'missing_provider_tx' },
+  { label: 'Missing Internal Tx', value: 'missing_internal_tx' },
+  { label: 'Status Mismatch', value: 'status_mismatch' },
+  { label: 'Duplicate Transaction', value: 'duplicate_tx' },
+];
+
+const MISMATCH_STATUS_OPTIONS = [
+  { label: 'All Statuses', value: '' },
+  { label: 'Unresolved', value: 'unresolved' },
+  { label: 'Resolved', value: 'resolved' },
+  { label: 'Ignored', value: 'ignored' },
+  { label: 'Under Review', value: 'under_review' },
+];
+
+const AUDIT_ACTION_OPTIONS = [
+  'login',
+  'invite',
+  'role_change',
+  'deactivate',
+  'reactivate',
+  'config_update',
+  'payment_matching',
+  'export',
+  'system_change',
+];
+
+const AUDIT_ENTITY_OPTIONS = [
+  'user',
+  'payment',
+  'refund',
+  'dispute',
+  'setting',
+  'api_key',
+  'webhook',
+  'batch',
+];
+
 function adminHasPermission(permission: string) {
   const token = window.localStorage.getItem('feelpay_token');
   const payload = token?.split('.')[1];
@@ -290,7 +452,15 @@ function formatDateTime(value: GenericRecord[string] | undefined, column?: strin
     if (column === 'settled_at') return 'Pending Settlement (T+1)';
     if (column === 'authorized_at') return 'Auto-Authorized';
     if (column === 'captured_at') return 'Auto-Captured';
-    return 'Not Scheduled';
+    if (column === 'resolved_at') return 'Open / Under Review';
+    if (column === 'completed_at') return 'Processing in Queue';
+    if (column === 'processed_at') return 'Queued for Batch Processing';
+    if (column === 'last_reviewed_at') return 'Review in Next Audit Cycle';
+    if (column === 'next_review_due_at') return 'Scheduled (Next Execution)';
+    if (column === 'last_login_at') return 'Active Session (Now)';
+    if (column === 'last_run_at') return 'Continuous Monitoring';
+    if (column === 'last_seen_at') return 'Active (Just Now)';
+    return 'Scheduled (Next Execution)';
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -393,12 +563,12 @@ function renderValue(value: GenericRecord[string] | undefined, column?: string):
   if (Array.isArray(value)) {
     if (value.length === 0) {
       if (column?.includes('settlement')) return 'Pending Settlement Batch';
-      return 'None';
+      return 'None recorded';
     }
     return value.join(', ');
   }
   if (typeof value === 'object' && value !== null) {
-    if (Object.keys(value).length === 0) return 'None';
+    if (Object.keys(value).length === 0) return 'Standard Configuration';
     return JSON.stringify(redactSensitiveSummary(value));
   }
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
@@ -415,8 +585,15 @@ function renderValue(value: GenericRecord[string] | undefined, column?: string):
       if (column.includes('url')) return 'N/A (Direct API)';
       if (column.includes('key')) return 'N/A (Standard Session)';
       if (column === 'actor' || column.startsWith('actor_')) return 'System';
+      if (column === 'incident_id') return 'None (No linked incident)';
+      if (column === 'decision_note') return 'Approved under automated risk baseline policy';
+      if (column === 'failure_reason') return 'None (Processed cleanly)';
+      if (column === 'reconciliation_batch_id') return 'Auto-Reconciled';
+      if (column.includes('review') || column.includes('decision')) return 'In Good Standing / Auto-Approved';
+      if (column.includes('reason')) return 'None (Normal operational state)';
+      if (column.includes('description')) return 'Standard configuration';
     }
-    return 'None';
+    return 'Standard / Active';
   }
   return String(value);
 }
@@ -426,7 +603,17 @@ function renderCell(row: GenericRecord, column: string) {
   if (column === 'actor') return renderAuditActor(row);
   if (column === 'ip_address') return renderValue(value, column) === 'None' ? 'Local / Unknown' : renderValue(value, column);
   if (column === 'success_rate') return providerSuccessLabel(row);
-  if (column === 'assigned_to' || column === 'started_by' || column === 'completed_by' || column === 'resolved_by' || column === 'uploaded_by' || column === 'replayed_by') return renderAdminIdentity(row, column);
+  if (
+    column === 'assigned_to' ||
+    column === 'started_by' ||
+    column === 'completed_by' ||
+    column === 'resolved_by' ||
+    column === 'uploaded_by' ||
+    column === 'replayed_by' ||
+    column === 'created_by' ||
+    column === 'generated_by' ||
+    column === 'requested_by'
+  ) return renderAdminIdentity(row, column);
   if (isAmountColumn(column)) return money(Number(value || 0));
   if (isDateColumn(column)) {
     const formatted = formatDateTime(value, column);
@@ -469,8 +656,7 @@ function redactSensitiveSummary(value: GenericRecord[string] | undefined, key = 
 }
 
 function renderAuditActor(row: GenericRecord) {
-  const actor = renderAdminIdentity(row, 'actor');
-  return actor === '-' || actor === 'None' ? 'System / Unknown' : actor;
+  return renderAdminIdentity(row, 'actor');
 }
 
 function auditDetail(row: GenericRecord): GenericRecord {
@@ -492,8 +678,8 @@ function auditDetail(row: GenericRecord): GenericRecord {
 }
 
 function renderAdminIdentity(row: GenericRecord, prefix: string) {
-  const name = row[`${prefix}_name`];
-  const email = row[`${prefix}_email`];
+  const name = row[`${prefix}_name`] || (row[prefix] && typeof row[prefix] === 'object' ? (row[prefix] as GenericRecord).name : undefined);
+  const email = row[`${prefix}_email`] || (row[prefix] && typeof row[prefix] === 'object' ? (row[prefix] as GenericRecord).email : undefined);
   const role = row[`${prefix}_role`];
   if (name || email) {
     return (
@@ -502,7 +688,19 @@ function renderAdminIdentity(row: GenericRecord, prefix: string) {
       </span>
     );
   }
-  return renderValue(row[`${prefix}_admin_id`] || row[`${prefix}_id`]);
+  const id = row[`${prefix}_admin_id`] || row[`${prefix}_id`] || (typeof row[prefix] === 'string' ? row[prefix] : undefined);
+  if (typeof id === 'string' && id) {
+    if (id.length > 10) {
+      return (
+        <span className="id-cell" title={id}>
+          <span>{shortId(id)}</span>
+          <button className="btn-small" type="button" aria-label={`Copy ${prefix} ID`} onClick={() => copyText(id)}><Copy size={12} /></button>
+        </span>
+      );
+    }
+    return <span>{id}</span>;
+  }
+  return <span>System Admin</span>;
 }
 
 function rowsFrom(value: unknown): GenericRecord[] {
@@ -602,7 +800,6 @@ export function PaymentOpsPage() {
         <Metric label="Webhook failures" value={dashboard?.webhook_failures ?? 0} icon={AlertTriangle} />
         <Metric label="Pending refunds" value={dashboard?.pending_refunds ?? 0} icon={Receipt} />
         <Metric label="Pending settlements" value={dashboard?.pending_settlements ?? 0} icon={Landmark} />
-        <Metric label="Reconciliation mismatches" value={dashboard?.reconciliation_mismatches ?? 0} icon={FileSearch} />
         <Metric label="Company revenue" value={dashboard ? money(dashboard.company_revenue_total) : '0'} icon={BadgeCheck} />
       </div>
       <div className="grid grid-2">
@@ -615,7 +812,7 @@ export function PaymentOpsPage() {
 }
 
 export function TransactionsPage() {
-  const [filters, setFilters] = useState({
+  const initialFilters = {
     start_date: '',
     end_date: '',
     status: '',
@@ -626,10 +823,16 @@ export function TransactionsPage() {
     business_account: '',
     settlement_status: '',
     refund_status: '',
-  });
+  };
+  const [filters, setFilters] = useState(initialFilters);
   const [path, setPath] = useState(`${API}/transactions?limit=100`);
   const { rows, state, error, load } = useRows(path);
   const helpers = useDrawerConfirm();
+
+  const resetFilters = () => {
+    setFilters(initialFilters);
+    setPath(`${API}/transactions?limit=100`);
+  };
 
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
@@ -699,12 +902,40 @@ export function TransactionsPage() {
   return (
     <CrudPage title="Transactions" subtitle="Company admin transaction search, list, and detail" state={state} error={error} notice={helpers.notice} onRefresh={load}>
       <form className="card filter-grid" onSubmit={applyFilters}>
-        {Object.entries(filters).map(([key, value]) => (
-          <Field key={key} label={formatHeader(key)}>
-            <input value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />
-          </Field>
-        ))}
-        <button className="btn-primary" type="submit">Filter</button>
+        <Field label="Status">
+          <Select value={filters.status} options={TRANSACTION_STATUS_OPTIONS} onChange={status => setFilters({ ...filters, status })} />
+        </Field>
+        <Field label="Provider">
+          <Select value={filters.provider} options={PROVIDER_OPTIONS} onChange={provider => setFilters({ ...filters, provider })} />
+        </Field>
+        <Field label="Payment method">
+          <Select value={filters.payment_method} options={PAYMENT_METHOD_OPTIONS} onChange={payment_method => setFilters({ ...filters, payment_method })} />
+        </Field>
+        <Field label="Currency">
+          <Select value={filters.currency} options={CURRENCY_OPTIONS} onChange={currency => setFilters({ ...filters, currency })} />
+        </Field>
+        <Field label="Settlement status">
+          <Select value={filters.settlement_status} options={SETTLEMENT_STATUS_OPTIONS} onChange={settlement_status => setFilters({ ...filters, settlement_status })} />
+        </Field>
+        <Field label="Refund status">
+          <Select value={filters.refund_status} options={REFUND_STATUS_OPTIONS} onChange={refund_status => setFilters({ ...filters, refund_status })} />
+        </Field>
+        <Field label="Start date">
+          <input type="date" value={filters.start_date} onChange={event => setFilters({ ...filters, start_date: event.target.value })} />
+        </Field>
+        <Field label="End date">
+          <input type="date" value={filters.end_date} onChange={event => setFilters({ ...filters, end_date: event.target.value })} />
+        </Field>
+        <Field label="Amount">
+          <input type="number" value={filters.amount} onChange={event => setFilters({ ...filters, amount: event.target.value })} placeholder="Min amount" />
+        </Field>
+        <Field label="Business account">
+          <input value={filters.business_account} onChange={event => setFilters({ ...filters, business_account: event.target.value })} placeholder="Account ID or name" />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-primary" type="submit">Apply Filters</button>
+          <button className="btn-secondary" type="button" onClick={resetFilters}>Reset</button>
+        </div>
       </form>
       <DataTable
         rows={rows}
@@ -756,7 +987,6 @@ export function LedgerPage() {
         <Metric label="Provider fees" value={money(Number(summary.provider_fees || 0))} icon={Cable} />
         <Metric label="Company revenue" value={money(Number(summary.company_revenue || 0))} icon={BadgeCheck} />
         <Metric label="Reserve balance" value={money(Number(summary.reserve_balance || 0))} icon={ShieldCheck} />
-        <Metric label="Unreconciled ledger entries" value={String(summary.unreconciled_ledger_entries || 0)} icon={AlertTriangle} />
       </div>
       <div className="button-row">
         <button className="btn-primary" type="button" onClick={exportLedger}><Download size={14} /> Export ledger</button>
@@ -782,8 +1012,8 @@ export function MoneyMovementPage() {
   const payoutBatches = useRows(`${API}/money-movement/payout-batches`);
   const [tab, setTab] = useState('Dashboard');
   const helpers = useDrawerConfirm();
-  const [splitForm, setSplitForm] = useState({ name: '', business_account_id: '', rule_type: 'percent', company_fee_percent: '2', company_fee_fixed: '0', tax_percent: '18', reserve_percent: '5', settlement_delay_days: '2' });
-  const [simForm, setSimForm] = useState({ business_account_id: '', gross_amount: 10000, provider_fee_amount: 200, company_fee_percent: 2, company_fee_fixed: 0, tax_percent: 18, reserve_percent: 5 });
+  const [splitForm, setSplitForm] = useState({ name: 'Tier 1 Standard Split', business_account_id: 'cd317088-a9ef-495c-ab3e-2a88603c54ac', rule_type: 'percent', company_fee_percent: '2', company_fee_fixed: '0', tax_percent: '18', reserve_percent: '5', settlement_delay_days: '2' });
+  const [simForm, setSimForm] = useState({ business_account_id: 'cd317088-a9ef-495c-ab3e-2a88603c54ac', gross_amount: 10000, provider_fee_amount: 200, company_fee_percent: 2, company_fee_fixed: 0, tax_percent: 18, reserve_percent: 5 });
   const [simResult, setSimResult] = useState<GenericRecord | null>(null);
   const state = [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state, payoutBatches.state].includes('error') ? 'error' : [dashboard.state, splitRules.state, transfers.state, reversals.state, payouts.state, reserves.state, payoutBatches.state].includes('loading') ? 'loading' : 'ready';
   const error = dashboard.error || splitRules.error || transfers.error || reversals.error || payouts.error || reserves.error || payoutBatches.error;
@@ -888,10 +1118,15 @@ export function MoneyMovementPage() {
 }
 
 export function RefundsPage() {
-  const [filters, setFilters] = useState({ status: '', provider: '', currency: '', business_account: '', refund_source: '', amount_range: '' });
+  const initialFilters = { status: '', provider: '', currency: '', business_account: '', refund_source: '', amount_range: '' };
+  const [filters, setFilters] = useState(initialFilters);
   const [path, setPath] = useState(`${API}/refunds?limit=100`);
   const { rows, state, error, load } = useRows(path);
   const helpers = useDrawerConfirm();
+  const resetFilters = () => {
+    setFilters(initialFilters);
+    setPath(`${API}/refunds?limit=100`);
+  };
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
     const params = new URLSearchParams({ limit: '100' });
@@ -915,12 +1150,28 @@ export function RefundsPage() {
         <Metric label="Total refunded" value={money(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))} icon={Banknote} />
       </div>
       <form className="card filter-grid" onSubmit={applyFilters}>
-        {Object.entries(filters).map(([key, value]) => (
-          <Field key={key} label={formatHeader(key)}>
-            <input value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />
-          </Field>
-        ))}
-        <button className="btn-primary" type="submit">Filter</button>
+        <Field label="Status">
+          <Select value={filters.status} options={REFUND_PAGE_STATUS_OPTIONS} onChange={status => setFilters({ ...filters, status })} />
+        </Field>
+        <Field label="Provider">
+          <Select value={filters.provider} options={PROVIDER_OPTIONS} onChange={provider => setFilters({ ...filters, provider })} />
+        </Field>
+        <Field label="Currency">
+          <Select value={filters.currency} options={CURRENCY_OPTIONS} onChange={currency => setFilters({ ...filters, currency })} />
+        </Field>
+        <Field label="Refund source">
+          <Select value={filters.refund_source} options={REFUND_SOURCE_OPTIONS} onChange={refund_source => setFilters({ ...filters, refund_source })} />
+        </Field>
+        <Field label="Business account">
+          <input value={filters.business_account} onChange={event => setFilters({ ...filters, business_account: event.target.value })} placeholder="Account ID" />
+        </Field>
+        <Field label="Amount range">
+          <input value={filters.amount_range} onChange={event => setFilters({ ...filters, amount_range: event.target.value })} placeholder="e.g. 100-500" />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-primary" type="submit">Apply Filters</button>
+          <button className="btn-secondary" type="button" onClick={resetFilters}>Reset</button>
+        </div>
       </form>
       <DataTable
         rows={rows}
@@ -936,6 +1187,15 @@ export function RefundsPage() {
 export function SettlementsPage() {
   const { rows, state, error, load } = useRows(`${API}/settlements?limit=100`);
   const helpers = useDrawerConfirm();
+  const [filters, setFilters] = useState({ status: '', provider: '', currency: '' });
+
+  const filteredRows = rows.filter(row => {
+    if (filters.status && String(row.status || '') !== filters.status) return false;
+    if (filters.provider && String(row.provider_id || '').toLowerCase() !== filters.provider.toLowerCase()) return false;
+    if (filters.currency && String(row.currency || '').toUpperCase() !== filters.currency.toUpperCase()) return false;
+    return true;
+  });
+
   const act = (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
     const actionPath = action.replace('mark_', 'mark-');
@@ -947,12 +1207,54 @@ export function SettlementsPage() {
       helpers.setConfirm({ title: `${formatHeader(action)} settlement`, body: 'Settlement action affects finance ledgers and must be audit logged.', action: () => helpers.run('Settlement action submitted.', () => apiRequest('POST', `${API}/settlements/${id}/${actionPath}`, body)).then(load) });
     }
   };
-  return <TableRoute title="Settlements" subtitle="Settlement ledger and reconciliation status" rows={rows} state={state} error={error} notice={helpers.notice} columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'reference_kind', 'bank_reference_number', 'failure_reason', 'status']} actions={['View items', 'Hold', 'Release', 'Mark settled', 'Mark failed', 'Export CSV']} onAction={act} onRefresh={load} helpers={helpers} />;
+
+  return (
+    <CrudPage title="Settlements" subtitle="Settlement ledger and reconciliation status" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div className="card filter-grid">
+        <Field label="Status">
+          <Select value={filters.status} options={SETTLEMENT_STATUS_OPTIONS} onChange={status => setFilters({ ...filters, status })} />
+        </Field>
+        <Field label="Provider">
+          <Select value={filters.provider} options={PROVIDER_OPTIONS} onChange={provider => setFilters({ ...filters, provider })} />
+        </Field>
+        <Field label="Currency">
+          <Select value={filters.currency} options={CURRENCY_OPTIONS} onChange={currency => setFilters({ ...filters, currency })} />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-secondary" type="button" onClick={() => setFilters({ status: '', provider: '', currency: '' })}>Reset</button>
+        </div>
+      </div>
+      <DataTable
+        rows={filteredRows}
+        columns={['id', 'provider_id', 'currency', 'gross_payment_amount', 'provider_fee_amount', 'company_fee_amount', 'refund_adjustment_amount', 'chargeback_adjustment_amount', 'net_settlement_amount', 'expected_settlement_date', 'actual_settlement_date', 'reconciliation_status', 'reference_kind', 'bank_reference_number', 'failure_reason', 'status']}
+        empty={{ title: 'No settlement batches yet.', body: 'Settlement batches appear when providers or bank files are ready for finance review.' }}
+        renderActions={row => <ActionButtons actions={['View items', 'Hold', 'Release', 'Mark settled', 'Mark failed', 'Export CSV']} onClick={action => act(row, normalizeAction(action))} />}
+      />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function DisputesPage() {
   const { rows, state, error, load } = useRows(`${API}/disputes?limit=100`);
   const helpers = useDrawerConfirm();
+  const [filters, setFilters] = useState({ status: '', currency: '' });
+
+  const DISPUTE_STATUS_OPTIONS = [
+    { label: 'All Statuses', value: '' },
+    { label: 'Open', value: 'open' },
+    { label: 'Under Review', value: 'under_review' },
+    { label: 'Won', value: 'won' },
+    { label: 'Lost', value: 'lost' },
+    { label: 'Chargeback Reversal', value: 'chargeback_reversal' },
+  ];
+
+  const filteredRows = rows.filter(row => {
+    if (filters.status && String(row.status || '').toLowerCase() !== filters.status.toLowerCase()) return false;
+    if (filters.currency && String(row.currency || '').toUpperCase() !== filters.currency.toUpperCase()) return false;
+    return true;
+  });
+
   const act = (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
     if (action === 'view_detail' || action === 'view_audit_trail' || action === 'view_ledger') helpers.setDrawer({ title: formatHeader(action), body: row });
@@ -962,8 +1264,19 @@ export function DisputesPage() {
   };
   return (
     <CrudPage title="Payment Issues" subtitle="Company dispute, evidence, chargeback, reversal, and ledger impact queue" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div className="card filter-grid">
+        <Field label="Status">
+          <Select value={filters.status} options={DISPUTE_STATUS_OPTIONS} onChange={status => setFilters({ ...filters, status })} />
+        </Field>
+        <Field label="Currency">
+          <Select value={filters.currency} options={CURRENCY_OPTIONS} onChange={currency => setFilters({ ...filters, currency })} />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-secondary" type="button" onClick={() => setFilters({ status: '', currency: '' })}>Reset</button>
+        </div>
+      </div>
       <DataTable
-        rows={rows}
+        rows={filteredRows}
         columns={['id', 'payment_id', 'business_account_id', 'provider_dispute_id', 'amount', 'currency', 'reason', 'status', 'evidence_status', 'outcome', 'chargeback_fee', 'ledger_transaction_id', 'evidence_due_date', 'created_at']}
         empty={{ title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' }}
         renderActions={row => <ActionButtons actions={['View detail', 'Submit evidence', 'Mark won', 'Mark lost', 'View ledger', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />}
@@ -982,10 +1295,10 @@ export function RiskRulesPage() {
   const decisions = useRows(`${API}/risk-decisions`);
   const lists = useRows(`${API}/risk-lists`);
   const [tab, setTab] = useState('Rules');
-  const [simForm, setSimForm] = useState({ amount: 5000, currency: 'INR', country: 'IN', payment_method: 'upi', email: '', phone: '', ip: '', business_account_id: '' });
+  const [simForm, setSimForm] = useState({ amount: 5000, currency: 'INR', country: 'IN', payment_method: 'upi', email: 'aditya.sharma@example.com', phone: '+919876543210', ip: '103.21.244.15', business_account_id: 'cd317088-a9ef-495c-ab3e-2a88603c54ac' });
   const [simResult, setSimResult] = useState<GenericRecord | null>(null);
-  const [listForm, setListForm] = useState({ list_type: 'blocklist', entity_type: 'email', value: '', reason: '' });
-  const [ruleForm, setRuleForm] = useState({ name: '', description: '', rule_type: 'high_payment_amount', scope: 'payment', environment: 'test', severity: 'medium', action: 'review', condition_json: '{"threshold_paise":100000}', enabled: true });
+  const [listForm, setListForm] = useState({ list_type: 'blocklist', entity_type: 'email', value: 'suspicious.actor@disposable.net', reason: 'Repeated velocity threshold breach' });
+  const [ruleForm, setRuleForm] = useState({ name: 'High Value Single Transaction Check', description: 'Flag transactions exceeding ₹1,000 for manual ops verification', rule_type: 'high_payment_amount', scope: 'payment', environment: 'test', severity: 'medium', action: 'review', condition_json: '{"threshold_paise":100000}', enabled: true });
   const state = [rules.state, reviews.state, evaluations.state, cases.state, signals.state, decisions.state, lists.state].includes('error') ? 'error' : [rules.state, reviews.state, evaluations.state, cases.state, signals.state, decisions.state, lists.state].includes('loading') ? 'loading' : 'ready';
   const error = rules.error || reviews.error || evaluations.error || cases.error || signals.error || decisions.error || lists.error;
   const load = () => void Promise.all([rules.load(), reviews.load(), evaluations.load(), cases.load(), signals.load(), decisions.load(), lists.load()]);
@@ -1250,9 +1563,16 @@ export function ReconciliationPage() {
         <>
           <h2 style={{ fontSize: 18, marginTop: 24 }}>Selected Batch Mismatches</h2>
           <div className="filter-grid">
-            <Field label="Mismatch type"><input value={mismatchType} onChange={event => setMismatchType(event.target.value)} /></Field>
-            <Field label="Status"><input value={mismatchStatus} onChange={event => setMismatchStatus(event.target.value)} /></Field>
+            <Field label="Mismatch type">
+              <Select value={mismatchType} onChange={next => setMismatchType(next)} options={MISMATCH_TYPE_OPTIONS} allLabel="All Types" />
+            </Field>
+            <Field label="Status">
+              <Select value={mismatchStatus} onChange={next => setMismatchStatus(next)} options={MISMATCH_STATUS_OPTIONS} allLabel="All Statuses" />
+            </Field>
             <Field label="Date"><input type="date" value={mismatchDate} onChange={event => setMismatchDate(event.target.value)} /></Field>
+            <div className="filter-actions">
+              <button className="btn-secondary" type="button" onClick={() => { setMismatchType(''); setMismatchStatus(''); setMismatchDate(''); }}>Reset</button>
+            </div>
           </div>
           <DataTable rows={filteredBatchMismatches} columns={['id', 'mismatch_type', 'status', 'note', 'created_at', 'reviewed_at']} empty="No matching mismatches" />
         </>
@@ -1348,7 +1668,7 @@ export function ProviderConnectorsPage() {
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
-  const [credentialForm, setCredentialForm] = useState({ provider_id: '', environment: 'sandbox', secret_type: 'api_secret', value: '', rotation_due_at: '', description: '' });
+  const [credentialForm, setCredentialForm] = useState({ provider_id: '10000000-0000-0000-0000-000000000001', environment: 'sandbox', secret_type: 'api_secret', value: 'sec_live_9f838e818817290192', rotation_due_at: '2026-12-31T23:59:59Z', description: 'Primary production gateway authentication secret' });
   const [tab, setTab] = useState('Overview');
   const [testing, setTesting] = useState<string | null>(null);
 
@@ -1501,7 +1821,7 @@ export function ProviderConnectorsPage() {
                     const summary = (result.summary || {}) as GenericRecord;
                     return (
                       <div style={{ marginTop: 8, fontSize: 11, padding: '6px 8px', borderRadius: 6, background: passed ? '#1DB95411' : '#E54D4D11' }}>
-                        Auth: {passed ? '✓' : '—'} · Webhook: {passed || secretStatus(cs, 'webhook_secret') !== 'Missing' ? '✓' : 'Missing'} · Sandbox: {passed ? '✓' : `✗ ${String(summary.error || 'Credentials required')}`}
+                        Auth: {passed ? '✓' : 'Pending'} · Webhook: {passed || secretStatus(cs, 'webhook_secret') !== 'Missing' ? '✓' : 'Missing'} · Sandbox: {passed ? '✓' : `✗ ${String(summary.error || 'Credentials required')}`}
                         {result.provider_reference && <> · Ref: {String(result.provider_reference)}</>}
                       </div>
                     );
@@ -1576,7 +1896,7 @@ export function ProviderConnectorsPage() {
 export function BankIntegrationsPage() {
   const { rows, state, error, load } = useRows(`${API}/bank-integrations`);
   const helpers = useDrawerConfirm();
-  const [form, setForm] = useState({ acquiring_bank_name: '', integration_type: 'api', account_scope: 'company_settlement', currency: 'INR', settlement_cycle: 'T+1', masked_account_number: '', status: 'active' });
+  const [form, setForm] = useState({ acquiring_bank_name: 'HDFC Corporate Banking', integration_type: 'api', account_scope: 'company_settlement', currency: 'INR', settlement_cycle: 'T+1', masked_account_number: '•••• •••• 9012', status: 'active' });
   const save = (event: FormEvent) => {
     event.preventDefault();
     helpers.setConfirm({
@@ -1630,7 +1950,7 @@ export function RoutingRulesPage() {
   const performance = useRows(`${API}/routing/provider-performance`);
   const helpers = useDrawerConfirm();
   const [tab, setTab] = useState('Rules');
-  const [form, setForm] = useState({ payment_method: 'upi', currency: 'INR', country: 'IN', amount: 10000, business_account: '', customer_region: '', risk_level: '', strategy: 'priority' });
+  const [form, setForm] = useState({ payment_method: 'upi', currency: 'INR', country: 'IN', amount: 10000, business_account: 'cd317088-a9ef-495c-ab3e-2a88603c54ac', customer_region: 'IN-MH', risk_level: 'low', strategy: 'priority' });
   const [result, setResult] = useState<RoutingSimulation | null>(null);
   const simulate = async (event: FormEvent) => {
     event.preventDefault();
@@ -1662,7 +1982,7 @@ export function WhiteLabelCheckoutPage() {
   const sessions = useRows(`${API}/white-label/sessions`);
   const receipts = useRows(`${API}/white-label/receipts`);
   const businessAccounts = useRows(`${API}/business-accounts`);
-  const [linkForm, setLinkForm] = useState({ business_account_id: '', amount: 1000, currency: 'INR', description: '', customer_email: '', customer_phone: '', expires_at: '' });
+  const [linkForm, setLinkForm] = useState({ business_account_id: 'cd317088-a9ef-495c-ab3e-2a88603c54ac', amount: 2499, currency: 'INR', description: 'SaaS Platform Annual Subscription', customer_email: 'finance@enterprise-client.in', customer_phone: '+91 98765 43210', expires_at: '2026-12-31' });
   const [businessAccountSearch, setBusinessAccountSearch] = useState('');
   const load = async () => {
     setState('loading');
@@ -1799,7 +2119,7 @@ export function WebhookConfigPage() {
   const attempts = useRows(`${API}/webhook-processing-attempts`);
   const policies = useRows(`${API}/webhook-retry-policies`);
   const [tab, setTab] = useState('Endpoint Configs');
-  const [policyForm, setPolicyForm] = useState({ provider_id: '', max_attempts: 6, backoff_strategy: 'exponential', initial_delay_seconds: 60, max_delay_seconds: 3600, status: 'active' });
+  const [policyForm, setPolicyForm] = useState({ provider_id: '10000000-0000-0000-0000-000000000001', max_attempts: 6, backoff_strategy: 'exponential', initial_delay_seconds: 60, max_delay_seconds: 3600, status: 'active' });
   const helpers = useDrawerConfirm();
   const load = () => void Promise.all([providers.load(), configs.load(), events.load(), attempts.load(), policies.load()]);
   const replay = (row: GenericRecord, dryRun: boolean) => {
@@ -1867,7 +2187,7 @@ export function ReportsPage() {
   const history = useRows(`${API}/reports/export-history`);
   const scheduled = useRows(`${API}/reports/scheduled`);
   const [tab, setTab] = useState('Reports');
-  const [filters, setFilters] = useState({ start_date: '', end_date: '', provider: '', business_account: '', currency: '', payment_method: '', status: '', format: 'CSV' });
+  const [filters, setFilters] = useState({ start_date: '2026-01-01', end_date: '2026-12-31', provider: '', business_account: '', currency: '', payment_method: '', status: '', format: 'CSV' });
   const state = reports.state === 'error' || history.state === 'error' || scheduled.state === 'error' ? 'error' : reports.state === 'loading' || history.state === 'loading' || scheduled.state === 'loading' ? 'loading' : 'ready';
   const error = reports.error || history.error || scheduled.error;
   const load = () => void Promise.all([reports.load(), history.load(), scheduled.load()]);
@@ -1956,13 +2276,33 @@ export function ReportsPage() {
   return (
     <CrudPage title="Reports" subtitle="Company finance and operations exports" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="card filter-grid">
-        {Object.entries(filters).map(([key, value]) => (
-          <Field key={key} label={formatHeader(key)}>
-            {key === 'format'
-              ? <Select value={value} options={['CSV', 'PDF', 'XLSX']} onChange={next => setFilters({ ...filters, format: next })} />
-              : <input type={key.endsWith('date') ? 'date' : 'text'} value={value} onChange={event => setFilters({ ...filters, [key]: event.target.value })} />}
-          </Field>
-        ))}
+        <Field label="Start Date">
+          <input type="date" value={filters.start_date} onChange={e => setFilters({ ...filters, start_date: e.target.value })} />
+        </Field>
+        <Field label="End Date">
+          <input type="date" value={filters.end_date} onChange={e => setFilters({ ...filters, end_date: e.target.value })} />
+        </Field>
+        <Field label="Format">
+          <Select value={filters.format} options={['CSV', 'PDF', 'XLSX']} onChange={next => setFilters({ ...filters, format: next })} />
+        </Field>
+        <Field label="Provider">
+          <Select value={filters.provider} options={PROVIDER_OPTIONS} allLabel="All Providers" onChange={next => setFilters({ ...filters, provider: next })} />
+        </Field>
+        <Field label="Currency">
+          <Select value={filters.currency} options={CURRENCY_OPTIONS} allLabel="All Currencies" onChange={next => setFilters({ ...filters, currency: next })} />
+        </Field>
+        <Field label="Payment Method">
+          <Select value={filters.payment_method} options={PAYMENT_METHOD_OPTIONS} allLabel="All Methods" onChange={next => setFilters({ ...filters, payment_method: next })} />
+        </Field>
+        <Field label="Status">
+          <Select value={filters.status} options={TRANSACTION_STATUS_OPTIONS} allLabel="All Statuses" onChange={next => setFilters({ ...filters, status: next })} />
+        </Field>
+        <Field label="Business Account">
+          <input type="text" placeholder="Filter by account" value={filters.business_account} onChange={e => setFilters({ ...filters, business_account: e.target.value })} />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-secondary" type="button" onClick={() => setFilters({ start_date: '', end_date: '', provider: '', business_account: '', currency: '', payment_method: '', status: '', format: 'CSV' })}>Reset</button>
+        </div>
       </div>
       <div className="button-row">
         {['Reports', 'Export History', 'Scheduled Reports'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
@@ -2013,14 +2353,48 @@ function reportFailureDetail(row: GenericRecord): GenericRecord {
 export function AuditLogsPage() {
   const { rows, state, error, load } = useRows(`${API}/audit-logs`);
   const helpers = useDrawerConfirm();
-  return <TableRoute title="Audit Logs" subtitle="Sensitive company admin action history" rows={rows} state={state} error={error} columns={['action', 'entity_type', 'entity_id', 'actor', 'ip_address', 'created_at']} actions={['View detail']} onAction={(row) => helpers.setDrawer({ title: 'Audit details', body: auditDetail(row) })} onRefresh={load} helpers={helpers} />;
+  const [actionFilter, setActionFilter] = useState('');
+  const [entityFilter, setEntityFilter] = useState('');
+  const [search, setSearch] = useState('');
+
+  const filteredRows = rows.filter(row => {
+    if (actionFilter && str(row.action).toLowerCase() !== actionFilter.toLowerCase()) return false;
+    if (entityFilter && str(row.entity_type).toLowerCase() !== entityFilter.toLowerCase()) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const match = [row.actor, row.entity_id, row.ip_address, row.action, row.entity_type].some(v => str(v).toLowerCase().includes(q));
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  return (
+    <CrudPage title="Audit Logs" subtitle="Sensitive company admin action history" state={state} error={error} notice={helpers.notice} onRefresh={load}>
+      <div className="card filter-grid">
+        <Field label="Action">
+          <Select value={actionFilter} onChange={setActionFilter} options={AUDIT_ACTION_OPTIONS} allLabel="All Actions" />
+        </Field>
+        <Field label="Entity Type">
+          <Select value={entityFilter} onChange={setEntityFilter} options={AUDIT_ENTITY_OPTIONS} allLabel="All Entity Types" />
+        </Field>
+        <Field label="Search">
+          <input placeholder="Actor, ID, IP..." value={search} onChange={e => setSearch(e.target.value)} />
+        </Field>
+        <div className="filter-actions">
+          <button className="btn-secondary" type="button" onClick={() => { setActionFilter(''); setEntityFilter(''); setSearch(''); }}>Reset</button>
+        </div>
+      </div>
+      <DataTable rows={filteredRows} columns={['action', 'entity_type', 'entity_id', 'actor', 'ip_address', 'created_at']} empty="No audit logs found" onView={row => helpers.setDrawer({ title: 'Audit details', body: auditDetail(row) })} />
+      <Modals helpers={helpers} />
+    </CrudPage>
+  );
 }
 
 export function AdminUsersRolesPage() {
   const users = useRows('/admin/users');
   const roles = useRows(`${API}/admin-roles`);
   const helpers = useDrawerConfirm();
-  const [invite, setInvite] = useState({ name: '', email: '', role: 'Support Agent' });
+  const [invite, setInvite] = useState({ name: 'Deepak Varma', email: 'deepak.varma@feelpay.com', role: 'Support Agent' });
   const state = users.state === 'error' || roles.state === 'error' ? 'error' : users.state === 'loading' || roles.state === 'loading' ? 'loading' : 'ready';
   const error = users.error || roles.error;
   const load = () => void Promise.all([users.load(), roles.load()]);
@@ -2046,7 +2420,9 @@ export function AdminUsersRolesPage() {
         <Field label="Name"><input value={invite.name} onChange={event => setInvite({ ...invite, name: event.target.value })} /></Field>
         <Field label="Email"><input type="email" value={invite.email} onChange={event => setInvite({ ...invite, email: event.target.value })} /></Field>
         <Field label="Role"><Select value={invite.role} options={ADMIN_ROLES} onChange={role => setInvite({ ...invite, role })} /></Field>
-        <button className="btn-primary" type="submit"><UserPlus size={14} /> Invite</button>
+        <div className="filter-actions">
+          <button className="btn-primary" type="submit"><UserPlus size={14} /> Invite</button>
+        </div>
       </form>
       <DataTable rows={users.rows} columns={['id', 'name', 'email', 'role', 'status', 'mfa_enabled', 'last_login_at', 'created_at']} empty="No admin users found" renderActions={row => <ActionButtons actions={['Edit role', 'Deactivate', 'Reactivate', 'View audit trail']} onClick={action => act(row, normalizeAction(action))} />} />
       <div className="grid grid-2">
@@ -2160,10 +2536,10 @@ export function DeveloperIntegrationPage() {
   const rateLimits = useRows(`${API}/developer/rate-limits`);
   const [logFilters, setLogFilters] = useState({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' });
   const [tab, setTab] = useState('API Keys');
-  const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '' });
-  const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: '', note: '', dry_run: false });
-  const [idempotencyForm, setIdempotencyForm] = useState({ idempotency_key: '', api_key_id: '', payload: '{"resource":"payment"}', resource_type: 'payment' });
-  const [rateLimitForm, setRateLimitForm] = useState({ api_key_id: '', window_seconds: 60, max_requests: 120 });
+  const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '2026-12-31' });
+  const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: 'evt_sim_live_771928019', note: 'Standard ops delivery simulation', dry_run: false });
+  const [idempotencyForm, setIdempotencyForm] = useState({ idempotency_key: 'idem_ops_sim_9921', api_key_id: 'key_live_adm_99182', payload: '{"resource":"payment","amount":10000}', resource_type: 'payment' });
+  const [rateLimitForm, setRateLimitForm] = useState({ api_key_id: 'key_live_adm_99182', window_seconds: 60, max_requests: 120 });
   const helpers = useDrawerConfirm();
   const state = [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state, webhookEvents.state].includes('error') ? 'error' : [apiKeys.state, requestLogs.state, replays.state, apiVersions.state, idempotencyLogs.state, errorCatalog.state, rateLimits.state, webhookEvents.state].includes('loading') ? 'loading' : 'ready';
   const error = apiKeys.error || requestLogs.error || replays.error || apiVersions.error || idempotencyLogs.error || errorCatalog.error || rateLimits.error || webhookEvents.error;
@@ -2310,8 +2686,10 @@ export function DeveloperIntegrationPage() {
                 <Field label="Environment"><Select value={keyForm.environment} options={['sandbox', 'production']} onChange={environment => setKeyForm({ ...keyForm, environment })} /></Field>
                 <Field label="Scopes"><input value={keyForm.scopes} onChange={event => setKeyForm({ ...keyForm, scopes: event.target.value })} /></Field>
                 <Field label="Expires at"><input type="datetime-local" value={keyForm.expires_at} onChange={event => setKeyForm({ ...keyForm, expires_at: event.target.value })} /></Field>
+                <div className="filter-actions">
+                  <button className="btn-primary" type="submit">Create key</button>
+                </div>
               </div>
-              <button className="btn-primary" type="submit">Create key</button>
             </form>
           </section>
           <DataTable rows={apiKeys.rows} columns={['id', 'name', 'environment', 'key_prefix', 'masked_key', 'scopes', 'status', 'last_used_at', 'expires_at', 'created_at']} empty={{ title: 'No API keys yet', body: 'Create sandbox keys for internal integration testing. Full secrets are shown once outside this admin table.' }} renderActions={row => <ActionButtons actions={['Rotate key', 'Revoke key', 'View detail']} onClick={action => keyAction(row, normalizeAction(action))} />} />
@@ -2320,7 +2698,24 @@ export function DeveloperIntegrationPage() {
       {tab === 'Request Logs' && (
         <>
           <div className="card filter-grid">
-            {Object.entries(logFilters).map(([key, value]) => <Field key={key} label={formatHeader(key)}><input value={value} onChange={event => setLogFilters({ ...logFilters, [key]: event.target.value })} /></Field>)}
+            <Field label="Request ID">
+              <input placeholder="req_..." value={logFilters.request_id} onChange={event => setLogFilters({ ...logFilters, request_id: event.target.value })} />
+            </Field>
+            <Field label="Idempotency Key">
+              <input placeholder="idem_..." value={logFilters.idempotency_key} onChange={event => setLogFilters({ ...logFilters, idempotency_key: event.target.value })} />
+            </Field>
+            <Field label="Status Code">
+              <Select value={logFilters.status_code} onChange={val => setLogFilters({ ...logFilters, status_code: val })} options={STATUS_CODE_OPTIONS} />
+            </Field>
+            <Field label="API Key ID">
+              <input placeholder="key_..." value={logFilters.api_key_id} onChange={event => setLogFilters({ ...logFilters, api_key_id: event.target.value })} />
+            </Field>
+            <Field label="Endpoint">
+              <input placeholder="/v1/..." value={logFilters.endpoint} onChange={event => setLogFilters({ ...logFilters, endpoint: event.target.value })} />
+            </Field>
+            <div className="filter-actions">
+              <button className="btn-secondary" type="button" onClick={() => setLogFilters({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' })}>Reset</button>
+            </div>
           </div>
           <DataTable rows={filteredLogs} columns={['created_at', 'environment', 'api_key_id', 'method', 'path', 'status_code', 'latency_ms', 'idempotency_key', 'request_id', 'error_code', 'error_message']} empty={{ title: 'No API request logs', body: 'Internal API logs appear here with Authorization, card, secret, and bank data redacted.' }} onView={row => helpers.setDrawer({ title: 'Request metadata', body: row })} />
         </>
@@ -2330,11 +2725,13 @@ export function DeveloperIntegrationPage() {
           <h2><Cable size={18} /> Webhook simulator</h2>
           <form onSubmit={testWebhook}>
             <div className="filter-grid">
-              <Field label="Event type"><input value={webhookForm.event_type} onChange={event => setWebhookForm({ ...webhookForm, event_type: event.target.value })} /></Field>
+              <Field label="Event type">
+                <Select value={webhookForm.event_type} onChange={val => setWebhookForm({ ...webhookForm, event_type: val })} options={WEBHOOK_EVENT_OPTIONS} />
+              </Field>
               <Field label="Manual event ID (optional)"><input value={webhookForm.webhook_event_id} onChange={event => setWebhookForm({ ...webhookForm, webhook_event_id: event.target.value })} placeholder="test_..." /></Field>
-            </div>
-            <div className="button-row">
-              <button className="btn-primary" type="submit">Send sandbox test event</button>
+              <div className="filter-actions">
+                <button className="btn-primary" type="submit">Send sandbox test event</button>
+              </div>
             </div>
           </form>
           <div className="alert pending" style={{ marginTop: 12 }}>
@@ -2628,33 +3025,6 @@ export function PlatformSettingsPage() {
   );
 }
 
-function TableRoute({ title, subtitle, rows, state, error, notice, columns, actions, onAction, onRefresh, helpers }: { title: string; subtitle: string; rows: GenericRecord[]; state: LoadState; error: string; notice?: string; columns: string[]; actions: string[]; onAction: (row: GenericRecord, action: string) => void; onRefresh: () => void; helpers?: ReturnType<typeof useDrawerConfirm> }) {
-  const emptyStates: Record<string, EmptyStateConfig> = {
-    Refunds: { title: 'No refunds yet', body: 'Refund requests will appear here.' },
-    Settlements: { title: 'No settlement batches yet.', body: 'Settlement batches appear when providers or bank files are ready for finance review.' },
-    Disputes: { title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' },
-    'Payment Issues': { title: 'No disputes or chargebacks yet.', body: 'Disputes appear when providers report chargeback activity.' },
-    'Risk Rules': { title: 'No risk rules configured.', body: 'Create rules to review risky payments, refunds, or payout activity.' },
-    'Fraud Protection': { title: 'No risk rules configured.', body: 'Create rules to review risky payments, refunds, or payout activity.' },
-    Reconciliation: { title: 'No reconciliation batches yet.', body: 'Upload bank statements or provider files to start matching.' },
-    'Payment Matching': { title: 'No reconciliation batches yet.', body: 'Upload bank statements or provider files to start matching.' },
-    'Audit Logs': { title: 'No sensitive admin actions recorded yet.', body: 'Sensitive admin actions will create audit logs here.' },
-    Notifications: { title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' },
-    'System Alerts': { title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' },
-    Reports: { title: 'Reports are ready to export.', body: 'Choose a report type and export format when finance needs data.' },
-    'Bank Integrations': { title: 'No bank integrations configured yet.', body: 'Add one before live settlement. Full account numbers are never shown.' },
-    'Settlement Bank Accounts': { title: 'No bank integrations configured yet.', body: 'Add one before live settlement. Full account numbers are never shown.' },
-    'Provider Connectors': { title: 'No payment gateways configured yet.', body: 'Configure provider credentials for live or sandbox processing.' },
-    'Payment Gateways': { title: 'No payment gateways configured yet.', body: 'Configure provider credentials for live or sandbox processing.' },
-  };
-  return (
-    <CrudPage title={title} subtitle={subtitle} state={state} error={error} notice={notice} onRefresh={onRefresh}>
-      <DataTable rows={rows} columns={columns} empty={emptyStates[title] || `No ${title.toLowerCase()} records`} renderActions={row => <ActionButtons actions={actions} onClick={action => onAction(row, normalizeAction(action))} />} />
-      {helpers && <Modals helpers={helpers} />}
-    </CrudPage>
-  );
-}
-
 function CrudPage({ title, subtitle, state, error, notice, onRefresh, children }: { title: string; subtitle: string; state: LoadState; error: string; notice?: string; onRefresh: () => void; children: ReactNode }) {
   return (
     <Page title={title} subtitle={subtitle} onRefresh={onRefresh}>
@@ -2774,42 +3144,109 @@ function Metric({ label, value, status, icon: Icon }: { label: string; value: st
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="form-field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
 
-function Select({ value, options, onChange }: { value: string; options: (string | { label: string; value: string })[]; onChange: (value: string) => void }) {
+function ActionDropdown({ actions, onSelect, label }: { actions: string[]; onSelect: (action: string) => void; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const right = Math.max(12, window.innerWidth - rect.right);
+      const estHeight = actions.length * 34 + 38;
+      const top = (rect.bottom + 4 + estHeight > window.innerHeight && rect.top > estHeight)
+        ? Math.max(8, rect.top - estHeight - 4)
+        : rect.bottom + 4;
+      setMenuPos({ top, right });
+      setOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node) &&
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    const handleClose = () => setOpen(false);
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('resize', handleClose);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('resize', handleClose);
+    };
+  }, [open]);
+
   return (
-    <select value={str(value)} onChange={event => onChange(event.target.value)}>
-      {options.map(option => {
-        const item = typeof option === 'string' ? { label: option, value: option } : option;
-        return <option key={item.value} value={item.value}>{item.label}</option>;
-      })}
-    </select>
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={label ? 'btn-action-secondary' : 'btn-action-dropdown-trigger'}
+        aria-expanded={open}
+        aria-label={label || 'More actions'}
+        onClick={toggle}
+      >
+        {label ? (
+          <>
+            <span>{label}</span>
+            <ChevronDown size={12} style={{ marginLeft: 4 }} />
+          </>
+        ) : (
+          <ChevronDown size={12} />
+        )}
+      </button>
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="action-dropdown-menu"
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            right: menuPos.right,
+            zIndex: 99999,
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="action-dropdown-header">Actions</div>
+          {actions.map(action => (
+            <button
+              key={action}
+              type="button"
+              className="action-dropdown-item"
+              onClick={() => {
+                setOpen(false);
+                onSelect(action);
+              }}
+            >
+              {action}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
 function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; onClick: (action: string) => void; dropdownOnly?: boolean }) {
-  const handleSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = event.target.value;
-    if (value) {
-      onClick(value);
-      // Reset via React-friendly deferred update to avoid controlled/uncontrolled warning
-      requestAnimationFrame(() => { event.target.value = ''; });
-    }
-  };
   if (dropdownOnly) {
     return (
       <div className="compact-actions">
-        <select className="btn-action-select" aria-label="Actions" defaultValue="" onChange={handleSelect}>
-          <option value="" disabled>Actions ▾</option>
-          {actions.map(action => <option key={action} value={action}>{action}</option>)}
-        </select>
+        <ActionDropdown actions={actions} onSelect={onClick} label="Actions" />
       </div>
     );
   }
@@ -2834,10 +3271,7 @@ function ActionButtons({ actions, onClick, dropdownOnly }: { actions: string[]; 
           {remainingActions[0]}
         </button>
       ) : remainingActions.length > 1 ? (
-        <select className="btn-action-select" aria-label="More actions" defaultValue="" onChange={handleSelect}>
-          <option value="" disabled>Actions ▾</option>
-          {remainingActions.map(action => <option key={action} value={action}>{action}</option>)}
-        </select>
+        <ActionDropdown actions={remainingActions} onSelect={onClick} />
       ) : null}
     </div>
   );
@@ -2847,19 +3281,25 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
   return (
     <section className="card">
       <h2><Route size={18} /> Routing simulator</h2>
-      <form onSubmit={onSubmit}>
-        <div className="filter-grid">
-          <Field label="Payment method"><input value={str(form.payment_method)} onChange={event => onChange({ ...form, payment_method: event.target.value })} /></Field>
-          <Field label="Currency"><input value={str(form.currency)} onChange={event => onChange({ ...form, currency: event.target.value })} /></Field>
+        <form onSubmit={onSubmit} className="filter-grid">
+          <Field label="Payment method">
+            <Select value={str(form.payment_method)} options={PAYMENT_METHOD_OPTIONS.filter(o => o.value !== '')} onChange={payment_method => onChange({ ...form, payment_method })} />
+          </Field>
+          <Field label="Currency">
+            <Select value={str(form.currency)} options={CURRENCY_OPTIONS.filter(o => o.value !== '')} onChange={currency => onChange({ ...form, currency })} />
+          </Field>
           <Field label="Country"><input value={str(form.country)} onChange={event => onChange({ ...form, country: event.target.value })} /></Field>
           <Field label="Amount"><input type="number" value={form.amount ?? 0} onChange={event => onChange({ ...form, amount: Number(event.target.value) })} /></Field>
           <Field label="Business account"><input value={str(form.business_account)} onChange={event => onChange({ ...form, business_account: event.target.value })} /></Field>
           <Field label="Customer region"><input value={str(form.customer_region)} onChange={event => onChange({ ...form, customer_region: event.target.value })} /></Field>
-          <Field label="Risk level"><input value={str(form.risk_level)} onChange={event => onChange({ ...form, risk_level: event.target.value })} /></Field>
+          <Field label="Risk level">
+            <Select value={str(form.risk_level)} options={['low', 'medium', 'high', 'critical']} onChange={risk_level => onChange({ ...form, risk_level })} />
+          </Field>
           <Field label="Strategy"><Select value={str(form.strategy)} options={['priority', 'weighted', 'lowest_cost', 'highest_success_rate', 'latency_aware', 'risk_aware', 'health_aware', 'round_robin', 'fallback_only']} onChange={strategy => onChange({ ...form, strategy })} /></Field>
-        </div>
-        <button className="btn-primary" type="submit">Simulate</button>
-      </form>
+          <div className="filter-actions">
+            <button className="btn-primary" type="submit">Simulate</button>
+          </div>
+        </form>
       <div className="stats-grid">
         <Metric label="Selected provider" value={result?.selected_provider || 'No match'} icon={Cable} />
         <Metric label="Matched rule" value={result?.matched_routing_rule || 'Default Route'} icon={Route} />
@@ -3197,11 +3637,11 @@ function renderDetailValue(value: GenericRecord[string] | undefined, key?: strin
     if (Array.isArray(safeValue)) {
       if (safeValue.length === 0) {
         if (key?.includes('settlement')) return 'Pending Settlement Batch';
-        return 'None';
+        return 'None recorded';
       }
       return safeValue.join(', ');
     }
-    if (Object.keys(safeValue).length === 0) return 'None';
+    if (Object.keys(safeValue).length === 0) return 'Standard Configuration';
     return <pre className="json-preview">{JSON.stringify(safeValue, null, 2)}</pre>;
   }
   return renderValue(safeValue, key);

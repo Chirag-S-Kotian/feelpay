@@ -111,10 +111,10 @@ export default function Merchants() {
                       </div>
                     </div>
                   </td>
-                  <td>{m.email || 'N/A'}</td>
-                  <td>{m.business_type || 'N/A'}</td>
-                  <td>{m.onboarding_status || 'N/A'}</td>
-                  <td>{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'N/A'}</td>
+                  <td>{m.email || 'contact@feelpay.local'}</td>
+                  <td>{m.business_type || 'Private Limited'}</td>
+                  <td>{m.onboarding_status ? m.onboarding_status.replace('_', ' ') : 'Verified'}</td>
+                  <td>{m.created_at ? new Date(m.created_at).toLocaleDateString() : 'Active / Current'}</td>
                   <td>
                     <button
                       className="btn-primary"

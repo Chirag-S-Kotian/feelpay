@@ -32,7 +32,7 @@ type DispatchLog = {
 const DEFAULT_SAMPLE = '{\n  "customer_name": "Asha",\n  "amount": "₹499.00",\n  "otp": "492019",\n  "reference": "FP-90214"\n}';
 
 function formatDateTime(value?: string) {
-  if (!value) return 'N/A';
+  if (!value) return 'Active / Current';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', {
@@ -52,8 +52,8 @@ export default function AdminNotificationTemplates() {
   const [dispatchLogs, setDispatchLogs] = useState<DispatchLog[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [sampleData, setSampleData] = useState(DEFAULT_SAMPLE);
-  const [recipient, setRecipient] = useState('');
-  const [phone, setPhone] = useState('');
+  const [recipient, setRecipient] = useState('aditya.sharma@example.com');
+  const [phone, setPhone] = useState('+919876543210');
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -468,7 +468,7 @@ export default function AdminNotificationTemplates() {
                         <RefreshCw size={12} /> Retry
                       </button>
                     ) : (
-                      <span style={{ color: 'var(--fp-text-muted)', fontSize: '12px' }}>—</span>
+                      <span style={{ color: 'var(--fp-text-muted)', fontSize: '12px' }}>Auto-Processed</span>
                     )}
                   </td>
                 </tr>

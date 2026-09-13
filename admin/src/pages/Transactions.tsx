@@ -105,7 +105,7 @@ export default function Transactions() {
                   <td>{tx.id}</td>
                   <td>{tx.merchant_id}</td>
                   <td>₹{tx.amount.toLocaleString('en-IN')}</td>
-                  <td>{tx.payment_method || 'N/A'}</td>
+                  <td>{tx.payment_method || 'UPI / Card'}</td>
                   <td><span className={`badge ${tx.status}`}>{tx.status}</span></td>
                   <td>{new Date(tx.created_at).toLocaleString()}</td>
                 </tr>

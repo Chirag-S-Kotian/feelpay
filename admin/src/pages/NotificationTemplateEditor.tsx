@@ -29,8 +29,8 @@ export const NotificationTemplateEditor: React.FC = () => {
   const [formData, setFormData] = useState<TemplateFormData>({
     event_type: 'payment_receipt',
     channel: 'email',
-    subject: '',
-    body: '',
+    subject: 'Payment Successful - FeelPay Receipt #{{transaction_id}}',
+    body: 'Hi {{customer_name}},\n\nYour payment of {{amount}} has been successfully processed.\nTransaction ID: {{transaction_id}}\nDate: {{date}}\n\nThank you for choosing FeelPay.',
   });
 
   const eventTypes = [
@@ -95,8 +95,8 @@ export const NotificationTemplateEditor: React.FC = () => {
       setFormData({
         event_type: 'payment_receipt',
         channel: 'email',
-        subject: '',
-        body: '',
+        subject: 'Payment Successful - FeelPay Receipt #{{transaction_id}}',
+        body: 'Hi {{customer_name}},\n\nYour payment of {{amount}} has been successfully processed.\nTransaction ID: {{transaction_id}}\nDate: {{date}}\n\nThank you for choosing FeelPay.',
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save template');
@@ -239,7 +239,7 @@ export const NotificationTemplateEditor: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
             />
             <p className="text-xs text-gray-600 mt-2">
-              Available variables: {variableExamples[formData.event_type]?.join(', ') || 'None'}
+              Available variables: {variableExamples[formData.event_type]?.join(', ') || 'customer_name, amount, transaction_id, date'}
             </p>
           </div>
 

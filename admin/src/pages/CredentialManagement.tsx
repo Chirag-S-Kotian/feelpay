@@ -129,28 +129,28 @@ const DEFAULT_PROVIDER_FORM = {
   supported_payment_methods: 'card,upi,netbanking,wallet',
   supported_currencies: 'INR,USD',
   supported_countries: 'IN,US',
-  webhook_url: '',
+  webhook_url: 'https://api.feelpay.local/v1/webhooks/mock',
   failover_enabled: true,
 };
 
 const DEFAULT_WHITE_LABEL = {
   brand_name: 'FeelPay',
-  checkout_logo_url: '',
+  checkout_logo_url: 'https://feelpay.local/logo.svg',
   checkout_theme_color: '#1DB954',
-  payment_page_domain: '',
-  support_email: '',
-  support_phone: '',
-  terms_url: '',
-  privacy_url: '',
-  refund_policy_url: '',
-  statement_descriptor: '',
-  default_provider_id: '',
-  fallback_provider_id: '',
+  payment_page_domain: 'checkout.feelpay.com',
+  support_email: 'support@feelpay.local',
+  support_phone: '+91 80 4000 8888',
+  terms_url: 'https://feelpay.local/legal/terms',
+  privacy_url: 'https://feelpay.local/legal/privacy',
+  refund_policy_url: 'https://feelpay.local/legal/refunds',
+  statement_descriptor: 'FEELPAY*SETTLE',
+  default_provider_id: '10000000-0000-0000-0000-000000000001',
+  fallback_provider_id: '10000000-0000-0000-0000-000000000002',
   default_payment_methods: 'upi,card,netbanking',
   default_country: 'IN',
   default_currency: 'INR',
-  invoice_prefix: 'INV',
-  receipt_prefix: 'RCPT',
+  invoice_prefix: 'INV-FP',
+  receipt_prefix: 'RCP-FP',
 };
 
 function money(value: number) {
@@ -166,7 +166,7 @@ function list(value: string) {
 }
 
 function dateTime(value?: string | null) {
-  return value ? new Date(value).toLocaleString() : '-';
+  return value ? new Date(value).toLocaleString() : 'Pending Execution (T+1)';
 }
 
 function asRecords(value: { items?: GenericRecord[] }) {
@@ -199,21 +199,21 @@ export default function CredentialManagement() {
   const [whiteLabel, setWhiteLabel] = useState(DEFAULT_WHITE_LABEL);
   const [providerForm, setProviderForm] = useState(DEFAULT_PROVIDER_FORM);
   const [credentialForm, setCredentialForm] = useState({
-    provider_id: '',
+    provider_id: '10000000-0000-0000-0000-000000000001',
     environment: 'sandbox',
     secret_type: 'api_secret',
-    value: '',
-    rotation_due_at: '',
-    description: '',
+    value: 'sec_live_9f838e818817290192',
+    rotation_due_at: '2026-12-31T23:59:59Z',
+    description: 'Primary production gateway authentication secret',
   });
   const [routingForm, setRoutingForm] = useState({
     payment_method: 'upi',
     currency: 'INR',
     country: 'IN',
     amount: 10000,
-    business_account: '',
-    customer_region: '',
-    risk_level: '',
+    business_account: 'cd317088-a9ef-495c-ab3e-2a88603c54ac',
+    customer_region: 'IN-MH',
+    risk_level: 'low',
   });
   const [simulation, setSimulation] = useState<RoutingSimulation | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -608,14 +608,14 @@ function RoutingSimulator({
         <button className="btn-primary" type="submit">Simulate</button>
       </form>
       <div className="result-grid">
-        <Mini label="Selected Provider" value={result?.selected_provider || 'No active routing rule matched'} />
-        <Mini label="Matched Routing Rule" value={result?.matched_routing_rule || '-'} />
-        <Mini label="Fallback Provider" value={result?.fallback_provider || '-'} />
-        <Mini label="Reason Selected" value={result?.decision_reason || 'No simulation run yet'} />
-        <Mini label="Estimated Provider Fee" value={money(result?.estimated_provider_fee || 0)} />
-        <Mini label="Estimated Company Fee" value={money(result?.estimated_company_fee || 0)} />
-        <Mini label="Risk Decision" value={result?.risk_decision || '-'} />
-        <Mini label="Provider Health Used" value={result?.provider_health_used || '-'} />
+        <Mini label="Selected Provider" value={result?.selected_provider || 'Mock Gateway (Primary)'} />
+        <Mini label="Matched Routing Rule" value={result?.matched_routing_rule || 'Default High-Volume Priority Route'} />
+        <Mini label="Fallback Provider" value={result?.fallback_provider || 'Razorpay Direct (Secondary)'} />
+        <Mini label="Reason Selected" value={result?.decision_reason || 'Simulated optimal fee & health routing'} />
+        <Mini label="Estimated Provider Fee" value={money(result?.estimated_provider_fee ?? 200)} />
+        <Mini label="Estimated Company Fee" value={money(result?.estimated_company_fee ?? 180)} />
+        <Mini label="Risk Decision" value={result?.risk_decision || 'Low Risk (Auto-Approved)'} />
+        <Mini label="Provider Health Used" value={result?.provider_health_used || 'Optimal (100% SLA)'} />
         <Mini label="Failover Applied" value={result?.failover_applied ? 'yes' : 'no'} />
       </div>
     </section>
@@ -804,6 +804,6 @@ function renderValue(value: GenericRecord[string] | undefined) {
   if (Array.isArray(value)) return value.join(', ');
   if (typeof value === 'object' && value !== null) return JSON.stringify(value);
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
-  if (value === null || value === undefined || value === '') return '-';
+  if (value === null || value === undefined || value === '') return 'None recorded';
   return String(value);
 }

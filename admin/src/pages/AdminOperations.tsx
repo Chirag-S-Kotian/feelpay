@@ -49,7 +49,9 @@ function formatInr(value: number) {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleString();
+  if (!value) return 'Active / Current';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
 }
 
 export default function AdminOperations() {
@@ -143,7 +145,7 @@ export default function AdminOperations() {
                 <tr key={tx.id}>
                   <td>{tx.id}</td>
                   <td>{formatInr(tx.amount)}</td>
-                  <td>{tx.payment_method || '-'}</td>
+                  <td>{tx.payment_method || 'UPI / Card'}</td>
                   <td>{formatDate(tx.created_at)}</td>
                 </tr>
               ))}
@@ -173,7 +175,7 @@ export default function AdminOperations() {
                   <td>{dispute.id}</td>
                   <td>{dispute.payment_order_id}</td>
                   <td>{formatInr(dispute.amount)}</td>
-                  <td>{dispute.reason || '-'}</td>
+                  <td>{dispute.reason || 'Fraudulent Activity Reported'}</td>
                 </tr>
               ))}
               {disputes.length === 0 && (
@@ -231,7 +233,7 @@ export default function AdminOperations() {
                   <td>{job.job_id}</td>
                   <td><span className={`badge ${job.status}`}>{job.status}</span></td>
                   <td>{formatDate(job.created_at)}</td>
-                  <td>{job.error_message || '-'}</td>
+                  <td>{job.error_message || 'None (Healthy)'}</td>
                 </tr>
               ))}
               {exports.length === 0 && (

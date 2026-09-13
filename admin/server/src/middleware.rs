@@ -497,7 +497,7 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
     {
         return Some("webhook_config.manage");
     }
-    if path.starts_with("/exports") || path.starts_with("/revenue") || path.contains("/reports") {
+    if path.contains("/exports") || path.contains("/revenue") || path.contains("/reports") {
         return Some("reports.export");
     }
     if path.contains("/audit-logs") {
@@ -510,28 +510,28 @@ fn required_permission_for_path(path: &str, method: &str) -> Option<&'static str
             "roles.manage"
         });
     }
-    if path.starts_with("/users") {
+    if path.contains("/users") {
         return Some(if method == "GET" {
             "admin_users.view"
         } else {
             "admin_users.manage"
         });
     }
-    if path.starts_with("/system-health") || path.starts_with("/payment-ops/system-health") {
+    if path.contains("/system-health") {
         return Some(if method == "GET" {
             "system_health.view"
         } else {
             "system_health.manage"
         });
     }
-    if path.starts_with("/notifications") {
+    if path.contains("/notifications") {
         return Some(if method == "GET" {
             "notifications.view"
         } else {
             "notifications.manage"
         });
     }
-    if path.starts_with("/platform-settings") {
+    if path.contains("/platform-settings") {
         return Some(if method == "GET" {
             "platform_settings.view"
         } else {

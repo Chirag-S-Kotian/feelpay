@@ -20,17 +20,17 @@ type TenantMerchant = {
 };
 
 const emptyTenantForm = {
-  name: '',
-  slug: '',
+  name: 'Acme Enterprise Hub',
+  slug: 'acme-corp',
   status: 'active',
-  domain: '',
-  logoUrl: '',
+  domain: 'checkout.acmepay.local',
+  logoUrl: 'https://assets.feelpay.local/brand/logo.svg',
   primaryColor: '#2563eb',
   secondaryColor: '#0f172a',
   fontFamily: 'Inter',
-  faviconUrl: '',
-  customDomain: '',
-  emailDomain: '',
+  faviconUrl: 'https://assets.feelpay.local/brand/favicon.ico',
+  customDomain: 'pay.acmepay.local',
+  emailDomain: 'notifications.acmepay.local',
   feeBps: '200',
   settlementDelayDays: '2',
 };
@@ -127,21 +127,33 @@ export default function TenantManagement() {
     <section className="page-shell">
       <header className="page-header">
         <h1>Internal Scope Management</h1>
-        <button onClick={submit}>{editingId ? 'Update' : 'Create'}</button>
+        <div className="filter-actions">
+          <button className="btn-primary" onClick={submit}>{editingId ? 'Update' : 'Create'}</button>
+          {editingId && (
+            <button className="btn-secondary" onClick={() => { setEditingId(null); setForm(emptyTenantForm); }}>Cancel</button>
+          )}
+        </div>
       </header>
-      <div className="filter-grid">
-        <input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-        <input placeholder="Slug" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} />
-        <input placeholder="Scope domain" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} />
-        <input placeholder="Custom checkout domain" value={form.customDomain} onChange={e => setForm({ ...form, customDomain: e.target.value })} />
-        <input placeholder="Email sending domain" value={form.emailDomain} onChange={e => setForm({ ...form, emailDomain: e.target.value })} />
-        <input placeholder="Logo URL" value={form.logoUrl} onChange={e => setForm({ ...form, logoUrl: e.target.value })} />
-        <input placeholder="Favicon URL" value={form.faviconUrl} onChange={e => setForm({ ...form, faviconUrl: e.target.value })} />
-        <input placeholder="Font family" value={form.fontFamily} onChange={e => setForm({ ...form, fontFamily: e.target.value })} />
-        <input placeholder="Primary color (#hex)" value={form.primaryColor} onChange={e => setForm({ ...form, primaryColor: e.target.value })} />
-        <input placeholder="Secondary color (#hex)" value={form.secondaryColor} onChange={e => setForm({ ...form, secondaryColor: e.target.value })} />
-        <input placeholder="Fee (bps)" value={form.feeBps} onChange={e => setForm({ ...form, feeBps: e.target.value })} />
-        <input placeholder="Settlement delay days" value={form.settlementDelayDays} onChange={e => setForm({ ...form, settlementDelayDays: e.target.value })} />
+      <div className="card filter-grid">
+        <label className="form-field"><span>Name</span><input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
+        <label className="form-field"><span>Slug</span><input placeholder="Slug" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} /></label>
+        <label className="form-field"><span>Status</span>
+          <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </label>
+        <label className="form-field"><span>Scope Domain</span><input placeholder="Scope domain" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} /></label>
+        <label className="form-field"><span>Checkout Domain</span><input placeholder="Custom checkout domain" value={form.customDomain} onChange={e => setForm({ ...form, customDomain: e.target.value })} /></label>
+        <label className="form-field"><span>Email Domain</span><input placeholder="Email sending domain" value={form.emailDomain} onChange={e => setForm({ ...form, emailDomain: e.target.value })} /></label>
+        <label className="form-field"><span>Logo URL</span><input placeholder="Logo URL" value={form.logoUrl} onChange={e => setForm({ ...form, logoUrl: e.target.value })} /></label>
+        <label className="form-field"><span>Favicon URL</span><input placeholder="Favicon URL" value={form.faviconUrl} onChange={e => setForm({ ...form, faviconUrl: e.target.value })} /></label>
+        <label className="form-field"><span>Font Family</span><input placeholder="Font family" value={form.fontFamily} onChange={e => setForm({ ...form, fontFamily: e.target.value })} /></label>
+        <label className="form-field"><span>Primary Color</span><input placeholder="#2563eb" value={form.primaryColor} onChange={e => setForm({ ...form, primaryColor: e.target.value })} /></label>
+        <label className="form-field"><span>Secondary Color</span><input placeholder="#0f172a" value={form.secondaryColor} onChange={e => setForm({ ...form, secondaryColor: e.target.value })} /></label>
+        <label className="form-field"><span>Fee (bps)</span><input type="number" placeholder="200" value={form.feeBps} onChange={e => setForm({ ...form, feeBps: e.target.value })} /></label>
+        <label className="form-field"><span>Settlement Delay</span><input type="number" placeholder="2" value={form.settlementDelayDays} onChange={e => setForm({ ...form, settlementDelayDays: e.target.value })} /></label>
       </div>
       <div className="table-wrap">
         <table>
@@ -159,7 +171,7 @@ export default function TenantManagement() {
               <tr key={r.id}>
                 <td>{r.name}</td>
                 <td>{r.slug}</td>
-                <td>{r.domain ?? '-'}</td>
+                <td>{r.domain || 'checkout.feelpay.local'}</td>
                 <td>{r.status}</td>
                 <td>
                   <button onClick={() => { setEditingId(r.id); setFormFromTenant(r); }}>Edit</button>
@@ -187,7 +199,7 @@ export default function TenantManagement() {
                 <tr key={m.id}>
                   <td>{m.name}</td>
                   <td>{m.email}</td>
-                  <td>{m.business_name ?? '-'}</td>
+                  <td>{m.business_name || m.name}</td>
                   <td>{m.status}</td>
                 </tr>
               ))}
