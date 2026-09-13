@@ -3044,8 +3044,6 @@ export function SystemHealthPage() {
   const jobs = useRows('/admin/system-health/jobs');
   const providers = useRows('/admin/system-health/providers');
   const metrics = useRows(`${API}/system-health/metrics`);
-  const slos = useRows(`${API}/system-health/slos`);
-  const snapshots = useRows(`${API}/system-health/slo-snapshots`);
   const traces = useRows(`${API}/system-health/traces`);
   const incidents = useRows('/admin/notifications');
   const [tab, setTab] = useState('Overview');
@@ -3055,8 +3053,6 @@ export function SystemHealthPage() {
     'Jobs API': jobs,
     'Providers API': providers,
     'Metrics API': metrics,
-    'SLOs API': slos,
-    'Snapshots API': snapshots,
     'Traces API': traces,
     'Notifications API': incidents,
   };
@@ -3070,7 +3066,7 @@ export function SystemHealthPage() {
   return (
     <CrudPage title="System Health" subtitle="Internal health for company payment operations" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['Overview', 'Providers', 'Jobs', 'Queues', 'SLOs', 'Incidents', 'Traces'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Overview', 'Providers', 'Jobs', 'Queues', 'Incidents', 'Traces'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="stats-grid">
         {['API status', 'Database status', 'Queue status', 'Webhook worker status', 'Settlement sync status', 'Reconciliation job status', 'Provider health', 'Failed background jobs'].map(component => {
@@ -3084,11 +3080,10 @@ export function SystemHealthPage() {
           return <Metric key={component} label={component} value={value} status={status} icon={Activity} />;
         })}
       </div>
-      {tab === 'Overview' && <DataTable rows={snapshots.rows} columns={['slo_name', 'current_percent', 'error_budget_remaining', 'status', 'captured_at']} empty="No SLO snapshots" />}
+      {tab === 'Overview' && <DataTable rows={health.rows} columns={['component', 'status', 'latency_ms', 'error_message', 'last_checked_at']} empty="No system health checks" />}
       {tab === 'Providers' && <TablePanel title="Provider Health" rows={providers.rows} columns={['provider', 'environment', 'health', 'success_rate', 'attempt_count', 'last_check', 'latency_ms', 'error_message']} />}
       {tab === 'Jobs' && <DataTable rows={jobs.rows} columns={['job_name', 'status', 'last_run_at', 'next_run_at', 'failure_count', 'last_error']} empty="No background jobs found" renderActions={row => <ActionButtons actions={['Retry failed job', 'View logs', 'Mark incident resolved']} onClick={action => action === 'Retry failed job' ? retryJob(row) : helpers.setDrawer({ title: action, body: row })} />} />}
       {tab === 'Queues' && <DataTable rows={metrics.rows.filter(row => String(row.metric_name).includes('queue'))} columns={['metric_name', 'labels_json', 'value', 'captured_at']} empty="No queue metrics" />}
-      {tab === 'SLOs' && <DataTable rows={slos.rows} columns={['name', 'target_percent', 'window_minutes', 'metric_query_key', 'status', 'created_at']} empty="No SLO definitions" renderActions={row => <ActionButtons actions={['Acknowledge SLO breach', 'View detail']} onClick={action => action === 'Acknowledge SLO breach' ? helpers.run('SLO breach acknowledged.', () => apiRequest('POST', `${API}/system-health/slos/refresh`)).then(load) : helpers.setDrawer({ title: 'SLO', body: row })} />} />}
       {tab === 'Incidents' && <DataTable rows={incidents.rows.filter(row => row.incident_id || row.severity === 'critical')} columns={['id', 'title', 'severity', 'status', 'incident_id', 'sla_due_at', 'created_at']} empty="No incidents" onView={row => helpers.setDrawer({ title: 'Incident/alert', body: row })} />}
       {tab === 'Traces' && <DataTable rows={traces.rows} columns={['trace_id', 'request_id', 'span_name', 'duration_ms', 'status', 'error_message', 'created_at']} empty="No traces" onView={row => helpers.setDrawer({ title: 'Trace', body: row })} />}
       <Modals helpers={helpers} />
@@ -3102,28 +3097,44 @@ export function NotificationsPage() {
   const helpers = useDrawerConfirm();
   const act = (row: GenericRecord, action: string) => {
     const id = String(row.id || '');
-    if (action === 'create_incident') helpers.setConfirm({ title: 'Create incident', body: 'Critical alert creates incident, timeline event, and audit log.', action: () => helpers.run('Incident created.', () => apiRequest('POST', `/admin/notifications/${id}/incident`)).then(load) });
-    else if (action === 'snooze_alert') helpers.setConfirm({ title: 'Snooze alert', body: 'Snooze updates alert SLA visibility and creates audit log.', action: () => helpers.run('Alert snoozed.', () => apiRequest('POST', `/admin/notifications/${id}/snooze`)).then(load) });
-    else if (action === 'view_related_record') helpers.setDrawer({ title: 'Related record', body: row });
-    else helpers.setConfirm({ title: formatHeader(action), body: 'Notification action updates alert status and creates audit log.', action: () => helpers.run('Notification updated.', () => apiRequest('POST', `/admin/notifications/${id}/${action}`, { assigned_to_admin_id: row.assigned_to_admin_id || null })).then(load) });
+    if (action === 'view_detail' || action === 'view_related_record') {
+      helpers.setDrawer({
+        title: 'Alert detail',
+        body: {
+          id: row.id,
+          title: row.title,
+          severity: row.severity,
+          type: row.type,
+          status: row.status,
+          message: row.message || row.body || 'No additional message',
+          related_entity: row.related_entity_type ? `${row.related_entity_type}${row.related_entity_id ? ` (${row.related_entity_id})` : ''}` : 'None',
+          created_at: row.created_at,
+        },
+      });
+    } else {
+      helpers.setConfirm({
+        title: formatHeader(action),
+        body: `Confirm ${formatHeader(action).toLowerCase()} for this alert?`,
+        action: () => helpers.run('Notification updated.', () => apiRequest('POST', `/admin/notifications/${id}/${action}`)).then(load),
+      });
+    }
   };
   const scopedRows = rows.filter(row => {
     if (tab === 'Critical') return row.severity === 'critical';
     if (tab === 'Resolved') return row.status === 'resolved';
     if (tab === 'Ignored') return row.status === 'ignored';
-    if (tab === 'Assigned to me') return Boolean(row.assigned_to_admin_id);
     return row.status !== 'resolved' && row.status !== 'ignored';
   });
   return (
     <CrudPage title="System Alerts" subtitle="Company admin alerts center" state={state} error={error || helpers.error} notice={helpers.notice} onRefresh={load}>
       <div className="button-row">
-        {['Inbox', 'Assigned to me', 'Critical', 'Resolved', 'Ignored'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+        {['Inbox', 'Critical', 'Resolved', 'Ignored'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       <div className="card">
         <h2><Bell size={18} /> Alert types</h2>
         <div className="button-row">{ALERT_TYPES.map(type => <span className="badge pending" key={type}>{type}</span>)}</div>
       </div>
-      <DataTable rows={scopedRows} columns={['id', 'severity', 'type', 'title', 'related_entity_type', 'status', 'occurrence_count', 'sla_due_at', 'assigned_to', 'incident_id', 'created_at']} empty={{ title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' }} renderActions={row => <ActionButtons actions={['Acknowledge', 'Assign', 'Create incident', 'Resolve', 'Snooze alert', 'Ignore', 'View related record']} onClick={action => act(row, normalizeAction(action))} />} />
+      <DataTable rows={scopedRows} columns={['id', 'severity', 'type', 'title', 'related_entity_type', 'status', 'occurrence_count', 'sla_due_at', 'incident_id', 'created_at']} empty={{ title: 'No active alerts.', body: 'Provider, webhook, settlement, and risk alerts appear here.' }} renderActions={row => <ActionButtons actions={['Acknowledge', 'Resolve', 'View detail']} onClick={action => act(row, normalizeAction(action))} />} />
       <Modals helpers={helpers} />
     </CrudPage>
   );
@@ -3542,27 +3553,72 @@ export function ComplianceCenterPage() {
         <Metric label="MFA coverage" value={String(overview.mfa_coverage || 0)} status={Number(overview.mfa_coverage || 0) > 0 ? 'success' : 'pending'} icon={UserPlus} />
         <Metric label="Credential rotation due" value={String(overview.credential_rotation_due || 0)} status={Number(overview.credential_rotation_due || 0) > 0 ? 'failed' : 'success'} icon={RefreshCw} />
       </div>
-      <div className="button-row">
-        {['Overview', 'Controls', 'Evidence', 'Access Reviews', 'Security Events', 'Data Retention', 'Audit Export', 'Credential Rotation', 'Compliance Packet', 'Compliance Tasks'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
+      <div className="button-row" style={{ flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: 4 }}>
+        {['Overview', 'Controls', 'Evidence', 'Access Reviews', 'Security Events', 'Audit & Exports', 'Tasks'].map(item => (
+          <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>
+            {item}
+          </button>
+        ))}
       </div>
-      <div className="button-row">
-        <button type="button" onClick={startReview}>Start access review</button>
-        <button type="button" onClick={() => action('Export audit logs', `${API}/compliance/audit-export`, 'GET')}>Export audit logs</button>
-        <button type="button" onClick={() => action('Export security events', `${API}/compliance/security-events-export`, 'GET')}>Export security events</button>
-        <button type="button" onClick={() => action('Rotate due credentials', `${API}/compliance/rotate-due-credentials`)}>Rotate due credentials</button>
-        <button type="button" onClick={() => action('Mark compliance task complete', `${API}/compliance/tasks/pci-readiness/complete`)}>Mark task complete</button>
-        <button type="button" onClick={() => action('Create compliance task', `${API}/compliance/tasks`)}>Create compliance task</button>
-      </div>
-      {tab === 'Overview' && <DataTable rows={readinessRows} columns={['check', 'status']} empty="No compliance readiness checks" />}
+      {tab === 'Overview' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <section className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>PCI & Compliance Readiness</h3>
+              <button type="button" className="btn-secondary" onClick={() => action('Rotate due credentials', `${API}/compliance/rotate-due-credentials`)}>
+                Rotate due credentials
+              </button>
+            </div>
+            <DataTable rows={readinessRows} columns={['check', 'status']} empty="No compliance readiness checks" />
+          </section>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+            <section className="card">
+              <h3 style={{ marginTop: 0, marginBottom: 12 }}>Data Retention Policies</h3>
+              <DataTable rows={retentionRows} columns={['policy', 'status']} empty="No data retention policies" />
+            </section>
+            <section className="card">
+              <h3 style={{ marginTop: 0, marginBottom: 12 }}>Credential Rotation Status</h3>
+              <DataTable rows={rotationRows} columns={['item', 'count', 'status']} empty="No credential rotation tasks" />
+            </section>
+          </div>
+        </div>
+      )}
       {tab === 'Controls' && <DataTable rows={controls.rows} columns={['code', 'title', 'category', 'status', 'owner_admin_id', 'evidence_required', 'last_reviewed_at', 'next_review_due_at']} empty="No compliance controls" renderActions={row => <ActionButtons actions={['Mark control reviewed', 'Assign control owner', 'View detail']} onClick={label => label === 'Mark control reviewed' ? helpers.run('Control reviewed.', () => apiRequest('PATCH', `${API}/compliance/controls/${String(row.id || '')}`, { status: 'pass' })).then(load) : label === 'Assign control owner' ? helpers.run('Owner assigned.', () => apiRequest('PATCH', `${API}/compliance/controls/${String(row.id || '')}`, { owner_admin_id: null })).then(load) : helpers.setDrawer({ title: 'Compliance control', body: row })} />} />}
       {tab === 'Evidence' && <DataTable rows={evidence.rows} columns={['id', 'control_id', 'file_name', 'file_reference', 'uploaded_by_admin_id', 'note', 'created_at']} empty="No compliance evidence yet" onView={row => helpers.setDrawer({ title: 'Evidence', body: row })} />}
-      {tab === 'Access Reviews' && <DataTable rows={reviews.rows} columns={['id', 'review_period', 'status', 'scope', 'due_at', 'reviewer_admin_id', 'started_by_admin_id', 'completed_by_admin_id', 'started_at', 'completed_at']} empty={{ title: 'No access reviews', body: 'Start an access review to verify least-privilege company admin access.' }} renderActions={row => <ActionButtons actions={['Complete access review', 'View detail']} onClick={label => label === 'Complete access review' ? completeReview(row) : helpers.setDrawer({ title: 'Access review', body: row })} />} />}
-      {tab === 'Security Events' && <DataTable rows={securityEvents.rows} columns={['id', 'event_type', 'severity', 'actor_admin_id', 'entity_type', 'entity_id', 'ip_address', 'summary', 'created_at']} empty={{ title: 'No security events', body: 'Security events appear here when sensitive access, export, or credential actions occur.' }} onView={row => helpers.setDrawer({ title: 'Security event', body: row })} />}
-      {tab === 'Data Retention' && <DataTable rows={retentionRows} columns={['policy', 'status']} empty="No data retention policies" />}
-      {tab === 'Audit Export' && <DataTable rows={[{ id: 'audit', export_type: 'Audit logs', masking: 'masked', status: 'available' }, { id: 'security', export_type: 'Security events', masking: 'masked', status: 'available' }]} columns={['export_type', 'masking', 'status']} empty="No exports" />}
-      {tab === 'Credential Rotation' && <DataTable rows={rotationRows} columns={['item', 'count', 'status']} empty="No credential rotation tasks" />}
-      {tab === 'Compliance Packet' && <DataTable rows={packets.rows} columns={['id', 'period', 'status', 'file_reference', 'created_at', 'expires_at']} empty="No compliance packet exports yet" renderActions={row => <ActionButtons actions={['Export compliance packet', 'View detail']} onClick={label => label === 'Export compliance packet' ? helpers.run('Compliance packet queued.', () => apiRequest('POST', `${API}/compliance/packet-exports`, { period: 'Q2-2026' })).then(load) : helpers.setDrawer({ title: 'Compliance packet', body: row })} />} />}
-      {tab === 'Compliance Tasks' && <DataTable rows={tasks.rows} columns={['id', 'title', 'category', 'status', 'owner_admin_id', 'due_at', 'completed_at', 'created_at']} empty={{ title: 'No compliance tasks yet', body: 'Create tasks for access review, retention, exports, and credential rotation follow-up.' }} renderActions={row => <ActionButtons actions={['Mark task complete', 'View detail']} onClick={label => label === 'Mark task complete' ? action('Mark compliance task complete', `${API}/compliance/tasks/${String(row.id || '')}/complete`) : helpers.setDrawer({ title: 'Compliance task', body: row })} />} />}
+      {tab === 'Access Reviews' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-primary" onClick={startReview}>Start access review</button>
+          </div>
+          <DataTable rows={reviews.rows} columns={['id', 'review_period', 'status', 'scope', 'due_at', 'reviewer_admin_id', 'started_by_admin_id', 'completed_by_admin_id', 'started_at', 'completed_at']} empty={{ title: 'No access reviews', body: 'Start an access review to verify least-privilege company admin access.' }} renderActions={row => <ActionButtons actions={['Complete access review', 'View detail']} onClick={label => label === 'Complete access review' ? completeReview(row) : helpers.setDrawer({ title: 'Access review', body: row })} />} />
+        </div>
+      )}
+      {tab === 'Security Events' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-secondary" onClick={() => action('Export security events', `${API}/compliance/security-events-export`, 'GET')}>Export security events</button>
+          </div>
+          <DataTable rows={securityEvents.rows} columns={['id', 'event_type', 'severity', 'actor_admin_id', 'entity_type', 'entity_id', 'ip_address', 'summary', 'created_at']} empty={{ title: 'No security events', body: 'Security events appear here when sensitive access, export, or credential actions occur.' }} onView={row => helpers.setDrawer({ title: 'Security event', body: row })} />
+        </div>
+      )}
+      {(tab === 'Audit & Exports' || tab === 'Audit Export' || tab === 'Compliance Packet') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button type="button" className="btn-secondary" onClick={() => action('Export audit logs', `${API}/compliance/audit-export`, 'GET')}>Export audit logs</button>
+            <button type="button" className="btn-secondary" onClick={() => action('Export security events', `${API}/compliance/security-events-export`, 'GET')}>Export security events</button>
+            <button type="button" className="btn-primary" onClick={() => helpers.run('Compliance packet queued.', () => apiRequest('POST', `${API}/compliance/packet-exports`, { period: 'Q2-2026' })).then(load)}>Queue compliance packet</button>
+          </div>
+          <DataTable rows={packets.rows} columns={['id', 'period', 'status', 'file_reference', 'created_at', 'expires_at']} empty="No compliance packet exports yet" renderActions={row => <ActionButtons actions={['Export compliance packet', 'View detail']} onClick={label => label === 'Export compliance packet' ? helpers.run('Compliance packet queued.', () => apiRequest('POST', `${API}/compliance/packet-exports`, { period: 'Q2-2026' })).then(load) : helpers.setDrawer({ title: 'Compliance packet', body: row })} />} />
+        </div>
+      )}
+      {(tab === 'Tasks' || tab === 'Compliance Tasks') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-primary" onClick={() => action('Create compliance task', `${API}/compliance/tasks`)}>Create compliance task</button>
+          </div>
+          <DataTable rows={tasks.rows} columns={['id', 'title', 'category', 'status', 'owner_admin_id', 'due_at', 'completed_at', 'created_at']} empty={{ title: 'No compliance tasks yet', body: 'Create tasks for access review, retention, exports, and credential rotation follow-up.' }} renderActions={row => <ActionButtons actions={['Mark task complete', 'View detail']} onClick={label => label === 'Mark task complete' ? action('Mark compliance task complete', `${API}/compliance/tasks/${String(row.id || '')}/complete`) : helpers.setDrawer({ title: 'Compliance task', body: row })} />} />
+        </div>
+      )}
       <Modals helpers={helpers} />
     </CrudPage>
   );
