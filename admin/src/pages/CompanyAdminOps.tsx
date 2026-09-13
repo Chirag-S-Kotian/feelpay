@@ -9,9 +9,13 @@ import {
   RotateCcw,
   Banknote,
   Bell,
+  Building2,
   Cable,
+  Check,
+  CheckCircle2,
   ChevronDown,
   Copy,
+  CreditCard,
   Download,
   Eye,
   FileSearch,
@@ -22,14 +26,20 @@ import {
   Landmark,
   Layers,
   LayoutGrid,
+  Lock,
   Mail,
+  Monitor,
   Plus,
+  QrCode,
   Receipt,
   RefreshCw,
   Route,
   Settings,
+  Shield,
   ShieldCheck,
   SlidersHorizontal,
+  Smartphone,
+  Sparkles,
   Timer,
   Upload,
   UserPlus,
@@ -2588,7 +2598,7 @@ export function WhiteLabelCheckoutPage() {
         {['Config', 'Preview', 'Payment Links', 'Checkout Sessions', 'Receipts'].map(item => <button key={item} type="button" className={tab === item ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       {tab === 'Config' && <WhiteLabelPanel value={form} providers={providers} onChange={setForm} onSubmit={save} onReset={() => setForm(DEFAULT_WHITE_LABEL)} />}
-      {tab === 'Preview' && <CheckoutPreview value={form} />}
+      {tab === 'Preview' && <CheckoutPreview value={form} onEditConfig={() => setTab('Config')} />}
       {tab === 'Payment Links' && (
         <>
           <section className="card">
@@ -3880,6 +3890,7 @@ function RoutingSimulator({ form, result, onChange, onSubmit }: { form: { paymen
 function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { value: WhiteLabelForm; providers: Provider[]; onChange: (value: WhiteLabelForm) => void; onSubmit: (event: FormEvent) => void; onReset: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [logoError, setLogoError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -3911,12 +3922,12 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
   };
 
   const paymentMethodOptions = [
-    { label: 'UPI', value: 'upi' },
-    { label: 'Card', value: 'card' },
-    { label: 'Net Banking', value: 'netbanking' },
-    { label: 'Wallet', value: 'wallet' },
-    { label: 'EMI', value: 'emi' },
-    { label: 'BNPL', value: 'bnpl' },
+    { label: 'UPI', value: 'upi', icon: <QrCode size={13} /> },
+    { label: 'Card', value: 'card', icon: <CreditCard size={13} /> },
+    { label: 'Net Banking', value: 'netbanking', icon: <Building2 size={13} /> },
+    { label: 'Wallet', value: 'wallet', icon: <Wallet size={13} /> },
+    { label: 'EMI', value: 'emi', icon: <Landmark size={13} /> },
+    { label: 'BNPL', value: 'bnpl', icon: <Zap size={13} /> },
   ];
 
   const currencyOptions = [
@@ -3934,6 +3945,15 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
     { label: 'United Arab Emirates', value: 'AE' },
   ];
 
+  const themeSwatches = [
+    { name: 'Emerald', hex: '#1DB954' },
+    { name: 'Indigo', hex: '#6366F1' },
+    { name: 'Sapphire', hex: '#2563EB' },
+    { name: 'Rose', hex: '#E11D48' },
+    { name: 'Amber', hex: '#F59E0B' },
+    { name: 'Violet', hex: '#8B5CF6' },
+  ];
+
   return (
     <section className="card">
       <div className="page-header" style={{ marginBottom: 24 }}>
@@ -3942,145 +3962,1767 @@ function WhiteLabelPanel({ value, providers, onChange, onSubmit, onReset }: { va
           <p className="muted-text">Customize the checkout experience for all hosted payment flows.</p>
         </div>
         <div className="button-row">
-          <button type="button" className="btn-secondary" onClick={onReset}>Reset defaults</button>
-          <button className="btn-primary" type="button" onClick={onSubmit}>Save changes</button>
+          <button type="button" className="btn-secondary" onClick={onReset}>
+            <RotateCcw size={13} /> Reset defaults
+          </button>
+          <button className="btn-primary" type="button" onClick={onSubmit}>
+            <Check size={14} /> Save configuration
+          </button>
         </div>
       </div>
 
-      <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-        <div className="grid grid-2" style={{ gap: 32 }}>
+      <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+        <div className="grid grid-2" style={{ gap: 28 }}>
+          {/* Left Column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0 }}>Visual Branding</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-              <Field label="Brand Name">
-                <input value={str(value.brand_name)} onChange={event => onChange({ ...value, brand_name: event.target.value })} placeholder="FeelPay" />
-              </Field>
+            {/* Visual Branding */}
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--fp-text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 }}>
+                Visual Branding & Host
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                <Field label="Brand Name">
+                  <input
+                    value={str(value.brand_name)}
+                    onChange={event => onChange({ ...value, brand_name: event.target.value })}
+                    placeholder="e.g. FeelPay"
+                  />
+                </Field>
 
-              <Field label="Logo Upload (200KB - 5MB)">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 8, background: 'var(--fp-bg-card, #F3F4F6)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--fp-border, #E5E7EB)' }}>
-                    {value.checkout_logo_url ? <img src={value.checkout_logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Upload size={20} className="muted-text" />}
+                <Field label="Custom Checkout Domain">
+                  <input
+                    value={str(value.payment_page_domain)}
+                    onChange={event => onChange({ ...value, payment_page_domain: event.target.value })}
+                    placeholder="e.g. checkout.feelpay.com"
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #888)', marginTop: 4 }}>
+                    Custom white-label domain or subdomain configured for hosted checkout sessions
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploading} style={{ fontSize: 12 }} />
-                    {uploading && <div style={{ fontSize: 11, color: '#6366f1', marginTop: 4 }}>Uploading...</div>}
-                    {logoError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{logoError}</div>}
-                  </div>
-                </div>
-              </Field>
+                </Field>
 
-              <Field label="Theme Color">
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input type="color" value={str(value.checkout_theme_color || '#6366f1')} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} style={{ width: 42, height: 42, padding: 0, border: 'none', borderRadius: 8, cursor: 'pointer' }} />
-                  <input value={str(value.checkout_theme_color)} onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })} placeholder="#6366f1" style={{ fontFamily: 'monospace', flex: 1 }} />
-                </div>
-              </Field>
+                <Field label="Brand Logo (200KB - 5MB)">
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 14,
+                      padding: 12,
+                      background: 'rgba(0,0,0,0.2)',
+                      border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+                      borderRadius: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 10,
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid var(--fp-border, rgba(255,255,255,0.12))',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {value.checkout_logo_url ? (
+                        <img src={value.checkout_logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        <Upload size={22} style={{ color: 'var(--fp-text-muted, #777)' }} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        disabled={uploading}
+                        style={{ display: 'none' }}
+                      />
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploading}
+                          style={{ fontSize: 11, padding: '5px 10px' }}
+                        >
+                          <Upload size={12} /> {uploading ? 'Uploading...' : 'Choose Image'}
+                        </button>
+                        {value.checkout_logo_url && (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => onChange({ ...value, checkout_logo_url: '' })}
+                            style={{ fontSize: 11, padding: '5px 8px', color: '#EF4444' }}
+                            title="Remove Logo"
+                          >
+                            <X size={12} /> Remove
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #888)', marginTop: 4 }}>
+                        PNG, SVG, or JPG (Recommended: 256x256 square)
+                      </div>
+                      {logoError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{logoError}</div>}
+                    </div>
+                  </div>
+                </Field>
+
+                <Field label="Theme Accent Color">
+                  <div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ position: 'relative', width: 40, height: 40, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0 }}>
+                        <input
+                          type="color"
+                          value={str(value.checkout_theme_color || '#1DB954')}
+                          onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })}
+                          style={{ position: 'absolute', top: -10, left: -10, width: 60, height: 60, cursor: 'pointer', border: 'none', padding: 0 }}
+                        />
+                      </div>
+                      <input
+                        value={str(value.checkout_theme_color)}
+                        onChange={event => onChange({ ...value, checkout_theme_color: event.target.value })}
+                        placeholder="#1DB954"
+                        style={{ fontFamily: 'monospace', flex: 1 }}
+                      />
+                    </div>
+                    {/* Quick Swatches */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {themeSwatches.map(sw => {
+                        const isSelected = str(value.checkout_theme_color).toLowerCase() === sw.hex.toLowerCase();
+                        return (
+                          <button
+                            key={sw.hex}
+                            type="button"
+                            onClick={() => onChange({ ...value, checkout_theme_color: sw.hex })}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              fontSize: 10,
+                              cursor: 'pointer',
+                              background: isSelected ? `${sw.hex}22` : 'rgba(255,255,255,0.04)',
+                              border: isSelected ? `1px solid ${sw.hex}` : '1px solid rgba(255,255,255,0.1)',
+                              color: isSelected ? '#FFFFFF' : 'var(--fp-text-muted, #aaa)',
+                            }}
+                          >
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: sw.hex }} />
+                            <span>{sw.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </Field>
+              </div>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0, marginTop: 12 }}>Payment Defaults</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-              <Field label="Default Currency">
-                <Select value={str(value.default_currency)} options={currencyOptions} onChange={next => onChange({ ...value, default_currency: next })} />
-              </Field>
-              <Field label="Default Country">
-                <Select value={str(value.default_country)} options={countryOptions} onChange={next => onChange({ ...value, default_country: next })} />
-              </Field>
-              <Field label="Default Payment Methods">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12, border: '1px solid var(--fp-border, #E5E7EB)', borderRadius: 8, background: 'var(--fp-bg-elevated, #fff)' }}>
-                  {paymentMethodOptions.map(opt => {
-                    const methods = list(value.default_payment_methods);
-                    const isChecked = methods.includes(opt.value);
-                    return (
-                      <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', padding: '4px 8px', borderRadius: 6, background: isChecked ? '#EEF2FF' : 'transparent', color: isChecked ? '#4F46E5' : '#4B5563', border: `1px solid ${isChecked ? '#C7D2FE' : 'transparent'}` }}>
-                        <input type="checkbox" checked={isChecked} onChange={e => {
-                          const next = e.target.checked ? [...methods, opt.value] : methods.filter(m => m !== opt.value);
-                          onChange({ ...value, default_payment_methods: next.join(',') });
-                        }} style={{ display: 'none' }} />
-                        {opt.label}
-                      </label>
-                    );
-                  })}
+            {/* Payment Defaults */}
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--fp-text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 }}>
+                Payment Defaults
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Default Currency">
+                    <Select value={str(value.default_currency)} options={currencyOptions} onChange={next => onChange({ ...value, default_currency: next })} />
+                  </Field>
+                  <Field label="Default Country">
+                    <Select value={str(value.default_country)} options={countryOptions} onChange={next => onChange({ ...value, default_country: next })} />
+                  </Field>
                 </div>
-              </Field>
+
+                <Field label="Default Payment Methods">
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      padding: 12,
+                      border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+                      borderRadius: 10,
+                      background: 'rgba(0,0,0,0.2)',
+                    }}
+                  >
+                    {paymentMethodOptions.map(opt => {
+                      const methods = list(value.default_payment_methods);
+                      const isChecked = methods.includes(opt.value);
+                      return (
+                        <label
+                          key={opt.value}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: isChecked ? 700 : 500,
+                            cursor: 'pointer',
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            background: isChecked ? 'rgba(29, 185, 84, 0.14)' : 'rgba(255,255,255,0.04)',
+                            color: isChecked ? '#10B981' : 'var(--fp-text-muted, #aaa)',
+                            border: isChecked ? '1px solid #10B981' : '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              const next = e.target.checked ? [...methods, opt.value] : methods.filter(m => m !== opt.value);
+                              onChange({ ...value, default_payment_methods: next.join(',') });
+                            }}
+                            style={{ display: 'none' }}
+                          />
+                          {opt.icon}
+                          <span>{opt.label}</span>
+                          {isChecked && <Check size={13} style={{ color: '#10B981' }} />}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #888)', marginTop: 4 }}>
+                    Enabled channels appear immediately on customer checkout and payment links
+                  </div>
+                </Field>
+              </div>
             </div>
           </div>
 
+          {/* Right Column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0 }}>Provider Routing</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-              <Field label="Primary Routing Provider">
-                <Select value={str(value.default_provider_id)} options={[{ label: 'Smart Routing (Automatic)', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]} onChange={next => onChange({ ...value, default_provider_id: next })} />
-              </Field>
-              <Field label="Failover Provider">
-                <Select value={str(value.fallback_provider_id)} options={[{ label: 'None', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]} onChange={next => onChange({ ...value, fallback_provider_id: next })} />
-              </Field>
+            {/* Provider Routing */}
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--fp-text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 }}>
+                Provider Routing
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                <Field label="Primary Routing Provider">
+                  <Select
+                    value={str(value.default_provider_id)}
+                    options={[{ label: 'Smart Routing (Automatic)', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]}
+                    onChange={next => onChange({ ...value, default_provider_id: next })}
+                  />
+                </Field>
+                <Field label="Failover Provider">
+                  <Select
+                    value={str(value.fallback_provider_id)}
+                    options={[{ label: 'None', value: '' }, ...providers.map(p => ({ label: `${p.name} (${p.provider_type})`, value: p.id }))]}
+                    onChange={next => onChange({ ...value, fallback_provider_id: next })}
+                  />
+                </Field>
+              </div>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0, marginTop: 12 }}>Legal & Support</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-              <Field label="Support Email">
-                <input value={str(value.support_email)} onChange={event => onChange({ ...value, support_email: event.target.value })} placeholder="support@feelpay.com" />
-              </Field>
-              <Field label="Terms of Service URL">
-                <input value={str(value.terms_url)} onChange={event => onChange({ ...value, terms_url: event.target.value })} placeholder="https://..." />
-              </Field>
-              <Field label="Privacy Policy URL">
-                <input value={str(value.privacy_url)} onChange={event => onChange({ ...value, privacy_url: event.target.value })} placeholder="https://..." />
-              </Field>
+            {/* Legal & Customer Support */}
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--fp-text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 }}>
+                Legal & Customer Support
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Support Email">
+                    <input
+                      value={str(value.support_email)}
+                      onChange={event => onChange({ ...value, support_email: event.target.value })}
+                      placeholder="support@feelpay.local"
+                    />
+                  </Field>
+                  <Field label="Support Phone Number">
+                    <input
+                      value={str(value.support_phone)}
+                      onChange={event => onChange({ ...value, support_phone: event.target.value })}
+                      placeholder="+91 80 4567 8900"
+                    />
+                  </Field>
+                </div>
+                <Field label="Terms of Service URL">
+                  <input
+                    value={str(value.terms_url)}
+                    onChange={event => onChange({ ...value, terms_url: event.target.value })}
+                    placeholder="https://feelpay.local/terms"
+                  />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Privacy Policy URL">
+                    <input
+                      value={str(value.privacy_url)}
+                      onChange={event => onChange({ ...value, privacy_url: event.target.value })}
+                      placeholder="https://feelpay.local/privacy"
+                    />
+                  </Field>
+                  <Field label="Refund Policy URL">
+                    <input
+                      value={str(value.refund_policy_url)}
+                      onChange={event => onChange({ ...value, refund_policy_url: event.target.value })}
+                      placeholder="https://feelpay.local/refunds"
+                    />
+                  </Field>
+                </div>
+              </div>
             </div>
 
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0, marginTop: 12 }}>Checkout Content</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <Field label="Invoice Prefix">
-                <input value={str(value.invoice_prefix)} onChange={event => onChange({ ...value, invoice_prefix: event.target.value })} />
-              </Field>
-              <Field label="Receipt Prefix">
-                <input value={str(value.receipt_prefix)} onChange={event => onChange({ ...value, receipt_prefix: event.target.value })} />
-              </Field>
+            {/* Checkout Content & Descriptors */}
+            <div>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--fp-text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 }}>
+                Checkout Content & Descriptors
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                <Field label="Bank Statement Descriptor">
+                  <input
+                    value={str(value.statement_descriptor)}
+                    maxLength={22}
+                    onChange={event => onChange({ ...value, statement_descriptor: event.target.value.toUpperCase() })}
+                    placeholder="FEELPAY*CHECKOUT"
+                    style={{ fontFamily: 'monospace' }}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #888)', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Appears on customer bank statements & instant SMS debit alerts</span>
+                    <span style={{ fontFamily: 'monospace' }}>{str(value.statement_descriptor).length}/22</span>
+                  </div>
+                </Field>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Invoice Prefix">
+                    <input
+                      value={str(value.invoice_prefix)}
+                      onChange={event => onChange({ ...value, invoice_prefix: event.target.value })}
+                      placeholder="INV"
+                    />
+                  </Field>
+                  <Field label="Receipt Prefix">
+                    <input
+                      value={str(value.receipt_prefix)}
+                      onChange={event => onChange({ ...value, receipt_prefix: event.target.value })}
+                      placeholder="RCPT"
+                    />
+                  </Field>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="button-row" style={{ marginTop: 12, paddingTop: 24, borderTop: '1px solid var(--fp-border, #E5E7EB)', justifyContent: 'flex-end' }}>
-          <button type="button" className="btn-secondary" onClick={onReset}>Discard changes</button>
-          <button className="btn-primary" type="submit">Save configuration</button>
+        <div className="button-row" style={{ marginTop: 12, paddingTop: 20, borderTop: '1px solid var(--fp-border, rgba(255,255,255,0.08))', justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onReset}>
+            <RotateCcw size={13} /> Discard changes
+          </button>
+          <button className="btn-primary" type="submit">
+            <Check size={14} /> Save configuration
+          </button>
         </div>
       </form>
     </section>
   );
 }
 
-function CheckoutPreview({ value }: { value: WhiteLabelForm }) {
-  const themeColor = str(value.checkout_theme_color) || '#1DB954';
-  const brandName = str(value.brand_name) || 'FeelPay';
-  const supportEmail = str(value.support_email) || 'support unavailable';
-  const sampleAmount = new Intl.NumberFormat('en-IN', { style: 'currency', currency: str(value.default_currency) || 'INR', minimumFractionDigits: 2 }).format(2499);
-  const details = [
-    { id: 'brand', label: 'Brand Name', value: brandName },
-    { id: 'theme', label: 'Theme Color', value: themeColor },
-    { id: 'support', label: 'Support Email', value: supportEmail },
-    { id: 'terms', label: 'Terms URL', value: str(value.terms_url) || 'Not configured' },
-    { id: 'privacy', label: 'Privacy URL', value: str(value.privacy_url) || 'Not configured' },
-    { id: 'refund', label: 'Refund Policy URL', value: str(value.refund_policy_url) || 'Not configured' },
-  ];
+function QrCodeSvg({ brandInitial, color }: { brandInitial: string; color: string }) {
   return (
-    <section className="card">
-      <h2><Wallet size={18} /> Checkout preview</h2>
-      <div className="grid grid-2">
-        <div style={{ border: '1px solid var(--fp-border, #E5E7EB)', borderRadius: 14, padding: 18, background: 'var(--fp-bg-elevated, #fff)', color: 'var(--fp-text-primary, #111827)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-            {value.checkout_logo_url ? <img src={value.checkout_logo_url} alt="" style={{ width: 42, height: 42, borderRadius: 21, objectFit: 'cover' }} /> : <span style={{ width: 42, height: 42, borderRadius: 21, background: themeColor, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>FP</span>}
-            <div><strong>{brandName}</strong><div style={{ color: '#6B7280', fontSize: 12 }}>Secure company checkout</div></div>
+    <svg
+      viewBox="0 0 200 200"
+      width="168"
+      height="168"
+      style={{
+        background: '#FFFFFF',
+        borderRadius: 12,
+        padding: 8,
+        display: 'block',
+        margin: '0 auto',
+        maxWidth: '100%',
+        height: 'auto',
+        aspectRatio: '1/1',
+      }}
+    >
+      {/* Top-Left Finder */}
+      <rect x="12" y="12" width="44" height="44" rx="6" fill="#000" />
+      <rect x="20" y="20" width="28" height="28" rx="3" fill="#fff" />
+      <rect x="26" y="26" width="16" height="16" rx="2" fill="#000" />
+
+      {/* Top-Right Finder */}
+      <rect x="144" y="12" width="44" height="44" rx="6" fill="#000" />
+      <rect x="152" y="20" width="28" height="28" rx="3" fill="#fff" />
+      <rect x="158" y="26" width="16" height="16" rx="2" fill="#000" />
+
+      {/* Bottom-Left Finder */}
+      <rect x="12" y="144" width="44" height="44" rx="6" fill="#000" />
+      <rect x="20" y="152" width="28" height="28" rx="3" fill="#fff" />
+      <rect x="26" y="158" width="16" height="16" rx="2" fill="#000" />
+
+      {/* Alignment / Timing Grid */}
+      <rect x="62" y="30" width="76" height="4" fill="#000" />
+      <rect x="30" y="62" width="4" height="76" fill="#000" />
+
+      {/* Data Blocks */}
+      <rect x="64" y="14" width="8" height="8" fill="#000" />
+      <rect x="78" y="18" width="12" height="6" fill="#000" />
+      <rect x="98" y="12" width="6" height="12" fill="#000" />
+      <rect x="114" y="20" width="14" height="6" fill="#000" />
+
+      <rect x="14" y="64" width="8" height="8" fill="#000" />
+      <rect x="18" y="78" width="6" height="12" fill="#000" />
+      <rect x="12" y="98" width="12" height="6" fill="#000" />
+      <rect x="20" y="114" width="6" height="14" fill="#000" />
+
+      <rect x="64" y="68" width="10" height="10" fill="#000" />
+      <rect x="126" y="68" width="10" height="10" fill="#000" />
+      <rect x="64" y="122" width="10" height="10" fill="#000" />
+      <rect x="126" y="122" width="10" height="10" fill="#000" />
+
+      <rect x="80" y="60" width="40" height="6" fill="#000" />
+      <rect x="80" y="134" width="40" height="6" fill="#000" />
+
+      <rect x="144" y="64" width="14" height="8" fill="#000" />
+      <rect x="168" y="74" width="8" height="16" fill="#000" />
+      <rect x="146" y="98" width="18" height="6" fill="#000" />
+      <rect x="172" y="114" width="10" height="10" fill="#000" />
+
+      <rect x="64" y="144" width="14" height="8" fill="#000" />
+      <rect x="74" y="168" width="16" height="8" fill="#000" />
+      <rect x="98" y="146" width="6" height="18" fill="#000" />
+      <rect x="114" y="172" width="10" height="10" fill="#000" />
+
+      <rect x="144" y="144" width="12" height="12" fill="#000" />
+      <rect x="164" y="148" width="8" height="14" fill="#000" />
+      <rect x="148" y="168" width="14" height="8" fill="#000" />
+      <rect x="168" y="168" width="16" height="16" fill="#000" />
+
+      {/* Central Brand Badge */}
+      <circle cx="100" cy="100" r="21" fill="#FFFFFF" stroke="#111827" strokeWidth="2" />
+      <circle cx="100" cy="100" r="17" fill={color} />
+      <text x="100" y="105" textAnchor="middle" fill="#FFFFFF" fontSize="12" fontWeight="800" fontFamily="sans-serif">
+        {brandInitial}
+      </text>
+    </svg>
+  );
+}
+
+function CheckoutPreview({ value, onEditConfig }: { value: WhiteLabelForm; onEditConfig?: () => void }) {
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [amount, setAmount] = useState<number>(2499);
+  const [activeThemeColor, setActiveThemeColor] = useState<string>(str(value.checkout_theme_color) || '#1DB954');
+  const [selectedMethod, setSelectedMethod] = useState<'upi' | 'card' | 'netbanking' | 'wallets'>('upi');
+  const [upiMode, setUpiMode] = useState<'qr' | 'vpa'>('qr');
+  const [vpaInput, setVpaInput] = useState<string>('merchant.customer@okhdfcbank');
+  const [vpaVerified, setVpaVerified] = useState<boolean>(true);
+  const [cardNumber, setCardNumber] = useState<string>('4532 8901 2345 8821');
+  const [cardExpiry, setCardExpiry] = useState<string>('08/28');
+  const [cardCvv, setCardCvv] = useState<string>('882');
+  const [cardName, setCardName] = useState<string>('AARAV SHARMA');
+  const [saveCard, setSaveCard] = useState<boolean>(true);
+  const [selectedBank, setSelectedBank] = useState<string>('HDFC');
+  const [selectedWallet, setSelectedWallet] = useState<string>('simpl');
+  const [orderExpanded, setOrderExpanded] = useState<boolean>(false);
+  const [paymentState, setPaymentState] = useState<'idle' | 'processing' | 'success'>('idle');
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  useEffect(() => {
+    setActiveThemeColor(str(value.checkout_theme_color) || '#1DB954');
+  }, [value.checkout_theme_color]);
+
+  const brandName = str(value.brand_name) || 'FeelPay';
+  const supportEmail = str(value.support_email) || 'support@feelpay.local';
+  const supportPhone = str(value.support_phone) || '+91 80 4567 8900';
+  const domain = str(value.payment_page_domain) || 'checkout.feelpay.com';
+  const statementDesc = str(value.statement_descriptor) || 'FEELPAY*CHECKOUT';
+  const invoicePrefix = str(value.invoice_prefix) || 'INV';
+  const receiptPrefix = str(value.receipt_prefix) || 'RCPT';
+  const currency = str(value.default_currency) || 'INR';
+
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+    }).format(val);
+
+  const baseAmount = Math.round((amount / 1.18) * 100) / 100;
+  const gstAmount = Math.round((amount - baseAmount) * 100) / 100;
+
+  const handleSimulatePayment = () => {
+    if (paymentState !== 'idle') return;
+    setPaymentState('processing');
+    setTimeout(() => {
+      setPaymentState('success');
+    }, 1100);
+  };
+
+  const handleResetFlow = () => {
+    setPaymentState('idle');
+  };
+
+  const handleCopyLink = () => {
+    void navigator.clipboard.writeText(`https://${domain}/pay/cs_preview_8f012`).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    });
+  };
+
+  const brandInitial = brandName.slice(0, 2).toUpperCase() || 'FP';
+
+  const brandLogoNode = value.checkout_logo_url ? (
+    <img
+      src={value.checkout_logo_url}
+      alt={brandName}
+      style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }}
+    />
+  ) : (
+    <div
+      style={{
+        width: 38,
+        height: 38,
+        borderRadius: 10,
+        background: activeThemeColor,
+        color: '#FFFFFF',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 800,
+        fontSize: 14,
+        letterSpacing: 0.5,
+        boxShadow: `0 4px 12px ${activeThemeColor}44`,
+      }}
+    >
+      {brandInitial}
+    </div>
+  );
+
+  const topBanks = [
+    { code: 'HDFC', name: 'HDFC Bank' },
+    { code: 'SBI', name: 'State Bank of India' },
+    { code: 'ICICI', name: 'ICICI Bank' },
+    { code: 'AXIS', name: 'Axis Bank' },
+    { code: 'KOTAK', name: 'Kotak Bank' },
+    { code: 'PNB', name: 'Punjab National' },
+  ];
+
+  const themeSwatches = [
+    { name: 'Emerald', hex: '#1DB954' },
+    { name: 'Indigo', hex: '#6366F1' },
+    { name: 'Sapphire', hex: '#2563EB' },
+    { name: 'Crimson', hex: '#E11D48' },
+    { name: 'Amber', hex: '#F59E0B' },
+  ];
+
+  // Renders the interactive payment selector + form
+  const renderPaymentMethods = (isMobileView: boolean) => {
+    if (paymentState === 'success') {
+      return (
+        <div style={{ textAlign: 'center', padding: isMobileView ? '24px 12px' : '36px 20px' }}>
+          <div
+            style={{
+              width: 68,
+              height: 68,
+              borderRadius: '50%',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '2px solid #10B981',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}
+          >
+            <CheckCircle2 size={40} style={{ color: '#10B981' }} />
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 6 }}>{sampleAmount}</div>
-          <div style={{ color: '#6B7280', marginBottom: 14 }}>Receipt {str(value.receipt_prefix) || 'RCPT'}-0001 · Invoice {str(value.invoice_prefix) || 'INV'}-0001</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
-            {list(value.default_payment_methods).map(method => <span key={method} style={{ border: `1px solid ${themeColor}`, color: themeColor, borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>{method.toUpperCase()}</span>)}
+          <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--fp-text, #fff)', marginBottom: 6 }}>
+            Payment Successful!
+          </h3>
+          <p style={{ fontSize: 13, color: 'var(--fp-text-muted, #a1a1aa)', marginBottom: 20 }}>
+            Transaction authorized by {brandName} gateway
+          </p>
+
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+              borderRadius: 12,
+              padding: '16px',
+              textAlign: 'left',
+              fontSize: 12,
+              marginBottom: 20,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ color: 'var(--fp-text-muted, #888)' }}>Amount Paid</span>
+              <strong style={{ color: 'var(--fp-text, #fff)', fontSize: 13 }}>{formatCurrency(amount)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ color: 'var(--fp-text-muted, #888)' }}>Transaction ID</span>
+              <span style={{ fontFamily: 'monospace', color: 'var(--fp-text, #fff)' }}>txn_live_99214710</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ color: 'var(--fp-text-muted, #888)' }}>Receipt Number</span>
+              <span style={{ fontFamily: 'monospace', color: 'var(--fp-text, #fff)' }}>{receiptPrefix}-0001</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--fp-text-muted, #888)' }}>Payment Method</span>
+              <span style={{ textTransform: 'uppercase', color: activeThemeColor, fontWeight: 700 }}>{selectedMethod}</span>
+            </div>
           </div>
-          <button type="button" className="btn-primary" style={{ background: themeColor, width: '100%' }}>Pay securely</button>
-          <div style={{ color: '#6B7280', fontSize: 12, marginTop: 14 }}>Need help? {supportEmail}</div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleResetFlow}
+              style={{ background: activeThemeColor, color: '#fff', fontSize: 12, padding: '8px 14px' }}
+            >
+              <RotateCcw size={13} /> Test Another Payment
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => alert(`Simulated receipt download for ${receiptPrefix}-0001`)}
+              style={{ fontSize: 12, padding: '8px 14px' }}
+            >
+              <Download size={13} /> Sample PDF Receipt
+            </button>
+          </div>
         </div>
-        <DataTable rows={details} columns={['label', 'value']} empty="No preview details" />
+      );
+    }
+
+    return (
+      <div>
+        {/* Method Switcher Tabs */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 4,
+            background: 'rgba(0,0,0,0.25)',
+            padding: 4,
+            borderRadius: 10,
+            marginBottom: 16,
+          }}
+        >
+          {[
+            { id: 'upi', label: 'UPI / QR', icon: <QrCode size={13} /> },
+            { id: 'card', label: 'Cards', icon: <CreditCard size={13} /> },
+            { id: 'netbanking', label: 'Netbanking', icon: <Building2 size={13} /> },
+            { id: 'wallets', label: 'Wallets & EMI', icon: <Wallet size={13} /> },
+          ].map(m => {
+            const isActive = selectedMethod === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setSelectedMethod(m.id as typeof selectedMethod)}
+                style={{
+                  display: 'flex',
+                  flexDirection: isMobileView ? 'column' : 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 5,
+                  padding: isMobileView ? '6px 2px' : '7px 6px',
+                  borderRadius: 7,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: isMobileView ? 10 : 11,
+                  fontWeight: isActive ? 700 : 500,
+                  background: isActive ? activeThemeColor : 'transparent',
+                  color: isActive ? '#FFFFFF' : 'var(--fp-text-muted, #9ca3af)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {m.icon}
+                <span>{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab 1: UPI */}
+        {selectedMethod === 'upi' && (
+          <div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <button
+                type="button"
+                onClick={() => setUpiMode('qr')}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  fontWeight: upiMode === 'qr' ? 700 : 500,
+                  borderRadius: 6,
+                  border: upiMode === 'qr' ? `1px solid ${activeThemeColor}` : '1px solid rgba(255,255,255,0.1)',
+                  background: upiMode === 'qr' ? `${activeThemeColor}18` : 'transparent',
+                  color: upiMode === 'qr' ? activeThemeColor : 'var(--fp-text-muted, #aaa)',
+                  cursor: 'pointer',
+                }}
+              >
+                Scan UPI QR
+              </button>
+              <button
+                type="button"
+                onClick={() => setUpiMode('vpa')}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  fontWeight: upiMode === 'vpa' ? 700 : 500,
+                  borderRadius: 6,
+                  border: upiMode === 'vpa' ? `1px solid ${activeThemeColor}` : '1px solid rgba(255,255,255,0.1)',
+                  background: upiMode === 'vpa' ? `${activeThemeColor}18` : 'transparent',
+                  color: upiMode === 'vpa' ? activeThemeColor : 'var(--fp-text-muted, #aaa)',
+                  cursor: 'pointer',
+                }}
+              >
+                Enter UPI ID
+              </button>
+            </div>
+
+            {upiMode === 'qr' ? (
+              <div style={{ textAlign: 'center', padding: '6px 0' }}>
+                <QrCodeSvg brandInitial={brandInitial} color={activeThemeColor} />
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fp-text, #fff)', marginTop: 10 }}>
+                  Scan with any UPI application
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {['GPay', 'PhonePe', 'Paytm', 'BHIM', 'CRED'].map(app => (
+                    <span
+                      key={app}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        color: 'var(--fp-text-muted, #bbb)',
+                      }}
+                    >
+                      {app}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#10B981', marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Timer size={12} /> Dynamic QR · Refreshing in 04:48
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--fp-text-muted, #aaa)', marginBottom: 4 }}>
+                  Virtual Payment Address (VPA)
+                </label>
+                <div style={{ position: 'relative', marginBottom: 8 }}>
+                  <input
+                    value={vpaInput}
+                    onChange={e => setVpaInput(e.target.value)}
+                    placeholder="mobileNumber@upi or name@bank"
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      paddingRight: 80,
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid var(--fp-border, rgba(255,255,255,0.15))',
+                      borderRadius: 8,
+                      color: '#FFFFFF',
+                      fontSize: 13,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVpaVerified(true)}
+                    style={{
+                      position: 'absolute',
+                      right: 6,
+                      top: 6,
+                      padding: '4px 10px',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      background: activeThemeColor,
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Verify
+                  </button>
+                </div>
+                {vpaVerified && (
+                  <div style={{ fontSize: 11, color: '#10B981', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
+                    <CheckCircle2 size={13} /> Verified: Aarav Sharma (HDFC Bank)
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {['@okhdfcbank', '@okicici', '@paytm', '@ybl'].map(h => (
+                    <span
+                      key={h}
+                      onClick={() => setVpaInput(`customer${h}`)}
+                      style={{
+                        fontSize: 10,
+                        background: 'rgba(255,255,255,0.06)',
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        color: 'var(--fp-text-muted, #999)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {h}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Cards */}
+        {selectedMethod === 'card' && (
+          <div>
+            {/* Interactive Card Graphic */}
+            <div
+              style={{
+                width: '100%',
+                borderRadius: 12,
+                padding: '16px',
+                marginBottom: 14,
+                background: `linear-gradient(135deg, ${activeThemeColor}33 0%, #17171a 70%, #0d0d0f 100%)`,
+                border: `1px solid ${activeThemeColor}44`,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.4)',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 24,
+                    borderRadius: 4,
+                    background: 'linear-gradient(135deg, #FFD700 0%, #B8860B 100%)',
+                    boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.4)',
+                  }}
+                />
+                <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>
+                  CREDIT / DEBIT
+                </div>
+              </div>
+              <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, letterSpacing: 2, color: '#FFFFFF', marginBottom: 12 }}>
+                {cardNumber || '•••• •••• •••• ••••'}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <div>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Card Holder</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#FFFFFF' }}>{cardName || 'YOUR NAME'}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Expires</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#FFFFFF', fontFamily: 'monospace' }}>{cardExpiry || 'MM/YY'}</div>
+                </div>
+                <div style={{ fontWeight: 900, fontStyle: 'italic', fontSize: 14, color: '#FFFFFF' }}>VISA</div>
+              </div>
+            </div>
+
+            {/* Inputs */}
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 4 }}>
+                Card Number
+              </label>
+              <input
+                value={cardNumber}
+                onChange={e => setCardNumber(e.target.value)}
+                placeholder="4532 8901 2345 8821"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--fp-border, rgba(255,255,255,0.15))',
+                  borderRadius: 6,
+                  color: '#fff',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                }}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 4 }}>
+                  Valid Thru
+                </label>
+                <input
+                  value={cardExpiry}
+                  onChange={e => setCardExpiry(e.target.value)}
+                  placeholder="MM/YY"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--fp-border, rgba(255,255,255,0.15))',
+                    borderRadius: 6,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 4 }}>
+                  CVV / CVC
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  value={cardCvv}
+                  onChange={e => setCardCvv(e.target.value)}
+                  placeholder="•••"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--fp-border, rgba(255,255,255,0.15))',
+                    borderRadius: 6,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 4 }}>
+                Name on Card
+              </label>
+              <input
+                value={cardName}
+                onChange={e => setCardName(e.target.value)}
+                placeholder="AARAV SHARMA"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--fp-border, rgba(255,255,255,0.15))',
+                  borderRadius: 6,
+                  color: '#fff',
+                  fontSize: 12,
+                }}
+              />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fp-text-muted, #aaa)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={saveCard} onChange={e => setSaveCard(e.target.checked)} />
+              <span>Tokenize & save card securely as per RBI guidelines</span>
+            </label>
+          </div>
+        )}
+
+        {/* Tab 3: Netbanking */}
+        {selectedMethod === 'netbanking' && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 8 }}>
+              Popular Indian Banks
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
+              {topBanks.map(b => {
+                const isSelected = selectedBank === b.code;
+                return (
+                  <button
+                    key={b.code}
+                    type="button"
+                    onClick={() => setSelectedBank(b.code)}
+                    style={{
+                      padding: '10px 4px',
+                      borderRadius: 8,
+                      border: isSelected ? `1px solid ${activeThemeColor}` : '1px solid rgba(255,255,255,0.1)',
+                      background: isSelected ? `${activeThemeColor}18` : 'rgba(255,255,255,0.03)',
+                      color: isSelected ? '#FFFFFF' : 'var(--fp-text-muted, #aaa)',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 12, color: isSelected ? activeThemeColor : '#FFFFFF' }}>{b.code}</div>
+                    <div style={{ fontSize: 9, opacity: 0.7, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                      {b.name}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 4 }}>
+                All Other Banks (50+)
+              </label>
+              <select
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--fp-border, rgba(255,255,255,0.15))',
+                  borderRadius: 6,
+                  color: '#fff',
+                  fontSize: 12,
+                }}
+              >
+                <option value="">Select from 50+ Scheduled Commercial Banks</option>
+                <option value="BOB">Bank of Baroda</option>
+                <option value="CANARA">Canara Bank</option>
+                <option value="INDUSIND">IndusInd Bank</option>
+                <option value="YES">Yes Bank</option>
+                <option value="IDFC">IDFC FIRST Bank</option>
+                <option value="FEDERAL">Federal Bank</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Wallets & BNPL */}
+        {selectedMethod === 'wallets' && (
+          <div>
+            {/* BNPL Promo Banner */}
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: 8,
+                background: 'rgba(99, 102, 241, 0.1)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                marginBottom: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <Zap size={20} style={{ color: '#818CF8', flexShrink: 0 }} />
+              <div style={{ fontSize: 11 }}>
+                <strong style={{ color: '#C7D2FE', display: 'block' }}>No Cost EMI / Pay Later</strong>
+                <span style={{ color: '#A5B4FC' }}>
+                  Pay in 3 installments of {formatCurrency(Math.round(amount / 3))}/mo at 0% interest
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { id: 'simpl', name: 'Simpl PayLater', note: 'Instant approval' },
+                { id: 'lazypay', name: 'LazyPay', note: 'Credit line' },
+                { id: 'amazon', name: 'Amazon Pay', note: 'Balance & UPI' },
+                { id: 'paytm', name: 'Paytm Wallet', note: 'Fast checkout' },
+              ].map(w => {
+                const isSelected = selectedWallet === w.id;
+                return (
+                  <button
+                    key={w.id}
+                    type="button"
+                    onClick={() => setSelectedWallet(w.id)}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      border: isSelected ? `1px solid ${activeThemeColor}` : '1px solid rgba(255,255,255,0.1)',
+                      background: isSelected ? `${activeThemeColor}18` : 'rgba(255,255,255,0.03)',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 12, color: isSelected ? activeThemeColor : '#FFFFFF' }}>{w.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--fp-text-muted, #888)' }}>{w.note}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Primary Pay Button */}
+        <div style={{ marginTop: 18 }}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={paymentState === 'processing'}
+            onClick={handleSimulatePayment}
+            style={{
+              width: '100%',
+              height: 44,
+              fontSize: 14,
+              fontWeight: 800,
+              background: activeThemeColor,
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: 8,
+              boxShadow: `0 4px 14px ${activeThemeColor}44`,
+              cursor: paymentState === 'processing' ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {paymentState === 'processing' ? (
+              <>
+                <RefreshCw className="login-spinner" size={16} />
+                <span>Authorizing with Secure Gateway...</span>
+              </>
+            ) : (
+              <>
+                <Lock size={14} />
+                <span>Pay {formatCurrency(amount)}</span>
+              </>
+            )}
+          </button>
+
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 10, fontSize: 11, color: 'var(--fp-text-muted, #71717a)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Shield size={11} /> 256-bit SSL
+            </span>
+            <span>•</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <BadgeCheck size={11} /> PCI-DSS Level 1
+            </span>
+            <span>•</span>
+            <span>RBI Tokenized</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <section className="card" style={{ padding: 20 }}>
+      {/* Top Simulation Bar & Controls */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          paddingBottom: 16,
+          marginBottom: 20,
+          borderBottom: '1px solid var(--fp-border, rgba(255,255,255,0.08))',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: `${activeThemeColor}22`,
+              color: activeThemeColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Sparkles size={18} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              Interactive Checkout Simulator
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  color: '#10B981',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                }}
+              >
+                LIVE PREVIEW
+              </span>
+            </h2>
+            <div style={{ fontSize: 12, color: 'var(--fp-text-muted, #888)' }}>
+              Real-time preview of your white-label checkout as experienced by end-customers
+            </div>
+          </div>
+        </div>
+
+        {/* Control Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* Amount Tiers */}
+          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: 3, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+            {[
+              { label: '₹499', val: 499 },
+              { label: '₹2,499', val: 2499 },
+              { label: '₹14,999', val: 14999 },
+            ].map(tier => (
+              <button
+                key={tier.val}
+                type="button"
+                onClick={() => setAmount(tier.val)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 11,
+                  fontWeight: amount === tier.val ? 700 : 500,
+                  borderRadius: 6,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: amount === tier.val ? activeThemeColor : 'transparent',
+                  color: amount === tier.val ? '#fff' : 'var(--fp-text-muted, #aaa)',
+                }}
+              >
+                {tier.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Viewport Switcher */}
+          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: 3, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+            <button
+              type="button"
+              onClick={() => setDevice('desktop')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                fontSize: 11,
+                fontWeight: device === 'desktop' ? 700 : 500,
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                background: device === 'desktop' ? 'rgba(255,255,255,0.12)' : 'transparent',
+                color: device === 'desktop' ? '#FFFFFF' : 'var(--fp-text-muted, #aaa)',
+              }}
+            >
+              <Monitor size={13} /> Desktop
+            </button>
+            <button
+              type="button"
+              onClick={() => setDevice('mobile')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                fontSize: 11,
+                fontWeight: device === 'mobile' ? 700 : 500,
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                background: device === 'mobile' ? 'rgba(255,255,255,0.12)' : 'transparent',
+                color: device === 'mobile' ? '#FFFFFF' : 'var(--fp-text-muted, #aaa)',
+              }}
+            >
+              <Smartphone size={13} /> Mobile
+            </button>
+          </div>
+
+          {/* Reset Action */}
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleResetFlow}
+            title="Reset Simulation"
+            style={{ padding: '6px 10px', fontSize: 11 }}
+          >
+            <RotateCcw size={13} /> Reset
+          </button>
+
+          {/* Edit Config Action */}
+          {onEditConfig && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onEditConfig}
+              style={{ padding: '6px 12px', fontSize: 11 }}
+            >
+              <Settings size={13} /> Edit Config
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Grid: Checkout Canvas (Left) + Inspector (Right) */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 24,
+          alignItems: 'flex-start',
+        }}
+      >
+        {/* Left: The Checkout Canvas */}
+        <div style={{ flex: '1 1 540px', minWidth: 0 }}>
+          {device === 'desktop' ? (
+            /* Desktop Browser Frame */
+            <div
+              style={{
+                borderRadius: 14,
+                border: '1px solid var(--fp-border, rgba(255,255,255,0.12))',
+                background: 'var(--fp-bg, #121212)',
+                boxShadow: '0 20px 40px -15px rgba(0,0,0,0.6)',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Browser Header Chrome */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 16px',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderBottom: '1px solid var(--fp-border, rgba(255,255,255,0.08))',
+                }}
+              >
+                {/* Traffic dots */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F56' }} />
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#FFBD2E' }} />
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27C93F' }} />
+                </div>
+
+                {/* Simulated URL address bar */}
+                <div
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'rgba(0,0,0,0.4)',
+                    padding: '4px 12px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    color: 'var(--fp-text-muted, #888)',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  <Lock size={11} style={{ color: '#10B981' }} />
+                  <span style={{ color: '#10B981' }}>https://</span>
+                  <span style={{ color: '#FFFFFF' }}>{domain}</span>
+                  <span>/pay/session_{invoicePrefix.toLowerCase()}_9941</span>
+                </div>
+
+                <div style={{ fontSize: 10, color: '#10B981', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
+                  <ShieldCheck size={13} /> TLS 1.3
+                </div>
+              </div>
+
+              {/* 2-Column Split Checkout Body */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  minHeight: 480,
+                  background: 'var(--fp-bg-card, #191414)',
+                }}
+              >
+                {/* Left Column: Order Summary & Merchant Info */}
+                <div
+                  style={{
+                    padding: '24px',
+                    borderRight: '1px solid var(--fp-border, rgba(255,255,255,0.08))',
+                    background: 'rgba(0,0,0,0.15)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div>
+                    {/* Merchant Brand Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                      {brandLogoNode}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <strong style={{ fontSize: 15, color: '#FFFFFF' }}>{brandName}</strong>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              color: activeThemeColor,
+                              background: `${activeThemeColor}20`,
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            VERIFIED
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #888)' }}>Secure Merchant Checkout</div>
+                      </div>
+                    </div>
+
+                    {/* Order Total Display */}
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #999)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Total Amount Due
+                      </div>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: '#FFFFFF', letterSpacing: -0.5, margin: '4px 0' }}>
+                        {formatCurrency(amount)}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #777)' }}>
+                        Invoice <span style={{ fontFamily: 'monospace', color: '#ccc' }}>{invoicePrefix}-2026-0042</span> · Receipt <span style={{ fontFamily: 'monospace', color: '#ccc' }}>{receiptPrefix}-0001</span>
+                      </div>
+                    </div>
+
+                    {/* Collapsible Line Items */}
+                    <div
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        padding: '10px 12px',
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div
+                        onClick={() => setOrderExpanded(!orderExpanded)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--fp-text-muted, #aaa)' }}
+                      >
+                        <span>Order Summary ({orderExpanded ? 'Hide' : 'Show'})</span>
+                        <ChevronDown size={14} style={{ transform: orderExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                      </div>
+
+                      {orderExpanded && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <span style={{ color: 'var(--fp-text-muted, #888)' }}>Pro Plan Subscription</span>
+                            <span style={{ color: '#fff' }}>{formatCurrency(baseAmount)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <span style={{ color: 'var(--fp-text-muted, #888)' }}>Platform Fee</span>
+                            <span style={{ color: '#10B981' }}>FREE</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <span style={{ color: 'var(--fp-text-muted, #888)' }}>Integrated GST (18%)</span>
+                            <span style={{ color: '#fff' }}>{formatCurrency(gstAmount)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px dashed rgba(255,255,255,0.1)', fontWeight: 700 }}>
+                            <span style={{ color: '#fff' }}>Total</span>
+                            <span style={{ color: activeThemeColor }}>{formatCurrency(amount)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Session Timeout Pill */}
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'rgba(234, 179, 8, 0.1)',
+                        border: '1px solid rgba(234, 179, 8, 0.25)',
+                        color: '#FACC15',
+                        borderRadius: 6,
+                        padding: '4px 8px',
+                        fontSize: 10,
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Timer size={12} /> Session expires in 14:30
+                    </div>
+                  </div>
+
+                  {/* Left Column Footer */}
+                  <div style={{ marginTop: 24, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: 'var(--fp-text-muted, #777)' }}>
+                    <div>Customer Support:</div>
+                    <div style={{ color: '#bbb', marginTop: 2 }}>{supportEmail}</div>
+                    <div style={{ color: '#bbb' }}>{supportPhone}</div>
+                  </div>
+                </div>
+
+                {/* Right Column: Interactive Payment Form */}
+                <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  {renderPaymentMethods(false)}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Mobile Device Frame Mockup */
+            <div
+              style={{
+                maxWidth: 375,
+                margin: '0 auto',
+                background: '#0D0D0E',
+                borderRadius: 36,
+                border: '8px solid #222226',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)',
+                overflow: 'hidden',
+                position: 'relative',
+              }}
+            >
+              {/* Dynamic Island / Notch */}
+              <div
+                style={{
+                  width: 90,
+                  height: 20,
+                  background: '#000000',
+                  borderRadius: 10,
+                  margin: '8px auto 4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1c1c1e', marginRight: 8 }} />
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#0a84ff' }} />
+              </div>
+
+              {/* Status Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '2px 18px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#FFFFFF',
+                }}
+              >
+                <span>9:41</span>
+                <span style={{ letterSpacing: 1 }}>5G 100%</span>
+              </div>
+
+              {/* Mobile Screen Header */}
+              <div
+                style={{
+                  padding: '12px 16px',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {brandLogoNode}
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>{brandName}</div>
+                    <div style={{ fontSize: 9, color: 'var(--fp-text-muted, #888)' }}>Secured by FeelPay</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 10, color: 'var(--fp-text-muted, #888)' }}>Amount</div>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: activeThemeColor }}>{formatCurrency(amount)}</div>
+                </div>
+              </div>
+
+              {/* Mobile Screen Body */}
+              <div style={{ padding: '16px', minHeight: 460 }}>
+                {renderPaymentMethods(true)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Live Brand & Configuration Inspector */}
+        <div style={{ flex: '1 1 320px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Card 1: Brand & Theme Styler */}
+          <div
+            style={{
+              background: 'var(--fp-bg-elevated, #282828)',
+              borderRadius: 12,
+              padding: 16,
+              border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ fontSize: 13, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <SlidersHorizontal size={14} style={{ color: activeThemeColor }} /> Brand Color Styler
+              </strong>
+              <span style={{ fontSize: 11, fontFamily: 'monospace', color: activeThemeColor, fontWeight: 700 }}>
+                {activeThemeColor}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 10 }}>
+              Test how buttons, badges, and accents appear under different merchant brand palettes:
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+              {themeSwatches.map(sw => {
+                const isSelected = activeThemeColor.toLowerCase() === sw.hex.toLowerCase();
+                return (
+                  <button
+                    key={sw.hex}
+                    type="button"
+                    onClick={() => setActiveThemeColor(sw.hex)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '5px 9px',
+                      borderRadius: 999,
+                      border: isSelected ? `2px solid #FFFFFF` : '1px solid rgba(255,255,255,0.15)',
+                      background: 'rgba(0,0,0,0.3)',
+                      color: isSelected ? '#FFFFFF' : 'var(--fp-text-muted, #aaa)',
+                      cursor: 'pointer',
+                      fontSize: 11,
+                      fontWeight: isSelected ? 700 : 500,
+                    }}
+                  >
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: sw.hex }} />
+                    <span>{sw.name}</span>
+                    {isSelected && <Check size={11} style={{ color: '#fff' }} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #888)', background: 'rgba(0,0,0,0.2)', padding: '8px 10px', borderRadius: 6 }}>
+              Configured Default: <code>{str(value.checkout_theme_color) || '#1DB954'}</code>
+            </div>
+          </div>
+
+          {/* Card 2: Bank Statement Descriptor & SMS Alert Simulation */}
+          <div
+            style={{
+              background: 'var(--fp-bg-elevated, #282828)',
+              borderRadius: 12,
+              padding: 16,
+              border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <strong style={{ fontSize: 13, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Banknote size={14} style={{ color: '#38BDF8' }} /> Bank Statement Descriptor
+              </strong>
+              <span style={{ fontSize: 10, color: 'var(--fp-text-muted, #888)', fontFamily: 'monospace' }}>
+                {statementDesc.length}/22 chars
+              </span>
+            </div>
+
+            <div style={{ fontSize: 11, color: 'var(--fp-text-muted, #aaa)', marginBottom: 10 }}>
+              What customer sees on bank statements and instant SMS transaction alerts:
+            </div>
+
+            {/* Simulated Phone SMS Bubble */}
+            <div
+              style={{
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10,
+                padding: '12px',
+                fontFamily: 'monospace',
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: '#E2E8F0',
+                position: 'relative',
+              }}
+            >
+              <div style={{ fontSize: 9, color: '#38BDF8', fontWeight: 700, marginBottom: 4 }}>
+                SMS ALERT · HDFC-BANK
+              </div>
+              Rs {amount.toFixed(2)} debited from A/C **4921 on 13-SEP-26. Info:{' '}
+              <strong style={{ color: activeThemeColor, background: `${activeThemeColor}22`, padding: '1px 4px', borderRadius: 3 }}>
+                {statementDesc}
+              </strong>
+              . Avail Bal: Rs 48,210.35
+            </div>
+          </div>
+
+          {/* Card 3: Active Payment Channels */}
+          <div
+            style={{
+              background: 'var(--fp-bg-elevated, #282828)',
+              borderRadius: 12,
+              padding: 16,
+              border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+            }}
+          >
+            <strong style={{ fontSize: 13, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              <Zap size={14} style={{ color: '#F59E0B' }} /> Enabled Payment Channels
+            </strong>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {[
+                { label: 'UPI & Dynamic QR', active: true, info: 'Auto-Routing' },
+                { label: 'Cards (Visa/MC/RuPay)', active: true, info: '3DS 2.0' },
+                { label: 'Netbanking (50+ Banks)', active: true, info: 'Instant OTP' },
+                { label: 'Wallets & BNPL (Simpl)', active: true, info: 'No Cost EMI' },
+              ].map(c => (
+                <div
+                  key={c.label}
+                  style={{
+                    background: 'rgba(0,0,0,0.2)',
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#fff' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+                    <span>{c.label}</span>
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--fp-text-muted, #777)', marginTop: 2, paddingLeft: 11 }}>
+                    {c.info}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Card 4: Legal & Compliance Verification */}
+          <div
+            style={{
+              background: 'var(--fp-bg-elevated, #282828)',
+              borderRadius: 12,
+              padding: 16,
+              border: '1px solid var(--fp-border, rgba(255,255,255,0.1))',
+            }}
+          >
+            <strong style={{ fontSize: 13, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <ShieldCheck size={14} style={{ color: '#10B981' }} /> Legal & Compliance Audit
+            </strong>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11 }}>
+              {[
+                { label: 'Checkout Domain', val: domain, status: 'SSL Active' },
+                { label: 'Terms of Service', val: str(value.terms_url), status: value.terms_url ? 'Configured' : 'Missing' },
+                { label: 'Privacy Policy', val: str(value.privacy_url), status: value.privacy_url ? 'Configured' : 'Missing' },
+                { label: 'Refund Policy', val: str(value.refund_policy_url), status: value.refund_policy_url ? 'Configured' : 'Missing' },
+              ].map(item => (
+                <div
+                  key={item.label}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '4px 0',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  }}
+                >
+                  <span style={{ color: 'var(--fp-text-muted, #aaa)' }}>{item.label}</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: item.status === 'Missing' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      color: item.status === 'Missing' ? '#EF4444' : '#10B981',
+                    }}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick Actions Footer */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleCopyLink}
+                style={{ flex: 1, fontSize: 11, padding: '7px 8px', justifyContent: 'center' }}
+              >
+                {copiedLink ? <Check size={12} style={{ color: '#10B981' }} /> : <Copy size={12} />}
+                <span>{copiedLink ? 'Link Copied!' : 'Copy Hosted Link'}</span>
+              </button>
+              {onEditConfig && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={onEditConfig}
+                  style={{ flex: 1, fontSize: 11, padding: '7px 8px', justifyContent: 'center', background: activeThemeColor }}
+                >
+                  <Settings size={12} />
+                  <span>Edit Settings</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );
