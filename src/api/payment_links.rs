@@ -37,6 +37,28 @@ pub struct PaginationMeta {
     pub total_pages: i32,
 }
 
+pub fn resolve_payment_link_base_url(req: &HttpRequest) -> String {
+    if let Ok(base_url) = std::env::var("PAYMENT_LINK_BASE_URL") {
+        let trimmed = base_url.trim().trim_end_matches('/');
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Ok(render_url) = std::env::var("RENDER_EXTERNAL_URL") {
+        let trimmed = render_url.trim().trim_end_matches('/');
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let conn = req.connection_info();
+    let host = conn.host();
+    let scheme = conn.scheme();
+    if !host.is_empty() {
+        return format!("{}://{}", scheme, host);
+    }
+    "http://localhost:8080".to_string()
+}
+
 // Create a new payment link
 #[utoipa::path(
     post,
@@ -65,8 +87,7 @@ pub async fn create_payment_link(
 
     // Generate unique link_id
     let link_id = generate_link_id();
-    let base_url = std::env::var("PAYMENT_LINK_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let base_url = resolve_payment_link_base_url(&req);
     let short_url = format!("{}/pay/{}", base_url, link_id);
 
     // Calculate expiry (default 24 hours)
@@ -90,7 +111,7 @@ pub async fn create_payment_link(
     .bind(body.amount)
     .bind(body.currency.as_deref().unwrap_or("INR"))
     .bind(&body.description)
-    .bind(short_url)
+    .bind(&short_url)
     .bind(expires_at)
     .bind(&body.customer_name)
     .bind(&body.customer_email)
@@ -103,7 +124,10 @@ pub async fn create_payment_link(
     .await
     .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
-    Ok(HttpResponse::Created().json(PaymentLinkResponse::from(PaymentLink::from(row))))
+    Ok(HttpResponse::Created().json(PaymentLinkResponse::from_link_with_base_url(
+        PaymentLink::from(row),
+        &base_url,
+    )))
 }
 
 // Get payment link by ID
@@ -145,7 +169,11 @@ pub async fn get_payment_link(
     .map_err(|e| FeelPayError::Database(e.to_string()))?
     .ok_or_else(|| FeelPayError::NotFound("Payment link not found".to_string()))?;
 
-    Ok(HttpResponse::Ok().json(PaymentLinkResponse::from(PaymentLink::from(result))))
+    let base_url = resolve_payment_link_base_url(&req);
+    Ok(HttpResponse::Ok().json(PaymentLinkResponse::from_link_with_base_url(
+        PaymentLink::from(result),
+        &base_url,
+    )))
 }
 
 // List payment links
@@ -229,11 +257,14 @@ pub async fn list_payment_links(
         .map_err(|e| FeelPayError::Database(e.to_string()))?;
 
     let links: Vec<PaymentLink> = links_rows.into_iter().map(PaymentLink::from).collect();
-
+    let base_url = resolve_payment_link_base_url(&req);
     let total_pages = (total as f64 / per_page as f64).ceil() as i32;
 
     Ok(HttpResponse::Ok().json(PaymentLinkListResponse {
-        data: links.into_iter().map(PaymentLinkResponse::from).collect(),
+        data: links
+            .into_iter()
+            .map(|link| PaymentLinkResponse::from_link_with_base_url(link, &base_url))
+            .collect(),
         meta: PaginationMeta {
             page,
             per_page,

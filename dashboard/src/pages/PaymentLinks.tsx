@@ -1,7 +1,23 @@
 import { useState, useEffect } from 'react';
 import { Link, Plus, Copy, ExternalLink, Trash2 } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { apiRequest, API_BASE } from '../hooks/useApi';
 import { formatPaise, parseInrToPaise } from '../utils/money';
+
+export function getEffectiveLinkUrl(rawUrl: string | undefined, linkId: string): string {
+  const base = API_BASE.replace(/\/+$/, '');
+  const fallback = `${base}/pay/${linkId}`;
+  if (!rawUrl) return fallback;
+
+  // If rawUrl points to localhost but the dashboard is talking to a remote API base, use the remote base
+  if (rawUrl.includes('localhost') && !base.includes('localhost')) {
+    return fallback;
+  }
+  // If rawUrl points to remote but the dashboard is configured with a local API base, use the local base
+  if (!rawUrl.includes('localhost') && base.includes('localhost')) {
+    return fallback;
+  }
+  return rawUrl;
+}
 
 interface PaymentLink {
   id: string;
@@ -259,66 +275,69 @@ export default function PaymentLinks() {
               </tr>
             </thead>
             <tbody>
-              {links.map((link) => (
-                <tr key={link.id}>
-                  <td>
-                    <div className="payment-link-id-cell">
-                      <code>{link.link_id}</code>
-                      {link.short_url && <small>{link.short_url}</small>}
-                    </div>
-                  </td>
-                  <td>
-                    <span className="payment-link-amount">{formatCurrency(link.amount)}</span>
-                  </td>
-                  <td>{link.description || '-'}</td>
-                  <td>
-                    {link.customer_name || link.customer_email ? (
-                      <div className="payment-link-customer-cell">
-                        <div>{link.customer_name}</div>
-                        <small>{link.customer_email}</small>
+              {links.map((link) => {
+                const effectiveUrl = getEffectiveLinkUrl(link.full_url || link.short_url, link.link_id);
+                return (
+                  <tr key={link.id}>
+                    <td>
+                      <div className="payment-link-id-cell">
+                        <code>{link.link_id}</code>
+                        <small>{effectiveUrl}</small>
                       </div>
-                    ) : '-'}
-                  </td>
-                  <td>
-                    <span className={getStatusBadge(link.status)}>{link.status}</span>
-                  </td>
-                  <td>
-                    {link.view_count} / {link.attempt_count}
-                  </td>
-                  <td style={{ fontSize: 13, color: 'var(--fp-text-muted)' }}>
-                    {formatDate(link.created_at)}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        title={copiedId === link.id ? 'Copied' : 'Copy link'}
-                        onClick={() => copyToClipboard(link.full_url, link.id)}
-                      >
-                        {copiedId === link.id ? 'Copied' : <Copy size={14} />}
-                      </button>
-                      <a
-                        href={link.full_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-sm btn-secondary"
-                        title="Open link"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
-                      {link.status === 'active' && (
+                    </td>
+                    <td>
+                      <span className="payment-link-amount">{formatCurrency(link.amount)}</span>
+                    </td>
+                    <td>{link.description || '-'}</td>
+                    <td>
+                      {link.customer_name || link.customer_email ? (
+                        <div className="payment-link-customer-cell">
+                          <div>{link.customer_name}</div>
+                          <small>{link.customer_email}</small>
+                        </div>
+                      ) : '-'}
+                    </td>
+                    <td>
+                      <span className={getStatusBadge(link.status)}>{link.status}</span>
+                    </td>
+                    <td>
+                      {link.view_count} / {link.attempt_count}
+                    </td>
+                    <td style={{ fontSize: 13, color: 'var(--fp-text-muted)' }}>
+                      {formatDate(link.created_at)}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 8 }}>
                         <button
-                          className="btn btn-sm btn-danger"
-                          title="Cancel link"
-                          onClick={() => cancelLink(link.id)}
+                          className="btn btn-sm btn-secondary"
+                          title={copiedId === link.id ? 'Copied' : 'Copy link'}
+                          onClick={() => copyToClipboard(effectiveUrl, link.id)}
                         >
-                          <Trash2 size={14} />
+                          {copiedId === link.id ? 'Copied' : <Copy size={14} />}
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <a
+                          href={effectiveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-secondary"
+                          title="Open link"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                        {link.status === 'active' && (
+                          <button
+                            className="btn btn-sm btn-danger"
+                            title="Cancel link"
+                            onClick={() => cancelLink(link.id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

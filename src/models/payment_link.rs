@@ -131,16 +131,33 @@ pub struct PaymentLinkResponse {
     pub created_at: DateTime<Utc>,
 }
 
-impl From<PaymentLink> for PaymentLinkResponse {
-    fn from(pl: PaymentLink) -> Self {
-        let base_url = std::env::var("PAYMENT_LINK_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+impl PaymentLinkResponse {
+    pub fn from_link_with_base_url(pl: PaymentLink, base_url: &str) -> Self {
+        let base_url = base_url.trim_end_matches('/');
         let link_id = pl.link_id.clone();
+        let short_url = match pl.short_url {
+            Some(ref s)
+                if (s.contains("localhost") || s.contains("127.0.0.1"))
+                    && !base_url.contains("localhost")
+                    && !base_url.contains("127.0.0.1") =>
+            {
+                Some(format!("{}/pay/{}", base_url, link_id))
+            }
+            Some(ref s)
+                if !s.contains("localhost")
+                    && !s.contains("127.0.0.1")
+                    && (base_url.contains("localhost") || base_url.contains("127.0.0.1")) =>
+            {
+                Some(format!("{}/pay/{}", base_url, link_id))
+            }
+            Some(s) => Some(s),
+            None => Some(format!("{}/pay/{}", base_url, link_id)),
+        };
 
         PaymentLinkResponse {
             id: pl.id,
             link_id: link_id.clone(),
-            short_url: pl.short_url.clone(),
+            short_url,
             full_url: format!("{}/pay/{}", base_url, link_id),
             amount: pl.amount,
             currency: pl.currency,
@@ -149,6 +166,15 @@ impl From<PaymentLink> for PaymentLinkResponse {
             status: pl.status.to_string(),
             created_at: pl.created_at,
         }
+    }
+}
+
+impl From<PaymentLink> for PaymentLinkResponse {
+    fn from(pl: PaymentLink) -> Self {
+        let base_url = std::env::var("PAYMENT_LINK_BASE_URL")
+            .or_else(|_| std::env::var("RENDER_EXTERNAL_URL"))
+            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        Self::from_link_with_base_url(pl, &base_url)
     }
 }
 
