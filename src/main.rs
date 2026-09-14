@@ -320,6 +320,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(crate::middleware::request_id::RequestId)
             .wrap(rate_limiter.clone())
             // Healthcheck
+            .route("/", web::get().to(api::health::health_check))
             .route("/health", web::get().to(api::health::health_check))
             .route("/v1/health", web::get().to(api::health::health_check))
             .route("/ready", web::get().to(api::health::readiness_check))
