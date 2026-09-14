@@ -36,11 +36,20 @@ payment/.sqlx
 .gemini/settings.json
 .vscode/mcp.json
 
-dashboard/dist/assets
-dashboard/dist/assets/*
+# Build & distribution output
+dist/
+**/dist/
+/dashboard/.next
 
+# Test reports & temp files
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+*.tsbuildinfo
 admin/target
 admin/server/uploads
+
 data/state_store.db/mem%3Ahealth.bin
 data/state_store.db/mem%3Aindex%3Abm25.bin
 data/state_store.db/mem%3Aaccess.bin

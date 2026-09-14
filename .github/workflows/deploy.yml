@@ -1,0 +1,125 @@
+name: Production CI & Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast parallel check for backend code
+  verify-backend:
+    name: Verify Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cargo check Gateway
+        run: cargo check --release --bin feelpay
+
+      - name: Cargo check Admin Server
+        run: cargo check --release --manifest-path admin/server/Cargo.toml
+
+  # Fast parallel build and deploy for frontends to Cloudflare Pages
+  deploy-frontends:
+    name: Build & Deploy ${{ matrix.app.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - name: Merchant Dashboard
+            dir: dashboard
+            project_var: CLOUDFLARE_DASHBOARD_PROJECT
+            default_project: feelpay-dashboard
+            api_url_var: VITE_API_BASE_URL
+            default_api_url: https://feelpay-gateway.onrender.com
+          - name: Admin Dashboard
+            dir: admin
+            project_var: CLOUDFLARE_ADMIN_PROJECT
+            default_project: feelpay-admin
+            api_url_var: VITE_ADMIN_API_BASE_URL
+            default_api_url: https://feelpay-admin-backend.onrender.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: ${{ matrix.app.dir }}/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.app.dir }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend for production
+        working-directory: ${{ matrix.app.dir }}
+        run: pnpm build
+        env:
+          NODE_ENV: production
+          ${{ matrix.app.api_url_var }}: ${{ vars[matrix.app.api_url_var] || matrix.app.default_api_url }}
+          VITE_DASHBOARD_BASE_URL: ${{ vars.VITE_DASHBOARD_BASE_URL || 'https://feelpay-dashboard.pages.dev' }}
+
+      - name: Ensure SPA redirects
+        run: |
+          if [ ! -f "${{ matrix.app.dir }}/dist/_redirects" ]; then
+            echo "/* /index.html 200" > "${{ matrix.app.dir }}/dist/_redirects"
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        run: |
+          pnpm dlx wrangler pages deploy "${{ matrix.app.dir }}/dist" \
+            --project-name="${{ vars[matrix.app.project_var] || matrix.app.default_project }}" \
+            --branch=main \
+            --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # Trigger Render deployments if RENDER_API_KEY is present
+  deploy-render-backends:
+    name: Deploy Render Backends
+    needs: [verify-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deployments
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.RENDER_API_KEY }}" ]; then
+            echo "RENDER_API_KEY secret not set. Render git-push auto-deploy handles deployment on push to main."
+            exit 0
+          fi
+
+          GATEWAY_ID="${{ vars.RENDER_GATEWAY_SERVICE_ID || 'srv-dajnin0ae00c73am952g' }}"
+          ADMIN_ID="${{ vars.RENDER_ADMIN_SERVICE_ID || 'srv-dajniq67bikc73cp9bd0' }}"
+
+          echo "Triggering Gateway deployment ($GATEWAY_ID)..."
+          curl -s -f -X POST "https://api.render.com/v1/services/${GATEWAY_ID}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": "do_not_clear"}'
+
+          echo "Triggering Admin Server deployment ($ADMIN_ID)..."
+          curl -s -f -X POST "https://api.render.com/v1/services/${ADMIN_ID}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": "do_not_clear"}'
+
+          echo "Render deployment triggers submitted successfully."
