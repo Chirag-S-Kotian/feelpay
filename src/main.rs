@@ -353,7 +353,31 @@ async fn main() -> std::io::Result<()> {
                 "/receipt/{receipt_token}",
                 web::get().to(api::checkout::get_public_receipt),
             )
-            // Swagger UI (only in non-production)
+            // Swagger UI & FastAPI-style /docs
+            .route(
+                "/docs",
+                web::get().to(|| async {
+                    actix_web::HttpResponse::Found()
+                        .insert_header((actix_web::http::header::LOCATION, "/swagger-ui/"))
+                        .finish()
+                }),
+            )
+            .route(
+                "/docs/",
+                web::get().to(|| async {
+                    actix_web::HttpResponse::Found()
+                        .insert_header((actix_web::http::header::LOCATION, "/swagger-ui/"))
+                        .finish()
+                }),
+            )
+            .route(
+                "/openapi.json",
+                web::get().to(|| async {
+                    actix_web::HttpResponse::Found()
+                        .insert_header((actix_web::http::header::LOCATION, "/api-docs/openapi.json"))
+                        .finish()
+                }),
+            )
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", api::ApiDoc::openapi()),
