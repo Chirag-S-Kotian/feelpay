@@ -156,3 +156,17 @@ use utoipa::OpenApi;
     )
 )]
 pub struct ApiDoc {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_openapi_schema_no_unresolved_refs() {
+        let doc = ApiDoc::openapi();
+        let json = doc.to_json().expect("OpenAPI should serialize to JSON");
+        assert!(!json.contains("chrono.DateTime"), "Schema must not contain unresolved chrono.DateTime ref: {}", json);
+        assert!(!json.contains("NaiveDate"), "Schema must not contain unresolved NaiveDate ref: {}", json);
+        assert!(!json.contains("#/components/schemas/Uuid"), "Schema must not contain unresolved Uuid ref: {}", json);
+    }
+}

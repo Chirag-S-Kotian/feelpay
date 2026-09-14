@@ -85,7 +85,7 @@ totp-rs = { version = "5.7.1", features = ["qr"] }
 lazy_static = "1.5"
 
 # OpenAPI
-utoipa = { version = "4", features = ["actix_extras"] }
+utoipa = { version = "4", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "7", features = ["actix-web"] }
 
 # CSV generation
