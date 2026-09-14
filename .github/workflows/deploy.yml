@@ -28,9 +28,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast parallel check for backend code
-  verify-backend:
-    name: Verify Backend (Rust)
+  # Fast path change detection to skip unaffected services and run touched ones in parallel
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      gateway: ${{ steps.filter.outputs.gateway }}
+      admin_server: ${{ steps.filter.outputs.admin_server }}
+      dashboard: ${{ steps.filter.outputs.dashboard }}
+      admin_frontend: ${{ steps.filter.outputs.admin_frontend }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Filter changed component paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            gateway:
+              - 'src/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'migrations/**'
+              - '.github/workflows/deploy.yml'
+            admin_server:
+              - 'src/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'admin/server/**'
+              - '.github/workflows/deploy.yml'
+            dashboard:
+              - 'dashboard/**'
+              - '!dashboard/**/*.md'
+              - '!dashboard/e2e/**'
+              - '.github/workflows/deploy.yml'
+            admin_frontend:
+              - 'admin/**'
+              - '!admin/server/**'
+              - '!admin/**/*.md'
+              - '!admin/tests/**'
+              - '!admin/docs/**'
+              - '!admin/scratch/**'
+              - '.github/workflows/deploy.yml'
+
+  # 1. Parallel: Gateway Backend (Rust verify + Render deploy trigger)
+  deploy-gateway:
+    name: Verify & Deploy Gateway
+    needs: [detect-changes]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.gateway == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -41,33 +89,86 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
 
-      - name: Cargo check Gateway
+      - name: Verify Gateway
         run: cargo check --release --bin feelpay
 
-      - name: Cargo check Admin Server
+      - name: Trigger Render Gateway Deployment
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.RENDER_API_KEY }}" ]; then
+            echo "RENDER_API_KEY secret not set. Render git-push auto-deploy handles deployment on push to main."
+            exit 0
+          fi
+
+          GATEWAY_ID="${{ vars.RENDER_GATEWAY_SERVICE_ID || 'srv-dajnin0ae00c73am952g' }}"
+          echo "Triggering Gateway deployment ($GATEWAY_ID)..."
+          HTTP_STATUS=$(curl -s -o /tmp/render_resp.json -w "%{http_code}" -X POST "https://api.render.com/v1/services/${GATEWAY_ID}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": "do_not_clear"}')
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Render deployment trigger for Gateway succeeded (HTTP $HTTP_STATUS)."
+          else
+            echo "::warning title=Render Deploy Notice::Render API returned HTTP $HTTP_STATUS: $(cat /tmp/render_resp.json 2>/dev/null || echo 'No response body')"
+          fi
+
+  # 2. Parallel: Admin Server Backend (Rust verify + Render deploy trigger)
+  deploy-admin-backend:
+    name: Verify & Deploy Admin Backend
+    needs: [detect-changes]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.admin_server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: admin/server -> admin/server/target
+          cache-all-crates: true
+
+      - name: Verify Admin Server
         run: cargo check --release --manifest-path admin/server/Cargo.toml
 
-  # Fast parallel build and deploy for frontends to Cloudflare Pages
-  deploy-frontends:
-    name: Build & Deploy ${{ matrix.app.name }}
+      - name: Trigger Render Admin Server Deployment
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.RENDER_API_KEY }}" ]; then
+            echo "RENDER_API_KEY secret not set. Render git-push auto-deploy handles deployment on push to main."
+            exit 0
+          fi
+
+          ADMIN_ID="${{ vars.RENDER_ADMIN_SERVICE_ID || 'srv-dajniq67bikc73cp9bd0' }}"
+          echo "Triggering Admin Server deployment ($ADMIN_ID)..."
+          HTTP_STATUS=$(curl -s -o /tmp/render_resp.json -w "%{http_code}" -X POST "https://api.render.com/v1/services/${ADMIN_ID}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": "do_not_clear"}')
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Render deployment trigger for Admin Server succeeded (HTTP $HTTP_STATUS)."
+          else
+            echo "::warning title=Render Deploy Notice::Render API returned HTTP $HTTP_STATUS: $(cat /tmp/render_resp.json 2>/dev/null || echo 'No response body')"
+          fi
+
+  # 3. Parallel: Merchant Dashboard Frontend (pnpm build + Cloudflare Pages deploy)
+  deploy-merchant-dashboard:
+    name: Build & Deploy Merchant Dashboard
+    needs: [detect-changes]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.dashboard == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        app:
-          - name: Merchant Dashboard
-            dir: dashboard
-            project_var: CLOUDFLARE_DASHBOARD_PROJECT
-            default_project: feelpay-dashboard
-            api_url_var: VITE_API_BASE_URL
-            default_api_url: https://feelpay-gateway.onrender.com
-          - name: Admin Dashboard
-            dir: admin
-            project_var: CLOUDFLARE_ADMIN_PROJECT
-            default_project: feelpay-admin
-            api_url_var: VITE_ADMIN_API_BASE_URL
-            default_api_url: https://feelpay-admin-backend.onrender.com
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -82,24 +183,24 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: ${{ matrix.app.dir }}/pnpm-lock.yaml
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: ${{ matrix.app.dir }}
+        working-directory: dashboard
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend for production
-        working-directory: ${{ matrix.app.dir }}
+        working-directory: dashboard
         run: pnpm build
         env:
           NODE_ENV: production
-          ${{ matrix.app.api_url_var }}: ${{ vars[matrix.app.api_url_var] || matrix.app.default_api_url }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://feelpay-gateway.onrender.com' }}
           VITE_DASHBOARD_BASE_URL: ${{ vars.VITE_DASHBOARD_BASE_URL || 'https://feelpay-dashboard.pages.dev' }}
 
       - name: Ensure SPA redirects
         run: |
-          if [ ! -f "${{ matrix.app.dir }}/dist/_redirects" ]; then
-            echo "/* /index.html 200" > "${{ matrix.app.dir }}/dist/_redirects"
+          if [ ! -f "dashboard/dist/_redirects" ]; then
+            echo "/* /index.html 200" > "dashboard/dist/_redirects"
           fi
 
       - name: Deploy to Cloudflare Pages
@@ -108,41 +209,66 @@ jobs:
             echo "::warning title=Cloudflare Token Missing::CLOUDFLARE_API_TOKEN secret not configured in GitHub Secrets. Skipping direct wrangler deployment. (If Cloudflare Pages is connected via GitHub Git Integration, it auto-deploys on git push. To deploy directly from Actions, set CLOUDFLARE_API_TOKEN in repository secrets.)"
             exit 0
           fi
-          pnpm dlx wrangler pages deploy "${{ matrix.app.dir }}/dist" \
-            --project-name="${{ vars[matrix.app.project_var] || matrix.app.default_project }}" \
+          pnpm dlx wrangler pages deploy "dashboard/dist" \
+            --project-name="${{ vars.CLOUDFLARE_DASHBOARD_PROJECT || 'feelpay-dashboard' }}" \
             --branch=main \
             --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-  # Trigger Render deployments if RENDER_API_KEY is present
-  deploy-render-backends:
-    name: Deploy Render Backends
-    needs: [verify-backend]
+  # 4. Parallel: Admin Dashboard Frontend (pnpm build + Cloudflare Pages deploy)
+  deploy-admin-frontend:
+    name: Build & Deploy Admin Dashboard
+    needs: [detect-changes]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.admin_frontend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render Deployments
-        shell: bash
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: admin/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: admin
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend for production
+        working-directory: admin
+        run: pnpm build
+        env:
+          NODE_ENV: production
+          VITE_ADMIN_API_BASE_URL: ${{ vars.VITE_ADMIN_API_BASE_URL || 'https://feelpay-admin-backend.onrender.com' }}
+          VITE_DASHBOARD_BASE_URL: ${{ vars.VITE_DASHBOARD_BASE_URL || 'https://feelpay-dashboard.pages.dev' }}
+
+      - name: Ensure SPA redirects
         run: |
-          if [ -z "${{ secrets.RENDER_API_KEY }}" ]; then
-            echo "RENDER_API_KEY secret not set. Render git-push auto-deploy handles deployment on push to main."
-            exit 0
+          if [ ! -f "admin/dist/_redirects" ]; then
+            echo "/* /index.html 200" > "admin/dist/_redirects"
           fi
 
-          GATEWAY_ID="${{ vars.RENDER_GATEWAY_SERVICE_ID || 'srv-dajnin0ae00c73am952g' }}"
-          ADMIN_ID="${{ vars.RENDER_ADMIN_SERVICE_ID || 'srv-dajniq67bikc73cp9bd0' }}"
-
-          echo "Triggering Gateway deployment ($GATEWAY_ID)..."
-          curl -s -f -X POST "https://api.render.com/v1/services/${GATEWAY_ID}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": "do_not_clear"}'
-
-          echo "Triggering Admin Server deployment ($ADMIN_ID)..."
-          curl -s -f -X POST "https://api.render.com/v1/services/${ADMIN_ID}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": "do_not_clear"}'
-
-          echo "Render deployment triggers submitted successfully."
+      - name: Deploy to Cloudflare Pages
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "::warning title=Cloudflare Token Missing::CLOUDFLARE_API_TOKEN secret not configured in GitHub Secrets. Skipping direct wrangler deployment. (If Cloudflare Pages is connected via GitHub Git Integration, it auto-deploys on git push. To deploy directly from Actions, set CLOUDFLARE_API_TOKEN in repository secrets.)"
+            exit 0
+          fi
+          pnpm dlx wrangler pages deploy "admin/dist" \
+            --project-name="${{ vars.CLOUDFLARE_ADMIN_PROJECT || 'feelpay-admin' }}" \
+            --branch=main \
+            --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
