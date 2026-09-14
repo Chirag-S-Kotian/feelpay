@@ -3,6 +3,24 @@ name: Production CI & Deployment
 on:
   push:
     branches: [main]
+    paths:
+      # Backend services & schemas
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'migrations/**'
+      # Merchant frontend
+      - 'dashboard/**'
+      - '!dashboard/**/*.md'
+      - '!dashboard/e2e/**'
+      # Admin frontend & backend server
+      - 'admin/**'
+      - '!admin/**/*.md'
+      - '!admin/tests/**'
+      - '!admin/docs/**'
+      - '!admin/scratch/**'
+      # Deployment pipeline itself
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 concurrency:
