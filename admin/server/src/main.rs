@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 pub mod cache;
 use cache::AdminCache;
+pub mod docs;
 
 fn validate_admin_startup_env() -> Result<(), String> {
     let app_env = env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
@@ -1118,6 +1119,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(pool.clone()))
             .route("/health", web::get().to(admin_health))
             .route("/ready", web::get().to(admin_readiness))
+            .route("/docs", web::get().to(docs::admin_docs))
+            .route("/docs/", web::get().to(docs::admin_docs))
+            .route("/openapi.json", web::get().to(docs::admin_openapi_json))
             .service(
                 web::scope("/admin")
                     .route("/login", web::post().to(admin_login))
