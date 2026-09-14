@@ -1110,12 +1110,16 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         let cors = admin_cors();
+        let admin_rate_limit: u32 = env::var("ADMIN_RATE_LIMIT_PER_MINUTE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(600);
 
         App::new()
             .wrap(Logger::default())
             .wrap(Compress::default())
+            .wrap(feelpay::middleware::rate_limit::RateLimiter::new(admin_rate_limit))
             .wrap(cors)
-            .wrap(feelpay::middleware::rate_limit::RateLimiter::new(60))
             .app_data(web::Data::new(pool.clone()))
             .route("/health", web::get().to(admin_health))
             .route("/ready", web::get().to(admin_readiness))

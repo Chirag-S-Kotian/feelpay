@@ -53,14 +53,26 @@ fn allowed_origins() -> Vec<String> {
         })
 }
 
+fn is_origin_allowed(origin: &str) -> bool {
+    origin.ends_with(".pages.dev")
+        || origin.ends_with(".onrender.com")
+        || origin.starts_with("http://localhost:")
+        || origin.starts_with("http://127.0.0.1:")
+        || allowed_origins()
+            .iter()
+            .any(|allowed| allowed == origin || allowed == "*")
+}
+
 fn request_origin(req: &ServiceRequest) -> Option<String> {
     let origin = req
         .headers()
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())?;
-    allowed_origins()
-        .into_iter()
-        .find(|allowed| allowed == origin)
+    if is_origin_allowed(origin) {
+        Some(origin.to_string())
+    } else {
+        None
+    }
 }
 
 fn apply_cors(builder: &mut HttpResponseBuilder, origin: Option<String>) {

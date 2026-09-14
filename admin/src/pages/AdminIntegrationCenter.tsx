@@ -409,7 +409,7 @@ export default function AdminIntegrationCenter() {
               <Select value={selectedId} options={providers.map(provider => ({ label: `${provider.name} (${label(provider.provider_kind)})`, value: provider.id }))} onChange={setSelectedId} />
             </Field>
             <div className="filter-grid" style={{ marginTop: '12px' }}>
-              <Field label="Secret name"><input name="secret_name" value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
+              <Field label="Secret name"><input name="secret_name" autoComplete="off" value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
               <Field label="Secret value"><input type="password" name="secret_value" autoComplete="new-password" value={secretValue} onChange={event => setSecretValue(event.target.value)} /></Field>
               <Field label="Test email"><input name="test_email" value={testRecipient} onChange={event => setTestRecipient(event.target.value)} /></Field>
               <Field label="Test phone"><input name="test_phone" value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>

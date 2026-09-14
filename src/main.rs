@@ -323,9 +323,9 @@ async fn main() -> std::io::Result<()> {
                         "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'",
                     )),
             )
-            .wrap(cors)
             .wrap(crate::middleware::request_id::RequestId)
             .wrap(rate_limiter.clone())
+            .wrap(cors)
             // Healthcheck
             .route("/", web::get().to(api::health::health_check))
             .route("/health", web::get().to(api::health::health_check))

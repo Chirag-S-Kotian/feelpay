@@ -2158,7 +2158,7 @@ export function ProviderConnectorsPage() {
   const [state, setState] = useState<LoadState>('loading');
   const [error, setError] = useState('');
   const helpers = useDrawerConfirm();
-  const [credentialForm, setCredentialForm] = useState({ provider_id: '10000000-0000-0000-0000-000000000001', environment: 'sandbox', secret_type: 'api_secret', value: 'sec_live_9f838e818817290192', rotation_due_at: '2026-12-31T23:59:59Z', description: 'Primary production gateway authentication secret' });
+  const [credentialForm, setCredentialForm] = useState({ provider_id: '10000000-0000-0000-0000-000000000001', environment: 'sandbox', secret_type: 'api_secret', value: 'sec_live_9f838e818817290192', rotation_due_at: '2026-12-31T23:59', description: 'Primary production gateway authentication secret' });
   const [tab, setTab] = useState('Overview');
   const [testing, setTesting] = useState<string | null>(null);
 
@@ -2658,7 +2658,7 @@ export function WhiteLabelCheckoutPage() {
   const sessions = useRows(`${API}/white-label/sessions`);
   const receipts = useRows(`${API}/white-label/receipts`);
   const businessAccounts = useRows(`${API}/business-accounts`);
-  const [linkForm, setLinkForm] = useState({ business_account_id: 'cd317088-a9ef-495c-ab3e-2a88603c54ac', amount: 2499, currency: 'INR', description: 'SaaS Platform Annual Subscription', customer_email: 'finance@enterprise-client.in', customer_phone: '+91 98765 43210', expires_at: '2026-12-31' });
+  const [linkForm, setLinkForm] = useState({ business_account_id: 'cd317088-a9ef-495c-ab3e-2a88603c54ac', amount: 2499, currency: 'INR', description: 'SaaS Platform Annual Subscription', customer_email: 'finance@enterprise-client.in', customer_phone: '+91 98765 43210', expires_at: '2026-12-31T23:59' });
   const [businessAccountSearch, setBusinessAccountSearch] = useState('');
   const load = async () => {
     setState('loading');
@@ -3269,7 +3269,7 @@ export function DeveloperIntegrationPage() {
   const rateLimits = useRows(`${API}/developer/rate-limits`);
   const [logFilters, setLogFilters] = useState({ request_id: '', idempotency_key: '', status_code: '', api_key_id: '', endpoint: '' });
   const [tab, setTab] = useState('keys');
-  const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '2026-12-31' });
+  const [keyForm, setKeyForm] = useState({ name: 'Internal integration key', environment: 'sandbox', scopes: 'payments.read,refunds.write,webhooks.replay', expires_at: '2026-12-31T23:59' });
   const [webhookForm, setWebhookForm] = useState({ event_type: 'payment.captured', webhook_event_id: 'evt_sim_live_771928019', note: 'Standard ops delivery simulation', dry_run: false });
   const [idempotencyForm, setIdempotencyForm] = useState({ idempotency_key: 'idem_ops_sim_9921', api_key_id: 'key_live_adm_99182', payload: '{"resource":"payment","amount":10000}', resource_type: 'payment' });
   const [rateLimitForm, setRateLimitForm] = useState({ api_key_id: 'key_live_adm_99182', window_seconds: 60, max_requests: 120 });

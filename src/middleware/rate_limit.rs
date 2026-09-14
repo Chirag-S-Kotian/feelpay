@@ -87,7 +87,7 @@ where
             }
         }
 
-        let ip = req.peer_addr().map(|a| a.ip().to_string());
+        let ip = extract_client_ip(&req);
 
         // If caller identity cannot be resolved, skip limiter to avoid shared "unknown" bucket.
         let ip = match ip {
@@ -110,7 +110,9 @@ where
                 Ok(guard) => guard,
                 Err(e) => {
                     tracing::error!("Rate limiter lock poisoned: {}", e);
-                    let response = HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                    let mut builder = HttpResponse::ServiceUnavailable();
+                    apply_rate_limit_cors(&mut builder, &req);
+                    let response = builder.json(serde_json::json!({
                         "error": {
                             "code": "service_unavailable",
                             "message": "Rate limiter temporarily unavailable",
@@ -144,18 +146,76 @@ where
                 method = %req.method(),
                 "Request rate limited"
             );
-            let response = HttpResponse::TooManyRequests()
-                .json(serde_json::json!({
-                    "error": {
-                        "code": "rate_limit_exceeded",
-                        "message": format!("Rate limit of {} requests per minute exceeded. Please retry after a moment.", max),
-                    }
-                }));
+            let mut builder = HttpResponse::TooManyRequests();
+            apply_rate_limit_cors(&mut builder, &req);
+            let response = builder.json(serde_json::json!({
+                "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": format!("Rate limit of {} requests per minute exceeded. Please retry after a moment.", max),
+                }
+            }));
             return Box::pin(async move { Ok(req.into_response(response).map_into_right_body()) });
         }
 
         let fut = self.service.call(req);
         Box::pin(async move { fut.await.map(|res| res.map_into_left_body()) })
+    }
+}
+
+fn extract_client_ip(req: &ServiceRequest) -> Option<String> {
+    if let Some(cf_ip) = req.headers().get("cf-connecting-ip") {
+        if let Ok(ip_str) = cf_ip.to_str() {
+            let trimmed = ip_str.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    if let Some(forwarded) = req.headers().get("x-forwarded-for") {
+        if let Ok(forwarded_str) = forwarded.to_str() {
+            if let Some(first_ip) = forwarded_str.split(',').next() {
+                let trimmed = first_ip.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+    if let Some(real_ip) = req.headers().get("x-real-ip") {
+        if let Ok(ip_str) = real_ip.to_str() {
+            let trimmed = ip_str.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    if let Some(addr) = req.connection_info().realip_remote_addr() {
+        return Some(addr.to_string());
+    }
+    req.peer_addr().map(|a| a.ip().to_string())
+}
+
+fn apply_rate_limit_cors(builder: &mut actix_web::HttpResponseBuilder, req: &ServiceRequest) {
+    if let Some(origin) = req.headers().get(actix_web::http::header::ORIGIN) {
+        if let Ok(origin_str) = origin.to_str() {
+            if origin_str.ends_with(".pages.dev")
+                || origin_str.ends_with(".onrender.com")
+                || origin_str.starts_with("http://localhost:")
+                || origin_str.starts_with("http://127.0.0.1:")
+            {
+                if let Ok(val) = actix_web::http::header::HeaderValue::from_str(origin_str) {
+                    builder.insert_header((actix_web::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, val));
+                    builder.insert_header((
+                        actix_web::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                        "true",
+                    ));
+                    builder.insert_header((
+                        actix_web::http::header::VARY,
+                        "Origin",
+                    ));
+                }
+            }
+        }
     }
 }
 
@@ -172,7 +232,7 @@ fn classify_limit(path: &str, method: &str, default_limit: u32) -> (&'static str
         ("payout_mutation", 10)
     } else if path.contains("/exports") || path.contains("/reports") {
         ("report_export", 20)
-    } else if path.starts_with("/admin") || path.starts_with("/v1/admin") {
+    } else if (path.starts_with("/admin") || path.starts_with("/v1/admin")) && method != "GET" {
         ("admin_sensitive", 30)
     } else {
         ("default", default_limit)
@@ -209,6 +269,10 @@ mod tests {
         assert_eq!(
             classify_limit("/v1/admin/users", "POST", 60),
             ("admin_sensitive", 30)
+        );
+        assert_eq!(
+            classify_limit("/admin/integrations/templates", "GET", 600),
+            ("default", 600)
         );
     }
 }

@@ -203,7 +203,7 @@ export default function CredentialManagement() {
     environment: 'sandbox',
     secret_type: 'api_secret',
     value: 'sec_live_9f838e818817290192',
-    rotation_due_at: '2026-12-31T23:59:59Z',
+    rotation_due_at: '2026-12-31T23:59',
     description: 'Primary production gateway authentication secret',
   });
   const [routingForm, setRoutingForm] = useState({
