@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Download, FileText } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { Search, Download, FileText, AlertCircle, ArrowRight } from 'lucide-react';
+import { apiRequest, getEnvironmentMode, type EnvironmentMode } from '../hooks/useApi';
 import { SideDrawer } from '../components/SideDrawer';
 import { formatPaise } from '../utils/money';
 
@@ -40,6 +40,16 @@ export default function Settlements() {
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
   const [settlementDetails, setSettlementDetails] = useState<any>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
+  const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleModeChange = (e: any) => {
+      setMode(e.detail?.mode || getEnvironmentMode());
+    };
+    window.addEventListener('feelpay_env_mode_changed', handleModeChange);
+    return () => window.removeEventListener('feelpay_env_mode_changed', handleModeChange);
+  }, []);
 
   useEffect(() => {
     if (!selectedSettlement) return;
@@ -60,7 +70,7 @@ export default function Settlements() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [settlementRes, balanceRes, recoRes] = await Promise.all([
+        const [settlementRes, balanceRes, recoRes, onboardingRes] = await Promise.all([
           apiRequest<{
             settlements: Array<{
               id: string;
@@ -72,13 +82,16 @@ export default function Settlements() {
               net_amount: number;
               utr: string | null;
             }>;
+            onboarding_required?: boolean;
+            message?: string;
           }>('GET', '/v1/settlements', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
-          apiRequest<{ available: number; pending: number; hold: number; reserve: number }>('GET', '/v1/settlements/balance', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
+          apiRequest<{ available: number; pending: number; hold: number; reserve: number; onboarding_required?: boolean }>('GET', '/v1/settlements/balance', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
           apiRequest<ReconciliationSummary>('GET', '/v1/settlements/reconciliation', undefined, null, { useApiKey: true, cacheMs: 20_000 }),
+          apiRequest<{ onboarding_status: string }>('GET', '/v1/onboarding/status', undefined, undefined, { cacheMs: 30_000 }).catch(() => ({ onboarding_status: 'pending' })),
         ]);
 
         setSettlements(
-          settlementRes.settlements.map((s) => ({
+          (settlementRes?.settlements || []).map((s) => ({
             id: s.id,
             date: s.settlement_date,
             status: s.status,
@@ -89,8 +102,9 @@ export default function Settlements() {
             utr: s.utr,
           })),
         );
-        setBalance(balanceRes);
-        setReco(recoRes);
+        setBalance(balanceRes || { available: 0, pending: 0, hold: 0, reserve: 0 });
+        setReco(recoRes || null);
+        setOnboardingStatus(onboardingRes?.onboarding_status || 'pending');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load settlements');
       } finally {
@@ -98,7 +112,7 @@ export default function Settlements() {
       }
     };
     load();
-  }, []);
+  }, [mode]);
 
   const filteredSettlements = settlements.filter((s) => {
     const statusMatch = filter === 'all' || s.status === filter;
@@ -249,87 +263,144 @@ export default function Settlements() {
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-label">Available Balance</div>
-          <div className="stat-value success">{formatPaise(balance.available)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Pending Settlement</div>
-          <div className="stat-value warning">{formatPaise(balance.pending)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">On Hold</div>
-          <div className="stat-value warning">{formatPaise(balance.hold)}</div>
-        </div>
-      </div>
+      {error && <div className="error-message" style={{ marginBottom: 16 }}>{error}</div>}
 
-      {reco && (
-        <div className="stats-grid" style={{ marginBottom: 16 }}>
-          <div className="stat-card">
-            <div className="stat-label">Gross</div>
-            <div className="stat-value">{formatPaise(reco.gross)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Fees + Tax</div>
-            <div className="stat-value warning">{formatPaise(reco.fees + reco.tax)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Net</div>
-            <div className="stat-value success">{formatPaise(reco.net)}</div>
+      {mode === 'live' && onboardingStatus !== 'approved' && !loading ? (
+        <div className="kyc-warning-card" style={{ margin: '24px 0' }}>
+          <div className="kyc-warning-blur"></div>
+          <div className="kyc-warning-content">
+            <div className="kyc-icon-wrapper">
+              <AlertCircle size={36} className="kyc-warning-icon" />
+            </div>
+            <h2>Live Settlements Inactive</h2>
+            <p className="kyc-warning-subtitle">
+              Your FeelPay merchant account is in the <strong style={{ textTransform: 'uppercase' }}>{onboardingStatus || 'pending'}</strong> verification state.
+            </p>
+            <p className="kyc-warning-description">
+              Live payouts and settlement transfers to your bank account are strictly held until your KYC onboarding profile and business verification are reviewed and approved.
+            </p>
+            <div className="kyc-actions">
+              <Link to="/onboarding" className="btn btn-kyc-action">
+                Complete Onboarding Profile
+              </Link>
+            </div>
           </div>
         </div>
+      ) : (
+        <>
+          {mode === 'test' && onboardingStatus !== 'approved' && !loading && (
+            <div className="sandbox-notice-banner">
+              <div className="sandbox-notice-left">
+                <div className="sandbox-notice-icon">
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <div className="sandbox-notice-title-row">
+                    <span>Sandbox Test Mode • Simulated Settlements</span>
+                    <span className="sandbox-notice-badge">
+                      KYC {onboardingStatus || 'pending'}
+                    </span>
+                  </div>
+                  <div className="sandbox-notice-desc">
+                    These transactions and balances are simulated test-mode records for sandbox testing. Real settlements to your bank account will activate once KYC onboarding is approved.
+                  </div>
+                </div>
+              </div>
+              <Link to="/onboarding" className="sandbox-notice-action">
+                Complete KYC Onboarding <ArrowRight size={15} />
+              </Link>
+            </div>
+          )}
+          {mode === 'test' && onboardingStatus === 'approved' && !loading && (
+            <div className="sandbox-info-banner">
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#2563eb', flexShrink: 0 }}></span>
+              <span><strong>Sandbox Environment:</strong> Viewing simulated test settlements. Switch to Live mode in the top bar to view live transactions.</span>
+            </div>
+          )}
+
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-label">Available Balance</div>
+              <div className="stat-value success">{formatPaise(balance.available)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Pending Settlement</div>
+              <div className="stat-value warning">{formatPaise(balance.pending)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">On Hold</div>
+              <div className="stat-value warning">{formatPaise(balance.hold)}</div>
+            </div>
+          </div>
+
+          {reco && (
+            <div className="stats-grid" style={{ marginBottom: 16 }}>
+              <div className="stat-card">
+                <div className="stat-label">Gross</div>
+                <div className="stat-value">{formatPaise(reco.gross)}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Fees + Tax</div>
+                <div className="stat-value warning">{formatPaise(reco.fees + reco.tax)}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Net</div>
+                <div className="stat-value success">{formatPaise(reco.net)}</div>
+              </div>
+            </div>
+          )}
+
+          <div className="filter-bar settlements-filter-bar">
+            <div className="search-box settlements-search-box">
+              <Search size={16} />
+              <input type="text" placeholder="Search by ID or UTR..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select className="settlements-filter-select" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+
+          <div className="table-card">
+            {loading && <div>Loading settlements...</div>}
+            {error && <div className="error-message">{error}</div>}
+            <table>
+              <thead>
+                <tr>
+                  <th>Settlement ID</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                  <th>Fee</th>
+                  <th>Tax</th>
+                  <th>Net</th>
+                  <th>UTR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSettlements.map((settlement) => (
+                  <tr key={settlement.id} onClick={() => setSelectedSettlement(settlement)} style={{ cursor: 'pointer' }}>
+                    <td className="mono">{settlement.id}</td>
+                    <td>{settlement.date || '-'}</td>
+                    <td>
+                      <span className={`status-badge ${settlement.status}`}>
+                        {settlement.status}
+                      </span>
+                    </td>
+                    <td>{formatPaise(settlement.amount)}</td>
+                    <td>{formatPaise(settlement.fee)}</td>
+                    <td>{formatPaise(settlement.tax)}</td>
+                    <td className="net">{formatPaise(settlement.net)}</td>
+                    <td className="mono">{settlement.utr || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
-
-      <div className="filter-bar settlements-filter-bar">
-        <div className="search-box settlements-search-box">
-          <Search size={16} />
-          <input type="text" placeholder="Search by ID or UTR..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <select className="settlements-filter-select" value={filter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="all">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-        </select>
-      </div>
-
-      <div className="table-card">
-        {loading && <div>Loading settlements...</div>}
-        {error && <div className="error-message">{error}</div>}
-        <table>
-          <thead>
-            <tr>
-              <th>Settlement ID</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>Amount</th>
-              <th>Fee</th>
-              <th>Tax</th>
-              <th>Net</th>
-              <th>UTR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSettlements.map((settlement) => (
-              <tr key={settlement.id} onClick={() => setSelectedSettlement(settlement)} style={{ cursor: 'pointer' }}>
-                <td className="mono">{settlement.id}</td>
-                <td>{settlement.date || '-'}</td>
-                <td>
-                  <span className={`status-badge ${settlement.status}`}>
-                    {settlement.status}
-                  </span>
-                </td>
-                <td>{formatPaise(settlement.amount)}</td>
-                <td>{formatPaise(settlement.fee)}</td>
-                <td>{formatPaise(settlement.tax)}</td>
-                <td className="net">{formatPaise(settlement.net)}</td>
-                <td className="mono">{settlement.utr || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

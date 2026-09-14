@@ -46,6 +46,17 @@ fn environment_from_req(req: &HttpRequest) -> crate::middleware::auth::Environme
         .unwrap_or(crate::middleware::auth::EnvironmentMode::Test)
 }
 
+async fn is_merchant_live_approved(db: &sqlx::PgPool, merchant_id: Uuid) -> Result<bool, FeelPayError> {
+    sqlx::query_scalar(
+        "SELECT onboarding_status = 'approved' AND COALESCE(review_status, 'draft') = 'approved' FROM merchants WHERE id = $1",
+    )
+    .bind(merchant_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))
+    .map(|opt| opt.unwrap_or(false))
+}
+
 #[utoipa::path(
     get,
     path = "/v1/settlements",
@@ -74,6 +85,18 @@ pub async fn list_settlements(
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * per_page;
+
+    if environment_str == "live" && !is_merchant_live_approved(&state.db, merchant_id).await? {
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "settlements": [],
+            "total": 0,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": 0,
+            "onboarding_required": true,
+            "message": "Live settlements are inactive until merchant KYC onboarding is approved."
+        })));
+    }
 
     let rows: Vec<(
         Uuid,
@@ -206,9 +229,10 @@ pub async fn get_settlement(
         Option<String>,
         Option<chrono::DateTime<chrono::Utc>>,
         chrono::DateTime<chrono::Utc>,
+        String,
     )> = sqlx::query_as(
         r#"
-        SELECT id, settlement_date, status, amount, fee_amount, net_amount, utr_number, bank_reference, error_message, processed_at, created_at
+        SELECT id, settlement_date, status, amount, fee_amount, net_amount, utr_number, bank_reference, error_message, processed_at, created_at, environment
         FROM settlements
         WHERE id = $1 AND merchant_id = $2
         "#,
@@ -231,10 +255,17 @@ pub async fn get_settlement(
         error_message,
         processed_at,
         created_at,
+        settlement_env,
     )) = row
     else {
         return Err(FeelPayError::NotFound("Settlement not found".into()));
     };
+
+    if settlement_env == "live" && !is_merchant_live_approved(&state.db, merchant_id).await? {
+        return Err(FeelPayError::Forbidden(
+            "Merchant KYC onboarding must be approved to access live settlement records.".into(),
+        ));
+    }
 
     let items: Vec<(Uuid, i64, i64, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         r#"
@@ -329,6 +360,17 @@ pub async fn get_settlement_stats(
         crate::middleware::auth::EnvironmentMode::Live => "live",
         crate::middleware::auth::EnvironmentMode::Test => "test",
     };
+
+    if environment_str == "live" && !is_merchant_live_approved(&state.db, merchant_id).await? {
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "available": 0,
+            "pending": 0,
+            "hold": 0,
+            "reserve": 0,
+            "onboarding_required": true
+        })));
+    }
+
     let svc = SettlementService::new(state.db.clone());
     let (available, pending, hold, reserve) = svc.get_balance(merchant_id, environment_str).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -359,6 +401,22 @@ pub async fn get_reconciliation_summary(
         crate::middleware::auth::EnvironmentMode::Live => "live",
         crate::middleware::auth::EnvironmentMode::Test => "test",
     };
+
+    if environment_str == "live" && !is_merchant_live_approved(&state.db, merchant_id).await? {
+        return Ok(HttpResponse::Ok().json(serde_json::json!({
+            "gross": 0,
+            "fees": 0,
+            "tax": 0,
+            "net": 0,
+            "variance": 0,
+            "counts": {
+                "completed": 0,
+                "pending": 0,
+                "failed": 0
+            },
+            "onboarding_required": true
+        })));
+    }
 
     let row = sqlx::query(
         r#"

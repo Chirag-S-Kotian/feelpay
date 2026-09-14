@@ -12,12 +12,29 @@ impl SettlementService {
         Self { db }
     }
 
+    async fn is_merchant_live_approved(&self, merchant_id: Uuid) -> Result<bool, FeelPayError> {
+        sqlx::query_scalar(
+            "SELECT onboarding_status = 'approved' AND COALESCE(review_status, 'draft') = 'approved' FROM merchants WHERE id = $1",
+        )
+        .bind(merchant_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))
+        .map(|opt| opt.unwrap_or(false))
+    }
+
     pub async fn create_settlement(
         &self,
         merchant_id: Uuid,
         settlement_date: chrono::NaiveDate,
         environment: &str,
     ) -> Result<Settlement, FeelPayError> {
+        if environment == "live" && !self.is_merchant_live_approved(merchant_id).await? {
+            return Err(FeelPayError::Forbidden(
+                "Merchant KYC onboarding must be approved before creating live settlements".into(),
+            ));
+        }
+
         let total_amount: (i64,) = sqlx::query_as(
             r#"
             SELECT COALESCE(SUM(po.amount), 0)::BIGINT
@@ -72,6 +89,10 @@ impl SettlementService {
         merchant_id: Uuid,
         environment: &str,
     ) -> Result<Vec<Settlement>, FeelPayError> {
+        if environment == "live" && !self.is_merchant_live_approved(merchant_id).await? {
+            return Ok(vec![]);
+        }
+
         let settlements = sqlx::query_as::<_, Settlement>(
             r#"
             SELECT 
@@ -114,6 +135,10 @@ impl SettlementService {
         merchant_id: Uuid,
         environment: &str,
     ) -> Result<(i64, i64, i64, i64), FeelPayError> {
+        if environment == "live" && !self.is_merchant_live_approved(merchant_id).await? {
+            return Ok((0, 0, 0, 0));
+        }
+
         let captured: (i64,) = sqlx::query_as(
             r#"
             SELECT COALESCE(SUM(po.amount), 0)::BIGINT

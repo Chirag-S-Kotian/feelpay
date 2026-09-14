@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, FileText, Loader, RefreshCw, X, Wallet } from 'lucide-react';
-import { apiRequest } from '../hooks/useApi';
+import { Download, FileText, Loader, RefreshCw, X, Wallet, AlertCircle, ArrowRight } from 'lucide-react';
+import { apiRequest, getEnvironmentMode, type EnvironmentMode } from '../hooks/useApi';
 import { formatPaise } from '../utils/money';
 import ReportNavTabs from '../components/ReportNavTabs';
 
@@ -65,19 +65,36 @@ export default function SettlementReports() {
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
   const [reportPreview, setReportPreview] = useState<SettlementDetail | null>(null);
   const [error, setError] = useState<string>('');
+  const [mode, setMode] = useState<EnvironmentMode>(getEnvironmentMode());
+  const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleModeChange = (e: any) => {
+      setMode(e.detail?.mode || getEnvironmentMode());
+    };
+    window.addEventListener('feelpay_env_mode_changed', handleModeChange);
+    return () => window.removeEventListener('feelpay_env_mode_changed', handleModeChange);
+  }, []);
 
   useEffect(() => {
     fetchSettlements();
-  }, []);
+  }, [mode]);
 
   const fetchSettlements = async () => {
     try {
       setError('');
-      const data = await apiRequest<{ settlements: Settlement[] }>(
-        'GET',
-        '/v1/settlements?page=1&per_page=50'
-      );
+      const [data, onboardingRes] = await Promise.all([
+        apiRequest<{ settlements: Settlement[] }>(
+          'GET',
+          '/v1/settlements?page=1&per_page=50',
+          undefined,
+          null,
+          { useApiKey: true }
+        ),
+        apiRequest<{ onboarding_status: string }>('GET', '/v1/onboarding/status', undefined, undefined, { cacheMs: 30_000 }).catch(() => ({ onboarding_status: 'pending' })),
+      ]);
       setSettlements(data.settlements || []);
+      setOnboardingStatus(onboardingRes?.onboarding_status || 'pending');
     } catch (err) {
       console.error('Failed to fetch settlements:', err);
       const message = err instanceof Error ? err.message : 'Failed to load settlements';
@@ -93,7 +110,10 @@ export default function SettlementReports() {
       setError('');
       const data = await apiRequest<SettlementDetail>(
         'GET',
-        `/v1/settlements/${settlement.id}`
+        `/v1/settlements/${settlement.id}`,
+        undefined,
+        undefined,
+        { useApiKey: true }
       );
       setReportPreview(data);
     } catch (err) {
@@ -236,7 +256,54 @@ export default function SettlementReports() {
         </div>
       )}
 
-      <div className={selectedSettlement && reportPreview ? "grid grid-2" : ""}>
+      {mode === 'live' && onboardingStatus !== 'approved' && !loading ? (
+        <div className="kyc-warning-card" style={{ margin: '24px 0' }}>
+          <div className="kyc-warning-blur"></div>
+          <div className="kyc-warning-content">
+            <div className="kyc-icon-wrapper">
+              <AlertCircle size={36} className="kyc-warning-icon" />
+            </div>
+            <h2>Live Settlement Reports Inactive</h2>
+            <p className="kyc-warning-subtitle">
+              Your FeelPay merchant account is in the <strong style={{ textTransform: 'uppercase' }}>{onboardingStatus || 'pending'}</strong> verification state.
+            </p>
+            <p className="kyc-warning-description">
+              Live settlement data and audit reports are strictly inaccessible until your KYC onboarding profile and business verification are reviewed and approved.
+            </p>
+            <div className="kyc-actions">
+              <Link to="/onboarding" className="btn btn-kyc-action">
+                Complete Onboarding Profile
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {mode === 'test' && onboardingStatus !== 'approved' && !loading && (
+            <div className="sandbox-notice-banner">
+              <div className="sandbox-notice-left">
+                <div className="sandbox-notice-icon">
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <div className="sandbox-notice-title-row">
+                    <span>Sandbox Test Mode • Simulated Reports</span>
+                    <span className="sandbox-notice-badge">
+                      KYC {onboardingStatus || 'pending'}
+                    </span>
+                  </div>
+                  <div className="sandbox-notice-desc">
+                    Settlement reports shown are simulated test-mode records for sandbox verification. Live settlement reconciliations will activate once KYC onboarding is approved.
+                  </div>
+                </div>
+              </div>
+              <Link to="/onboarding" className="sandbox-notice-action">
+                Complete KYC Onboarding <ArrowRight size={15} />
+              </Link>
+            </div>
+          )}
+
+          <div className={selectedSettlement && reportPreview ? "grid grid-2" : ""}>
         <div className="card">
           <div className="card-title-row">
             <h2>Settlements</h2>
@@ -422,6 +489,8 @@ export default function SettlementReports() {
           </div>
         )}
       </div>
+        </>
+      )}
 
       <style>{`
         .error-banner {
