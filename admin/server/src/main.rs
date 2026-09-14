@@ -1219,8 +1219,12 @@ mod startup_tests {
 }
 
 fn admin_bind_addr() -> String {
-    let host = env::var("ADMIN_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = env::var("ADMIN_PORT").unwrap_or_else(|_| "8081".to_string());
+    let host = env::var("ADMIN_HOST")
+        .or_else(|_| env::var("HOST"))
+        .unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port = env::var("ADMIN_PORT")
+        .or_else(|_| env::var("PORT"))
+        .unwrap_or_else(|_| "8081".to_string());
     format!("{host}:{port}")
 }
 
