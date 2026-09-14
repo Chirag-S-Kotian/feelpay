@@ -45,3 +45,8 @@ data/state_store.db/mem%3Ahealth.bin
 data/state_store.db/mem%3Aindex%3Abm25.bin
 data/state_store.db/mem%3Aaccess.bin
 data/state_store.db/mem%3Amemories.bin
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
