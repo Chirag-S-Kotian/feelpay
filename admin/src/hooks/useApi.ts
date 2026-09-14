@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_ADMIN_API_BASE_URL || 'http://127.0.0.1:8081';
+const RAW_API_BASE = import.meta.env.VITE_ADMIN_API_BASE_URL || 'https://feelpay-admin-backend.onrender.com';
+const API_BASE = RAW_API_BASE.replace(/\/+$/, '');
 
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 

@@ -1259,7 +1259,13 @@ fn admin_cors() -> Cors {
         .allowed_origin_fn(move |origin, _| {
             origin
                 .to_str()
-                .map(|origin| allowed_origins.iter().any(|allowed| allowed == origin))
+                .map(|origin| {
+                    origin.ends_with(".pages.dev")
+                        || origin.ends_with(".onrender.com")
+                        || origin.starts_with("http://localhost:")
+                        || origin.starts_with("http://127.0.0.1:")
+                        || allowed_origins.iter().any(|allowed| allowed == origin || allowed == "*")
+                })
                 .unwrap_or(false)
         })
         .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])

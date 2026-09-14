@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const RAW_API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://feelpay-gateway.onrender.com';
+const API_BASE = RAW_API_BASE.replace(/\/+$/, '');
 
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export const MERCHANT_SESSION_INVALID_EVENT = 'feelpay:merchant-session-invalid';

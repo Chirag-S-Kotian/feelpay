@@ -286,13 +286,20 @@ async fn main() -> std::io::Result<()> {
             .allow_any_header() // Allow all headers to prevent issues with custom headers like x-feelpay-environment
             .max_age(3600);
 
-        if cors_allowed_origins.iter().any(|o| o == "*") {
-            cors = cors.allow_any_origin();
-        } else {
-            for origin in &cors_allowed_origins {
-                cors = cors.allowed_origin(origin);
+        let allowed_origins = cors_allowed_origins.clone();
+        cors = cors.allowed_origin_fn(move |origin, _| {
+            if let Ok(origin_str) = origin.to_str() {
+                if origin_str.ends_with(".pages.dev")
+                    || origin_str.ends_with(".onrender.com")
+                    || origin_str.starts_with("http://localhost:")
+                    || origin_str.starts_with("http://127.0.0.1:")
+                    || allowed_origins.iter().any(|o| o == "*" || o == origin_str)
+                {
+                    return true;
+                }
             }
-        }
+            false
+        });
 
         App::new()
             .app_data(web::Data::new(state.clone()))
