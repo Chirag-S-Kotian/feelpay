@@ -35,6 +35,7 @@ jobs:
     name: Build & Deploy ${{ matrix.app.name }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         app:
           - name: Merchant Dashboard
@@ -61,7 +62,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: ${{ matrix.app.dir }}/pnpm-lock.yaml
 
@@ -85,6 +86,10 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "::warning title=Cloudflare Token Missing::CLOUDFLARE_API_TOKEN secret not configured in GitHub Secrets. Skipping direct wrangler deployment. (If Cloudflare Pages is connected via GitHub Git Integration, it auto-deploys on git push. To deploy directly from Actions, set CLOUDFLARE_API_TOKEN in repository secrets.)"
+            exit 0
+          fi
           pnpm dlx wrangler pages deploy "${{ matrix.app.dir }}/dist" \
             --project-name="${{ vars[matrix.app.project_var] || matrix.app.default_project }}" \
             --branch=main \
