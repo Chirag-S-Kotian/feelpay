@@ -1,7 +1,6 @@
 use crate::error::FeelPayError;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
-use std::fs;
 use uuid::Uuid;
 
 /// Export job types
@@ -498,15 +497,8 @@ impl ExportService {
             String,
         )>,
     ) -> Result<Vec<u8>, FeelPayError> {
-        let temp_dir = std::env::temp_dir();
-        let temp_path = temp_dir.join(format!("feelpay_customers_{}.xlsx", Uuid::new_v4()));
-        let temp_path_string = temp_path.to_string_lossy().to_string();
-
-        let workbook = xlsxwriter::Workbook::new(&temp_path_string)
-            .map_err(|e| FeelPayError::Internal(format!("Excel create error: {}", e)))?;
-        let mut sheet = workbook
-            .add_worksheet(None)
-            .map_err(|e| FeelPayError::Internal(format!("Excel sheet error: {}", e)))?;
+        let mut workbook = rust_xlsxwriter::Workbook::new();
+        let sheet = workbook.add_worksheet();
 
         let headers = [
             "customer_id",
@@ -521,7 +513,7 @@ impl ExportService {
 
         for (col, header) in headers.iter().enumerate() {
             sheet
-                .write_string(0, col as u16, header, None)
+                .write_string(0, col as u16, *header)
                 .map_err(|e| FeelPayError::Internal(format!("Excel write error: {}", e)))?;
         }
 
@@ -539,18 +531,14 @@ impl ExportService {
             ];
             for (col, value) in values.into_iter().enumerate() {
                 sheet
-                    .write_string(row, col as u16, &value, None)
+                    .write_string(row, col as u16, &value)
                     .map_err(|e| FeelPayError::Internal(format!("Excel write error: {}", e)))?;
             }
         }
 
-        workbook
-            .close()
-            .map_err(|e| FeelPayError::Internal(format!("Excel close error: {}", e)))?;
-
-        let bytes = fs::read(&temp_path)
-            .map_err(|e| FeelPayError::Internal(format!("Excel read error: {}", e)))?;
-        let _ = fs::remove_file(&temp_path);
+        let bytes = workbook
+            .save_to_buffer()
+            .map_err(|e| FeelPayError::Internal(format!("Excel save error: {}", e)))?;
         Ok(bytes)
     }
 
@@ -1151,53 +1139,29 @@ impl ExportService {
         total_amount: i64,
         date_range_str: &str,
     ) -> Result<Vec<u8>, FeelPayError> {
-        let temp_file = tempfile::NamedTempFile::new().map_err(|e| {
-            tracing::error!("Failed to create temp file for Excel workbook: {:?}", e);
-            FeelPayError::Internal("Excel generation failed".into())
-        })?;
-
-        let temp_path_string = temp_file.path().to_string_lossy().to_string();
-
-        let workbook = xlsxwriter::Workbook::new(&temp_path_string).map_err(|e| {
-            tracing::error!("Failed to create Excel workbook: {:?}", e);
-            FeelPayError::Internal("Excel generation failed".into())
-        })?;
-
-        let mut sheet = workbook.add_worksheet(Some("Transactions")).map_err(|e| {
-            tracing::error!("Failed to add worksheet: {:?}", e);
+        let mut workbook = rust_xlsxwriter::Workbook::new();
+        let sheet = workbook.add_worksheet();
+        sheet.set_name("Transactions").map_err(|e| {
+            tracing::error!("Failed to set worksheet name: {:?}", e);
             FeelPayError::Internal("Excel generation failed".into())
         })?;
 
         // Write metadata
         let mut row = 0;
-        sheet.write_string(row, 0, "METADATA", None).map_err(|e| {
+        sheet.write_string(row, 0, "METADATA").map_err(|e| {
             tracing::error!("Failed to write Excel metadata: {:?}", e);
             FeelPayError::Internal("Excel generation failed".into())
         })?;
         row += 1;
 
         sheet
-            .write_string(row, 0, "Export Date", None)
+            .write_string(row, 0, "Export Date")
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
         sheet
-            .write_string(row, 1, &Utc::now().to_rfc3339(), None)
-            .map_err(|e| {
-                tracing::error!("Failed to write Excel: {:?}", e);
-                FeelPayError::Internal("Excel generation failed".into())
-            })?;
-        row += 1;
-
-        sheet
-            .write_string(row, 0, "Merchant ID", None)
-            .map_err(|e| {
-                tracing::error!("Failed to write Excel: {:?}", e);
-                FeelPayError::Internal("Excel generation failed".into())
-            })?;
-        sheet
-            .write_string(row, 1, &merchant_id.to_string(), None)
+            .write_string(row, 1, &Utc::now().to_rfc3339())
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
@@ -1205,27 +1169,13 @@ impl ExportService {
         row += 1;
 
         sheet
-            .write_string(row, 0, "Date Range", None)
+            .write_string(row, 0, "Merchant ID")
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
         sheet
-            .write_string(row, 1, date_range_str, None)
-            .map_err(|e| {
-                tracing::error!("Failed to write Excel: {:?}", e);
-                FeelPayError::Internal("Excel generation failed".into())
-            })?;
-        row += 1;
-
-        sheet
-            .write_string(row, 0, "Total Transactions", None)
-            .map_err(|e| {
-                tracing::error!("Failed to write Excel: {:?}", e);
-                FeelPayError::Internal("Excel generation failed".into())
-            })?;
-        sheet
-            .write_number(row, 1, total_transactions as f64, None)
+            .write_string(row, 1, &merchant_id.to_string())
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
@@ -1233,13 +1183,41 @@ impl ExportService {
         row += 1;
 
         sheet
-            .write_string(row, 0, "Total Amount (paise)", None)
+            .write_string(row, 0, "Date Range")
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
         sheet
-            .write_string(row, 1, &total_amount.to_string(), None)
+            .write_string(row, 1, date_range_str)
+            .map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
+        row += 1;
+
+        sheet
+            .write_string(row, 0, "Total Transactions")
+            .map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
+        sheet
+            .write_number(row, 1, total_transactions as f64)
+            .map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
+        row += 1;
+
+        sheet
+            .write_string(row, 0, "Total Amount (paise)")
+            .map_err(|e| {
+                tracing::error!("Failed to write Excel: {:?}", e);
+                FeelPayError::Internal("Excel generation failed".into())
+            })?;
+        sheet
+            .write_string(row, 1, &total_amount.to_string())
             .map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
@@ -1264,7 +1242,7 @@ impl ExportService {
 
         for (col, header) in headers.iter().enumerate() {
             sheet
-                .write_string(row, col as u16, header, None)
+                .write_string(row, col as u16, *header)
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel header: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
@@ -1289,12 +1267,12 @@ impl ExportService {
         ) in transactions
         {
             sheet
-                .write_string(row, 0, &transaction_id, None)
+                .write_string(row, 0, &transaction_id)
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
-            sheet.write_string(row, 1, &order_id, None).map_err(|e| {
+            sheet.write_string(row, 1, &order_id).map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
@@ -1303,7 +1281,6 @@ impl ExportService {
                     row,
                     2,
                     &mask_email(&customer_email.unwrap_or_default()),
-                    None,
                 )
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
@@ -1314,50 +1291,49 @@ impl ExportService {
                     row,
                     3,
                     &mask_phone(&customer_phone.unwrap_or_default()),
-                    None,
                 )
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
             sheet
-                .write_string(row, 4, &amount.to_string(), None)
+                .write_string(row, 4, &amount.to_string())
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
-            sheet.write_string(row, 5, &currency, None).map_err(|e| {
+            sheet.write_string(row, 5, &currency).map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
             sheet
-                .write_string(row, 6, &payment_method.unwrap_or_default(), None)
+                .write_string(row, 6, &payment_method.unwrap_or_default())
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
-            sheet.write_string(row, 7, &status, None).map_err(|e| {
+            sheet.write_string(row, 7, &status).map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
-            sheet.write_string(row, 8, &created_at, None).map_err(|e| {
+            sheet.write_string(row, 8, &created_at).map_err(|e| {
                 tracing::error!("Failed to write Excel: {:?}", e);
                 FeelPayError::Internal("Excel generation failed".into())
             })?;
             sheet
-                .write_string(row, 9, &settled_at.unwrap_or_default(), None)
+                .write_string(row, 9, &settled_at.unwrap_or_default())
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
             sheet
-                .write_string(row, 10, &refund_amount.to_string(), None)
+                .write_string(row, 10, &refund_amount.to_string())
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
                 })?;
             sheet
-                .write_string(row, 11, &refund_status.unwrap_or_default(), None)
+                .write_string(row, 11, &refund_status.unwrap_or_default())
                 .map_err(|e| {
                     tracing::error!("Failed to write Excel: {:?}", e);
                     FeelPayError::Internal("Excel generation failed".into())
@@ -1366,13 +1342,8 @@ impl ExportService {
             row += 1;
         }
 
-        workbook.close().map_err(|e| {
-            tracing::error!("Failed to close Excel workbook: {:?}", e);
-            FeelPayError::Internal("Excel generation failed".into())
-        })?;
-
-        let bytes = fs::read(temp_file.path()).map_err(|e| {
-            tracing::error!("Failed to read Excel workbook: {:?}", e);
+        let bytes = workbook.save_to_buffer().map_err(|e| {
+            tracing::error!("Failed to save Excel workbook to buffer: {:?}", e);
             FeelPayError::Internal("Excel generation failed".into())
         })?;
 
