@@ -169,6 +169,21 @@ function dateTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : 'Pending Execution (T+1)';
 }
 
+function toDatetimeLocal(val?: unknown): string {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T00:00`;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return s.slice(0, 16);
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return '';
+  }
+}
+
 function asRecords(value: { items?: GenericRecord[] }) {
   return value.items || [];
 }
@@ -454,8 +469,9 @@ export default function CredentialManagement() {
               <Field label="Provider"><Select value={credentialForm.provider_id} options={providers.map(provider => ({ label: provider.name, value: provider.id }))} onChange={value => setCredentialForm({ ...credentialForm, provider_id: value })} /></Field>
               <Field label="Environment"><Select value={credentialForm.environment} options={['sandbox', 'production']} onChange={value => setCredentialForm({ ...credentialForm, environment: value })} /></Field>
               <Field label="Secret Type"><Select value={credentialForm.secret_type} options={SECRET_TYPES} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
+              <input type="text" autoComplete="username" name="credential-username" value="admin" readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }} />
               <Field label="Secret Value"><input type="password" autoComplete="new-password" name="provider-secret-value" value={credentialForm.value || ''} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
-              <Field label="Rotation Due Date"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
+              <Field label="Rotation Due Date"><input type="datetime-local" value={toDatetimeLocal(credentialForm.rotation_due_at)} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
               <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
             </div>
             <div className="button-row">

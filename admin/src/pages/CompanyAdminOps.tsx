@@ -266,6 +266,21 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsForm = {
 
 const str = (value: unknown) => value == null ? '' : String(value);
 
+function toDatetimeLocal(val?: unknown): string {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T00:00`;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return s.slice(0, 16);
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return '';
+  }
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="form-field">
@@ -2343,7 +2358,7 @@ export function ProviderConnectorsPage() {
                 <Field label="Secret type"><Select value={credentialForm.secret_type} options={['api_key', 'api_secret', 'webhook_secret', 'signing_secret', 'client_id', 'client_secret']} onChange={value => setCredentialForm({ ...credentialForm, secret_type: value })} /></Field>
                 <input type="text" autoComplete="username" name="provider-secret-username" value="admin" readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }} />
                 <Field label="Secret value"><input type="password" autoComplete="new-password" name="provider-secret-value" value={str(credentialForm.value)} onChange={event => setCredentialForm({ ...credentialForm, value: event.target.value })} /></Field>
-                <Field label="Rotation due at"><input type="datetime-local" value={credentialForm.rotation_due_at} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
+                <Field label="Rotation due at"><input type="datetime-local" value={toDatetimeLocal(credentialForm.rotation_due_at)} onChange={event => setCredentialForm({ ...credentialForm, rotation_due_at: event.target.value })} /></Field>
                 <Field label="Description"><input value={credentialForm.description} onChange={event => setCredentialForm({ ...credentialForm, description: event.target.value })} /></Field>
               </div>
               <button className="btn-primary" type="submit" disabled={!credentialForm.provider_id || !credentialForm.value}>Save encrypted secret</button>
@@ -2773,7 +2788,7 @@ export function WhiteLabelCheckoutPage() {
                 <Field label="Description"><input value={linkForm.description} onChange={event => setLinkForm({ ...linkForm, description: event.target.value })} /></Field>
                 <Field label="Customer email"><input value={linkForm.customer_email} onChange={event => setLinkForm({ ...linkForm, customer_email: event.target.value })} /></Field>
                 <Field label="Customer phone"><input value={linkForm.customer_phone} onChange={event => setLinkForm({ ...linkForm, customer_phone: event.target.value })} /></Field>
-                <Field label="Expires at"><input type="datetime-local" value={linkForm.expires_at} onChange={event => setLinkForm({ ...linkForm, expires_at: event.target.value })} /></Field>
+                <Field label="Expires at"><input type="datetime-local" value={toDatetimeLocal(linkForm.expires_at)} onChange={event => setLinkForm({ ...linkForm, expires_at: event.target.value })} /></Field>
               </div>
               <button className="btn-primary" type="submit">Create payment link</button>
             </form>
@@ -3440,7 +3455,7 @@ export function DeveloperIntegrationPage() {
                 <Field label="Name"><input value={keyForm.name} onChange={event => setKeyForm({ ...keyForm, name: event.target.value })} /></Field>
                 <Field label="Environment"><Select value={keyForm.environment} options={['sandbox', 'production']} onChange={environment => setKeyForm({ ...keyForm, environment })} /></Field>
                 <Field label="Scopes"><input value={keyForm.scopes} onChange={event => setKeyForm({ ...keyForm, scopes: event.target.value })} /></Field>
-                <Field label="Expires at"><input type="datetime-local" value={keyForm.expires_at} onChange={event => setKeyForm({ ...keyForm, expires_at: event.target.value })} /></Field>
+                <Field label="Expires at"><input type="datetime-local" value={toDatetimeLocal(keyForm.expires_at)} onChange={event => setKeyForm({ ...keyForm, expires_at: event.target.value })} /></Field>
                 <div className="filter-actions">
                   <button className="btn-primary" type="submit">Create key</button>
                 </div>
@@ -5251,6 +5266,7 @@ function CheckoutPreview({ value, onEditConfig }: { value: WhiteLabelForm; onEdi
                 </label>
                 <input
                   type="password"
+                  autoComplete="cc-csc"
                   maxLength={4}
                   value={cardCvv}
                   onChange={e => setCardCvv(e.target.value)}

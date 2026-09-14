@@ -144,7 +144,7 @@ export default function AdminIntegrationCenter() {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState('');
-  const [secretName, setSecretName] = useState('password');
+  const [secretName, setSecretName] = useState('api_secret');
   const [secretValue, setSecretValue] = useState('fp_live_secret_key_884920481029');
   const [testRecipient, setTestRecipient] = useState('ops@feelpay.local');
   const [testPhone, setTestPhone] = useState('+919876543210');
@@ -409,7 +409,8 @@ export default function AdminIntegrationCenter() {
               <Select value={selectedId} options={providers.map(provider => ({ label: `${provider.name} (${label(provider.provider_kind)})`, value: provider.id }))} onChange={setSelectedId} />
             </Field>
             <div className="filter-grid" style={{ marginTop: '12px' }}>
-              <Field label="Secret name"><input name="secret_name" autoComplete="off" value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
+              <input type="text" autoComplete="username" name="integration-secret-username" value="admin" readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }} />
+              <Field label="Secret name"><input name="secret_name" autoComplete="off" data-lpignore="true" value={secretName} onChange={event => setSecretName(event.target.value)} /></Field>
               <Field label="Secret value"><input type="password" name="secret_value" autoComplete="new-password" value={secretValue} onChange={event => setSecretValue(event.target.value)} /></Field>
               <Field label="Test email"><input name="test_email" value={testRecipient} onChange={event => setTestRecipient(event.target.value)} /></Field>
               <Field label="Test phone"><input name="test_phone" value={testPhone} onChange={event => setTestPhone(event.target.value)} /></Field>

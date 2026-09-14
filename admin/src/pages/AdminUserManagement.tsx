@@ -19,7 +19,7 @@ export default function AdminUserManagement() {
     <section className="page-shell">
       <header className="page-header"><h1>Admin Users</h1><button onClick={create}>Create</button></header>
       <div className="filter-grid">
-        <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+        <input placeholder="Email" name="admin-email" autoComplete="username" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
         <input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <input placeholder="Password" type="password" autoComplete="new-password" name="new-admin-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
       </div>
