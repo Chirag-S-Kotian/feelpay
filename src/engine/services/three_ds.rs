@@ -125,7 +125,7 @@ impl ThreeDsService {
             r#"
             UPDATE three_ds_challenges
             SET status = $1, completed_at = NOW()
-            WHERE id = $2
+            WHERE id = $2 AND status = 'pending'
             RETURNING id, payment_id, merchant_id, status, acs_url, creq, dsTransID, created_at, completed_at
             "#,
         )
@@ -141,7 +141,7 @@ impl ThreeDsService {
             r#"
             UPDATE three_ds_challenges
             SET status = $1, completed_at = NOW()
-            WHERE id = $2
+            WHERE id = $2 AND status = 'pending'
             RETURNING id, payment_id, merchant_id, status, acs_url, creq, dsTransID, created_at, completed_at
             "#,
         )
@@ -176,16 +176,14 @@ impl ThreeDsService {
         challenge_id: Uuid,
         _cres: &str, // Challenge Response (base64)
     ) -> Result<bool, String> {
-        // In production, verify CRES signature with issuer's public key
-        // For now, stub implementation
-        tracing::info!("Verifying 3DS2 CRES for challenge {}", challenge_id);
-
-        // Mark as authenticated
-        self.mark_authenticated(challenge_id)
+        tracing::warn!(
+            "Rejecting unverified 3DS2 CRES for challenge {}: issuer verification is not configured",
+            challenge_id
+        );
+        self.mark_failed(challenge_id)
             .await
-            .map_err(|e| format!("Failed to mark challenge authenticated: {}", e))?;
-
-        Ok(true)
+            .map_err(|e| format!("Failed to mark challenge failed: {}", e))?;
+        Ok(false)
     }
 }
 

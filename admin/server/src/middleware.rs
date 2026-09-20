@@ -5,7 +5,7 @@ use actix_web::{
     web, Error, HttpMessage, HttpResponse, HttpResponseBuilder,
 };
 use futures_util::future::LocalBoxFuture;
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -231,7 +231,7 @@ where
         let decoded = decode::<Claims>(
             &token,
             &DecodingKey::from_secret(secret.as_bytes()),
-            &Validation::default(),
+            &Validation::new(Algorithm::HS256),
         );
 
         let claims = match decoded {

@@ -5,7 +5,7 @@ use actix_web::{
 };
 use chrono::{Duration, Utc};
 use futures_util::future::LocalBoxFuture;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use sha2::{Digest, Sha256};
 use std::future::{ready, Ready};
 use std::rc::Rc;
@@ -70,12 +70,12 @@ fn bearer_token_from_header(value: &str) -> Option<String> {
 }
 
 fn is_safe_method(method: &actix_web::http::Method) -> bool {
-    matches!(
+    return matches!(
         *method,
         actix_web::http::Method::GET
             | actix_web::http::Method::HEAD
             | actix_web::http::Method::OPTIONS
-    )
+    );
 }
 
 fn merchant_role_allows_request(role: &str, method: &actix_web::http::Method, path: &str) -> bool {
@@ -419,7 +419,7 @@ where
             let decoded = decode::<Claims>(
                 &token,
                 &DecodingKey::from_secret(secret.as_bytes()),
-                &Validation::default(),
+                &Validation::new(Algorithm::HS256),
             );
 
             let claims = decoded
@@ -548,7 +548,7 @@ where
                 if let Ok(token_data) = decode::<Claims>(
                     token,
                     &DecodingKey::from_secret(secret.as_bytes()),
-                    &Validation::default(),
+                    &Validation::new(Algorithm::HS256),
                 ) {
                     let claims = token_data.claims;
                     if let Ok(user_id) = Uuid::parse_str(&claims.sub) {
