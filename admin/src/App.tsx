@@ -314,8 +314,8 @@ function Layout() {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@feelpay.local');
-  const [password, setPassword] = useState('feelpay_admin_password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

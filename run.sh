@@ -208,7 +208,11 @@ start_dashboard() {
     pnpm install
   fi
   echo -e "${CYAN}▶ Launching Merchant Dashboard on port ${DASH_PORT}...${RESET}"
-  pnpm dev --host 0.0.0.0 --port "$DASH_PORT" &
+  # Point the local UI at the local gateway; shell env overrides dashboard/.env (Render URLs).
+  VITE_API_BASE_URL="http://127.0.0.1:${GATEWAY_PORT}" \
+  VITE_SANDBOX_API_BASE_URL="http://127.0.0.1:${GATEWAY_PORT}" \
+  VITE_LIVE_API_BASE_URL="http://127.0.0.1:${GATEWAY_PORT}" \
+    pnpm dev --host 0.0.0.0 --port "$DASH_PORT" &
   DASH_PID=$!
   ACTIVE_PORTS="${ACTIVE_PORTS} ${DASH_PORT}"
 }
@@ -221,7 +225,10 @@ start_admin_frontend() {
     pnpm install
   fi
   echo -e "${CYAN}▶ Launching Admin Portal UI on port ${ADMIN_FRONT_PORT}...${RESET}"
-  pnpm dev --host 0.0.0.0 --port "$ADMIN_FRONT_PORT" &
+  # Point the local UI at the local admin backend instead of the Render fallback.
+  VITE_ADMIN_API_BASE_URL="http://127.0.0.1:${ADMIN_SERVER_PORT}" \
+  VITE_DASHBOARD_BASE_URL="http://localhost:${DASH_PORT}" \
+    pnpm dev --host 0.0.0.0 --port "$ADMIN_FRONT_PORT" &
   ADMIN_FRONT_PID=$!
   ACTIVE_PORTS="${ACTIVE_PORTS} ${ADMIN_FRONT_PORT}"
 }

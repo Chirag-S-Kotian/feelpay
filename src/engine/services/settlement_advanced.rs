@@ -91,11 +91,11 @@ impl SettlementAdvancedService {
     }
 
     /// Calculate TDS (Tax Deducted at Source)
-    /// India: 1% TDS on payment aggregator commissions for merchants with turnover > 50L
+    /// India: Section 194O TDS on gross e-commerce sales, 0.1% from 1 Oct 2024
+    /// (reduced from 1% by the Finance (No. 2) Act, 2024).
     pub fn calculate_tds(&self, amount: i64) -> i64 {
-        // Simplified: 1% TDS
-        // In production: check merchant turnover, GST registration, etc.
-        amount / 100
+        // Simplified: assumes the merchant furnished PAN (5% applies otherwise, s.206AA).
+        amount / 1000
     }
 
     /// Create TDS calculation record
@@ -281,7 +281,7 @@ mod tests {
         );
         let amount = 100000; // 1000 INR
         let tds = service.calculate_tds(amount);
-        assert_eq!(tds, 1000); // 1% = 10 INR
+        assert_eq!(tds, 100); // 0.1% = 1 INR
     }
 
     #[tokio::test]
