@@ -93,9 +93,14 @@ details.qa .tag{font:500 11px/1 var(--f-mono);color:var(--accent);text-transform
 </div>
 
 <nav class="tabs" aria-label="Sections"><div class="inner" role="tablist">
+  <button role="tab" data-v="summary">Examiner brief</button>
   <button role="tab" data-v="overview">Overview</button>
   <button role="tab" data-v="arch">Architecture</button>
   <button role="tab" data-v="features">How it works</button>
+  <button role="tab" data-v="legal">RBI &amp; legal</button>
+  <button role="tab" data-v="api">Routes &amp; headers</button>
+  <button role="tab" data-v="db">Database</button>
+  <button role="tab" data-v="algo">Algorithms &amp; stack</button>
   <button role="tab" data-v="run">Run it</button>
   <button role="tab" data-v="health">Health check</button>
   <button role="tab" data-v="review">Review findings</button>
@@ -105,6 +110,41 @@ details.qa .tag{font:500 11px/1 var(--f-mono);color:var(--accent);text-transform
 
 <main class="wrap">
 
+<!-- ================= EXAMINER BRIEF ================= -->
+<section class="view" id="v-summary">
+  <h2>Examiner brief: FeelPay in one page</h2>
+  <p class="muted">Plain-language answers to what, why, who, when, where and how. Every technical claim here was checked against the code and a live run on 29 Oct 2026.</p>
+  <div class="tbl"><table>
+    <tr><th>Question</th><th>Answer</th></tr>
+    <tr><td><b>What</b></td><td>A payment gateway and payment-aggregator platform for Indian online merchants. Merchants sign up, complete KYC, get test and live API keys, and accept UPI, cards, netbanking and wallets. FeelPay tracks every rupee in a double-entry ledger, takes its fee and 18% GST, and settles the rest to the merchant's bank.</td></tr>
+    <tr><td><b>Why</b></td><td>Existing aggregators charge 2–3% plus GST, can freeze merchant accounts, and leave GST/TDS reconciliation to manual CSV work. FeelPay shows how a self-hostable gateway can compute these splits inside the system, in paise, with audit trails.</td></tr>
+    <tr><td><b>Who built it</b></td><td>Chirag S Kotian (MCA, PIM Udupi, Reg. No. P05PP24S126026). Internal guide Prof. Venugopala Rao A S; external guide Mr. Darshan, Feelitbuy Innovations.</td></tr>
+    <tr><td><b>Who uses it</b></td><td>Merchants (dashboard, APIs), their customers (checkout, payment links), and platform staff (admin portal for KYC, risk, connectors, settlements).</td></tr>
+    <tr><td><b>Who regulates this space</b></td><td>RBI (authorises payment aggregators under the Payment and Settlement Systems Act, 2007), NPCI (runs UPI, RuPay), card networks and PCI SSC (card security), MeitY (DPDP Act), CBDT/CBIC (TDS, GST).</td></tr>
+    <tr><td><b>When</b></td><td>Academic year 2025–26. Code history in git; migrations from Jan 2024 to Oct 2026.</td></tr>
+    <tr><td><b>Where</b></td><td>Code runs locally (4 services) and is deployed to Render (APIs), Cloudflare Pages (UIs) and Neon Postgres. The current Neon database is in <code>ap-southeast-1</code> (Singapore); a real Indian deployment must move to an Indian region because RBI requires payment data to be stored only in India.</td></tr>
+    <tr><td><b>How (one sentence)</b></td><td>The merchant's server calls <code>POST /v1/payments</code> with an API key and an Idempotency-Key; FeelPay authenticates, checks risk, routes to a processor, saves the result, posts balanced ledger entries on capture, and notifies the merchant by an HMAC-signed webhook.</td></tr>
+    <tr><td><b>Status</b></td><td>All 4 services build and run; all 25 admin pages and 24 merchant pages load with 0 failed API calls; create → capture → refund works with a balanced ledger (imbalance 0); 167/167 unit tests pass. Processors run in test/simulator mode; no real money moves.</td></tr>
+  </table></div>
+  <h3>Payment lifecycle in plain words</h3>
+  <ol>
+    <li><b>Order:</b> customer clicks Pay on the merchant's site. The merchant's server asks FeelPay to create a payment for, say, ₹1,200 (120000 paise).</li>
+    <li><b>Authenticate:</b> FeelPay checks the API key or login token and the merchant's role.</li>
+    <li><b>Protect:</b> idempotency key stops double charges; velocity and risk rules stop bots.</li>
+    <li><b>Route:</b> the engine picks the healthiest, most successful connector for that method.</li>
+    <li><b>Authorise / capture:</b> UPI is captured at once; cards are authorised first and captured later.</li>
+    <li><b>Ledger:</b> on capture, escrow is debited 120000, merchant credited 116400 and platform credited 3600 (3% fee), all in one DB transaction.</li>
+    <li><b>Notify:</b> a webhook with <code>X-FeelPay-Signature</code> tells the merchant's server the result; retries if their server is down.</li>
+    <li><b>Refund / dispute:</b> refunds post the reverse entries; disputes track evidence and deadlines.</li>
+    <li><b>Settle:</b> the merchant's balance, minus fees, GST and 0.1% TDS, is paid to their bank account.</li>
+  </ol>
+  <h3>What is real and what is simulated</h3>
+  <div class="tbl"><table>
+    <tr><th>Real, working code</th><th>Simulated or not yet production-grade</th></tr>
+    <tr><td>Auth (Argon2id, JWT HS256, hashed API keys), RBAC, idempotency, payments API, capture, refunds, payment links, ledger, fee/GST math, webhooks with HMAC and retry, KYC workflow, admin console, exports, audit logs</td><td>Bank/NPCI/card-network connections (simulator processors), real escrow bank account, 3DS2 issuer verification (service not wired), RLS enforcement per request, Redis checks (off when Redis is down in test mode), Indian data region</td></tr>
+  </table></div>
+</section>
+
 <!-- ================= OVERVIEW ================= -->
 <section class="view" id="v-overview">
   <h2>Project at a glance</h2>
@@ -112,7 +152,7 @@ details.qa .tag{font:500 11px/1 var(--f-mono);color:var(--accent);text-transform
     <p><b>Title:</b> FeelPay: Payment as a Service Platform for India</p>
     <p><b>Student:</b> Chirag S Kotian, Reg. No. P05PP24S126026, MCA, Poornaprajna Institute of Management (PIM), Udupi</p>
     <p><b>Internal guide:</b> Prof. Venugopala Rao A S (Asst. Professor &amp; HoD, MCA). <b>External guide:</b> Mr. Darshan, Manager, Feelitbuy Innovations.</p>
-    <p><b>One-line pitch:</b> a self-hostable Indian payment gateway where merchants sign up, finish KYC, get test/live API keys, accept UPI, cards, netbanking and wallets, and receive settlements. Fees, 18% GST and 1% TDS (Sec. 194O) are computed inside the platform in paise.</p>
+    <p><b>One-line pitch:</b> a self-hostable Indian payment gateway where merchants sign up, finish KYC, get test/live API keys, accept UPI, cards, netbanking and wallets, and receive settlements. Fees, 18% GST and 0.1% TDS (Sec. 194O) are computed inside the platform in paise.</p>
   </div>
   <div class="grid">
     <div class="stat"><b>4</b><span>running services (2 Rust APIs, 2 React apps)</span></div>
@@ -126,7 +166,7 @@ details.qa .tag{font:500 11px/1 var(--f-mono);color:var(--accent);text-transform
   <ul>
     <li>Commercial aggregators charge 2–3% plus GST, lock merchants in, and can freeze accounts.</li>
     <li>Raw bank APIs (ISO 8583 / SOAP) have no dashboard, webhooks, vault or tooling.</li>
-    <li>Indian tax splits (18% GST on the fee, 1% TDS under Sec. 194O) are usually reconciled by hand from CSV exports.</li>
+    <li>Indian tax splits (18% GST on the fee, 0.1% TDS under Sec. 194O) are usually reconciled by hand from CSV exports.</li>
     <li>Card-testing bots and noisy-neighbour load hurt small merchants.</li>
   </ul>
   <h3>Tech stack</h3>
@@ -222,7 +262,7 @@ sequenceDiagram
 GST exclusive: gst = fee × 0.18
 GST inclusive: base = fee / 1.18, gst = fee − base
 net = amount − fee − gst</pre>
-    <p>TDS (1%, Sec. 194O) is calculated in <code>src/engine/services/settlement_advanced.rs</code> at settlement time.</p></div>
+    <p>TDS (0.1% from 1 Oct 2024, earlier 1%; Sec. 194O) is calculated in <code>src/engine/services/settlement_advanced.rs</code> at settlement time.</p></div>
 
   <div class="panel"><h3>Double-entry ledger</h3>
     <p><code>src/engine/services/ledger.rs</code> keeps <code>ledger_accounts</code> (merchant, platform, escrow…) and <code>ledger_entries</code>. Each transaction posts balanced debit and credit rows inside one DB transaction, so the sum of debits always equals the sum of credits.</p></div>
@@ -251,6 +291,248 @@ net = amount − fee − gst</pre>
     <p>Wizard validates PAN (<code>[A-Z]{5}[0-9]{4}[A-Z]</code>), 15-char GSTIN and 11-char IFSC, uploads documents, and waits for admin approval in the KYC queue. Live mode stays locked until approval. Dashboard shows "Your KYC status is pending" until then.</p></div>
 </section>
 
+<!-- ================= LEGAL ================= -->
+<section class="view" id="v-legal" hidden>
+  <h2>RBI rules and legal framework for an Indian payment gateway</h2>
+  <p class="muted">Summary of the rules a real operator must follow, with official references. This is a study summary, not legal advice; quote the circular numbers and check the RBI text before relying on exact figures.</p>
+
+  <div class="panel"><h3>1. Payment and Settlement Systems Act, 2007 (the parent law)</h3>
+    <ul>
+      <li><b>Section 4:</b> nobody except RBI may start or operate a payment system without RBI authorisation.</li>
+      <li><b>Section 7:</b> RBI issues or refuses that authorisation.</li>
+      <li><b>Section 18 read with 10(2):</b> lets RBI issue directions; the 2025 PA Directions are issued under these sections (plus FEMA 10(4) and 11(1) for cross-border).</li>
+      <li><b>Section 26:</b> offences and penalties, including running a payment system without authorisation.</li>
+    </ul>
+    <p>Payment gateway vs aggregator: a <b>Payment Gateway (PG)</b> only provides the technology and never handles funds, so it needs no RBI licence. A <b>Payment Aggregator (PA)</b> collects customer money and settles it to merchants, so it must be RBI-authorised. FeelPay's design (escrow ledger, settlements) is a PA.</p></div>
+
+  <div class="panel"><h3>2. RBI (Regulation of Payment Aggregators) Directions, 2025</h3>
+    <p>Issued <b>15 September 2025</b>, ref. <code>RBI/DPSS/2025-26/141</code>, <code>CO.DPSS.POLC.No.S-633/02-14-008/2025-26</code>. It consolidates and replaces the 17 March 2020 PA-PG Guidelines (<code>DPSS.CO.PD.No.1810/02.14.008/2019-20</code>), the 31 March 2021 clarification and the 31 October 2023 PA-Cross Border circular.</p>
+    <div class="tbl"><table>
+      <tr><th>Topic</th><th>Rule</th><th>FeelPay mapping</th></tr>
+      <tr><td>Categories</td><td>PA-O (online), PA-P (physical/proximity), PA-CB (cross-border, max ₹25 lakh per transaction)</td><td>PA-O style; POS and cross-border out of scope</td></tr>
+      <tr><td>Entity</td><td>Non-bank PA must be a company under the Companies Act, 2013; apply on RBI portal</td><td>Business/legal step, not code</td></tr>
+      <tr><td>Net worth</td><td>₹15 crore at application; ₹25 crore by end of 3rd financial year; maintained always; auditor certificate yearly by 30 Sep</td><td>Business requirement</td></tr>
+      <tr><td>Escrow</td><td>Merchant funds in an escrow account with a Scheduled Commercial Bank; only permitted credits (customer payments, refunds, other PAs) and debits (merchant settlement, customer refunds, PA commission); day-end balance ≥ unsettled merchant dues; interest only on the "core portion"</td><td><code>escrow</code> ledger account models this; a real bank escrow is needed in production</td></tr>
+      <tr><td>Settlement</td><td>Timelines set in the PA–merchant agreement, fair and transparent; failed-transaction turnaround per RBI circular of 20 Sep 2019</td><td>Settlements module, T+2 default, instant option</td></tr>
+      <tr><td>Merchant KYC</td><td>Due diligence per RBI KYC Master Direction, CKYCR lookup; small merchants (turnover ≤ ₹40 lakh) can use PAN + contact point verification; background checks, ongoing monitoring; non-bank PA registers with FIU-IND</td><td>Onboarding wizard (PAN, GSTIN, IFSC, documents), admin KYC queue, live mode locked until approval</td></tr>
+      <tr><td>Card data</td><td>Card credentials must not be stored where the merchant can access them; ATM PIN not allowed as a factor for card-not-present</td><td>Card data encrypted in vault (AES-256-GCM); production must use network tokens</td></tr>
+      <tr><td>Security</td><td>PCI-DSS, board-approved IS policy, annual system and cyber audit by a CERT-In-empanelled auditor, bi-annual VAPT, monthly cyber-incident reports</td><td>OWASP checklist in <code>docs/</code>; audits are an operational step</td></tr>
+      <tr><td>Grievances</td><td>Dispute mechanism with refund timelines, reason codes and chargebacks; grievance officer and escalation matrix on the website; policies published</td><td>Disputes module, <code>docs/GRIEVANCE_POLICY.md</code>, terms and privacy docs</td></tr>
+      <tr><td>Reporting</td><td>Monthly transaction stats by the 7th; quarterly escrow auditor/banker certificates by the 15th; annual net-worth certificate</td><td>Reports and exports modules</td></tr>
+    </table></div></div>
+
+  <div class="panel"><h3>3. Other RBI rules a gateway must follow</h3>
+    <div class="tbl"><table>
+      <tr><th>Rule</th><th>Reference and date</th><th>What it says</th></tr>
+      <tr><td>Card-on-File tokenisation</td><td>CoFT circular 7 Sep 2021; "Restriction on Storage of Actual Card Data", RBI/2022-23/95, 28 Jul 2022</td><td>From 1 Oct 2022 only card issuers and networks may store card numbers; merchants and PAs use tokens unique per card per merchant, created with customer consent and AFA</td></tr>
+      <tr><td>Data localisation</td><td>DPSS.CO.OD No.2785/06.08.005/2017-18, 6 Apr 2018; FAQs 26 Jun 2019</td><td>All payment-system data must be stored only in India; if processed abroad, bring back within 24 hours. FeelPay's current Neon region (Singapore) would not comply in production</td></tr>
+      <tr><td>Recurring payments / e-mandates</td><td>Digital Payments – E-Mandate Framework, 2026 (21 Apr 2026), consolidating 2019–2023 circulars</td><td>AFA at registration; later debits up to ₹15,000 without AFA; pre-debit notice at least 24 hours before each charge; changes and cancellations need AFA</td></tr>
+      <tr><td>Digital payment security</td><td>Master Direction on Digital Payment Security Controls, 18 Feb 2021</td><td>Binding on banks and card-issuing NBFCs; a good baseline for governance, authentication, fraud monitoring and reconciliation</td></tr>
+      <tr><td>KYC</td><td>RBI Master Direction – Know Your Customer, 2016 (as amended)</td><td>Identity and address verification, CKYCR, risk categorisation</td></tr>
+    </table></div></div>
+
+  <div class="panel"><h3>4. Data protection and IT law</h3>
+    <ul>
+      <li><b>Digital Personal Data Protection Act, 2023</b>: consent, purpose limitation, security safeguards, breach reporting, right to erasure. <b>DPDP Rules, 2025</b> notified 13–14 Nov 2025; most obligations apply about 18 months later (around May 2027).</li>
+      <li><b>IT Act, 2000, Section 43A</b> and the <b>SPDI Rules, 2011</b> (reasonable security for sensitive data, including financial data) remain in force during the DPDP transition.</li>
+      <li><b>PCI DSS v4.0</b> (PCI Security Standards Council, March 2022; v4.0.1 June 2024): rules for storing and transmitting card data.</li>
+    </ul></div>
+
+  <div class="panel"><h3>5. Tax rules</h3>
+    <ul>
+      <li><b>GST 18%</b> applies to the gateway's fee (MDR), not to the sale amount. Merchants can usually claim it as input tax credit with a GST invoice. Example: 2% fee → 2.36% effective.</li>
+      <li><b>Zero MDR</b>: by government mandate from 1 Jan 2020, merchants are not charged MDR on RuPay debit cards and BHIM-UPI.</li>
+      <li><b>Section 194O TDS</b>: e-commerce operators deduct TDS on the gross sale value paid to sellers. Introduced at <b>1% from 1 Oct 2020</b>; cut to <b>0.1% from 1 Oct 2024</b> by the Finance (No. 2) Act, 2024. Without PAN the rate is 5% (Section 206AA). FeelPay's code was updated to 0.1% on 29 Oct 2026.</li>
+    </ul></div>
+
+  <div class="panel"><h3>6. UPI background</h3>
+    <p>NPCI was set up in 2008 as a not-for-profit company by RBI and the Indian Banks' Association. UPI was piloted on <b>11 April 2016</b> by RBI Governor Dr. Raghuram Rajan in Mumbai with 21 banks, and went public on <b>25 August 2016</b>. A payer uses a VPA (e.g. <code>name@bank</code>); NPCI's switch routes the request between the payer's and payee's banks.</p></div>
+
+  <div class="panel"><h3>Checklist: building a compliant payment gateway in India</h3>
+    <ol>
+      <li>Decide the role: PG (technology only, no licence) or PA (handles funds, RBI authorisation).</li>
+      <li>For a PA: incorporate a company, reach ₹15 crore net worth, apply to RBI with board-approved policies.</li>
+      <li>Open an escrow account with a scheduled commercial bank; settle merchants only from it.</li>
+      <li>Onboard merchants with KYC per the RBI KYC Master Direction; register with FIU-IND.</li>
+      <li>Never store raw card data; use card network tokenisation; get PCI-DSS certified.</li>
+      <li>Host all payment data in India; get yearly CERT-In-empanelled audits and twice-yearly VAPT.</li>
+      <li>Follow e-mandate rules for subscriptions; follow DPDP for personal data.</li>
+      <li>Apply GST on fees and Section 194O TDS; publish grievance officer, terms and privacy policy.</li>
+      <li>Integrate NPCI (UPI) and card networks through a sponsor/acquiring bank.</li>
+    </ol></div>
+
+  <div class="panel"><h3>Sources</h3>
+    <ul class="small">
+      <li><a href="https://taxguru.in/rbi/rbi-regulation-payment-aggregators-directions-2025.html" target="_blank" rel="noopener">RBI (Regulation of Payment Aggregators) Directions, 2025 – text (taxguru)</a></li>
+      <li><a href="https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=11822" target="_blank" rel="noopener">RBI: Guidelines on Regulation of PAs and PGs, 17 Mar 2020</a></li>
+      <li><a href="https://website.rbi.org.in/web/rbi/-/notifications/restriction-on-storage-of-actual-card-data-i.e.-card-on-file-cof-12363" target="_blank" rel="noopener">RBI: Restriction on Storage of Actual Card Data (CoF)</a></li>
+      <li><a href="https://rbi.org.in/scripts/FS_FAQs.aspx?Id=130" target="_blank" rel="noopener">RBI: Storage of Payment System Data – FAQs</a></li>
+      <li><a href="https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12032" target="_blank" rel="noopener">RBI: Master Direction on Digital Payment Security Controls</a></li>
+      <li><a href="https://www.scconline.com/blog/post/2026/04/24/rbi-issues-digital-payments-e-mandate-framework-2026/" target="_blank" rel="noopener">E-Mandate Framework, 2026 (SCC Online)</a></li>
+      <li><a href="https://prsindia.org/files/bills_acts/acts_parliament/2007/the-payment-and-settlement-systems-act-2007.pdf" target="_blank" rel="noopener">Payment and Settlement Systems Act, 2007 (PRS)</a></li>
+      <li><a href="https://www.azbpartners.com/?p=87799" target="_blank" rel="noopener">DPDP Rules, 2025 notification (AZB &amp; Partners)</a></li>
+      <li><a href="https://taxguru.in/income-tax/section-194-o-amendment-lower-tds-rate-e-commerce-payments.html" target="_blank" rel="noopener">Section 194O rate cut to 0.1% (taxguru)</a></li>
+      <li><a href="https://www.digitalindia.gov.in/?p=6736" target="_blank" rel="noopener">UPI launch facts (Digital India)</a></li>
+    </ul></div>
+</section>
+
+<!-- ================= API ================= -->
+<section class="view" id="v-api" hidden>
+  <h2>Routes and headers</h2>
+  <p>A <b>route</b> is a URL plus an HTTP method that maps to one handler function. FeelPay follows REST: <code>GET</code> reads, <code>POST</code> creates or triggers an action, <code>PUT</code> replaces settings, <code>DELETE</code> removes. All money APIs live under <code>/v1</code> so a future <code>/v2</code> can change behaviour without breaking existing merchants. Interactive API docs: <code>http://127.0.0.1:8080/swagger-ui/</code> (gateway) and <code>http://127.0.0.1:8081/docs</code> (admin).</p>
+  <div class="grid">
+    <div class="stat"><b>113</b><span>routes declared directly in the gateway's main.rs</span></div>
+    <div class="stat"><b>~620</b><span>routes across both APIs incl. module configure() files</span></div>
+    <div class="stat"><b>24</b><span>top-level <code>/v1</code> resource groups</span></div>
+  </div>
+  <h3>Key gateway routes (port 8080)</h3>
+  <div class="tbl"><table>
+    <tr><th>Method</th><th>Path</th><th>Purpose</th><th>Auth</th></tr>
+    <tr><td>GET</td><td><code>/v1/health</code>, <code>/v1/ready</code></td><td>Liveness and readiness for monitoring</td><td>None</td></tr>
+    <tr><td>POST</td><td><code>/v1/merchants/register</code></td><td>Create merchant account, issue first test key</td><td>None</td></tr>
+    <tr><td>POST</td><td><code>/v1/merchants/login</code></td><td>Email + password → 24 h JWT</td><td>None</td></tr>
+    <tr><td>GET/POST</td><td><code>/v1/merchants/keys</code>, <code>/keys/roll</code></td><td>List and rotate API keys</td><td>JWT</td></tr>
+    <tr><td>GET/POST</td><td><code>/v1/merchants/team</code>, <code>/team/invite</code></td><td>Team members and roles</td><td>JWT (owner)</td></tr>
+    <tr><td>POST</td><td><code>/v1/payments</code></td><td>Create a payment (UPI, card, netbanking, wallet)</td><td>API key or JWT</td></tr>
+    <tr><td>GET</td><td><code>/v1/payments</code>, <code>/v1/payments/{id}</code></td><td>List or fetch payments</td><td>API key or JWT</td></tr>
+    <tr><td>GET</td><td><code>/v1/payments/{id}/timeline</code></td><td>Status history of a payment</td><td>API key or JWT</td></tr>
+    <tr><td>POST</td><td><code>/v1/payments/{id}/capture</code></td><td>Capture an authorised card payment</td><td>API key or JWT</td></tr>
+    <tr><td>POST</td><td><code>/v1/payments/{id}/refund</code>, <code>/batch-refund</code></td><td>Full or partial refund</td><td>API key or JWT</td></tr>
+    <tr><td>GET</td><td><code>/v1/refunds</code></td><td>List refunds</td><td>API key or JWT</td></tr>
+    <tr><td>POST/GET</td><td><code>/v1/payment-links</code>, <code>/{id}/cancel</code></td><td>Shareable payment links</td><td>JWT</td></tr>
+    <tr><td>GET/POST</td><td><code>/pay/{token}</code>, <code>/pay/session/{id}/pay</code></td><td>Public hosted checkout for customers</td><td>Link token</td></tr>
+    <tr><td>GET</td><td><code>/v1/settlements</code>, <code>/balance</code>, <code>/reconciliation</code></td><td>Settlement batches, balance, reconciliation</td><td>JWT</td></tr>
+    <tr><td>GET/POST</td><td><code>/v1/disputes</code>, <code>/{id}/evidence</code>, <code>/{id}/accept</code></td><td>Chargebacks and evidence</td><td>JWT</td></tr>
+    <tr><td>*</td><td><code>/v1/payouts</code>, <code>/v1/subscriptions</code>, <code>/v1/mandates</code>, <code>/v1/virtual-accounts</code>, <code>/v1/emi-bnpl</code></td><td>Other payment products</td><td>JWT / API key</td></tr>
+    <tr><td>*</td><td><code>/v1/onboarding</code>, <code>/v1/documents</code></td><td>KYC wizard and document upload</td><td>JWT</td></tr>
+    <tr><td>GET</td><td><code>/v1/analytics/summary</code>, <code>/volume</code></td><td>Dashboard KPIs and charts</td><td>JWT</td></tr>
+    <tr><td>*</td><td><code>/v1/merchants/{id}/webhooks/test</code>, <code>/replay/{event_id}</code></td><td>Test and replay webhooks</td><td>JWT</td></tr>
+  </table></div>
+  <h3>Admin API (port 8081)</h3>
+  <p><code>POST /admin/login</code> (no auth) issues an admin JWT; every other <code>/admin/*</code> route passes <code>AdminAuthMiddleware</code>, which requires a valid HS256 token for a merchant row with <code>is_admin = true</code>. Groups: stats, KYC queue, merchants, transactions, ledger, refunds, settlements, disputes, risk rules, connectors and credentials, routing rules, notification templates, audit logs, admin users, system config.</p>
+  <h3>Request and response headers</h3>
+  <div class="tbl"><table>
+    <tr><th>Header</th><th>Direction</th><th>Meaning</th><th>Why it exists</th></tr>
+    <tr><td><code>Authorization: Bearer &lt;jwt&gt;</code></td><td>Request</td><td>Dashboard session token</td><td>Stateless login: server verifies signature, no session table lookup</td></tr>
+    <tr><td><code>x-api-key</code></td><td>Request</td><td>Merchant server's secret key (<code>fp_test_…</code>/<code>fp_live_…</code>)</td><td>Machine-to-machine auth; test vs live keys keep real money separate</td></tr>
+    <tr><td><code>Idempotency-Key</code></td><td>Request</td><td>Unique id the client picks per operation</td><td>Retrying after a timeout returns the first result instead of charging twice</td></tr>
+    <tr><td><code>X-Idempotent-Replay</code></td><td>Response</td><td>Marks a response served from the idempotency store</td><td>Client can tell a replay from a new operation</td></tr>
+    <tr><td><code>X-Request-Timestamp</code>, <code>X-Request-Nonce</code></td><td>Request</td><td>Send time and one-time random value</td><td>Replay protection: reject if older than 300 s or nonce reused</td></tr>
+    <tr><td><code>x-feelpay-environment</code></td><td>Request</td><td><code>test</code> or <code>live</code></td><td>Dashboard switches between sandbox and live data</td></tr>
+    <tr><td><code>x-api-version</code></td><td>Both</td><td>API version date (current <code>2026-04-28</code>)</td><td>Lets the API evolve; deprecation headers warn old clients</td></tr>
+    <tr><td><code>X-Request-Id</code></td><td>Both</td><td>Unique id per request</td><td>Trace one request across logs; returned in error envelopes</td></tr>
+    <tr><td><code>X-FeelPay-Signature</code></td><td>Webhook</td><td>HMAC-SHA256 of the body with the merchant's webhook secret</td><td>Merchant proves the webhook came from FeelPay and was not altered</td></tr>
+    <tr><td><code>X-FeelPay-Event</code>, <code>X-FeelPay-Delivery</code></td><td>Webhook</td><td>Event type and delivery id</td><td>Routing on the merchant side; de-duplicating retries</td></tr>
+    <tr><td><code>X-Content-Type-Options</code>, <code>X-Frame-Options</code></td><td>Response</td><td>Browser security headers</td><td>Stop MIME sniffing and click-jacking</td></tr>
+    <tr><td><code>X-Forwarded-For</code>, <code>X-Real-IP</code></td><td>Request</td><td>Client IP behind a proxy</td><td>Rate limits and velocity checks per real client IP</td></tr>
+    <tr><td><code>X-Razorpay-Signature</code></td><td>Inbound</td><td>Provider webhook signature</td><td>Verify callbacks from connectors</td></tr>
+  </table></div>
+  <h3>Response envelope and status codes</h3>
+<pre>{ "success": false, "data": null,
+  "error": { "code": "BAD_REQUEST", "message": "Refund amount exceeds remaining refundable balance" },
+  "meta":  { "locale": "en", "request_id": "3d252b1e-…" } }</pre>
+  <p class="small">200 OK, 201 Created, 400 bad input, 401 not authenticated, 403 role not allowed, 404 not found, 409 duplicate, 429 rate limited, 500 server error. Live tests: no token → 401, bad token → 401, over-refund → 400.</p>
+</section>
+
+<!-- ================= DATABASE ================= -->
+<section class="view" id="v-db" hidden>
+  <h2>Database architecture</h2>
+  <div class="grid">
+    <div class="stat"><b>185</b><span>tables in the live database</span></div>
+    <div class="stat"><b>59</b><span>tables scoped by <code>merchant_id</code></span></div>
+    <div class="stat"><b>83</b><span>applied SQLx migrations</span></div>
+    <div class="stat"><b>10</b><span>tables with Row-Level Security policies</span></div>
+  </div>
+  <p>PostgreSQL 15 on Neon. Shared tables for all merchants, each row tagged with <code>merchant_id</code> (and <code>tenant_id</code> for platform tenants). Money columns are <code>BIGINT</code> paise with <code>CHECK (amount &gt; 0)</code>. IDs are UUID v4. Gateway responses and metadata are <code>JSONB</code>. Migrations run automatically when the gateway starts (<code>sqlx::migrate!</code> in <code>src/db/pool.rs</code>).</p>
+  <pre class="mermaid">
+erDiagram
+  tenants ||--o{ merchants : hosts
+  merchants ||--o{ users : has
+  merchants ||--o{ api_keys : owns
+  merchants ||--o{ customers : has
+  merchants ||--o{ payment_orders : receives
+  payment_providers ||--o{ payment_orders : processes
+  payment_orders ||--o{ refunds : has
+  payment_orders ||--o{ disputes : has
+  merchants ||--o{ payment_links : creates
+  merchants ||--o{ settlements : gets
+  settlement_batches ||--o{ settlements : groups
+  merchants ||--o{ payouts : sends
+  customers ||--o{ subscriptions : has
+  mandates ||--o{ subscriptions : funds
+  merchants ||--o{ webhook_events : emits
+  merchants ||--o{ idempotency_keys : stores
+  merchants ||--o{ audit_logs : records
+  ledger_accounts ||--o{ ledger_entries : holds
+  </pre>
+  <h3>Core tables</h3>
+  <div class="tbl"><table>
+    <tr><th>Table</th><th>Holds</th><th>Why</th></tr>
+    <tr><td><code>merchants</code></td><td>Business profile, status, KYC state, <code>is_admin</code>, password hash</td><td>The tenant every other row belongs to</td></tr>
+    <tr><td><code>users</code></td><td>Team members with roles</td><td>RBAC: owner, admin, developer, viewer</td></tr>
+    <tr><td><code>api_keys</code></td><td>SHA-256 key hash, masked key, environment, scopes, expiry</td><td>Never store the raw key</td></tr>
+    <tr><td><code>payment_orders</code></td><td>Amount, currency, status, method, connector, gateway response, refunded amount</td><td>One row per payment attempt</td></tr>
+    <tr><td><code>refunds</code></td><td>Refund amount, reason, status, link to payment</td><td>Partial refunds and audit</td></tr>
+    <tr><td><code>idempotency_keys</code></td><td>Key, request hash, stored response</td><td>Exactly-once behaviour on retries</td></tr>
+    <tr><td><code>ledger_accounts</code> / <code>ledger_entries</code></td><td>Accounts (merchant, platform, escrow, clearing…) and debit/credit rows</td><td>Double-entry bookkeeping; sum of debits = sum of credits</td></tr>
+    <tr><td><code>settlements</code> / <code>settlement_batches</code></td><td>Merchant payout batches with fee, GST, TDS</td><td>Bank transfer to merchant</td></tr>
+    <tr><td><code>disputes</code></td><td>Chargebacks, reason, deadline, evidence</td><td>Chargeback lifecycle</td></tr>
+    <tr><td><code>webhook_events</code> / deliveries</td><td>Event payload, attempts, <code>next_retry_at</code></td><td>Reliable notification with backoff</td></tr>
+    <tr><td><code>audit_logs</code></td><td>Who did what, when</td><td>Compliance and forensics</td></tr>
+    <tr><td>KYC tables</td><td>Documents, verification status, reviewer notes</td><td>RBI merchant due diligence</td></tr>
+  </table></div>
+  <h3>Design decisions</h3>
+  <ul>
+    <li><b>Shared tables + merchant_id</b> instead of a database per merchant: cheap, one migration path, global analytics. Every handler filters by the merchant id taken from the verified token.</li>
+    <li><b>BIGINT paise</b>: exact integer money; ₹1,200.50 = 120050.</li>
+    <li><b>Transactions</b>: ledger postings run in one DB transaction, so debits and credits are never half-written. Live proof: for a captured and fully refunded payment, debits minus credits = 0.</li>
+    <li><b>Constraints</b>: foreign keys to <code>merchants</code>, <code>CHECK (amount &gt; 0)</code>, unique indexes (e.g. one ledger account per owner and type).</li>
+    <li><b>RLS</b>: policies on 10 tables use <code>current_setting('app.current_tenant_id')</code>; the app does not yet set it per request, so app-layer filtering is the active control.</li>
+  </ul>
+</section>
+
+<!-- ================= ALGORITHMS ================= -->
+<section class="view" id="v-algo" hidden>
+  <h2>Algorithms and technology: what, why, who, when</h2>
+  <h3>Security and correctness algorithms</h3>
+  <div class="tbl"><table>
+    <tr><th>Algorithm</th><th>Where in FeelPay</th><th>Why this one</th><th>Who introduced it, when</th></tr>
+    <tr><td>Argon2id</td><td>Password hashing (<code>src/api/auth.rs</code>)</td><td>Memory-hard: slows GPU and ASIC brute force; salted</td><td>Biryukov, Dinu, Khovratovich (Univ. of Luxembourg); won the Password Hashing Competition in 2015; RFC 9106 (2021)</td></tr>
+    <tr><td>SHA-256</td><td>API key hashing (<code>src/middleware/auth.rs</code>)</td><td>Fast one-way hash; safe for long random keys</td><td>Designed by the NSA; standardised by NIST in FIPS 180-2 (2002)</td></tr>
+    <tr><td>HMAC-SHA256</td><td>Webhook signatures, JWT HS256</td><td>Proves integrity and origin with a shared secret</td><td>Bellare, Canetti, Krawczyk (1996); RFC 2104 (1997)</td></tr>
+    <tr><td>JWT (HS256)</td><td>Dashboard and admin sessions, 24 h expiry</td><td>Stateless, signed claims</td><td>RFC 7519 (May 2015), Jones, Bradley, Sakimura</td></tr>
+    <tr><td>AES-256-GCM</td><td>Card vault (<code>src/engine/vault.rs</code>)</td><td>Encryption plus tamper detection in one step</td><td>AES = Rijndael by Joan Daemen and Vincent Rijmen (1998), NIST FIPS 197 (2001). GCM by McGrew and Viega (2004), NIST SP 800-38D (2007)</td></tr>
+    <tr><td>Luhn (mod 10)</td><td>Card number check (<code>processors/card.rs</code>, <code>vault/bin_lookup.rs</code>, checkout)</td><td>Catches typos before calling a bank</td><td>Hans Peter Luhn, IBM; patent filed 1954, granted 1960</td></tr>
+    <tr><td>UUID v4</td><td>Row ids, API keys, webhook secrets</td><td>122 random bits; unguessable, no central counter</td><td>RFC 4122 (2005), updated by RFC 9562 (2024)</td></tr>
+    <tr><td>Double-entry bookkeeping</td><td>Ledger (<code>ledger.rs</code>)</td><td>Every movement balanced; errors show as imbalance</td><td>Described by Luca Pacioli in <i>Summa de arithmetica</i> (1494)</td></tr>
+    <tr><td>Idempotency keys</td><td><code>check_idempotency</code> in payments.rs</td><td>Exactly-once effect under retries</td><td>Popularised by Stripe's API; IETF draft "The Idempotency-Key HTTP Header Field"</td></tr>
+    <tr><td>Exponential backoff</td><td>Webhook retries 1m, 5m, 15m, 1h, 6h, 24h</td><td>Gives a failing server time to recover without flooding it</td><td>Binary exponential backoff in Ethernet, Metcalfe and Boggs (1976)</td></tr>
+    <tr><td>Sliding-window log rate limit</td><td><code>middleware/rate_limit.rs</code> (per IP, 60 s window)</td><td>Fair limit without fixed-window burst at boundaries</td><td>Standard API-gateway technique</td></tr>
+    <tr><td>Velocity counters with TTL</td><td><code>middleware/velocity_check.rs</code> (card, IP, device per minute, Redis)</td><td>Stops card-testing bots</td><td>Standard fraud-prevention practice</td></tr>
+    <tr><td>Nonce + timestamp window</td><td><code>middleware/replay_prevention.rs</code> (300 s)</td><td>Blocks resent captured requests</td><td>Classic anti-replay pattern (used in OAuth 1.0, AWS SigV4)</td></tr>
+    <tr><td>Multi-key sort ranking</td><td>Connector routing (<code>engine/routing.rs</code>)</td><td>Healthy → success rate → priority → cost</td><td>Project-specific smart routing</td></tr>
+    <tr><td>Rule-based risk engine</td><td><code>services/risk_engine.rs</code></td><td>Admin-configurable rules (amount, country, BIN, velocity) → allow, review or block</td><td>Project-specific</td></tr>
+    <tr><td>Fee formula with Decimal</td><td><code>engine/fees.rs</code></td><td>Exact percentage maths, then truncated to paise</td><td>rust_decimal library (fixed-point, 96-bit mantissa)</td></tr>
+  </table></div>
+  <h3>Technology stack history</h3>
+  <div class="tbl"><table>
+    <tr><th>Technology</th><th>Who / when</th><th>Why chosen</th></tr>
+    <tr><td>Rust</td><td>Graydon Hoare at Mozilla; 1.0 in May 2015</td><td>Memory safety without a garbage collector, no data races</td></tr>
+    <tr><td>Tokio</td><td>Carl Lerche and contributors, 2016</td><td>Async runtime: many connections on few threads</td></tr>
+    <tr><td>Actix Web</td><td>Nikolay Kim, 2017</td><td>One of the fastest Rust web frameworks</td></tr>
+    <tr><td>SQLx</td><td>LaunchBadge, 2019</td><td>Compile-time checked SQL, async, migrations</td></tr>
+    <tr><td>PostgreSQL</td><td>POSTGRES by Michael Stonebraker at UC Berkeley, 1986; PostgreSQL name 1996; RLS since 9.5 (2016)</td><td>ACID, constraints, JSONB, RLS</td></tr>
+    <tr><td>Neon</td><td>Founded 2021 (Nikita Shamgunov, Heikki Linnakangas, Stas Kelvich)</td><td>Serverless Postgres with branching</td></tr>
+    <tr><td>Redis</td><td>Salvatore Sanfilippo, 2009</td><td>In-memory counters with expiry</td></tr>
+    <tr><td>React</td><td>Jordan Walke at Facebook, 2013</td><td>Component UI</td></tr>
+    <tr><td>TypeScript</td><td>Microsoft (Anders Hejlsberg), 2012</td><td>Static types for JavaScript</td></tr>
+    <tr><td>Vite</td><td>Evan You, 2020</td><td>Fast dev server and builds</td></tr>
+    <tr><td>Playwright</td><td>Microsoft, 2020</td><td>Cross-browser end-to-end tests</td></tr>
+    <tr><td>UPI</td><td>NPCI, pilot 11 Apr 2016, public 25 Aug 2016</td><td>India's dominant real-time payment rail</td></tr>
+    <tr><td>3-D Secure</td><td>Visa, 2001; EMV 3DS 2.0 by EMVCo, 2016</td><td>Card holder authentication (modelled, not wired)</td></tr>
+  </table></div>
+</section>
+
 <!-- ================= RUN ================= -->
 <section class="view" id="v-run" hidden>
   <h2>Run it for the demo</h2>
@@ -260,15 +542,14 @@ net = amount − fee − gst</pre>
     <p>Starts Gateway :8080, Admin API :8081, Dashboard :3000, Admin UI :3001. Health URLs: <code>http://127.0.0.1:8080/v1/health</code> and <code>http://127.0.0.1:8081/health</code>. Stop with Ctrl+C, or <code>./run.sh clean</code>.</p>
   </div>
   <div class="panel">
-    <h3>Important: point the UIs at your local backends</h3>
-    <p>The dev <code>.env</code> files in <code>dashboard/</code> and <code>admin/</code> point to the Render deployment, so a plain <code>./run.sh</code> makes the local UIs call the cloud APIs. The admin login then spins forever if Render is asleep. For a local demo, start the two UIs with overrides:</p>
-    <pre>cd dashboard && VITE_API_BASE_URL=http://127.0.0.1:8080 VITE_SANDBOX_API_BASE_URL=http://127.0.0.1:8080 VITE_LIVE_API_BASE_URL=http://127.0.0.1:8080 pnpm dev --port 3000</pre>
-    <pre>cd admin && VITE_ADMIN_API_BASE_URL=http://127.0.0.1:8081 pnpm dev --port 3001</pre>
+    <h3>Local UIs use local backends</h3>
+    <p><code>run.sh</code> now sets <code>VITE_API_BASE_URL</code> and <code>VITE_ADMIN_API_BASE_URL</code> to <code>127.0.0.1:8080</code> / <code>:8081</code> when it starts the UIs, so a local demo never depends on Render. Production builds still use <code>.env.production</code>.</p>
+    <p class="small muted">If startup ever hangs at "Connecting to PostgreSQL", a stale migration lock is held on Neon's pooled connection; run <code>select pg_advisory_unlock_all();</code> a few times, then restart.</p>
   </div>
   <div class="panel">
     <h3>Logins</h3>
     <ul>
-      <li>The admin login form is pre-filled with <code>admin@feelpay.local</code>, which does not exist in the database. Clear it.</li>
+      <li>The admin login form starts empty.</li>
       <li>Seeded accounts with admin rights: <code>test@feelpay.com</code>, <code>test@merchant.com</code>, <code>merchant@example.com</code>, <code>testmerchant@example.com</code>. Their password is written in the comment on line 1 of <code>migrations/20260515000012_reset_test_merchant_password.sql</code>.</li>
       <li>The same accounts log in to the merchant dashboard. Or create a fresh merchant on the Signup page.</li>
     </ul>
@@ -301,7 +582,7 @@ cd dashboard && pnpm test:e2e:smoke</pre>
 <!-- ================= HEALTH ================= -->
 <section class="view" id="v-health" hidden>
   <h2>Live health check, 29 Oct 2026</h2>
-  <p class="muted">All four services were started locally in test mode, with the UIs pointed at the local backends. Every page was opened and every API call watched for errors.</p>
+  <p class="muted">Final run: all four services started with a plain <code>./run.sh all --test --dev -y</code>. Admin logged in with the seeded account, merchant with the seeded account (₹18,603 volume, 7 payments). Every page was opened and every API call watched; server logs showed 0 responses with status 5xx.</p>
   <div class="tbl"><table>
     <tr><th>Check</th><th>Result</th><th>Detail</th></tr>
     <tr><td>Gateway API :8080</td><td><span class="pill ok">pass</span></td><td>Compiles, starts 24 workers, <code>/v1/health</code> 200</td></tr>
@@ -318,8 +599,12 @@ cd dashboard && pnpm test:e2e:smoke</pre>
     <tr><td>Capture an authorized card payment</td><td><span class="pill ok">fixed</span></td><td>Was 500 "Platform account not configured". Now Captured; ledger: debit escrow 50000 = credit merchant 48500 + credit platform 1500</td></tr>
     <tr><td>Refund a captured payment</td><td><span class="pill ok">fixed</span></td><td>Was 500. Now PartiallyRefunded; ledger: debit merchant 10000, credit escrow 10000. Same Idempotency-Key replay returns the same refund_id</td></tr>
     <tr><td>Open admin token endpoint</td><td><span class="pill ok">fixed</span></td><td><code>/admin/bootstrap-token</code> now 401 (route removed)</td></tr>
-    <tr><td>UIs using local backend by default</td><td><span class="pill warn">config</span></td><td>Dev <code>.env</code> points to Render</td></tr>
-    <tr><td>Admin pre-filled login</td><td><span class="pill warn">config</span></td><td><code>admin@feelpay.local</code> not in DB → 401</td></tr>
+    <tr><td>Fresh card payment, full cycle</td><td><span class="pill ok">pass</span></td><td>Create (Authorized) → same Idempotency-Key returns same id → capture (Captured) → full refund (Refunded) → extra refund 400 → ledger debits − credits = 0</td></tr>
+    <tr><td>Auth guards</td><td><span class="pill ok">pass</span></td><td>No token 401, bad token 401, bootstrap-token 401</td></tr>
+    <tr><td>Unit tests</td><td><span class="pill ok">pass</span></td><td><code>cargo test --lib</code>: 167 passed, 0 failed</td></tr>
+    <tr><td>UIs use local backend via run.sh</td><td><span class="pill ok">fixed</span></td><td>run.sh exports local <code>VITE_*</code> URLs</td></tr>
+    <tr><td>Admin login form</td><td><span class="pill ok">fixed</span></td><td>No longer pre-filled with a non-existent user</td></tr>
+    <tr><td>Playwright e2e smoke</td><td><span class="pill warn">not run</span></td><td>Playwright's Chromium is not installed on this laptop (<code>pnpm exec playwright install chromium</code>)</td></tr>
   </table></div>
   <p><b>Verdict:</b> everything loads; create, capture and refund all work after the fixes below.</p>
 </section>
@@ -358,13 +643,19 @@ cd dashboard && pnpm test:e2e:smoke</pre>
     <b>RLS policies are not activated by the app</b>
     <p>Policies read <code>app.current_tenant_id</code>, but no Rust code sets it, and the Neon owner role bypasses RLS without <code>FORCE ROW LEVEL SECURITY</code>. Real isolation today is the <code>merchant_id</code> filter in each query.</p></div></div>
 
-  <div class="finding"><span class="pill warn">config</span><div>
-    <b>Local dev UIs call the cloud</b>
-    <p><code>dashboard/.env</code> and the admin fallback in <code>admin/src/hooks/useApi.ts:1</code> point to Render. <code>.env.production</code> already covers deploys, so dev <code>.env</code> should use localhost.</p></div></div>
+  <div class="finding"><span class="pill ok">fixed</span><div>
+    <b>TDS rate out of date</b>
+    <p><code>calculate_tds</code> used 1%. Section 194O has been 0.1% since 1 Oct 2024; code and test now use 0.1%.</p>
+    <span class="where">src/engine/services/settlement_advanced.rs</span></div></div>
 
-  <div class="finding"><span class="pill warn">config</span><div>
-    <b>Admin login pre-filled with a non-existent user and a password in source</b>
-    <p><code>admin/src/App.tsx:318</code> hard-codes default email and password state. Remove before submission.</p></div></div>
+  <div class="finding"><span class="pill ok">fixed</span><div>
+    <b>Local dev UIs called the cloud; admin login pre-filled</b>
+    <p><code>run.sh</code> now points both UIs at the local backends. The admin login no longer ships a default email and password in source.</p>
+    <span class="where">run.sh · admin/src/App.tsx</span></div></div>
+
+  <div class="finding"><span class="pill warn">risk</span><div>
+    <b>Database region is outside India</b>
+    <p>The Neon host is in <code>ap-southeast-1</code> (Singapore). RBI's 2018 data-localisation circular requires payment data to be stored only in India. Fine for a test project; a real launch must use an Indian region.</p></div></div>
 
   <div class="finding"><span class="pill warn">nit</span><div>
     <b>Last commit: unneeded edits</b>
@@ -387,6 +678,10 @@ cd dashboard && pnpm test:e2e:smoke</pre>
     <tr><td>RLS makes leaks "mathematically impossible"</td><td>Policies exist; app does not set the session variable</td><td>"App-layer merchant_id scoping is primary; RLS is the planned second layer."</td></tr>
     <tr><td>Integer-only money</td><td>i64 storage; Decimal for the fee percentage step</td><td>"Stored and summed as i64 paise; Decimal only inside the fee formula, then rounded."</td></tr>
     <tr><td>Admin console on :5173</td><td>Runs on :3001</td><td>Use 3001.</td></tr>
+    <tr><td>1% TDS under Section 194O</td><td>Law is 0.1% since 1 Oct 2024; code now 0.1%</td><td>"It was 1% from 2020; Finance (No. 2) Act 2024 cut it to 0.1%."</td></tr>
+    <tr><td>Database in Mumbai (ap-south-1)</td><td>Current Neon host is Singapore (ap-southeast-1)</td><td>"Test DB; production must be in India per RBI data localisation."</td></tr>
+    <tr><td>GST SAC code 997159</td><td>Not verified against CBIC</td><td>Say "18% GST on the gateway fee" without quoting a SAC code.</td></tr>
+    <tr><td>Integer-only fee maths</td><td>Decimal used then truncated to paise</td><td>See the money row above.</td></tr>
     <tr><td>README login <code>/v1/auth/login</code></td><td>Dashboard uses <code>/v1/merchants/login</code></td><td>Use the merchants route.</td></tr>
   </table></div>
 </section>
@@ -421,7 +716,7 @@ cd dashboard && pnpm test:e2e:smoke</pre>
 <script>
 const QA = [
  // ---- Basics
- ["Basics","Explain your project in two minutes.","FeelPay is a Payment-as-a-Service gateway for Indian merchants. A merchant signs up, completes KYC (PAN, GSTIN, bank IFSC, documents), gets test and live API keys, and accepts UPI, cards, netbanking and wallets through APIs, hosted checkout and payment links. The platform routes each payment to a processor, keeps a double-entry ledger, computes fee, 18% GST and 1% TDS in paise, sends signed webhooks, and settles to the merchant's bank. It has four parts: a Rust gateway API, a Rust admin API, a React merchant dashboard and a React admin portal, all on PostgreSQL."],
+ ["Basics","Explain your project in two minutes.","FeelPay is a Payment-as-a-Service gateway for Indian merchants. A merchant signs up, completes KYC (PAN, GSTIN, bank IFSC, documents), gets test and live API keys, and accepts UPI, cards, netbanking and wallets through APIs, hosted checkout and payment links. The platform routes each payment to a processor, keeps a double-entry ledger, computes fee, 18% GST and 0.1% TDS in paise, sends signed webhooks, and settles to the merchant's bank. It has four parts: a Rust gateway API, a Rust admin API, a React merchant dashboard and a React admin portal, all on PostgreSQL."],
  ["Basics","What is Payment as a Service?","A model where the whole payment lifecycle (onboarding, API keys, tokenisation, routing, ledger, settlement, notifications) is offered as modular cloud services that a business plugs into instead of building or renting a closed aggregator."],
  ["Basics","What is a payment gateway vs a payment aggregator?","A gateway is the technical pipe that carries payment data between the merchant, card networks/UPI and banks. An aggregator (PA under RBI rules) also onboards merchants and handles their funds through a nodal/escrow account before settling. FeelPay implements both roles: gateway APIs plus onboarding, ledger and settlement."],
  ["Basics","Who are the users of the system?","Three roles: the merchant (owner, developer, finance staff) using the dashboard and APIs; the end customer paying through checkout or a payment link; and the platform admin who verifies KYC, manages connectors, watches risk and oversees settlements in the admin portal."],
@@ -449,10 +744,22 @@ const QA = [
  ["Payments","What is a settlement and what is T+2?","Settlement moves the merchant's net balance (after fee, GST and TDS) from the escrow/nodal account to their bank. T+2 means two business days after the transaction date. FeelPay also models instant (T+0) settlement."],
  ["Payments","What is a chargeback/dispute?","The customer asks their bank to reverse a payment (fraud, item not received). The merchant gets a deadline to upload evidence. FeelPay's disputes module tracks status, SLA and evidence uploads; the admin portal also shows disputes."],
  // ---- Finance
- ["Finance","How are fee, GST and TDS calculated?","Fee = amount × percentage / 100 + flat fee, clamped to the plan's min and max. GST is 18% on the fee (added on top if exclusive; extracted as fee − fee/1.18 if inclusive). Net = amount − fee − GST. TDS of 1% under Section 194O is deducted on the gross at settlement. Example: ₹1,000 at 2% exclusive → fee ₹20, GST ₹3.60, net before TDS ₹976.40, TDS ₹10."],
- ["Finance","What is Section 194O?","A section of the Income Tax Act, from 1 Oct 2020, requiring e-commerce operators to deduct 1% TDS on the gross amount of sales facilitated for sellers and deposit it with the government."],
+ ["Finance","How are fee, GST and TDS calculated?","Fee = amount × percentage / 100 + flat fee, clamped to the plan's min and max. GST is 18% on the fee (added on top if exclusive; extracted as fee − fee/1.18 if inclusive). Net = amount − fee − GST. TDS under Section 194O (0.1% since 1 Oct 2024) is deducted on the gross at settlement. Example: ₹1,000 at 2% exclusive → fee ₹20, GST ₹3.60, net before TDS ₹976.40, TDS ₹1, final ₹975.40."],
+ ["Finance","What is Section 194O?","A section of the Income-tax Act requiring e-commerce operators to deduct TDS on the gross amount of sales facilitated for sellers. It started at 1% on 1 Oct 2020 and was cut to 0.1% from 1 Oct 2024 by the Finance (No. 2) Act, 2024; 5% applies if the seller gives no PAN. FeelPay uses 0.1%."],
  ["Finance","What is double-entry bookkeeping and why use it?","Every money movement is recorded as at least two entries, a debit and an equal credit, so total debits always equal total credits. It makes every rupee traceable, catches bugs (an imbalance means an error) and avoids the race conditions of a single mutable balance column. Implemented in src/engine/services/ledger.rs inside one DB transaction."],
  ["Finance","What is reconciliation?","Comparing our ledger and payment records with the bank's and provider's settlement files to find mismatches (missing, duplicated or wrong-amount transactions). The admin portal has a Reconciliation and Payment Matching page."],
+ // ---- Legal / RBI
+ ["Legal","Which law governs payment gateways in India?","The Payment and Settlement Systems Act, 2007. Section 4 says nobody except RBI may operate a payment system without RBI authorisation; Section 7 covers issuing or refusing it; Section 26 has the penalties. RBI regulates aggregators through the RBI (Regulation of Payment Aggregators) Directions, 2025, issued 15 Sep 2025 under Sections 18 and 10(2)."],
+ ["Legal","Does a payment gateway need an RBI licence?","A pure Payment Gateway, which only provides technology and never touches funds, does not. A Payment Aggregator, which collects customer money and settles it to merchants, must be authorised by RBI. FeelPay's design with escrow and settlement is an aggregator, so a real launch needs authorisation."],
+ ["Legal","What are the net-worth rules for a payment aggregator?","Under the 2025 Directions a non-bank PA needs ₹15 crore net worth when it applies and ₹25 crore by the end of the third financial year after authorisation, maintained at all times and certified by the statutory auditor every year by 30 September."],
+ ["Legal","What is an escrow account and why is it required?","A separate account with a scheduled commercial bank that holds customers' money until it is paid to merchants. RBI allows only specific credits (customer payments, refunds, transfers from other PAs) and debits (merchant settlement, customer refunds, PA commission), and the day-end balance must cover all unsettled merchant dues. It protects merchants if the PA fails. FeelPay models it with the escrow ledger account."],
+ ["Legal","Can FeelPay store card numbers?","Not in production. Since 1 Oct 2022 (RBI CoF circular RBI/2022-23/95) only card issuers and card networks may store actual card data; everyone else uses network tokens created with customer consent. FeelPay's AES-256-GCM vault shows the technique in test mode; a live system would switch to card-network tokenisation and PCI-DSS certification."],
+ ["Legal","What is RBI's data localisation rule?","The 6 April 2018 circular DPSS.CO.OD No.2785/06.08.005/2017-18 requires all payment-system data to be stored only in India; data processed abroad must come back within 24 hours. FeelPay's test database is in Singapore, so a real deployment would move to an Indian region."],
+ ["Legal","What KYC must a payment aggregator do on merchants?","Customer due diligence under the RBI KYC Master Direction, using CKYCR where available. Small merchants (turnover up to ₹40 lakh) can be onboarded with PAN plus contact point verification. PAs must also do background checks, ongoing transaction monitoring and register with FIU-IND. FeelPay validates PAN, GSTIN and IFSC and keeps live mode locked until an admin approves."],
+ ["Legal","What are RBI's rules for recurring payments?","The Digital Payments E-Mandate Framework, 2026 (21 Apr 2026) requires additional factor authentication at registration, lets later debits up to ₹15,000 run without it, and requires a pre-debit notice at least 24 hours before each charge."],
+ ["Legal","How does the DPDP Act affect FeelPay?","The Digital Personal Data Protection Act, 2023 makes FeelPay a data fiduciary for customer and merchant personal data: it needs consent, purpose limitation, security safeguards, breach notification and erasure on request. The DPDP Rules were notified in November 2025 and most duties apply from about May 2027."],
+ ["Legal","What security audits does RBI expect from a PA?","PCI-DSS compliance, a board-approved information security policy, an annual system and cyber-security audit by a CERT-In-empanelled auditor, vulnerability assessment and penetration testing twice a year, and monthly cyber-incident reports."],
+ ["Legal","Who created UPI and when?","NPCI, set up in 2008 by RBI and the Indian Banks' Association. UPI was piloted on 11 April 2016 by RBI Governor Raghuram Rajan with 21 banks and went public on 25 August 2016."],
  // ---- Security
  ["Security","How do you store passwords?","Argon2id with a random salt (argon2 crate). Argon2 is memory-hard, so GPU brute-forcing is expensive. Plain or reversible storage is never used."],
  ["Security","How are API keys handled?","Generated as random fp_test_ / fp_live_ strings and shown once. The database stores only a SHA-256 hash plus a masked version for display. On each request the incoming key is hashed and compared. Because keys are long random strings, a fast hash is safe here, unlike user passwords."],
@@ -497,9 +804,9 @@ const QA = [
  ["Tricky","What did you personally build?","The full stack: Rust gateway and admin APIs, database schema and migrations, payment engine, ledger, webhooks and security middleware, both React apps, SDKs, tests and deployment. The external guide gave industry review of payment flows."],
 ];
 
-const views=["overview","arch","features","run","health","review","viva","ask"];
+const views=["summary","overview","arch","features","legal","api","db","algo","run","health","review","viva","ask"];
 const tabs=[...document.querySelectorAll('nav.tabs button')];
-function show(v){ if(!views.includes(v)) v="overview";
+function show(v){ if(!views.includes(v)) v="summary";
   views.forEach(x=>{document.getElementById("v-"+x).hidden = x!==v});
   tabs.forEach(t=>t.setAttribute("aria-selected", t.dataset.v===v ? "true":"false"));
 }
@@ -537,7 +844,7 @@ render();
 // Ask Claude
 const askBtn=document.getElementById("askBtn"), mockBtn=document.getElementById("mockBtn"), askIn=document.getElementById("askIn"), askOut=document.getElementById("askOut"), askNote=document.getElementById("askNote");
 function kb(){
-  const parts=["overview","arch","features","run","health","review"].map(v=>document.getElementById("v-"+v).innerText);
+  const parts=["summary","overview","arch","features","legal","api","db","algo","run","health","review"].map(v=>document.getElementById("v-"+v).innerText);
   return parts.join("\n\n---\n\n")+"\n\n--- VIVA Q&A ---\n"+QA.map(q=>"Q: "+q[1]+"\nA: "+q[2]).join("\n\n");
 }
 let sampleP=null, ctrl=null;
