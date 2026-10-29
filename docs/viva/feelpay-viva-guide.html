@@ -1,0 +1,562 @@
+<title>FeelPay Viva Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky tab rail over a single 72ch reading column; viva + ask are tool-like views */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#14202b; --muted:#5a6773; --line:#dde3e8;
+  --accent:#0f8a5f; --accent-ink:#ffffff; --accent-soft:#e3f4ec;
+  --bad:#b3261e; --bad-soft:#fbe9e7; --warn:#9a6700; --warn-soft:#fff4d6; --good:#0f8a5f; --good-soft:#e3f4ec;
+  --code:#eef1f4;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e151b; --surface:#151f27; --ink:#e4eaef; --muted:#93a1ad; --line:#26333d;
+  --accent:#3fcf8e; --accent-ink:#06130d; --accent-soft:#143326;
+  --bad:#ff8a80; --bad-soft:#3a1714; --warn:#f2c45a; --warn-soft:#33280c; --good:#3fcf8e; --good-soft:#143326;
+  --code:#1c2831; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e151b; --surface:#151f27; --ink:#e4eaef; --muted:#93a1ad; --line:#26333d;
+  --accent:#3fcf8e; --accent-ink:#06130d; --accent-soft:#143326;
+  --bad:#ff8a80; --bad-soft:#3a1714; --warn:#f2c45a; --warn-soft:#33280c; --good:#3fcf8e; --good-soft:#143326;
+  --code:#1c2831; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--f-body)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+header.top{padding-block:28px 12px}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font:800 clamp(30px,6vw,44px)/1.05 var(--f-display);margin:.35em 0 .25em;text-wrap:balance}
+.sub{color:var(--muted);max-width:65ch;margin:0}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-block:1px solid var(--line);margin-block:18px 28px}
+nav.tabs .inner{max-width:860px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));scrollbar-width:none}
+nav.tabs button{font:500 14px/1 var(--f-body);color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;padding:14px 10px;white-space:nowrap;cursor:pointer}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+nav.tabs button:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.view{display:flex;flex-direction:column;gap:18px}
+h2{font:700 24px/1.2 var(--f-display);margin:8px 0 0;text-wrap:balance}
+h3{font:600 16px/1.3 var(--f-body);margin:10px 0 0}
+p,li{max-width:72ch}
+p{margin:0}
+ul,ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+code,kbd{font:13px/1.4 var(--f-mono);background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{font:13px/1.5 var(--f-mono);background:var(--code);padding:12px 14px;border-radius:8px;overflow-x:auto;margin:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.stat b{display:block;font:700 26px/1.1 var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:13px}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px/1.2 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font:500 12px/1 var(--f-mono);padding:4px 8px;border-radius:999px;white-space:nowrap}
+.ok{background:var(--good-soft);color:var(--good)}
+.bad{background:var(--bad-soft);color:var(--bad)}
+.warn{background:var(--warn-soft);color:var(--warn)}
+.finding{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.finding>div{min-width:0;display:flex;flex-direction:column;gap:6px}
+.finding .where{font:12px/1.4 var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
+.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input[type=search],textarea{font:15px/1.4 var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+.tools input{flex:1 1 220px;width:auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 13px/1 var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:7px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+details.qa{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+details.qa summary{cursor:pointer;padding:13px 16px;font-weight:600;list-style:none;display:flex;gap:10px}
+details.qa summary::-webkit-details-marker{display:none}
+details.qa summary .n{font:500 12px/1.9 var(--f-mono);color:var(--muted);flex:none;min-width:2.4em}
+details.qa .a{padding:0 16px 14px calc(16px + 2.4em + 10px);display:flex;flex-direction:column;gap:8px;color:var(--ink)}
+details.qa .tag{font:500 11px/1 var(--f-mono);color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+.btn{font:600 14px/1 var(--f-body);background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:11px 16px;cursor:pointer}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+.btn[disabled]{opacity:.55;cursor:default}
+.answer{white-space:pre-wrap;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-height:3em}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">MCA Major Project · Mangalore University · 2025–26</div>
+  <h1>FeelPay Viva Guide</h1>
+  <p class="sub">Everything about FeelPay, a Payment-as-a-Service gateway for India: architecture, how to run it, today's live health check, code-review findings, and invigilator questions with answers. Built from the repo and verified against the code on 29 Oct 2026.</p>
+</header>
+</div>
+
+<nav class="tabs" aria-label="Sections"><div class="inner" role="tablist">
+  <button role="tab" data-v="overview">Overview</button>
+  <button role="tab" data-v="arch">Architecture</button>
+  <button role="tab" data-v="features">How it works</button>
+  <button role="tab" data-v="run">Run it</button>
+  <button role="tab" data-v="health">Health check</button>
+  <button role="tab" data-v="review">Review findings</button>
+  <button role="tab" data-v="viva">Viva Q&amp;A</button>
+  <button role="tab" data-v="ask">Ask Claude</button>
+</div></nav>
+
+<main class="wrap">
+
+<!-- ================= OVERVIEW ================= -->
+<section class="view" id="v-overview">
+  <h2>Project at a glance</h2>
+  <div class="panel">
+    <p><b>Title:</b> FeelPay: Payment as a Service Platform for India</p>
+    <p><b>Student:</b> Chirag S Kotian, Reg. No. P05PP24S126026, MCA, Poornaprajna Institute of Management (PIM), Udupi</p>
+    <p><b>Internal guide:</b> Prof. Venugopala Rao A S (Asst. Professor &amp; HoD, MCA). <b>External guide:</b> Mr. Darshan, Manager, Feelitbuy Innovations.</p>
+    <p><b>One-line pitch:</b> a self-hostable Indian payment gateway where merchants sign up, finish KYC, get test/live API keys, accept UPI, cards, netbanking and wallets, and receive settlements. Fees, 18% GST and 1% TDS (Sec. 194O) are computed inside the platform in paise.</p>
+  </div>
+  <div class="grid">
+    <div class="stat"><b>4</b><span>running services (2 Rust APIs, 2 React apps)</span></div>
+    <div class="stat"><b>~61k</b><span>lines of Rust (gateway 43.5k + admin 17.8k)</span></div>
+    <div class="stat"><b>~28k</b><span>lines of TypeScript/React</span></div>
+    <div class="stat"><b>32 + 25</b><span>merchant pages + admin pages</span></div>
+    <div class="stat"><b>82</b><span>SQL migrations, ~184 tables</span></div>
+    <div class="stat"><b>~620</b><span>HTTP routes registered (319 gateway, 301 admin)</span></div>
+  </div>
+  <h3>Problem it solves</h3>
+  <ul>
+    <li>Commercial aggregators charge 2–3% plus GST, lock merchants in, and can freeze accounts.</li>
+    <li>Raw bank APIs (ISO 8583 / SOAP) have no dashboard, webhooks, vault or tooling.</li>
+    <li>Indian tax splits (18% GST on the fee, 1% TDS under Sec. 194O) are usually reconciled by hand from CSV exports.</li>
+    <li>Card-testing bots and noisy-neighbour load hurt small merchants.</li>
+  </ul>
+  <h3>Tech stack</h3>
+  <div class="tbl"><table>
+    <tr><th>Layer</th><th>Technology</th><th>Why</th></tr>
+    <tr><td>Gateway API</td><td>Rust, Actix Web 4, Tokio, SQLx 0.8</td><td>No GC pauses, memory safety, async I/O, compile-checked SQL</td></tr>
+    <tr><td>Admin API</td><td>Rust, Actix Web (separate binary in <code>admin/server</code>)</td><td>Isolates staff operations from merchant traffic</td></tr>
+    <tr><td>Database</td><td>PostgreSQL 15 on Neon (serverless)</td><td>Relational integrity, transactions, RLS policies</td></tr>
+    <tr><td>Cache / limits</td><td>Redis 7 (optional in test mode)</td><td>Replay nonces, velocity counters, rate limits</td></tr>
+    <tr><td>Frontends</td><td>React 19, TypeScript, Vite 6, Recharts, lucide-react</td><td>Fast dev server, typed UI, charts</td></tr>
+    <tr><td>Security libs</td><td>argon2, jsonwebtoken (HS256), hmac + sha2, aes-gcm</td><td>Password hashing, sessions, webhook signatures, card vault</td></tr>
+    <tr><td>Testing</td><td>cargo test, Vitest, Playwright (+ axe a11y)</td><td>Unit, component and end-to-end coverage</td></tr>
+    <tr><td>Deploy</td><td>Render (APIs), Cloudflare Pages (UIs), GitHub Actions <code>deploy.yml</code></td><td>Cheap hosting, CI on push to main</td></tr>
+  </table></div>
+  <h3>Extras in the repo</h3>
+  <ul>
+    <li>SDKs: <code>sdks/typescript</code>, <code>sdks/react</code>, <code>sdks/python</code>, <code>sdks/php</code></li>
+    <li>E-commerce plugins: <code>plugins/shopify</code>, <code>plugins/woocommerce</code></li>
+    <li>Mock provider: <code>mock/provider-mock-server.js</code>; load tests in <code>load/</code></li>
+  </ul>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section class="view" id="v-arch" hidden>
+  <h2>Architecture</h2>
+  <pre class="mermaid">
+flowchart LR
+  C[Customer] -->|checkout / payment link| GW
+  M[Merchant] --> D[Merchant Dashboard<br/>React :3000]
+  A[Platform admin] --> AU[Admin Portal<br/>React :3001]
+  D -->|JWT / x-api-key| GW[Gateway API<br/>Rust :8080]
+  AU -->|admin JWT| AS[Admin API<br/>Rust :8081]
+  GW --> PG[(PostgreSQL / Neon)]
+  AS --> PG
+  GW -.-> R[(Redis)]
+  GW --> P[Processors:<br/>simulator, card, upi,<br/>netbanking, wallet]
+  GW --> X[Connectors:<br/>Razorpay, Stripe, Adyen, Mock]
+  GW -->|HMAC-signed webhooks| MS[Merchant server]
+  </pre>
+  <h3>The four services</h3>
+  <div class="tbl"><table>
+    <tr><th>Service</th><th>Folder</th><th>Port</th><th>Role</th></tr>
+    <tr><td>Gateway API</td><td><code>src/</code></td><td class="num">8080</td><td>Merchant auth, payments, refunds, links, payouts, settlements, webhooks, onboarding</td></tr>
+    <tr><td>Admin API</td><td><code>admin/server/</code></td><td class="num">8081</td><td>KYC queue, merchants, connectors, revenue, audit logs, system config</td></tr>
+    <tr><td>Merchant Dashboard</td><td><code>dashboard/</code></td><td class="num">3000</td><td>32 pages: payments, settlements, analytics, links, payouts, webhooks, team, onboarding</td></tr>
+    <tr><td>Admin Portal</td><td><code>admin/</code></td><td class="num">3001</td><td>25 pages: overview, payment ops, ledger, risk rules, reconciliation, connectors, audit</td></tr>
+  </table></div>
+  <h3>Gateway source map</h3>
+  <ul>
+    <li><code>src/api/</code>: HTTP handlers, one file per domain (payments, refunds, payment_links, payouts, settlements, disputes, webhooks, onboarding, subscriptions, mandates, virtual_accounts, emi_bnpl…)</li>
+    <li><code>src/middleware/</code>: <code>auth.rs</code> (JWT + API key), <code>rbac.rs</code>, <code>rate_limit.rs</code>, <code>velocity_check.rs</code>, <code>replay_prevention.rs</code>, <code>ip_whitelist.rs</code>, <code>maintenance_mode.rs</code>, <code>request_id.rs</code></li>
+    <li><code>src/engine/</code>: <code>payment.rs</code> (engine), <code>processor.rs</code> (<code>MethodData</code> enum), <code>routing.rs</code> (connector choice), <code>fees.rs</code>, <code>vault.rs</code> (AES-256-GCM), <code>processors/</code>, <code>connectors/</code></li>
+    <li><code>src/engine/services/</code>: ledger, settlement, webhook, risk_engine, blacklist, three_ds, notification, job_queue, report, kyc_provider</li>
+    <li><code>migrations/</code>: 82 SQLx migrations including <code>20240110000002_rls_policies.sql</code></li>
+  </ul>
+  <h3>Payment flow (UPI example)</h3>
+  <pre class="mermaid">
+sequenceDiagram
+  participant MS as Merchant server
+  participant GW as Gateway :8080
+  participant EN as Payment engine
+  participant DB as Postgres
+  MS->>GW: POST /v1/payments (Idempotency-Key, method_data Upi)
+  GW->>GW: auth (JWT or x-api-key) + RBAC + velocity
+  GW->>DB: check idempotency key
+  GW->>EN: route to processor/connector
+  EN-->>GW: status Captured / Authorized / Processing
+  GW->>DB: insert payment_orders, store idempotent response
+  GW-->>MS: 201 payment object
+  GW--)MS: webhook payment.captured (X-FeelPay-Signature)
+  </pre>
+</section>
+
+<!-- ================= HOW IT WORKS ================= -->
+<section class="view" id="v-features" hidden>
+  <h2>How the key mechanisms work</h2>
+  <p class="muted small">Each item says what the code actually does, with the file to show the examiner.</p>
+
+  <div class="panel"><h3>Authentication</h3>
+    <ul>
+      <li>Dashboard login: <code>POST /v1/merchants/login</code> returns a 24-hour HS256 JWT (<code>expires_in: 86400</code>) with role, e.g. <code>merchant_owner</code>.</li>
+      <li>Passwords are hashed with <b>Argon2id</b> (<code>src/api/auth.rs</code>). The admin API also accepts legacy bcrypt hashes.</li>
+      <li>API keys (<code>fp_test_…</code> / <code>fp_live_…</code>) are stored as a <b>SHA-256 hash</b> plus a masked copy; lookup compares hashes (<code>src/middleware/auth.rs:56</code>).</li>
+      <li>JWT validation pins <code>Algorithm::HS256</code> to block algorithm-confusion attacks.</li>
+    </ul></div>
+
+  <div class="panel"><h3>Idempotency</h3>
+    <p>Mutating calls accept an <code>Idempotency-Key</code> header. <code>check_idempotency</code> and <code>store_idempotency_response</code> in <code>src/api/payments.rs</code> return the stored response for a repeated key, so a client retry after a timeout never charges twice.</p></div>
+
+  <div class="panel"><h3>Money in paise</h3>
+    <p>All amounts are <code>i64</code> paise (₹10 = 1000). Fee math in <code>src/engine/fees.rs</code> uses <code>rust_decimal</code> for the percentage and GST step, then rounds back to <code>i64</code>. Floats are never used for money.</p>
+    <pre>fee = amount × percentage / 100 + flat_fee   (clamped to min/max)
+GST exclusive: gst = fee × 0.18
+GST inclusive: base = fee / 1.18, gst = fee − base
+net = amount − fee − gst</pre>
+    <p>TDS (1%, Sec. 194O) is calculated in <code>src/engine/services/settlement_advanced.rs</code> at settlement time.</p></div>
+
+  <div class="panel"><h3>Double-entry ledger</h3>
+    <p><code>src/engine/services/ledger.rs</code> keeps <code>ledger_accounts</code> (merchant, platform, escrow…) and <code>ledger_entries</code>. Each transaction posts balanced debit and credit rows inside one DB transaction, so the sum of debits always equals the sum of credits.</p></div>
+
+  <div class="panel"><h3>Card vault</h3>
+    <p><code>src/engine/vault.rs</code> encrypts card data with <b>AES-256-GCM</b> using a 32-byte key from <code>VAULT_ENCRYPTION_KEY</code> (64 hex chars) and a random nonce per record. The app keeps only a token. GCM's auth tag detects tampering.</p></div>
+
+  <div class="panel"><h3>Smart routing</h3>
+    <p><code>src/engine/routing.rs</code> ranks connectors: healthy first, then higher success rate (basis points), then lower priority number, then lower cost. Registered processors at startup: simulator, card, upi, netbanking, wallet.</p></div>
+
+  <div class="panel"><h3>Webhooks</h3>
+    <p>Events are signed with HMAC-SHA256 and sent with <code>X-FeelPay-Signature</code> and <code>X-FeelPay-Event</code>. Failed deliveries retry with exponential backoff: <b>1 min, 5 min, 15 min, 1 h, 6 h, 24 h</b>, and stop after 7 attempts (<code>src/engine/services/webhook.rs:158</code>).</p></div>
+
+  <div class="panel"><h3>Fraud and abuse defences</h3>
+    <ul>
+      <li>Replay prevention: request timestamp must be within <b>300 seconds</b>; each nonce is stored in Redis for 300 s and rejected if seen again.</li>
+      <li>Velocity checks: per-minute limits on the same card, same IP and same device fingerprint.</li>
+      <li>Blacklist service, risk engine, IP allow-list, maintenance mode, per-request IDs.</li>
+      <li>In test mode the gateway starts without Redis ("Redis unavailable; continuing startup in test mode"), so these Redis checks are inactive locally.</li>
+    </ul></div>
+
+  <div class="panel"><h3>Multi-tenant isolation</h3>
+    <p>Shared tables with a <code>merchant_id</code> column. Every handler takes <code>merchant_id</code> from the verified JWT or API key and filters queries with it. Postgres RLS policies exist (<code>migrations/20240110000002_rls_policies.sql</code>, using <code>app.current_tenant_id</code>) as a second layer.</p></div>
+
+  <div class="panel"><h3>KYC onboarding</h3>
+    <p>Wizard validates PAN (<code>[A-Z]{5}[0-9]{4}[A-Z]</code>), 15-char GSTIN and 11-char IFSC, uploads documents, and waits for admin approval in the KYC queue. Live mode stays locked until approval. Dashboard shows "Your KYC status is pending" until then.</p></div>
+</section>
+
+<!-- ================= RUN ================= -->
+<section class="view" id="v-run" hidden>
+  <h2>Run it for the demo</h2>
+  <div class="panel">
+    <h3>All four services, one command</h3>
+    <pre>./run.sh all --test --dev -y</pre>
+    <p>Starts Gateway :8080, Admin API :8081, Dashboard :3000, Admin UI :3001. Health URLs: <code>http://127.0.0.1:8080/v1/health</code> and <code>http://127.0.0.1:8081/health</code>. Stop with Ctrl+C, or <code>./run.sh clean</code>.</p>
+  </div>
+  <div class="panel">
+    <h3>Important: point the UIs at your local backends</h3>
+    <p>The dev <code>.env</code> files in <code>dashboard/</code> and <code>admin/</code> point to the Render deployment, so a plain <code>./run.sh</code> makes the local UIs call the cloud APIs. The admin login then spins forever if Render is asleep. For a local demo, start the two UIs with overrides:</p>
+    <pre>cd dashboard && VITE_API_BASE_URL=http://127.0.0.1:8080 VITE_SANDBOX_API_BASE_URL=http://127.0.0.1:8080 VITE_LIVE_API_BASE_URL=http://127.0.0.1:8080 pnpm dev --port 3000</pre>
+    <pre>cd admin && VITE_ADMIN_API_BASE_URL=http://127.0.0.1:8081 pnpm dev --port 3001</pre>
+  </div>
+  <div class="panel">
+    <h3>Logins</h3>
+    <ul>
+      <li>The admin login form is pre-filled with <code>admin@feelpay.local</code>, which does not exist in the database. Clear it.</li>
+      <li>Seeded accounts with admin rights: <code>test@feelpay.com</code>, <code>test@merchant.com</code>, <code>merchant@example.com</code>, <code>testmerchant@example.com</code>. Their password is written in the comment on line 1 of <code>migrations/20260515000012_reset_test_merchant_password.sql</code>.</li>
+      <li>The same accounts log in to the merchant dashboard. Or create a fresh merchant on the Signup page.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Quick API demo</h3>
+<pre>curl http://127.0.0.1:8080/v1/health
+
+curl -X POST http://127.0.0.1:8080/v1/merchants/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@feelpay.com","password":"&lt;seed password&gt;"}'
+
+curl -X POST http://127.0.0.1:8080/v1/payments \
+  -H "Authorization: Bearer &lt;jwt&gt;" -H "Idempotency-Key: demo-1" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":50000,"currency":"INR","order_id":"ord_demo_1",
+       "customer_email":"buyer@example.com",
+       "method_data":{"Upi":{"vpa":"success@upi","flow":"collect"}}}'</pre>
+    <p class="small muted"><code>method_data</code> is externally tagged: <code>{"Upi":{…}}</code>, <code>{"NetBanking":{"bank_code":"HDFC"}}</code>, <code>{"Card":{…}}</code>. The README's <code>/v1/auth/login</code> example is out of date; use <code>/v1/merchants/login</code>.</p>
+  </div>
+  <div class="panel">
+    <h3>Checks before the viva</h3>
+<pre>cd dashboard && pnpm exec tsc --noEmit
+cd admin && pnpm exec tsc --noEmit
+cargo check
+cd dashboard && pnpm test:e2e:smoke</pre>
+  </div>
+</section>
+
+<!-- ================= HEALTH ================= -->
+<section class="view" id="v-health" hidden>
+  <h2>Live health check, 29 Oct 2026</h2>
+  <p class="muted">All four services were started locally in test mode, with the UIs pointed at the local backends. Every page was opened and every API call watched for errors.</p>
+  <div class="tbl"><table>
+    <tr><th>Check</th><th>Result</th><th>Detail</th></tr>
+    <tr><td>Gateway API :8080</td><td><span class="pill ok">pass</span></td><td>Compiles, starts 24 workers, <code>/v1/health</code> 200</td></tr>
+    <tr><td>Admin API :8081</td><td><span class="pill ok">pass</span></td><td>Compiles, <code>/health</code> 200</td></tr>
+    <tr><td>Dashboard typecheck</td><td><span class="pill ok">pass</span></td><td><code>tsc --noEmit</code> exit 0</td></tr>
+    <tr><td>Admin UI typecheck</td><td><span class="pill ok">pass</span></td><td><code>tsc --noEmit</code> exit 0</td></tr>
+    <tr><td>Admin Portal, 25 pages</td><td><span class="pill ok">pass</span></td><td>All pages render with live data; 0 failed API calls</td></tr>
+    <tr><td>Merchant Dashboard, 24 nav pages</td><td><span class="pill ok">pass</span></td><td>All pages render; 0 failed API calls</td></tr>
+    <tr><td>Merchant signup + login</td><td><span class="pill ok">pass</span></td><td>Register 201, login 200 with JWT</td></tr>
+    <tr><td>UPI payment</td><td><span class="pill ok">pass</span></td><td>Status Captured via simulator</td></tr>
+    <tr><td>Netbanking payment</td><td><span class="pill ok">pass</span></td><td>Status Processing (awaiting bank redirect)</td></tr>
+    <tr><td>Card payment</td><td><span class="pill ok">pass</span></td><td>Status Authorized</td></tr>
+    <tr><td>Over-refund guard</td><td><span class="pill ok">pass</span></td><td>400 "Refund amount exceeds remaining refundable balance"</td></tr>
+    <tr><td>Capture an authorized card payment</td><td><span class="pill ok">fixed</span></td><td>Was 500 "Platform account not configured". Now Captured; ledger: debit escrow 50000 = credit merchant 48500 + credit platform 1500</td></tr>
+    <tr><td>Refund a captured payment</td><td><span class="pill ok">fixed</span></td><td>Was 500. Now PartiallyRefunded; ledger: debit merchant 10000, credit escrow 10000. Same Idempotency-Key replay returns the same refund_id</td></tr>
+    <tr><td>Open admin token endpoint</td><td><span class="pill ok">fixed</span></td><td><code>/admin/bootstrap-token</code> now 401 (route removed)</td></tr>
+    <tr><td>UIs using local backend by default</td><td><span class="pill warn">config</span></td><td>Dev <code>.env</code> points to Render</td></tr>
+    <tr><td>Admin pre-filled login</td><td><span class="pill warn">config</span></td><td><code>admin@feelpay.local</code> not in DB → 401</td></tr>
+  </table></div>
+  <p><b>Verdict:</b> everything loads; create, capture and refund all work after the fixes below.</p>
+</section>
+
+<!-- ================= REVIEW ================= -->
+<section class="view" id="v-review" hidden>
+  <h2>Code review findings</h2>
+  <p class="muted">Ponytail review (YAGNI, root-cause, minimal diff) of the last code commit plus defects found during the live run. Most severe first.</p>
+
+  <div class="finding"><span class="pill ok">fixed</span><div>
+    <b>Unauthenticated admin token endpoint</b>
+    <p><code>GET /admin/bootstrap-token</code> (and <code>/api/admin/bootstrap-token</code>) returned a valid admin JWT to anyone. Nothing in the UI used it. The route, handler, auth-bypass and docs entry are removed; both paths now return 401. Redeploy Render to close it there too.</p>
+    <span class="where">admin/server/src/main.rs · middleware.rs · docs.rs</span></div></div>
+
+  <div class="finding"><span class="pill ok">fixed</span><div>
+    <b>Capture and refund failed: ledger system accounts missing, refunds posted negative amounts</b>
+    <p><code>record_transaction</code> needs a <code>platform</code> and an <code>escrow</code> account; no migration created them. New migration <code>20261029000000_seed_ledger_system_accounts.sql</code> inserts them if missing. Refunds then hit <code>CHECK (amount &gt; 0)</code> because they passed <code>-amount</code>; the ledger now posts reversals as positive amounts in the opposite direction (debit merchant, credit escrow).</p>
+    <span class="where">src/engine/services/ledger.rs · migrations/20261029000000_seed_ledger_system_accounts.sql</span></div></div>
+
+  <div class="finding"><span class="pill warn">risk</span><div>
+    <b>Capture uses a hard-coded 3% fee</b>
+    <p><code>capture_payment</code> computes <code>amount × 3 / 100</code> and ignores the configurable fee engine in <code>fees.rs</code> (fee plans, caps, GST). Ledger fees can disagree with displayed pricing.</p>
+    <span class="where">src/api/payments.rs:800</span></div></div>
+
+  <div class="finding"><span class="pill warn">risk</span><div>
+    <b>Batch refund swallows errors</b>
+    <p>Both the status update and the ledger post end in <code>.ok()</code>, so a failed ledger write still counts as a successful refund.</p>
+    <span class="where">src/api/payments.rs:1273, 1287</span></div></div>
+
+  <div class="finding"><span class="pill warn">yagni</span><div>
+    <b>3DS2 service is not wired</b>
+    <p><code>ThreeDsService</code> is never referenced outside its own file. After the last commit, <code>verify_cres</code> always marks the challenge failed. Either wire it into the card flow or describe 3DS as planned work.</p>
+    <span class="where">src/engine/services/three_ds.rs</span></div></div>
+
+  <div class="finding"><span class="pill warn">risk</span><div>
+    <b>RLS policies are not activated by the app</b>
+    <p>Policies read <code>app.current_tenant_id</code>, but no Rust code sets it, and the Neon owner role bypasses RLS without <code>FORCE ROW LEVEL SECURITY</code>. Real isolation today is the <code>merchant_id</code> filter in each query.</p></div></div>
+
+  <div class="finding"><span class="pill warn">config</span><div>
+    <b>Local dev UIs call the cloud</b>
+    <p><code>dashboard/.env</code> and the admin fallback in <code>admin/src/hooks/useApi.ts:1</code> point to Render. <code>.env.production</code> already covers deploys, so dev <code>.env</code> should use localhost.</p></div></div>
+
+  <div class="finding"><span class="pill warn">config</span><div>
+    <b>Admin login pre-filled with a non-existent user and a password in source</b>
+    <p><code>admin/src/App.tsx:318</code> hard-codes default email and password state. Remove before submission.</p></div></div>
+
+  <div class="finding"><span class="pill warn">nit</span><div>
+    <b>Last commit: unneeded edits</b>
+    <ul>
+      <li><code>return matches!(…);</code> in <code>is_safe_method</code> is non-idiomatic Rust; the original expression was correct. Revert.</li>
+      <li><code>Validation::new(HS256)</code> is the same as <code>Validation::default()</code>; harmless, it documents intent.</li>
+      <li>~3,800 lines of <code>graphify-out</code> churn rode along in a security fix commit; keep generated files in their own commit.</li>
+    </ul></div></div>
+
+  <div class="finding"><span class="pill warn">nit</span><div>
+    <b>Bad-request bodies leak serde text and skip the JSON envelope</b>
+    <p>Malformed payment JSON returns plain text like <code>Json deserialize error: unknown variant…</code> instead of the usual <code>{success,data,error}</code> envelope.</p></div></div>
+
+  <h3>Report says X, code does Y (avoid these traps)</h3>
+  <div class="tbl"><table>
+    <tr><th>Report claim</th><th>What the code does</th><th>Say this in viva</th></tr>
+    <tr><td>API keys hashed with PBKDF2</td><td>SHA-256 of the key; passwords use Argon2id</td><td>"Keys are high-entropy random strings, so a fast SHA-256 lookup hash is enough; passwords need slow Argon2id."</td></tr>
+    <tr><td>Webhook retries at 5 s, 15 s, 1 min, 5 min</td><td>1 m, 5 m, 15 m, 1 h, 6 h, 24 h; stop after 7</td><td>Quote the code schedule.</td></tr>
+    <tr><td>3DS2 OTP challenge flow works</td><td>Service exists but is not called</td><td>"3DS2 is modelled; issuer CRES verification is future work."</td></tr>
+    <tr><td>RLS makes leaks "mathematically impossible"</td><td>Policies exist; app does not set the session variable</td><td>"App-layer merchant_id scoping is primary; RLS is the planned second layer."</td></tr>
+    <tr><td>Integer-only money</td><td>i64 storage; Decimal for the fee percentage step</td><td>"Stored and summed as i64 paise; Decimal only inside the fee formula, then rounded."</td></tr>
+    <tr><td>Admin console on :5173</td><td>Runs on :3001</td><td>Use 3001.</td></tr>
+    <tr><td>README login <code>/v1/auth/login</code></td><td>Dashboard uses <code>/v1/merchants/login</code></td><td>Use the merchants route.</td></tr>
+  </table></div>
+</section>
+
+<!-- ================= VIVA ================= -->
+<section class="view" id="v-viva" hidden>
+  <h2>Viva questions and answers</h2>
+  <div class="tools">
+    <input type="search" id="q" placeholder="Search questions, e.g. idempotency, GST, Rust" aria-label="Search questions">
+    <button class="btn ghost" id="toggleAll" type="button">Expand all</button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <p class="muted small" id="count"></p>
+  <div id="qa" style="display:flex;flex-direction:column;gap:8px"></div>
+</section>
+
+<!-- ================= ASK ================= -->
+<section class="view" id="v-ask" hidden>
+  <h2>Ask Claude about FeelPay</h2>
+  <p class="muted">Type any question an examiner might ask. Claude answers from this guide's content. Works on phone and laptop when you are signed in to claude.ai.</p>
+  <textarea id="askIn" rows="3" placeholder="e.g. Why did you choose Rust over Node.js for a payment gateway?"></textarea>
+  <div class="tools">
+    <button class="btn" id="askBtn" type="button">Ask</button>
+    <button class="btn ghost" id="mockBtn" type="button">Mock viva: ask me a question</button>
+  </div>
+  <div class="answer" id="askOut" aria-live="polite"><span class="muted">Answers appear here.</span></div>
+  <p class="muted small" id="askNote"></p>
+</section>
+
+</main>
+
+<script>
+const QA = [
+ // ---- Basics
+ ["Basics","Explain your project in two minutes.","FeelPay is a Payment-as-a-Service gateway for Indian merchants. A merchant signs up, completes KYC (PAN, GSTIN, bank IFSC, documents), gets test and live API keys, and accepts UPI, cards, netbanking and wallets through APIs, hosted checkout and payment links. The platform routes each payment to a processor, keeps a double-entry ledger, computes fee, 18% GST and 1% TDS in paise, sends signed webhooks, and settles to the merchant's bank. It has four parts: a Rust gateway API, a Rust admin API, a React merchant dashboard and a React admin portal, all on PostgreSQL."],
+ ["Basics","What is Payment as a Service?","A model where the whole payment lifecycle (onboarding, API keys, tokenisation, routing, ledger, settlement, notifications) is offered as modular cloud services that a business plugs into instead of building or renting a closed aggregator."],
+ ["Basics","What is a payment gateway vs a payment aggregator?","A gateway is the technical pipe that carries payment data between the merchant, card networks/UPI and banks. An aggregator (PA under RBI rules) also onboards merchants and handles their funds through a nodal/escrow account before settling. FeelPay implements both roles: gateway APIs plus onboarding, ledger and settlement."],
+ ["Basics","Who are the users of the system?","Three roles: the merchant (owner, developer, finance staff) using the dashboard and APIs; the end customer paying through checkout or a payment link; and the platform admin who verifies KYC, manages connectors, watches risk and oversees settlements in the admin portal."],
+ ["Basics","What is in scope and out of scope?","In scope: merchant registration, KYC, test/live keys, checkout, payment links, UPI/card/netbanking/wallet, routing, refunds, disputes, ledger, payouts, settlements, webhooks, rate limiting, admin console. Out of scope: physical POS terminals, multi-currency FX, and peer-to-peer wallet transfers."],
+ ["Basics","What methodology did you follow?","Iterative, phase-wise development (12 phases in the report): requirements, schema, core payment engine, auth and security, dashboard, admin, settlements and ledger, webhooks, testing and deployment. Each phase ended with type checks, cargo check and tests."],
+ ["Basics","Which software model and why?","An incremental/iterative model. Payments have many independent modules (refunds, links, payouts), so each could be built, tested and demoed in its own increment while the core API stayed stable."],
+ // ---- Tech choices
+ ["Tech","Why Rust instead of Node.js, Java or Python?","Payment APIs need predictable low latency and must never corrupt memory. Rust has no garbage collector, so there are no stop-the-world pauses; the ownership model removes data races and null-pointer bugs at compile time; and async Tokio handles thousands of connections on few threads. Crypto work (HMAC, AES-GCM, Argon2) runs at native speed."],
+ ["Tech","What are Actix Web and Tokio?","Tokio is Rust's asynchronous runtime: it schedules lightweight tasks over a thread pool and handles non-blocking I/O. Actix Web is a web framework on top of it that provides routing, middleware, extractors and JSON handling. Our gateway starts 24 worker threads on this machine."],
+ ["Tech","What is SQLx and why use it?","SQLx is an async Rust database library. Its query macros check SQL against the real schema at compile time (with an offline cache in the .sqlx folder), so a wrong column name fails the build instead of failing in production. It also provides connection pooling and migrations."],
+ ["Tech","Why PostgreSQL and why Neon?","Payments need ACID transactions, foreign keys and strong consistency, which Postgres provides, along with JSONB for gateway responses and Row-Level Security. Neon is serverless Postgres with branching (separate dev/test branches) and a free tier, which keeps cost low."],
+ ["Tech","What is Redis used for?","Short-lived, fast data: replay-attack nonces (stored 300 s), velocity counters per card/IP/device per minute, rate limits and caching. In test mode the gateway starts even if Redis is down."],
+ ["Tech","Why React 19 with Vite and TypeScript?","React gives a component model for many similar screens (tables, filters, forms). TypeScript catches API shape mistakes at compile time. Vite gives an instant dev server with hot reload and fast production builds."],
+ ["Tech","Why two separate backends?","Separation of duties and blast radius. Merchant traffic hits the gateway on 8080; staff operations like KYC approval and connector credentials live in the admin API on 8081 with its own auth middleware. A bug or overload in one does not expose or stall the other."],
+ // ---- Payments
+ ["Payments","Walk through a payment request.","The merchant calls POST /v1/payments with amount in paise, currency, order_id, customer details, method_data and an Idempotency-Key. Middleware authenticates (JWT or x-api-key), applies role checks and velocity limits. The handler checks the idempotency key, the engine selects a processor or connector, the result (Captured, Authorized, Processing or Failed) is saved in payment_orders, the response is stored for idempotency, and a webhook is queued."],
+ ["Payments","Why store amounts in paise as integers?","Floating point cannot represent values like 0.1 exactly, so repeated additions drift by fractions of a rupee. Integers in the smallest unit (paise) are exact. FeelPay stores i64 paise; ₹500 is 50000."],
+ ["Payments","What is idempotency and how did you implement it?","An operation is idempotent if repeating it gives the same result as doing it once. If a network timeout makes the client retry, we must not charge twice. The client sends an Idempotency-Key header; the gateway stores the response against that key and returns the stored response for any repeat (check_idempotency / store_idempotency_response in src/api/payments.rs)."],
+ ["Payments","Difference between authorize and capture?","Authorization reserves funds on the customer's card without moving money. Capture actually takes the reserved money, often later (e.g. at shipping). UPI usually captures immediately; our card test payment came back Authorized and needs POST /v1/payments/{id}/capture."],
+ ["Payments","How does refund work and what stops over-refunds?","POST /v1/payments/{id}/refund with an amount. The handler compares it with captured minus already-refunded amount and rejects anything larger (we saw 400 \"Refund amount exceeds remaining refundable balance\"). Partial refunds are allowed; status becomes partially refunded or refunded, and a negative ledger entry is posted."],
+ ["Payments","How does smart routing choose a connector?","src/engine/routing.rs sorts candidates: healthy connectors first, then higher success rate in basis points, then lower priority number, then lower cost. The top one handles the payment, so a failing provider is skipped automatically."],
+ ["Payments","Which payment methods are supported?","The MethodData enum covers Card, Upi (collect or intent), NetBanking (bank_code), Wallet, Emi, Bnpl and Simulator. Processors registered at startup are simulator, card, upi, netbanking and wallet; connectors include Razorpay, Stripe, Adyen and a mock."],
+ ["Payments","How does UPI work?","UPI connects payer PSP, NPCI switch, remitter bank, beneficiary bank and payee PSP. The customer uses a VPA like name@bank instead of account numbers. Collect flow: merchant sends a request to the VPA and the customer approves in their app. Intent flow: a deep link or QR opens the UPI app directly."],
+ ["Payments","What are payment links?","A merchant creates a link with amount and description (POST /v1/payment-links); the customer opens /pay/{link_id} and pays without the merchant writing any checkout code. Useful for WhatsApp, email or invoices."],
+ ["Payments","What is a settlement and what is T+2?","Settlement moves the merchant's net balance (after fee, GST and TDS) from the escrow/nodal account to their bank. T+2 means two business days after the transaction date. FeelPay also models instant (T+0) settlement."],
+ ["Payments","What is a chargeback/dispute?","The customer asks their bank to reverse a payment (fraud, item not received). The merchant gets a deadline to upload evidence. FeelPay's disputes module tracks status, SLA and evidence uploads; the admin portal also shows disputes."],
+ // ---- Finance
+ ["Finance","How are fee, GST and TDS calculated?","Fee = amount × percentage / 100 + flat fee, clamped to the plan's min and max. GST is 18% on the fee (added on top if exclusive; extracted as fee − fee/1.18 if inclusive). Net = amount − fee − GST. TDS of 1% under Section 194O is deducted on the gross at settlement. Example: ₹1,000 at 2% exclusive → fee ₹20, GST ₹3.60, net before TDS ₹976.40, TDS ₹10."],
+ ["Finance","What is Section 194O?","A section of the Income Tax Act, from 1 Oct 2020, requiring e-commerce operators to deduct 1% TDS on the gross amount of sales facilitated for sellers and deposit it with the government."],
+ ["Finance","What is double-entry bookkeeping and why use it?","Every money movement is recorded as at least two entries, a debit and an equal credit, so total debits always equal total credits. It makes every rupee traceable, catches bugs (an imbalance means an error) and avoids the race conditions of a single mutable balance column. Implemented in src/engine/services/ledger.rs inside one DB transaction."],
+ ["Finance","What is reconciliation?","Comparing our ledger and payment records with the bank's and provider's settlement files to find mismatches (missing, duplicated or wrong-amount transactions). The admin portal has a Reconciliation and Payment Matching page."],
+ // ---- Security
+ ["Security","How do you store passwords?","Argon2id with a random salt (argon2 crate). Argon2 is memory-hard, so GPU brute-forcing is expensive. Plain or reversible storage is never used."],
+ ["Security","How are API keys handled?","Generated as random fp_test_ / fp_live_ strings and shown once. The database stores only a SHA-256 hash plus a masked version for display. On each request the incoming key is hashed and compared. Because keys are long random strings, a fast hash is safe here, unlike user passwords."],
+ ["Security","What is a JWT and how do you use it?","JSON Web Token: a signed token with claims (user id, merchant id, role, expiry). After login the dashboard sends it as Authorization: Bearer. We sign with HMAC-SHA256 (HS256), pin that algorithm during validation, and expire tokens after 24 hours."],
+ ["Security","How do you verify webhooks?","The gateway computes HMAC-SHA256 of the payload with the merchant's webhook secret and sends it in X-FeelPay-Signature. The merchant recomputes the HMAC with the same secret and compares; a mismatch means tampering or a fake sender."],
+ ["Security","What is AES-256-GCM and why for cards?","AES with a 256-bit key in Galois/Counter Mode. It encrypts the card data and produces an authentication tag, so any modification is detected on decrypt. Each record uses a fresh random nonce. The application stores only a token, which reduces PCI-DSS scope."],
+ ["Security","What is PCI-DSS?","Payment Card Industry Data Security Standard: rules for anyone storing, processing or transmitting card data, such as encrypting stored card numbers, never storing CVV after authorization, restricting access and logging. The vault design follows these rules."],
+ ["Security","What is a replay attack and how do you stop it?","An attacker captures a valid request and resends it. Requests carry a timestamp and nonce; the server rejects timestamps older than 300 seconds and stores each nonce in Redis for 300 seconds, rejecting duplicates (src/middleware/replay_prevention.rs)."],
+ ["Security","What is velocity checking?","Counting how often the same card, IP or device tries to pay within a minute and blocking above a limit. It stops card-testing bots that try thousands of stolen numbers quickly (src/middleware/velocity_check.rs)."],
+ ["Security","How do you prevent SQL injection?","All queries use SQLx bound parameters ($1, $2…), so user input is never concatenated into SQL text."],
+ ["Security","How is one merchant prevented from seeing another's data?","Every handler takes merchant_id from the verified token or API key, never from the request body, and filters every query by it. Role checks in rbac.rs limit what each team role can do. PostgreSQL RLS policies are defined as a second layer for when the app sets the tenant session variable."],
+ ["Security","What is RBAC?","Role-Based Access Control. Users have roles such as merchant_owner, admin, developer or viewer; middleware allows or denies each method and path by role, e.g. viewers can only make GET requests."],
+ ["Security","What is 3D Secure?","An extra authentication step for card payments (OTP or bank app approval) run by the issuer's Access Control Server. It shifts fraud liability to the issuer. FeelPay models 3DS2 challenges in three_ds.rs; full issuer verification is planned work."],
+ ["Security","What is KYC/KYB and why mandatory?","Know Your Customer / Business: verifying identity and business documents (PAN, GSTIN, bank account, incorporation certificate). RBI requires aggregators to verify merchants to prevent fraud and money laundering. FeelPay locks live mode until an admin approves KYC."],
+ ["Security","What is the DPDP Act 2023?","India's Digital Personal Data Protection Act. It requires consent, purpose limitation, security safeguards and the right to erasure for personal data. FeelPay masks and encrypts PII and has a DPDP privacy policy in docs/."],
+ // ---- Database
+ ["Database","Explain your database design.","Around 184 tables over 82 migrations. Core: merchants, users, api_keys, payment_orders, refunds, ledger_accounts, ledger_entries, settlements, payouts, webhook_endpoints, webhook deliveries, disputes, payment_links, kyc documents, audit logs. Most tables carry merchant_id for tenant scoping; money columns are BIGINT paise."],
+ ["Database","What is Row-Level Security?","A PostgreSQL feature that adds a policy filter to every query on a table, e.g. only rows where tenant_id equals current_setting('app.current_tenant_id'). Even a buggy query cannot see other tenants' rows, provided the session variable is set and the role is not a table owner or superuser."],
+ ["Database","What are migrations?","Versioned SQL files applied in order (sqlx migrate run) and recorded in _sqlx_migrations. They make schema changes repeatable on every environment."],
+ ["Database","What is normalization and did you use it?","Organising tables to remove redundancy (1NF atomic columns, 2NF no partial dependencies, 3NF no transitive dependencies). Core entities are in 3NF; gateway responses are kept as JSONB on purpose for audit and flexibility."],
+ ["Database","Why shared tables instead of a database per merchant?","Database-per-tenant gives strongest isolation but connection pools and migrations do not scale to thousands of merchants. Shared tables with a merchant_id column and RLS are cheap, simple to migrate and allow global analytics."],
+ ["Database","What is an ACID transaction?","Atomic (all or nothing), Consistent (constraints hold), Isolated (concurrent transactions do not interfere), Durable (committed data survives crashes). Ledger postings run in one transaction so debit and credit are never half-written."],
+ // ---- Frontend
+ ["Frontend","What does the merchant dashboard contain?","32 pages including Dashboard KPIs and 7-day chart, Payments, Settlements, Refunds, Reports and Exports, Analytics, Disputes, Payment Links, Payouts, Payment Methods, Checkout Preview, Subscriptions, Autopay, Virtual Accounts, Webhooks, Customers, Bank Accounts, Developers, Team, Notifications, Audit Logs, Pricing, Settings and Onboarding."],
+ ["Frontend","What does the admin portal contain?","25 pages: Global Overview, Payment Ops, Transactions, Ledger, Refunds, Settlements, Disputes, Risk Rules, Reconciliation, Business Accounts, Connectors, Integration Center, Notification Templates, Bank Integrations, Routing Rules, White-label Checkout, Webhook Config, Developer Tools, Reports, Audit Logs, Admin Users and Roles, System Health, Notifications, Compliance Center, Settings."],
+ ["Frontend","How does the frontend talk to the backend?","A useApi hook wraps fetch with the base URL from VITE_API_BASE_URL, adds the Bearer token, parses the JSON envelope and redirects to /login on 401. Pages are lazy-loaded per route with React Router 7."],
+ ["Frontend","How do you handle state and auth in React?","Token in browser storage after login, React hooks (useState/useEffect) for page state, route guards that redirect unauthenticated users to /login, and a 401 handler that clears the token."],
+ // ---- Testing / deploy
+ ["Testing","How did you test the system?","Rust unit tests (e.g. fee math with GST and caps in fees.rs), integration tests in tests/, Vitest for components, Playwright end-to-end suites for both UIs (auth, payments and refunds, payment links, isolation, mobile, accessibility with axe), load tests in load/, and TypeScript checks. Today both UIs pass tsc and all pages load against the local backends."],
+ ["Testing","What performance did you achieve?","The report targets under 50 ms for 95% of API calls; the health endpoint answered in about 0.2 ms locally. Rust's compiled code, async I/O and connection pooling keep latency low. Neon in a nearby region adds network time per query."],
+ ["Testing","How did you test idempotency?","Sent the same request repeatedly with one Idempotency-Key and confirmed only one record was created and the same response came back."],
+ ["Deploy","How is it deployed?","Rust APIs on Render, React apps as static builds on Cloudflare Pages, database on Neon. A GitHub Actions workflow (deploy.yml) runs on pushes to main that touch src, migrations or the frontends. Staging has docker-compose.staging.yml."],
+ ["Deploy","How do you manage secrets?","Environment variables (.env, not committed) for DATABASE_URL, JWT_SECRET, VAULT_ENCRYPTION_KEY and webhook secrets; .env.example documents the names. The admin server validates required env vars at startup."],
+ // ---- Critical / tricky
+ ["Tricky","What are the limitations of your project?","Processors run in simulator/test mode; real bank or NPCI certification is not done. 3DS2 issuer verification is not wired in. RLS policies are defined but not activated per request. Local Redis is optional, so rate limits are off in test mode. No POS or multi-currency."],
+ ["Tricky","What would you improve next?","Use the fee engine in capture instead of a fixed 3%, wire 3DS2 into the card flow, set app.current_tenant_id per request so RLS is enforced, and add real connector certification and monitoring."],
+ ["Tricky","What happens if the server crashes in the middle of a payment?","The payment row, ledger entries and idempotency response are written in database transactions, so a crash leaves either everything or nothing. The client retries with the same Idempotency-Key and gets the stored result or a fresh attempt. Webhooks stay queued with next_retry_at and resume when the worker restarts."],
+ ["Tricky","What if two refund requests arrive at the same time?","Both read the refundable balance; without locking they could both pass. The update should lock the payment row (SELECT … FOR UPDATE) or use a conditional UPDATE refunded_amount = refunded_amount + x WHERE refunded_amount + x <= amount, and the Idempotency-Key blocks duplicates of the same request."],
+ ["Tricky","How is this different from Razorpay?","Razorpay is a closed, hosted aggregator. FeelPay is self-hostable, computes GST and TDS inside its own ledger, lets the operator choose connectors and routing, and is written in Rust. Razorpay has real bank licences, certifications and scale that a student project does not."],
+ ["Tricky","Is this legal to run as a real aggregator?","Not without RBI authorisation as a Payment Aggregator, a nodal/escrow bank arrangement, PCI-DSS certification and NPCI approval for UPI. The project is a technically complete platform in test mode, built to those rules."],
+ ["Tricky","Why are there so many tables and routes?","The platform covers many payment products (links, subscriptions, mandates, virtual accounts, EMI/BNPL, payouts, disputes) plus admin, audit and notification features; each needs its own tables and CRUD routes. Gateway and admin together register about 620 routes."],
+ ["Tricky","What did you personally build?","The full stack: Rust gateway and admin APIs, database schema and migrations, payment engine, ledger, webhooks and security middleware, both React apps, SDKs, tests and deployment. The external guide gave industry review of payment flows."],
+];
+
+const views=["overview","arch","features","run","health","review","viva","ask"];
+const tabs=[...document.querySelectorAll('nav.tabs button')];
+function show(v){ if(!views.includes(v)) v="overview";
+  views.forEach(x=>{document.getElementById("v-"+x).hidden = x!==v});
+  tabs.forEach(t=>t.setAttribute("aria-selected", t.dataset.v===v ? "true":"false"));
+}
+tabs.forEach(t=>t.addEventListener("click",()=>{show(t.dataset.v); try{history.replaceState(null,"","#"+t.dataset.v)}catch(e){} window.scrollTo({top:0})}));
+show((location.hash||"").slice(1));
+
+// Viva list
+const cats=["All",...new Set(QA.map(q=>q[0]))];
+let cat="All", openAll=false;
+const chips=document.getElementById("chips"), list=document.getElementById("qa"), qIn=document.getElementById("q"), count=document.getElementById("count");
+cats.forEach(c=>{const b=document.createElement("button");b.className="chip";b.type="button";b.textContent=c;b.setAttribute("aria-pressed",c===cat);b.onclick=()=>{cat=c;[...chips.children].forEach(x=>x.setAttribute("aria-pressed",x.textContent===c));render()};chips.appendChild(b)});
+function render(){
+  const s=qIn.value.trim().toLowerCase(); list.textContent="";
+  let n=0;
+  QA.forEach((q,i)=>{
+    if(cat!=="All"&&q[0]!==cat) return;
+    if(s && !(q[1]+" "+q[2]).toLowerCase().includes(s)) return;
+    n++;
+    const d=document.createElement("details"); d.className="qa"; d.open=openAll;
+    const sm=document.createElement("summary");
+    const num=document.createElement("span"); num.className="n"; num.textContent="Q"+(i+1);
+    const t=document.createElement("span"); t.textContent=q[1];
+    sm.append(num,t);
+    const a=document.createElement("div"); a.className="a";
+    const tag=document.createElement("span"); tag.className="tag"; tag.textContent=q[0];
+    const p=document.createElement("p"); p.textContent=q[2];
+    a.append(tag,p); d.append(sm,a); list.appendChild(d);
+  });
+  count.textContent = n+" of "+QA.length+" questions";
+}
+qIn.addEventListener("input",render);
+document.getElementById("toggleAll").onclick=(e)=>{openAll=!openAll;e.target.textContent=openAll?"Collapse all":"Expand all";list.querySelectorAll("details").forEach(d=>d.open=openAll)};
+render();
+
+// Ask Claude
+const askBtn=document.getElementById("askBtn"), mockBtn=document.getElementById("mockBtn"), askIn=document.getElementById("askIn"), askOut=document.getElementById("askOut"), askNote=document.getElementById("askNote");
+function kb(){
+  const parts=["overview","arch","features","run","health","review"].map(v=>document.getElementById("v-"+v).innerText);
+  return parts.join("\n\n---\n\n")+"\n\n--- VIVA Q&A ---\n"+QA.map(q=>"Q: "+q[1]+"\nA: "+q[2]).join("\n\n");
+}
+let sampleP=null, ctrl=null;
+async function getSample(){ if(!sampleP) sampleP = window.claude?.use ? window.claude.use("sample") : Promise.resolve(null); return sampleP; }
+async function run(prompt){
+  const sample=await getSample();
+  if(!sample){ askNote.textContent="Ask is unavailable in this view. Open this page signed in to claude.ai to use it; the Viva Q&A tab works everywhere."; return; }
+  if(ctrl) ctrl.abort(); ctrl=new AbortController();
+  askBtn.disabled=mockBtn.disabled=true; askOut.textContent="Thinking…"; askNote.textContent="";
+  try{
+    const r=await sample(prompt,{signal:ctrl.signal,cache:false,onText:({text})=>{askOut.textContent=text}});
+    askOut.textContent=r.text;
+  }catch(e){
+    if(e?.code==="not_granted"){askNote.textContent="Permission to ask Claude was declined for this page.";askOut.textContent="";}
+    else if(e?.code==="rate_limited"){askNote.textContent="Too many questions in a short time. Wait a minute and try again.";}
+    else if(e?.name!=="AbortError"){askNote.textContent="Claude could not answer: "+(e?.message||"unknown error");}
+  }finally{askBtn.disabled=mockBtn.disabled=false}
+}
+askBtn.onclick=()=>{const q=askIn.value.trim(); if(!q){askIn.focus();return;}
+  run("You are helping an MCA student, Chirag S Kotian, prepare for the viva of his project FeelPay. Answer the question below in plain, spoken English that he can say to an examiner: short paragraphs, concrete file names or numbers from the notes where useful, under 200 words. Be honest about limitations listed in the notes; never claim features the notes say are not wired. If the notes do not cover it, give a correct general answer and say it is general.\n\nPROJECT NOTES:\n"+kb()+"\n\nQUESTION: "+q);};
+mockBtn.onclick=()=>run("You are a strict but fair MCA viva examiner. Using the project notes below, ask ONE probing question about FeelPay that is not simply copied from the Q&A list, then on a new line after 'Model answer:' give a strong 80-120 word answer the student could say. Vary topics: architecture, Rust, database, security, payments, finance, testing, limitations.\n\nPROJECT NOTES:\n"+kb()+"\n\nRandom seed: "+Math.random());
+</script>
