@@ -190,7 +190,7 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let path = req.path().to_string();
         let method = req.method().as_str().to_string();
-        if path.ends_with("/bootstrap-token") || path.ends_with("/login") {
+        if path.ends_with("/login") {
             let fut = self.service.call(req);
             return Box::pin(async move { fut.await.map(ServiceResponse::map_into_left_body) });
         }

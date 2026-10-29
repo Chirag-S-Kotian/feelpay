@@ -197,11 +197,6 @@ struct DownloadExportResponse {
     download_url: String,
 }
 
-#[derive(Serialize)]
-struct BootstrapTokenResponse {
-    token: String,
-}
-
 #[derive(Deserialize)]
 struct AdminLoginRequest {
     email: String,
@@ -987,40 +982,6 @@ fn configure_admin_routes(cfg: &mut web::ServiceConfig) {
         .configure(integrations::configure);
 }
 
-async fn create_admin_bootstrap_token(pool: web::Data<PgPool>) -> impl Responder {
-    let admin = sqlx::query(
-        "SELECT id, name FROM merchants WHERE is_admin = true ORDER BY created_at ASC LIMIT 1",
-    )
-    .fetch_optional(pool.get_ref())
-    .await;
-
-    match admin {
-        Ok(Some(row)) => {
-            use sqlx::Row;
-            let merchant_id: Uuid = row.get("id");
-            let merchant_name: String = row.get("name");
-            match generate_jwt(&merchant_id, &merchant_name) {
-                Ok(token) => HttpResponse::Ok().json(BootstrapTokenResponse { token }),
-                Err(e) => {
-                    tracing::error!("Bootstrap token generation failed: {}", e);
-                    HttpResponse::InternalServerError().json(serde_json::json!({
-                        "message": "Failed to generate bootstrap token"
-                    }))
-                }
-            }
-        }
-        Ok(None) => HttpResponse::Unauthorized().json(serde_json::json!({
-            "message": "No admin merchant found. Mark one merchant as is_admin=true."
-        })),
-        Err(e) => {
-            tracing::error!("Bootstrap token lookup failed: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "message": "Failed to lookup admin merchant"
-            }))
-        }
-    }
-}
-
 async fn admin_login(pool: web::Data<PgPool>, req: web::Json<AdminLoginRequest>) -> impl Responder {
     let row = sqlx::query(
         "SELECT id, name, password_hash, is_admin FROM merchants WHERE email = $1 LIMIT 1",
@@ -1129,10 +1090,6 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/admin")
                     .route("/login", web::post().to(admin_login))
-                    .route(
-                        "/bootstrap-token",
-                        web::get().to(create_admin_bootstrap_token),
-                    )
                     .service(
                         web::scope("")
                             .wrap(AdminAuthMiddleware)
@@ -1143,10 +1100,6 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api/admin")
                     .route("/login", web::post().to(admin_login))
-                    .route(
-                        "/bootstrap-token",
-                        web::get().to(create_admin_bootstrap_token),
-                    )
                     .service(
                         web::scope("")
                             .wrap(AdminAuthMiddleware)

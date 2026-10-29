@@ -97,6 +97,49 @@ impl LedgerService {
         .await
         .map_err(|_| FeelPayError::Internal("Escrow account not configured".into()))?;
 
+        // Reversal (refund): callers pass a negative amount. Entries must stay positive,
+        // so post the opposite direction: debit merchant, credit escrow.
+        if amount < 0 {
+            let reversal = -amount;
+
+            sqlx::query("UPDATE ledger_accounts SET balance = balance - $1 WHERE id = $2")
+                .bind(reversal)
+                .bind(merchant_account.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            sqlx::query("INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, description) VALUES ($1, $2, 'debit', $3, $4)")
+                .bind(transaction_id)
+                .bind(merchant_account.id)
+                .bind(reversal)
+                .bind(format!("Debit for {}", tx_type))
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            sqlx::query("UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2")
+                .bind(reversal)
+                .bind(escrow_account.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            sqlx::query("INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, description) VALUES ($1, $2, 'credit', $3, $4)")
+                .bind(transaction_id)
+                .bind(escrow_account.id)
+                .bind(reversal)
+                .bind(format!("Return to escrow for {}", tx_type))
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| FeelPayError::Database(e.to_string()))?;
+
+            tx.commit()
+                .await
+                .map_err(|e: sqlx::Error| FeelPayError::Database(e.to_string()))?;
+            return Ok(());
+        }
+
         let net_amount = amount - fee_amount;
 
         // --- DOUBLE ENTRY ---

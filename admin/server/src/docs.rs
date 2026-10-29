@@ -118,17 +118,6 @@ const SPEC: &str = r#"{
         }
       }
     },
-    "/admin/bootstrap-token": {
-      "get": {
-        "tags": ["Auth"],
-        "summary": "Bootstrap Admin Token",
-        "description": "Generate an initial token for primary admin merchant in dev / initial setup.",
-        "responses": {
-          "200": { "description": "Bootstrap token returned" },
-          "401": { "description": "No admin merchant configured" }
-        }
-      }
-    },
     "/admin/stats": {
       "get": {
         "tags": ["Platform"],
